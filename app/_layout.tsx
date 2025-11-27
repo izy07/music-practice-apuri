@@ -74,6 +74,11 @@ function RootLayoutContent() {
       const basePath = '/music-practice-apuri';
       const currentPath = window.location.pathname;
       
+      // ベースパスを除去した実際のパスを取得
+      const pathWithoutBase = currentPath.startsWith(basePath) 
+        ? currentPath.replace(basePath, '') || '/' 
+        : currentPath;
+      
       // クエリパラメータから元のパスを取得
       const urlParams = new URLSearchParams(window.location.search);
       const redirectPath = urlParams.get('_redirect');
@@ -84,6 +89,15 @@ function RootLayoutContent() {
       
       // リダイレクトフラグをクリア
       sessionStorage.removeItem('github-pages-redirecting');
+      
+      // ルートパス（/music-practice-apuri/ または /music-practice-apuri/index.html）にアクセスした場合
+      if (pathWithoutBase === '/' || pathWithoutBase === '/index.html' || currentPath === basePath || currentPath === basePath + '/') {
+        // リダイレクトパスがない場合は、認証状態に応じて適切な画面に遷移
+        if (!redirectPath && !storedRedirectPath && !originalPath) {
+          // 認証状態を確認してから遷移（認証フローで処理される）
+          return;
+        }
+      }
       
       if (redirectPath) {
         // クエリパラメータから元のパスを復元
@@ -119,9 +133,17 @@ function RootLayoutContent() {
         if (currentPath.includes('/index.html') && originalPath !== currentPath) {
           logger.debug('404.htmlからリダイレクトされたパスを復元（sessionStorage originalPath）:', originalPath);
           sessionStorage.removeItem('expo-router-original-path');
-          const pathWithoutBase = originalPath.replace(basePath, '') || '/';
+          const pathWithoutBaseFromOriginal = originalPath.replace(basePath, '') || '/';
           window.history.replaceState({}, '', originalPath + window.location.search + window.location.hash);
-          router.replace(pathWithoutBase as any);
+          router.replace(pathWithoutBaseFromOriginal as any);
+        }
+      } else if (pathWithoutBase !== '/' && pathWithoutBase !== '/index.html') {
+        // ベースパス以外のパスにアクセスした場合、Expo Routerに正しいパスを伝える
+        // ただし、既に正しいパスにいる場合は何もしない
+        const segments = pathWithoutBase.split('/').filter(Boolean);
+        if (segments.length > 0) {
+          // パスが存在する場合は、そのままExpo Routerに任せる
+          // 何もしない（Expo Routerが自動的に処理する）
         }
       }
     }
@@ -280,7 +302,12 @@ function RootLayoutContent() {
 
 
     // フレームワークが準備できていない、または認証状態を読み込み中は何もしない
-    if (!isReady || isLoading || !isInitialized) {
+    // Web環境では、isReadyを待たずに処理を開始（タイムアウト処理で対応済み）
+    if (Platform.OS !== 'web' && (!isReady || isLoading || !isInitialized)) {
+      return;
+    }
+    // Web環境では、isLoadingだけをチェック（isReadyはタイムアウトで処理済み）
+    if (Platform.OS === 'web' && isLoading) {
       return;
     }
 
