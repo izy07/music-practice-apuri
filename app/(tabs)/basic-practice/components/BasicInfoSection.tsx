@@ -1,0 +1,54 @@
+/**
+ * 基礎情報セクションコンポーネント
+ * 楽器の姿勢と持ち方の情報を表示
+ */
+
+import React from 'react';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { Target, Camera } from 'lucide-react-native';
+import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { instrumentBasics } from '../data/instrumentBasics';
+import { styles } from '../styles/styles';
+
+export interface BasicInfoSectionProps {
+  instrumentKey: string;
+  onOpenCamera: () => void;
+}
+
+export function BasicInfoSection({ instrumentKey, onOpenCamera }: BasicInfoSectionProps) {
+  const { currentTheme } = useInstrumentTheme();
+
+  return (
+    <View style={[styles.basicInfoSection, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
+      <View style={styles.basicInfoHeader}>
+        <Target size={16} color={currentTheme.primary} />
+        <Text style={[styles.basicInfoTitle, { color: currentTheme.primary }]}>基礎・姿勢・楽器の持ち方</Text>
+      </View>
+      
+      <View style={styles.basicInfoContent}>
+        <View style={styles.basicInfoItem}>
+          <View style={styles.basicInfoItemHeader}>
+            <Text style={[styles.basicInfoLabel, { color: currentTheme.text }]}>正しい姿勢</Text>
+            <TouchableOpacity 
+              style={[styles.cameraButton, { backgroundColor: currentTheme.primary }]}
+              onPress={onOpenCamera}
+            >
+              <Camera size={16} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+          <Text style={[styles.basicInfoText, { color: currentTheme.textSecondary }]}>
+            {instrumentBasics[instrumentKey]?.posture || instrumentBasics.other.posture}
+          </Text>
+        </View>
+        
+        <View style={styles.basicInfoItem}>
+          <Text style={[styles.basicInfoLabel, { color: currentTheme.text }]}>楽器の持ち方</Text>
+          <Text style={[styles.basicInfoText, { color: currentTheme.textSecondary }]}>
+            {instrumentBasics[instrumentKey]?.grip || instrumentBasics.other.grip}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
