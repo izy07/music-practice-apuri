@@ -396,23 +396,36 @@ function RootLayoutContent() {
 
   // フレームワーク準備中または認証状態読み込み中はローディング画面を表示
   // Web環境では、isReadyがfalseのままになる可能性があるため、タイムアウトを追加
-  const [showContent, setShowContent] = React.useState(false);
+  const [showContent, setShowContent] = React.useState(Platform.OS === 'web');
   
   React.useEffect(() => {
     // Web環境では、isReadyがfalseのままでも一定時間後にコンテンツを表示
     if (Platform.OS === 'web') {
-      const timer = setTimeout(() => {
+      // Web環境では即座に表示を試みる
+      if (isReady) {
         setShowContent(true);
-      }, 1000); // 1秒後に強制的にコンテンツを表示
-      
-      return () => clearTimeout(timer);
+      } else {
+        // isReadyがfalseの場合は、短いタイムアウト後に表示
+        const timer = setTimeout(() => {
+          setShowContent(true);
+        }, 500); // 0.5秒後に強制的にコンテンツを表示
+        return () => clearTimeout(timer);
+      }
     } else {
       setShowContent(isReady);
     }
   }, [isReady]);
   
-  if (!showContent || isLoading) {
-    return <LoadingSkeleton />;
+  // Web環境では、isLoadingが長く続く場合でもコンテンツを表示
+  if (Platform.OS === 'web') {
+    if (!showContent) {
+      return <LoadingSkeleton />;
+    }
+    // Web環境では、isLoadingがtrueでもコンテンツを表示（認証状態は後で更新される）
+  } else {
+    if (!showContent || isLoading) {
+      return <LoadingSkeleton />;
+    }
   }
 
   // メインの画面構成を定義

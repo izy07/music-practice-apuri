@@ -46,6 +46,17 @@ const indexPath = path.join(DIST_DIR, 'index.html');
 if (fs.existsSync(indexPath)) {
   let content = fs.readFileSync(indexPath, 'utf8');
   
+  // baseタグを追加（すべての相対パスを正しく解決するため）
+  const baseTag = `<base href="${BASE_PATH}/" />`;
+  if (!content.includes('<base')) {
+    // headタグの直後にbaseタグを追加
+    content = content.replace(
+      /(<head[^>]*>)/i,
+      `$1\n  ${baseTag}`
+    );
+    console.log(`✅ baseタグを追加しました: ${BASE_PATH}/`);
+  }
+  
   // CSPメタタグが存在しない場合は追加
   const cspMetaTag = '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: https:; font-src \'self\' data:; connect-src \'self\' https:; frame-src \'self\' https:; object-src \'none\'; base-uri \'self\'; form-action \'self\';" />';
   if (!content.includes('Content-Security-Policy')) {
