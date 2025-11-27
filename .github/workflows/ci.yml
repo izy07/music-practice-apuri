@@ -43,6 +43,7 @@ jobs:
     name: データベース統合テスト
     runs-on: ubuntu-latest
     needs: test
+    if: always()
     
     services:
       postgres:
