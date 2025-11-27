@@ -303,15 +303,15 @@ export default function SignupScreen() {
 
   // 新規登録処理
   const handleSignup = async () => {
-    console.log('📝 新規登録処理開始');
+    logger.debug('📝 新規登録処理開始');
     
     if (!validateForm()) {
-      console.log('❌ フォームバリデーション失敗');
+      logger.debug('❌ フォームバリデーション失敗');
       return;
     }
     
-    console.log('✅ フォームバリデーション成功');
-    console.log('📝 登録データ:', { 
+    logger.debug('✅ フォームバリデーション成功');
+    logger.debug('📝 登録データ:', { 
       email: formData.email, 
       name: formData.name 
     });
@@ -319,19 +319,19 @@ export default function SignupScreen() {
     try {
       // 新規登録処理を実行
       const success = await signUp(formData);
-      console.log('📊 新規登録結果:', success);
+      logger.debug('📊 新規登録結果:', success);
       
     if (success) {
-        console.log('✅ 新規登録成功 - チュートリアル画面に遷移');
+        logger.debug('✅ 新規登録成功 - チュートリアル画面に遷移');
         setSignupSuccess(true);
         
         // 即座にチュートリアル画面に遷移（認証状態の更新を待たない）
         setTimeout(() => {
-          console.log('🚀 チュートリアル画面に遷移');
+          logger.debug('🚀 チュートリアル画面に遷移');
           router.replace('/(tabs)/tutorial');
         }, 500); // アニメーション表示のために短い遅延
     } else {
-      console.log('❌ 新規登録失敗');
+      logger.debug('❌ 新規登録失敗');
         const fallbackMsg = error || '登録に失敗しました。メールが既に登録済みか、入力内容に誤りがあります。';
         setUiError(fallbackMsg);
         // 画面下のフィールドにも明示的にエラー表示
@@ -351,7 +351,7 @@ export default function SignupScreen() {
               {
                 text: 'ログイン',
                 onPress: () => {
-                  console.log('🎯 ログイン画面に遷移');
+                  logger.debug('🎯 ログイン画面に遷移');
                   router.push('/auth/login');
                 },
               },
@@ -360,35 +360,37 @@ export default function SignupScreen() {
         }
       }
     } catch (error) {
-      console.error('💥 新規登録処理エラー:', error);
+      logger.error('💥 新規登録処理エラー:', error);
+      ErrorHandler.handle(error, '新規登録処理', true);
       Alert.alert('エラー', '新規登録に失敗しました。もう一度お試しください。');
     }
   };
 
   // Google新規登録処理
   const handleGoogleSignup = async () => {
-    console.log('🔐 Google新規登録処理開始');
+    logger.debug('🔐 Google新規登録処理開始');
     
     try {
     const success = await signInWithGoogle();
-      console.log('📊 Google新規登録結果:', success);
+      logger.debug('📊 Google新規登録結果:', success);
       
     if (success) {
-        console.log('✅ Google新規登録成功 - 自動遷移を待機中');
+        logger.debug('✅ Google新規登録成功 - 自動遷移を待機中');
         // useEffectで自動遷移が実行される
       } else {
-        console.log('❌ Google新規登録失敗');
+        logger.debug('❌ Google新規登録失敗');
         Alert.alert('エラー', 'Google新規登録に失敗しました。もう一度お試しください。');
       }
     } catch (error) {
-      console.error('💥 Google新規登録処理エラー:', error);
+      logger.error('💥 Google新規登録処理エラー:', error);
+      ErrorHandler.handle(error, 'Google新規登録処理', true);
       Alert.alert('エラー', 'Google新規登録に失敗しました。もう一度お試しください。');
     }
   };
 
   // ログイン画面への遷移
   const goToLogin = () => {
-    console.log('🎯 ログイン画面に遷移');
+    logger.debug('🎯 ログイン画面に遷移');
     router.push('/auth/login');
   };
 

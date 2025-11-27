@@ -4,6 +4,8 @@ import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-nativ
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import logger from '@/lib/logger';
+import { ErrorHandler } from '@/lib/errorHandler';
 
 export default function AuthCallback() {
   const router = useRouter();
@@ -12,13 +14,13 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       try {
-        console.log('🔄 認証コールバック処理開始');
+        logger.debug('🔄 認証コールバック処理開始');
 
         // プラットフォーム判定
         if (Platform.OS === 'web') {
           // Web環境での処理
           if (typeof window === 'undefined') {
-            console.error('❌ Web環境でwindowが未定義');
+            logger.error('❌ Web環境でwindowが未定義');
             return;
           }
 
@@ -30,11 +32,11 @@ export default function AuthCallback() {
           // パスワードリセット処理をチェック
           const type = params.get('type');
           if (type === 'recovery') {
-            console.log('🔄 パスワードリセットコールバック検出');
+            logger.debug('🔄 パスワードリセットコールバック検出');
             // パスワードリセットの場合はセッションを確認
             const { data: sessionData } = await supabase.auth.getSession();
             if (sessionData.session) {
-              console.log('✅ パスワードリセットセッション確認済み');
+              logger.debug('✅ パスワードリセットセッション確認済み');
               // パスワードリセット画面に遷移（実装予定）
               router.replace('/auth/reset-password');
               return;
@@ -45,38 +47,39 @@ export default function AuthCallback() {
           const oauthError = params.get('error') || params.get('error_code');
           
           if (oauthError) {
-            console.error('❌ OAuthエラー:', oauthError, Object.fromEntries(params.entries()));
+            logger.error('❌ OAuthエラー:', oauthError, Object.fromEntries(params.entries()));
             
             // server_errorの場合は認証状態を再確認
             if (oauthError === 'server_error') {
-              console.log('🔄 server_error検出 - 認証状態を再確認');
+              logger.debug('🔄 server_error検出 - 認証状態を再確認');
               // 少し待ってから認証状態を再確認
               setTimeout(async () => {
                 const { data: sessionData } = await supabase.auth.getSession();
                 if (sessionData.session) {
-                  console.log('✅ セッションが存在 - 認証成功');
+                  logger.debug('✅ セッションが存在 - 認証成功');
                   // 認証状態監視に任せる
                 } else {
-                  console.log('❌ セッションなし - 強制的に認証状態を更新');
+                  logger.debug('❌ セッションなし - 強制的に認証状態を更新');
                   // 最後の手段：強制的に認証状態を更新
                   // forceAuthUpdateは存在しないため、ログイン画面に遷移
                   const success = false;
                   if (success) {
-                    console.log('✅ 認証状態更新成功 - チュートリアル画面に遷移');
+                    logger.debug('✅ 認証状態更新成功 - チュートリアル画面に遷移');
                     // 少し待ってからチュートリアル画面に遷移
                     setTimeout(() => {
-                      console.log('🔄 チュートリアル画面への遷移を開始');
+                      logger.debug('🔄 チュートリアル画面への遷移を開始');
                       try {
                         router.replace('/(tabs)/tutorial');
-                        console.log('✅ チュートリアル画面への遷移完了');
+                        logger.debug('✅ チュートリアル画面への遷移完了');
                       } catch (error) {
-                        console.error('❌ チュートリアル画面への遷移エラー:', error);
+                        logger.error('❌ チュートリアル画面への遷移エラー:', error);
+                        ErrorHandler.handle(error, 'チュートリアル画面への遷移', false);
                         // フォールバック: 直接URLを変更
                         window.location.href = '/tutorial';
                       }
                     }, 500);
                   } else {
-                    console.log('❌ 認証状態更新失敗 - ログイン画面に遷移');
+                    logger.debug('❌ 認証状態更新失敗 - ログイン画面に遷移');
                     setTimeout(() => {
                       router.replace('/auth/login');
                     }, 1000);
@@ -90,56 +93,61 @@ export default function AuthCallback() {
           // PKCEコードをセッションに交換（Webではこれが必須）
           const { data: exchangeData, error: exchangeError } = await supabase.auth.exchangeCodeForSession(window.location.href);
           if (exchangeError) {
-            console.error('❌ セッション交換エラー:', exchangeError);
+            logger.error('❌ セッション交換エラー:', exchangeError);
+            ErrorHandler.handle(exchangeError, 'セッション交換', false);
             
             // セッション交換エラーでも認証状態を再確認
             setTimeout(async () => {
               const { data: sessionData } = await supabase.auth.getSession();
               if (sessionData.session) {
-                console.log('✅ セッションが存在 - 認証成功');
+                logger.debug('✅ セッションが存在 - 認証成功');
               }
             }, 1000);
             return;
           }
 
-          console.log('🌐 Web環境 - 認証コールバック処理完了');
+          logger.debug('🌐 Web環境 - 認証コールバック処理完了');
         } else {
           // React Native環境での処理
-          console.log('📱 React Native環境での認証処理');
+          logger.debug('📱 React Native環境での認証処理');
         }
 
         // セッション取得
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('❌ 認証コールバックエラー:', error);
+          logger.error('❌ 認証コールバックエラー:', error);
+          ErrorHandler.handle(error, '認証コールバック', false);
           return;
         }
 
-        console.log('📋 セッション情報:', data.session?.user?.email);
+        logger.debug('📋 セッション情報:', data.session?.user?.email);
 
         if (data.session) {
-          console.log('✅ 認証成功 - 状態更新完了');
+          logger.debug('✅ 認証成功 - 状態更新完了');
           // 認証状態の更新を待ってからRootLayoutで遷移処理
           setTimeout(() => {
             try {
               router.replace('/(tabs)/tutorial');
             } catch (navError) {
-              console.error('❌ ナビゲーションエラー:', navError);
+              logger.error('❌ ナビゲーションエラー:', navError);
+              ErrorHandler.handle(navError, 'ナビゲーション', false);
             }
           }, 1000);
         } else {
-          console.log('❌ 認証失敗 - ログイン画面に戻る');
+          logger.debug('❌ 認証失敗 - ログイン画面に戻る');
           setTimeout(() => {
             try {
               router.replace('/auth/login');
             } catch (navError) {
-              console.error('❌ ナビゲーションエラー:', navError);
+              logger.error('❌ ナビゲーションエラー:', navError);
+              ErrorHandler.handle(navError, 'ナビゲーション', false);
             }
           }, 500);
         }
       } catch (error) {
-        console.error('💥 認証コールバック処理エラー:', error);
+        logger.error('💥 認証コールバック処理エラー:', error);
+        ErrorHandler.handle(error, '認証コールバック処理', false);
         // エラー時は即座にリダイレクトせず、認証状態監視に任せる
       }
     };
