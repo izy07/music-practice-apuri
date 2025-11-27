@@ -8,7 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
-import { getCurrentUser, getUserProfileFields, updateUserProfile } from '@/app/lib/userRepository';
+import { getCurrentUser, getUserProfileFields, updateUserProfile } from '@/repositories/userRepository';
 import type { Level } from '../types/practice.types';
 
 const LEVEL_CACHE_KEY = 'user_practice_level';

@@ -35,7 +35,6 @@ import { getPracticeSessionsByDate, updatePracticeSession, createPracticeSession
 import type { PracticeItem, Level } from './basic-practice/types/practice.types';
 import { genericMenus } from './basic-practice/data/genericMenus';
 import { instrumentSpecificMenus } from './basic-practice/data/instrumentSpecificMenus';
-import { instrumentBasics } from './basic-practice/data/instrumentBasics';
 
 export default function BasicPracticeScreen() {
   const router = useRouter();
@@ -409,7 +408,8 @@ export default function BasicPracticeScreen() {
                   </TouchableOpacity>
                 </View>
                 <Text style={[styles.basicInfoText, { color: currentTheme.textSecondary }]}>
-                  {instrumentBasics[instrumentKey]?.posture || instrumentBasics.other.posture}
+                  {/* instrumentBasics データが不足しているため一時的にコメントアウト */}
+                  {'正しい姿勢を保ちましょう'}
                 </Text>
               </View>
               
