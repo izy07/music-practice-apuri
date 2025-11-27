@@ -11,7 +11,7 @@ import {
   saveTutorialProgress,
   getTutorialProgress,
   saveRecording,
-  getRecordings,
+  // getRecordings, // この関数は存在しないためコメントアウト
   deleteRecording,
 } from '@/lib/database';
 import { supabase } from '@/lib/supabase';
@@ -131,14 +131,14 @@ describe('getLanguageSetting', () => {
 
 describe('saveTutorialProgress', () => {
   it('チュートリアル進捗を保存できる', async () => {
-    const mockData = { user_id: 'test-user', completed_steps: ['step1', 'step2'] };
+    const mockData = { user_id: 'test-user', current_step: 2 };
     (supabase.from as jest.Mock).mockReturnValue({
       upsert: jest.fn().mockReturnThis(),
       select: jest.fn().mockReturnThis(),
       single: jest.fn().mockResolvedValue({ data: mockData, error: null }),
     });
 
-    const result = await saveTutorialProgress('test-user', { completed_steps: ['step1', 'step2'] });
+    const result = await saveTutorialProgress('test-user', { current_step: 2 });
 
     expect(result.data).toEqual(mockData);
     expect(result.error).toBeNull();
@@ -147,7 +147,7 @@ describe('saveTutorialProgress', () => {
 
 describe('getTutorialProgress', () => {
   it('チュートリアル進捗を取得できる', async () => {
-    const mockData = { user_id: 'test-user', completed_steps: ['step1'] };
+    const mockData = { user_id: 'test-user', current_step: 1 };
     (supabase.from as jest.Mock).mockReturnValue({
       select: jest.fn().mockReturnThis(),
       eq: jest.fn().mockReturnThis(),

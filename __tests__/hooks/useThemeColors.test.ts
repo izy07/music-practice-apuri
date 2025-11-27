@@ -2,7 +2,7 @@
  * useThemeColorsフックのテスト
  */
 
-import { renderHook } from '@testing-library/react-hooks';
+import { renderHook } from '@testing-library/react';
 import { useThemeColors, useThemeColor } from '@/hooks/useThemeColors';
 import { InstrumentThemeProvider } from '@/components/InstrumentThemeContext';
 
