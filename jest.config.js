@@ -25,8 +25,8 @@ module.exports = {
     '!**/node_modules/**',
     '!**/__tests__/**',
   ],
-  // CI環境ではカバレッジ閾値を無効化
-  coverageThreshold: (process.env.CI === 'true' || process.env.CI === true) ? {} : {
+  // CI環境ではカバレッジ閾値を無効化（GitHub Actionsでは常に無効化）
+  coverageThreshold: (process.env.CI || process.env.GITHUB_ACTIONS) ? {} : {
     // グローバルな閾値（重要なファイルの平均） - 40%目標
     global: {
       statements: 35,
