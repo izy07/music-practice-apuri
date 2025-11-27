@@ -77,6 +77,10 @@ function RootLayoutContent() {
       
       // sessionStorageからも取得（フォールバック）
       const originalPath = sessionStorage.getItem('expo-router-original-path');
+      const storedRedirectPath = sessionStorage.getItem('expo-router-redirect-path');
+      
+      // リダイレクトフラグをクリア
+      sessionStorage.removeItem('github-pages-redirecting');
       
       if (redirectPath) {
         // クエリパラメータから元のパスを復元
@@ -84,19 +88,28 @@ function RootLayoutContent() {
         // クエリパラメータを削除
         urlParams.delete('_redirect');
         const newSearch = urlParams.toString();
-        const newUrl = window.location.pathname + (newSearch ? '?' + newSearch : '') + window.location.hash;
+        const basePath = '/music-practice-apuri';
+        const newPath = basePath + (redirectPath.startsWith('/') ? redirectPath : '/' + redirectPath);
+        const newUrl = newPath + (newSearch ? '?' + newSearch : '') + window.location.hash;
         window.history.replaceState({}, '', newUrl);
         // 元のパスに遷移（Expo Routerが処理）
         router.replace(redirectPath as any);
+      } else if (storedRedirectPath) {
+        // sessionStorageからリダイレクトパスを復元
+        logger.debug('404.htmlからリダイレクトされたパスを復元（sessionStorage）:', storedRedirectPath);
+        sessionStorage.removeItem('expo-router-redirect-path');
+        const basePath = '/music-practice-apuri';
+        const newPath = basePath + (storedRedirectPath.startsWith('/') ? storedRedirectPath : '/' + storedRedirectPath);
+        window.history.replaceState({}, '', newPath + window.location.search + window.location.hash);
+        router.replace(storedRedirectPath as any);
       } else if (originalPath) {
-        // sessionStorageから元のパスを復元
+        // sessionStorageから元のパスを復元（フォールバック）
         const currentPath = window.location.pathname;
         if (currentPath.includes('/index.html') && originalPath !== currentPath) {
-          logger.debug('404.htmlからリダイレクトされたパスを復元（sessionStorage）:', originalPath);
-          // sessionStorageから削除
+          logger.debug('404.htmlからリダイレクトされたパスを復元（sessionStorage originalPath）:', originalPath);
           sessionStorage.removeItem('expo-router-original-path');
-          // 元のパスに遷移（Expo Routerが処理）
           const pathWithoutBase = originalPath.replace('/music-practice-apuri', '') || '/';
+          window.history.replaceState({}, '', originalPath + window.location.search + window.location.hash);
           router.replace(pathWithoutBase as any);
         }
       }
