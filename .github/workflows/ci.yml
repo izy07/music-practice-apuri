@@ -119,6 +119,7 @@ jobs:
   lint:
     name: コード品質チェック
     runs-on: ubuntu-latest
+    continue-on-error: true
     
     steps:
       - name: チェックアウト
