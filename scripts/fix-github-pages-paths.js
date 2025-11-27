@@ -58,13 +58,30 @@ if (fs.existsSync(indexPath)) {
   const basePathNoSlash = BASE_PATH.replace(/^\//, '');
   
   // すべての絶対パスを修正（ベースパスが既に含まれている場合はスキップ）
+  // より厳密な正規表現で、ベースパスが既に含まれている場合を正確に検出
   content = content.replace(/(href|src)="\/([^"]+)"/g, (match, attr, path) => {
     // 既にベースパスが含まれている場合はスキップ
-    if (path.startsWith(basePathNoSlash)) {
+    if (path.startsWith(basePathNoSlash + '/') || path === basePathNoSlash) {
       return match;
     }
     // 絶対パスをベースパス付きに変更
     return `${attr}="${BASE_PATH}/${path}"`;
+  });
+  
+  // 相対パスも確認（./ や ../ で始まるパスはそのまま）
+  // ただし、/_expo/ や /assets/ などの絶対パスは確実に修正
+  content = content.replace(/(href|src)="\/_expo\/([^"]+)"/g, (match, attr, path) => {
+    if (!path.startsWith(basePathNoSlash)) {
+      return `${attr}="${BASE_PATH}/_expo/${path}"`;
+    }
+    return match;
+  });
+  
+  content = content.replace(/(href|src)="\/assets\/([^"]+)"/g, (match, attr, path) => {
+    if (!path.startsWith(basePathNoSlash)) {
+      return `${attr}="${BASE_PATH}/assets/${path}"`;
+    }
+    return match;
   });
   
   fs.writeFileSync(indexPath, content, 'utf8');
