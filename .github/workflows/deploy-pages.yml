@@ -1,20 +1,21 @@
 name: Deploy to GitHub Pages
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'app/**'
-      - 'components/**'
-      - 'lib/**'
-      - 'hooks/**'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'app.config.ts'
-      - 'metro.config.js'
-      - '.github/workflows/deploy-pages.yml'
-  workflow_dispatch: # 手動実行も可能
+  # 自動デプロイを無効化 - 手動実行のみ
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'app/**'
+  #     - 'components/**'
+  #     - 'lib/**'
+  #     - 'hooks/**'
+  #     - 'package.json'
+  #     - 'package-lock.json'
+  #     - 'app.config.ts'
+  #     - 'metro.config.js'
+  #     - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch: # 手動実行のみ
 
 permissions:
   contents: read
