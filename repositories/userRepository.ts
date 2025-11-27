@@ -6,6 +6,7 @@
 import { supabase } from '@/lib/supabase';
 import { safeExecute, createResult, RepositoryResult } from '@/lib/database/baseRepository';
 import logger from '@/lib/logger';
+import { ErrorHandler } from '@/lib/errorHandler';
 
 const REPOSITORY_CONTEXT = 'userRepository';
 
@@ -194,6 +195,96 @@ export const updateSelectedInstrument = async (
     },
     `${REPOSITORY_CONTEXT}.updateSelectedInstrument`
   );
+};
+
+/**
+ * ユーザープロフィールの特定フィールドを取得
+ */
+export const getUserProfileFields = async (
+  userId: string,
+  fields: string | string[]
+): Promise<any> => {
+  const fieldArray = Array.isArray(fields) ? fields : [fields];
+  const result = await getUserProfile(userId);
+  
+  if (!result.success || !result.data) {
+    return null;
+  }
+  
+  const data: any = {};
+  fieldArray.forEach(field => {
+    data[field] = (result.data as any)[field];
+  });
+  
+  return fieldArray.length === 1 ? data[fieldArray[0]] : data;
+};
+
+/**
+ * ユーザープロフィールを更新
+ */
+export const updateUserProfile = async (
+  userId: string,
+  updates: Partial<UserProfile>
+): Promise<boolean> => {
+  // selected_instrument_idが含まれている場合は、存在確認を実行
+  if (updates.selected_instrument_id !== undefined && updates.selected_instrument_id !== null) {
+    const instrumentId = updates.selected_instrument_id;
+    
+    // その他楽器のIDの場合はスキップ
+    if (instrumentId !== '550e8400-e29b-41d4-a716-446655440016') {
+      const { data: instrumentExists, error: checkError } = await supabase
+        .from('instruments')
+        .select('id')
+        .eq('id', instrumentId)
+        .maybeSingle();
+      
+      if (checkError) {
+        logger.error(`[${REPOSITORY_CONTEXT}] updateUserProfile:instrumentCheckError`, checkError);
+        ErrorHandler.handle(checkError, '楽器ID確認', false);
+        return false;
+      }
+      
+      if (!instrumentExists) {
+        logger.error(`[${REPOSITORY_CONTEXT}] updateUserProfile:invalidInstrumentId`, { instrumentId });
+        ErrorHandler.handle(new Error(`楽器ID ${instrumentId} が存在しません`), '楽器ID確認', false);
+        return false;
+      }
+    }
+  }
+  
+  const result = await safeExecute(
+    async () => {
+      logger.debug(`[${REPOSITORY_CONTEXT}] updateUserProfile:start`, { userId, updates });
+      
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId);
+      
+      if (error) {
+        throw error;
+      }
+      
+      logger.debug(`[${REPOSITORY_CONTEXT}] updateUserProfile:success`);
+    },
+    `${REPOSITORY_CONTEXT}.updateUserProfile`
+  );
+  
+  return result.success;
+};
+
+/**
+ * 現在のユーザーを取得
+ */
+export const getCurrentUser = async () => {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error || !user) {
+    return null;
+  }
+  return user;
 };
 
 // 後方互換性のためのエクスポート
