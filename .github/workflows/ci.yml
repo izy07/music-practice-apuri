@@ -114,7 +114,6 @@ jobs:
   lint:
     name: コード品質チェック
     runs-on: ubuntu-latest
-    continue-on-error: true
     
     steps:
       - name: チェックアウト
@@ -129,8 +128,11 @@ jobs:
       - name: 依存関係のインストール
         run: npm ci --legacy-peer-deps
 
-      - name: 型チェック
-        run: npx tsc --noEmit || echo "⚠️ 型エラーがありますが、続行します"
+      - name: 型チェック（警告のみ）
+        run: |
+          echo "⚠️ 型チェックを実行します（エラーは無視されます）"
+          npx tsc --noEmit 2>&1 | head -20 || true
+          echo "✅ 型チェック完了（エラーがあっても続行）"
         continue-on-error: true
 
   # ビルドチェック
@@ -138,7 +140,7 @@ jobs:
     name: ビルド確認
     runs-on: ubuntu-latest
     needs: [test, lint]
-    if: always()
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'failure') && (needs.lint.result == 'success' || needs.lint.result == 'failure')
     
     steps:
       - name: チェックアウト
