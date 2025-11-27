@@ -78,15 +78,13 @@ jobs:
       - name: Supabase CLI のインストール
         run: |
           npm install -g supabase
-          export PATH="$PATH:$(npm config get prefix)/bin"
-          supabase --version
+          npx supabase --version
         continue-on-error: true
 
       - name: Supabase ローカル環境の起動
         run: |
-          export PATH="$PATH:$(npm config get prefix)/bin"
-          supabase start || echo "⚠️ Supabaseの起動に失敗しましたが、続行します"
-          supabase status || true
+          npx supabase start || echo "⚠️ Supabaseの起動に失敗しましたが、続行します"
+          npx supabase status || true
         env:
           SUPABASE_DB_PASSWORD: postgres
           SUPABASE_DB_PORT: 5432
@@ -94,16 +92,14 @@ jobs:
 
       - name: データベースマイグレーションの実行
         run: |
-          export PATH="$PATH:$(npm config get prefix)/bin"
-          supabase db reset || echo "⚠️ マイグレーションに失敗しましたが、続行します"
+          npx supabase db reset || echo "⚠️ マイグレーションに失敗しましたが、続行します"
           echo "✅ データベースマイグレーション完了"
         continue-on-error: true
 
       - name: データベース状態の確認
         run: |
-          export PATH="$PATH:$(npm config get prefix)/bin"
           echo "📊 データベーステーブル一覧:"
-          supabase db diff --schema public || true
+          npx supabase db diff --schema public || true
         continue-on-error: true
 
       - name: 統合テスト実行
@@ -116,7 +112,7 @@ jobs:
 
       - name: Supabase ローカル環境の停止
         if: always()
-        run: supabase stop || true
+        run: npx supabase stop || true
 
   # Lint チェック
   lint:
