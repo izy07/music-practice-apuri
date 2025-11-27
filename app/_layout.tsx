@@ -34,7 +34,7 @@ function RootLayoutContent() {
   
   // ルーティング関連のフック
   const router = useRouter(); // 画面遷移を実行するためのルーター
-  const segments = useSegments(); // 現在のURLパスを配列で取得
+  const segments = useSegments() as readonly string[]; // 現在のURLパスを配列で取得
   
   // 認証フックを常に実行（Hooksの順序を保持）
   const { 
@@ -60,7 +60,7 @@ function RootLayoutContent() {
   const lastPathRef = useRef<string | null>(null);
   
   // 新規登録画面の場合は認証フックを完全に無効化（Hooksの順序を保持）
-  const authChild = segments[1];
+  const authChild = segments.length > 1 ? (segments[1] as string | undefined) : undefined;
   const isSignupScreen = authChild === 'signup';
 
   // React Native Web特有の警告を抑制（開発時のノイズを減らす）
@@ -274,7 +274,7 @@ function RootLayoutContent() {
      * - authChild: 認証画面の具体的な種類（login, signup, callback）
      */
     const inAuthGroup = segments[0] === 'auth';
-    const authChild = inAuthGroup ? (segments[1] as string | undefined) : undefined;
+    const authChild = inAuthGroup && segments.length > 1 ? (segments[1] as string | undefined) : undefined;
 
     // 認証状態チェック（デバッグ用ログは非表示）
 
@@ -320,7 +320,7 @@ function RootLayoutContent() {
       } else if (needsTutorial()) {
         // 楽器未選択ユーザーはチュートリアル画面に強制遷移
         // ただし、楽器選択画面にいる場合は遷移しない
-        const isInInstrumentSelection = segments[0] === '(tabs)' && segments[1] === 'instrument-selection';
+        const isInInstrumentSelection = segments[0] === '(tabs)' && segments.length > 1 && (segments[1] as string) === 'instrument-selection';
         if (isInInstrumentSelection) {
           return;
         }
@@ -360,7 +360,7 @@ function RootLayoutContent() {
      * - メイン画面（/(tabs)/）も含めて保護
      */
     const isInTabsGroup = segments[0] === '(tabs)';
-    const currentTabScreen = isInTabsGroup ? segments[1] : undefined;
+    const currentTabScreen = isInTabsGroup && segments.length > 1 ? (segments[1] as string | undefined) : undefined;
     
     if (isAuthenticated && isInTabsGroup) {
       // (tabs)グループ内のすべての画面（メイン画面含む）では強制遷移しない
