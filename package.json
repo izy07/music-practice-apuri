@@ -19,7 +19,7 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:critical": "jest __tests__/integration/practiceRecord.test.ts",
-    "test:ci": "jest --ci --coverage --maxWorkers=2 --coverageThreshold='{}'",
+    "test:ci": "jest --ci --coverage --maxWorkers=2",
     "test:db": "EXPO_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321 EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0 jest --ci --coverage --maxWorkers=2",
     "db:setup": "bash scripts/setup-github-db.sh",
     "supabase:start": "npx supabase start",
