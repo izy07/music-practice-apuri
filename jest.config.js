@@ -1,3 +1,6 @@
+// CI環境ではカバレッジ閾値を無効化（GitHub Actionsでは常に無効化）
+const isCI = process.env.CI === 'true' || process.env.GITHUB_ACTIONS === 'true';
+
 module.exports = {
   preset: 'jest-expo',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
@@ -26,40 +29,42 @@ module.exports = {
     '!**/__tests__/**',
   ],
   // CI環境ではカバレッジ閾値を無効化（GitHub Actionsでは常に無効化）
-  coverageThreshold: (process.env.CI || process.env.GITHUB_ACTIONS) ? {} : {
-    // グローバルな閾値（重要なファイルの平均） - 40%目標
-    global: {
-      statements: 35,
-      branches: 25,
-      functions: 40,
-      lines: 38,
+  ...(isCI ? {} : {
+    coverageThreshold: {
+      // グローバルな閾値（重要なファイルの平均） - 40%目標
+      global: {
+        statements: 35,
+        branches: 25,
+        functions: 40,
+        lines: 38,
+      },
+      // 重要なファイルには高いカバレッジを要求
+      './lib/dateUtils.ts': {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+      './lib/authSecurity.ts': {
+        statements: 25,
+        branches: 23,
+        functions: 30,
+        lines: 28,
+      },
+      './lib/offlineStorage.ts': {
+        statements: 34,
+        branches: 22,
+        functions: 39,
+        lines: 32,
+      },
+      './lib/database.ts': {
+        statements: 26,
+        branches: 15,
+        functions: 30,
+        lines: 29,
+      },
     },
-    // 重要なファイルには高いカバレッジを要求
-    './lib/dateUtils.ts': {
-      statements: 100,
-      branches: 100,
-      functions: 100,
-      lines: 100,
-    },
-    './lib/authSecurity.ts': {
-      statements: 25,
-      branches: 23,
-      functions: 30,
-      lines: 28,
-    },
-    './lib/offlineStorage.ts': {
-      statements: 34,
-      branches: 22,
-      functions: 39,
-      lines: 32,
-    },
-    './lib/database.ts': {
-      statements: 26,
-      branches: 15,
-      functions: 30,
-      lines: 29,
-    },
-  },
+  }),
   testEnvironment: 'node',
   globals: {
     __DEV__: true,
