@@ -59,23 +59,28 @@ const redirectScript = `
   let originalPath = null;
   let redirectPath = null;
   
-  if (currentPath.startsWith(basePath)) {
+  // ベースパスを正規化（末尾のスラッシュを削除）
+  const normalizedBasePath = basePath.replace(/\/$/, '');
+  
+  if (currentPath.startsWith(normalizedBasePath)) {
     // ベースパスで始まる場合: /music-practice-apuri/tutorial
     originalPath = currentPath;
-    redirectPath = currentPath.replace(basePath, '') || '/';
+    redirectPath = currentPath.replace(normalizedBasePath, '') || '/';
     const queryParams = new URLSearchParams(currentSearch);
     queryParams.set('_redirect', redirectPath);
-    targetPath = basePath + '/index.html?' + queryParams.toString() + currentHash;
+    targetPath = normalizedBasePath + '/index.html?' + queryParams.toString() + currentHash;
   } else if (currentPath === '/' || currentPath === '') {
     // ルートパスの場合: /
-    targetPath = basePath + '/index.html' + currentSearch + currentHash;
+    targetPath = normalizedBasePath + '/index.html' + currentSearch + currentHash;
   } else {
     // ベースパスがない場合: /tutorial -> /music-practice-apuri/tutorial
-    originalPath = basePath + (currentPath.startsWith('/') ? currentPath : '/' + currentPath);
-    redirectPath = currentPath;
+    // 現在のパスを正規化（先頭のスラッシュを確保）
+    const normalizedPath = currentPath.startsWith('/') ? currentPath : '/' + currentPath;
+    originalPath = normalizedBasePath + normalizedPath;
+    redirectPath = normalizedPath;
     const queryParams = new URLSearchParams(currentSearch);
     queryParams.set('_redirect', redirectPath);
-    targetPath = basePath + '/index.html?' + queryParams.toString() + currentHash;
+    targetPath = normalizedBasePath + '/index.html?' + queryParams.toString() + currentHash;
   }
   
   // リダイレクトフラグを設定
