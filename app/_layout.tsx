@@ -314,11 +314,7 @@ function RootLayoutContent() {
     
     // ルートパス（segmentsが空）にいる場合の処理
     const isAtRoot = segments.length === 0;
-    if (isAtRoot && Platform.OS === 'web') {
-      // ルートパスにいる場合は、認証状態に応じて適切な画面に遷移
-      // この処理は認証フローで行われるため、ここでは何もしない
-    }
-
+    
     // 未認証ユーザーの場合：ログイン画面に遷移（利用規約・プライバシーポリシーは除外）
     if (!isAuthenticated) {
       // 利用規約・プライバシーポリシー画面は許可
@@ -326,7 +322,8 @@ function RootLayoutContent() {
         return;
       }
       
-      if (!inAuthGroup) {
+      // ルートパスまたは認証画面以外にいる場合は、ログイン画面に遷移
+      if (isAtRoot || !inAuthGroup) {
         navigateWithDelay('/auth/login');
         return;
       }
@@ -335,6 +332,23 @@ function RootLayoutContent() {
     }
 
     // 認証済みユーザーの場合：楽器選択状態に基づいて遷移
+    // ルートパスにいる場合は、適切な画面に遷移
+    if (isAtRoot) {
+      // 認証済みユーザーがルートパスにいる場合、適切な画面に遷移
+      if (!hasInstrumentSelected()) {
+        // 楽器未選択の場合はチュートリアル画面へ
+        navigateWithDelay('/(tabs)/tutorial');
+        return;
+      } else if (needsTutorial()) {
+        // チュートリアル未完了の場合はチュートリアル画面へ
+        navigateWithDelay('/(tabs)/tutorial');
+        return;
+      } else {
+        // それ以外の場合はメイン画面（カレンダー）へ
+        navigateWithDelay('/(tabs)');
+        return;
+      }
+    }
     if (isAuthenticated) {
       // 認証画面にいる場合は適切な画面に遷移
       if (inAuthGroup) {
