@@ -416,7 +416,8 @@ export default function BasicPracticeScreen() {
               <View style={styles.basicInfoItem}>
                 <Text style={[styles.basicInfoLabel, { color: currentTheme.text }]}>楽器の持ち方</Text>
                 <Text style={[styles.basicInfoText, { color: currentTheme.textSecondary }]}>
-                  {instrumentBasics[instrumentKey]?.grip || instrumentBasics.other.grip}
+                  {/* instrumentBasics データが不足しているため一時的にコメントアウト */}
+                  {'正しい持ち方を学びましょう'}
                 </Text>
               </View>
             </View>
