@@ -6,6 +6,8 @@ on:
       - main
   workflow_dispatch:
 
+# GitHub Pagesの自動デプロイを有効化
+
 permissions:
   contents: read
   pages: write

@@ -20,9 +20,10 @@ if (!fs.existsSync(indexPath)) {
 // index.htmlを読み込む
 let content = fs.readFileSync(indexPath, 'utf8');
 
-// 404.html用の完全なリダイレクトスクリプト
+// 404.html用の完全なリダイレクトスクリプト（即座に実行）
 const redirectScript = `
 <script>
+// 即座に実行（DOM読み込み前）
 (function() {
   const basePath = '${BASE_PATH}';
   const currentPath = window.location.pathname;
@@ -34,9 +35,12 @@ const redirectScript = `
     return;
   }
   
-  // 内部パスはスキップ
+  // 内部パスはスキップ（ただし、ベースパス付きの場合は処理）
   if (currentPath.startsWith('/_') || currentPath.startsWith('/assets')) {
-    return;
+    // ベースパス付きの内部パスは処理しない
+    if (!currentPath.startsWith(basePath + '/_') && !currentPath.startsWith(basePath + '/assets')) {
+      return;
+    }
   }
   
   // index.htmlはスキップ
@@ -53,19 +57,24 @@ const redirectScript = `
   // リダイレクト先を決定
   let targetPath;
   let originalPath = null;
+  let redirectPath = null;
   
   if (currentPath.startsWith(basePath)) {
+    // ベースパスで始まる場合: /music-practice-apuri/tutorial
     originalPath = currentPath;
-    const pathWithoutBase = currentPath.replace(basePath, '') || '/';
+    redirectPath = currentPath.replace(basePath, '') || '/';
     const queryParams = new URLSearchParams(currentSearch);
-    queryParams.set('_redirect', pathWithoutBase);
+    queryParams.set('_redirect', redirectPath);
     targetPath = basePath + '/index.html?' + queryParams.toString() + currentHash;
   } else if (currentPath === '/' || currentPath === '') {
+    // ルートパスの場合: /
     targetPath = basePath + '/index.html' + currentSearch + currentHash;
   } else {
+    // ベースパスがない場合: /tutorial -> /music-practice-apuri/tutorial
     originalPath = basePath + (currentPath.startsWith('/') ? currentPath : '/' + currentPath);
+    redirectPath = currentPath;
     const queryParams = new URLSearchParams(currentSearch);
-    queryParams.set('_redirect', currentPath);
+    queryParams.set('_redirect', redirectPath);
     targetPath = basePath + '/index.html?' + queryParams.toString() + currentHash;
   }
   
@@ -76,8 +85,11 @@ const redirectScript = `
   if (originalPath) {
     sessionStorage.setItem('expo-router-original-path', originalPath);
   }
+  if (redirectPath) {
+    sessionStorage.setItem('expo-router-redirect-path', redirectPath);
+  }
   
-  // リダイレクト実行
+  // 即座にリダイレクト実行
   window.location.replace(targetPath);
 })();
 </script>

@@ -104,10 +104,11 @@ const html404Path = path.join(DIST_DIR, '404.html');
 if (fs.existsSync(indexPath)) {
   let content = fs.readFileSync(indexPath, 'utf8');
   
-  // より堅牢な404.htmlリダイレクトスクリプト
+  // より堅牢な404.htmlリダイレクトスクリプト（即座に実行）
   const redirectScript = `
 <script>
   // GitHub Pages用: 404エラー時に現在のパスを保持してindex.htmlにリダイレクト
+  // 即座に実行（DOM読み込み前）
   (function() {
     const basePath = '${BASE_PATH}';
     const currentPath = window.location.pathname;
@@ -119,9 +120,12 @@ if (fs.existsSync(indexPath)) {
       return;
     }
     
-    // _expoやassetsなどの内部パスはそのまま
+    // _expoやassetsなどの内部パスはそのまま（ただし、ベースパス付きの場合は処理）
     if (currentPath.startsWith('/_') || currentPath.startsWith('/assets')) {
-      return;
+      // ベースパス付きの内部パスは処理しない
+      if (!currentPath.startsWith(basePath + '/_') && !currentPath.startsWith(basePath + '/assets')) {
+        return;
+      }
     }
     
     // index.htmlへのリダイレクトを防ぐ（無限ループ防止）
@@ -138,13 +142,14 @@ if (fs.existsSync(indexPath)) {
     // すべてのパスをindex.htmlにリダイレクト（Expo Routerがクライアントサイドでルーティング）
     let targetPath;
     let originalPathForRouter = null;
+    let redirectPath = null;
     
     if (currentPath.startsWith(basePath)) {
       // ベースパスで始まる場合: /music-practice-apuri/tutorial -> /music-practice-apuri/index.html
       originalPathForRouter = currentPath;
-      const pathWithoutBase = currentPath.replace(basePath, '') || '/';
+      redirectPath = currentPath.replace(basePath, '') || '/';
       const queryParams = new URLSearchParams(currentSearch);
-      queryParams.set('_redirect', pathWithoutBase);
+      queryParams.set('_redirect', redirectPath);
       targetPath = basePath + '/index.html?' + queryParams.toString() + currentHash;
     } else if (currentPath === '/' || currentPath === '') {
       // ルートパスの場合: / -> /music-practice-apuri/index.html
@@ -152,8 +157,9 @@ if (fs.existsSync(indexPath)) {
     } else {
       // ベースパスがない場合: /tutorial -> /music-practice-apuri/index.html
       originalPathForRouter = basePath + (currentPath.startsWith('/') ? currentPath : '/' + currentPath);
+      redirectPath = currentPath;
       const queryParams = new URLSearchParams(currentSearch);
-      queryParams.set('_redirect', currentPath);
+      queryParams.set('_redirect', redirectPath);
       targetPath = basePath + '/index.html?' + queryParams.toString() + currentHash;
     }
     
@@ -164,8 +170,11 @@ if (fs.existsSync(indexPath)) {
     if (originalPathForRouter) {
       sessionStorage.setItem('expo-router-original-path', originalPathForRouter);
     }
+    if (redirectPath) {
+      sessionStorage.setItem('expo-router-redirect-path', redirectPath);
+    }
     
-    // リダイレクト実行
+    // 即座にリダイレクト実行
     window.location.replace(targetPath);
   })();
 </script>
