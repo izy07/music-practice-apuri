@@ -29,6 +29,7 @@ jobs:
         run: npm run test:ci || echo "⚠️ テストが失敗しましたが、続行します"
         env:
           NODE_ENV: test
+          CI: 'true'
         continue-on-error: true
 
       - name: カバレッジレポートのアップロード
