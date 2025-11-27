@@ -395,7 +395,23 @@ function RootLayoutContent() {
   }, [isReady, isLoading, isAuthenticated, isInitialized, segments, router, hasInstrumentSelected, needsTutorial, canAccessMainApp, isSignupScreen]);
 
   // フレームワーク準備中または認証状態読み込み中はローディング画面を表示
-  if (!isReady || isLoading) {
+  // Web環境では、isReadyがfalseのままになる可能性があるため、タイムアウトを追加
+  const [showContent, setShowContent] = React.useState(false);
+  
+  React.useEffect(() => {
+    // Web環境では、isReadyがfalseのままでも一定時間後にコンテンツを表示
+    if (Platform.OS === 'web') {
+      const timer = setTimeout(() => {
+        setShowContent(true);
+      }, 1000); // 1秒後に強制的にコンテンツを表示
+      
+      return () => clearTimeout(timer);
+    } else {
+      setShowContent(isReady);
+    }
+  }, [isReady]);
+  
+  if (!showContent || isLoading) {
     return <LoadingSkeleton />;
   }
 
