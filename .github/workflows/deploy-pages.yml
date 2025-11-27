@@ -34,19 +34,45 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Webビルド（GitHub Pages用）
-        run: npm run build:web:github
+        run: |
+          echo "🔧 ビルドを開始します..."
+          npm run build:web:github || {
+            echo "❌ ビルドが失敗しました"
+            echo "📁 distディレクトリの内容:"
+            ls -la dist/ || echo "distディレクトリが存在しません"
+            exit 1
+          }
+          echo "✅ ビルドが完了しました"
         env:
           EXPO_PUBLIC_WEB_BASE: /music-practice-apuri
           GITHUB_PAGES_BASE: /music-practice-apuri
           NODE_ENV: production
 
-      - name: 404.htmlの確認
+      - name: ビルド成果物の確認
+        run: |
+          echo "📁 distディレクトリの内容:"
+          ls -la dist/ || echo "❌ distディレクトリが存在しません"
+          echo ""
+          echo "📄 主要ファイルの確認:"
+          [ -f dist/index.html ] && echo "✅ index.html が存在します" || echo "❌ index.html が見つかりません"
+          [ -f dist/404.html ] && echo "✅ 404.html が存在します" || echo "⚠️  404.html が見つかりません"
+          [ -f dist/.nojekyll ] && echo "✅ .nojekyll が存在します" || echo "⚠️  .nojekyll が見つかりません"
+          [ -f dist/metadata.json ] && echo "✅ metadata.json が存在します" || echo "⚠️  metadata.json が見つかりません"
+
+      - name: 404.htmlの確認と作成
         run: |
           if [ ! -f dist/404.html ]; then
             echo "⚠️  404.htmlが見つかりません。作成します..."
-            cp dist/index.html dist/404.html
+            if [ -f dist/index.html ]; then
+              cp dist/index.html dist/404.html
+              echo "✅ 404.htmlを作成しました"
+            else
+              echo "❌ index.htmlが見つからないため、404.htmlを作成できません"
+              exit 1
+            fi
+          else
+            echo "✅ 404.htmlが存在します"
           fi
-          echo "✅ 404.htmlが存在します"
 
       - name: .nojekyllファイルの作成
         run: |
