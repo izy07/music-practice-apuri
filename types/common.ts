@@ -7,15 +7,17 @@
 
 /**
  * 結果型（Either型パターン）
+ * 注意: この型は後で定義されるResult<T>と競合するため、使用時はEitherResultを使用してください
  */
-export type Result<T, E = Error> = 
-  | { success: true; data: T }
-  | { success: false; error: E };
+// export type Result<T, E = Error> = 
+//   | { success: true; data: T }
+//   | { success: false; error: E };
 
 /**
- * 非同期結果型
+ * 非同期結果型（Either型パターン）
+ * 注意: この型は後で定義されるAsyncResult<T>と競合するため、使用時はEitherAsyncResultを使用してください
  */
-export type AsyncResult<T, E = Error> = Promise<Result<T, E>>;
+// export type AsyncResult<T, E = Error> = Promise<Result<T, E>>;
 
 /**
  * ID型（型安全性向上のため）

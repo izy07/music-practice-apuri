@@ -273,7 +273,7 @@ export const updateUserProfile = async (
     `${REPOSITORY_CONTEXT}.updateUserProfile`
   );
   
-  return result.success;
+  return result.error === null;
 };
 
 /**

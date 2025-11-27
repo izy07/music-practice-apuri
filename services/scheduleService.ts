@@ -114,7 +114,7 @@ export class ScheduleService {
                 user_id: user.id,
                 title: result.data.title,
                 date: result.data.practice_date,
-                description: result.data.description || result.data.notes || null,
+                description: result.data.notes || null,
                 practice_schedule_id: result.data.id, // 練習日程との連携
               });
               
@@ -194,7 +194,7 @@ export class ScheduleService {
                   const updateResult = await updateEvent(matchingEvent.id!, {
                     title: result.data.title,
                     date: result.data.practice_date,
-                    description: result.data.description || result.data.notes || null,
+                    description: result.data.notes || null,
                     practice_schedule_id: id,
                   });
                   
@@ -215,7 +215,7 @@ export class ScheduleService {
                     user_id: user.id,
                     title: result.data.title,
                     date: result.data.practice_date,
-                    description: result.data.description || result.data.notes || null,
+                    description: result.data.notes || null,
                     practice_schedule_id: id,
                   });
                   
@@ -237,7 +237,7 @@ export class ScheduleService {
                   user_id: user.id,
                   title: result.data.title,
                   date: result.data.practice_date,
-                  description: result.data.description || result.data.notes || null,
+                  description: result.data.notes || null,
                   practice_schedule_id: id,
                 });
                 

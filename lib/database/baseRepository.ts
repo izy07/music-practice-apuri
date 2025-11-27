@@ -7,6 +7,9 @@
 import { RepositoryResult } from './interfaces';
 import logger from '@/lib/logger';
 
+// RepositoryResultを再エクスポート（他のリポジトリから使用できるように）
+export type { RepositoryResult } from './interfaces';
+
 const REPOSITORY_CONTEXT = 'baseRepository';
 
 /**
