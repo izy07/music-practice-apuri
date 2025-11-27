@@ -10,13 +10,15 @@ import logger from '@/lib/logger';
 // Web環境ではexpo-document-pickerとexpo-file-systemをインポートしない
 let DocumentPicker: any = null;
 let FileSystem: any = null;
+let AuthSession: any = null;
 
 if (Platform.OS !== 'web') {
   try {
     DocumentPicker = require('expo-document-picker');
     FileSystem = require('expo-file-system');
+    AuthSession = require('expo-auth-session');
   } catch (error) {
-    logger.warn('expo-document-picker or expo-file-system not available:', error);
+    logger.warn('expo-document-picker, expo-file-system, or expo-auth-session not available:', error);
   }
 }
 

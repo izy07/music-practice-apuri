@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Modal, TextInput, Alert, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert, Image } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Plus, Music, Users, Settings, X, Upload, Edit3, MessageCircle, Play } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
@@ -45,7 +46,6 @@ export default function RoomScreen() {
       // TODO: 実際の部屋データを取得
       const mockRoom: Room = {
         id: roomId,
-        room_id: 'ABC123',
         name: '上智大学管弦楽部',
         description: '上智大学の管弦楽部の練習部屋です',
         icon_name: 'music',
@@ -157,7 +157,7 @@ export default function RoomScreen() {
               {room.name} 
             </Text> 
             <Text style={[styles.roomId, { color: currentTheme.primary }]}> 
-              ID: {room.room_id} 
+              ID: {room.id} 
             </Text> 
           </View> 
         </View> 
@@ -418,11 +418,10 @@ export default function RoomScreen() {
                   > 
                     <View style={styles.memberInfo}> 
                       <Text style={[styles.memberNickname, { color: currentTheme.text }]}> 
-                        {member.nickname} 
+                        {member.display_name} 
                       </Text> 
                       <Text style={[styles.memberRole, { color: currentTheme.primary }]}> 
-                        {member.role === 'admin' ? '管理者' : 
-                         member.role === 'editor' ? '編集者' : '閲覧者'} 
+                        {member.role === 'admin' ? '管理者' : 'メンバー'} 
                       </Text> 
                     </View> 
                     <Text style={[styles.memberJoined, { color: currentTheme.textSecondary }]}> 

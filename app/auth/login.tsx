@@ -357,6 +357,8 @@ export default function LoginScreen() {
                     autoCorrect={false}
                     editable={!isLoading}
                     selectionColor={colors.primary}
+                    nativeID="login-email-input"
+                    accessibilityLabel="メールアドレス"
                   />
                 </View>
                 {formErrors.email && (
@@ -382,6 +384,8 @@ export default function LoginScreen() {
                     autoCorrect={false}
                     editable={!isLoading}
                     selectionColor={colors.primary}
+                    nativeID="login-password-input"
+                    accessibilityLabel="パスワード"
                   />
                   <TouchableOpacity
                     style={styles.passwordToggle}

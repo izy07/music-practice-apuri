@@ -205,7 +205,7 @@ export default function InstrumentSelectionScreen() {
             // 競合エラーの場合、少し待ってからリトライ
             retryCount++;
             if (retryCount < maxRetries) {
-              await new Promise((resolve: () => void) => setTimeout(resolve, 500 * retryCount));
+              await new Promise<void>((resolve) => setTimeout(resolve, 500 * retryCount));
               // 最新のプロフィールを再取得
               const { data: refreshedProfile } = await supabase
                 .from('user_profiles')

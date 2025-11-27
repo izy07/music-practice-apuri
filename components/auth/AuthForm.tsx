@@ -232,6 +232,8 @@ const InputField = memo(({
           keyboardType={keyboardType}
           autoCapitalize={field === 'email' ? 'none' : (isPasswordField ? 'none' : 'words')}
           autoCorrect={false}
+          nativeID={`input-${field}`}
+          accessibilityLabel={placeholder}
         />
         {showPasswordToggle && (
           <TouchableOpacity

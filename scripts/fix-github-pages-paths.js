@@ -40,6 +40,17 @@ const indexPath = path.join(DIST_DIR, 'index.html');
 if (fs.existsSync(indexPath)) {
   let content = fs.readFileSync(indexPath, 'utf8');
   
+  // CSPメタタグが存在しない場合は追加
+  const cspMetaTag = '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: https:; font-src \'self\' data:; connect-src \'self\' https:; frame-src \'self\' https:; object-src \'none\'; base-uri \'self\'; form-action \'self\';" />';
+  if (!content.includes('Content-Security-Policy')) {
+    // viewportメタタグの後にCSPメタタグを追加
+    content = content.replace(
+      /(<meta name="viewport"[^>]*>)/i,
+      `$1\n  ${cspMetaTag}`
+    );
+    console.log(`✅ CSPメタタグを追加しました`);
+  }
+  
   // 絶対パスをベースパス付きパスに変更
   // /_expo/... -> /music-practice-apuri/_expo/...
   // /favicon.ico -> /music-practice-apuri/favicon.ico

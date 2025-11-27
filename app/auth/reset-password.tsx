@@ -289,6 +289,8 @@ export default function ResetPasswordScreen() {
                     autoCorrect={false}
                     editable={!isLoading}
                     selectionColor={colors.primary}
+                    nativeID="reset-password-input"
+                    accessibilityLabel="新しいパスワード"
                   />
                   <TouchableOpacity
                     style={styles.passwordToggle}
@@ -322,6 +324,8 @@ export default function ResetPasswordScreen() {
                     placeholder="パスワードを再入力"
                     secureTextEntry={!showConfirmPassword}
                     autoCapitalize="none"
+                    nativeID="reset-confirm-password-input"
+                    accessibilityLabel="パスワード確認"
                     autoCorrect={false}
                     editable={!isLoading}
                     selectionColor={colors.primary}

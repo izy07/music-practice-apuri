@@ -501,6 +501,8 @@ export default function SignupScreen() {
                     autoCorrect={false}
                     editable={!isLoading}
                     selectionColor={colors.primary}
+                    nativeID="signup-name-input"
+                    accessibilityLabel="ニックネーム"
                   />
                 </View>
                 {formErrors.name && (
@@ -529,6 +531,8 @@ export default function SignupScreen() {
                     autoCorrect={false}
                     editable={!isLoading}
                     selectionColor={colors.primary}
+                    nativeID="signup-email-input"
+                    accessibilityLabel="メールアドレス"
                   />
                 </View>
                 {formErrors.email && (
@@ -557,6 +561,8 @@ export default function SignupScreen() {
                     autoCorrect={false}
                     editable={!isLoading}
                     selectionColor={colors.primary}
+                    nativeID="signup-password-input"
+                    accessibilityLabel="パスワード"
                   />
                   <TouchableOpacity
                     style={styles.passwordToggle}
@@ -594,6 +600,8 @@ export default function SignupScreen() {
                     autoCorrect={false}
                     editable={!isLoading}
                     selectionColor={colors.primary}
+                    nativeID="signup-confirm-password-input"
+                    accessibilityLabel="パスワード確認"
                   />
                   <TouchableOpacity
                     style={styles.passwordToggle}
