@@ -12,6 +12,15 @@ cd "$(dirname "$0")/.."
 CURRENT_BRANCH=$(git branch --show-current)
 echo "📍 現在のブランチ: $CURRENT_BRANCH"
 
+# mainブランチに切り替えてビルド（gh-pagesにはビルドに必要なファイルがないため）
+if [ "$CURRENT_BRANCH" != "main" ]; then
+  echo "🔄 mainブランチに切り替えてビルドします..."
+  git checkout main || {
+    echo "❌ mainブランチに切り替えられませんでした"
+    exit 1
+  }
+fi
+
 # ビルド
 echo "📦 ビルド中..."
 npm run build:web:github
