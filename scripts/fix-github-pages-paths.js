@@ -35,6 +35,12 @@ console.log(`🔧 GitHub Pages用パス修正を開始します...`);
 console.log(`   ベースパス: ${BASE_PATH}`);
 console.log(`   出力ディレクトリ: ${DIST_DIR}`);
 
+// distディレクトリの存在確認
+if (!fs.existsSync(DIST_DIR)) {
+  console.error(`❌ 出力ディレクトリが存在しません: ${DIST_DIR}`);
+  process.exit(1);
+}
+
 // index.htmlの修正
 const indexPath = path.join(DIST_DIR, 'index.html');
 if (fs.existsSync(indexPath)) {
@@ -86,8 +92,15 @@ if (fs.existsSync(indexPath)) {
   
   fs.writeFileSync(indexPath, content, 'utf8');
   console.log(`✅ ${indexPath} を修正しました`);
+  
+  // 修正後の内容を確認（デバッグ用）
+  const scriptTags = (content.match(/<script[^>]*src="([^"]+)"/g) || []).length;
+  const linkTags = (content.match(/<link[^>]*href="([^"]+)"/g) || []).length;
+  console.log(`   - スクリプトタグ: ${scriptTags}個`);
+  console.log(`   - リンクタグ: ${linkTags}個`);
 } else {
-  console.warn(`⚠️  ${indexPath} が見つかりません`);
+  console.error(`❌ ${indexPath} が見つかりません`);
+  process.exit(1);
 }
 
 // metadata.jsonの修正
