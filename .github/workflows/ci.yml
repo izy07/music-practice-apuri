@@ -134,11 +134,11 @@ jobs:
       - name: 依存関係のインストール
         run: npm ci --legacy-peer-deps
 
-      - name: 型チェック（スキップ）
-        run: |
-          echo "⚠️ 型チェックをスキップします（既存の型エラーが多いため）"
-          echo "✅ 型チェックをスキップしました"
-        continue-on-error: true
+      # 型チェックはスキップ（既存の型エラーが多いため）
+      # 型エラーを修正する必要がある場合は、このステップを有効化してください
+      # - name: 型チェック
+      #   run: npx tsc --noEmit
+      #   continue-on-error: true
 
   # ビルドチェック
   build:
