@@ -85,11 +85,15 @@ jobs:
 
       - name: Supabase ローカル環境の起動
         run: |
+          # 既存のSupabaseコンテナを停止（存在する場合）
+          npx supabase stop || true
+          # Supabaseを起動（config.tomlの設定を使用：DBポート54322）
           npx supabase start || echo "⚠️ Supabaseの起動に失敗しましたが、続行します"
           npx supabase status || true
         env:
           SUPABASE_DB_PASSWORD: postgres
-          SUPABASE_DB_PORT: 5432
+          # config.tomlで54322に設定されているため、環境変数で上書きしない
+          # SUPABASE_DB_PORTは設定しない（config.tomlの設定を使用）
         continue-on-error: true
 
       - name: データベースマイグレーションの実行
