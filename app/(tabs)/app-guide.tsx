@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, ArrowRight, BookOpen, Calendar, Target, BarChart3, Music, Timer, Mic, Settings } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, ChevronUp, BookOpen, Calendar, Target, BarChart3, Music, Timer, Mic, Settings } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { safeGoBack } from '@/lib/navigationUtils';
 
@@ -20,7 +20,7 @@ import { safeGoBack } from '@/lib/navigationUtils';
 export default function AppGuideScreen() {
   const router = useRouter();
   const { currentTheme } = useInstrumentTheme();
-  const [currentSection, setCurrentSection] = useState(0);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   const guideSections = [
     {
