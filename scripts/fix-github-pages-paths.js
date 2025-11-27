@@ -83,7 +83,38 @@ if (fs.existsSync(expoStaticDir)) {
 // 404.htmlを作成（GitHub PagesでSPAのクライアントサイドルーティングを有効化）
 const html404Path = path.join(DIST_DIR, '404.html');
 if (fs.existsSync(indexPath)) {
-  const content = fs.readFileSync(indexPath, 'utf8');
+  let content = fs.readFileSync(indexPath, 'utf8');
+  
+  // 404.htmlの前にリダイレクトスクリプトを追加
+  const redirectScript = `
+<script>
+  // GitHub Pages用: 404エラー時に現在のパスを保持してindex.htmlにリダイレクト
+  (function() {
+    const basePath = '${BASE_PATH}';
+    const currentPath = window.location.pathname;
+    const currentSearch = window.location.search;
+    const currentHash = window.location.hash;
+    
+    // 既にindex.htmlまたはルートの場合は何もしない
+    if (currentPath === basePath || currentPath === basePath + '/' || currentPath.endsWith('/index.html')) {
+      return;
+    }
+    
+    // パスがベースパスで始まる場合、そのパスを保持してリダイレクト
+    if (currentPath.startsWith(basePath)) {
+      const pathWithoutBase = currentPath.substring(basePath.length);
+      const newUrl = basePath + '/index.html' + currentSearch + currentHash;
+      
+      // URLを置き換え（履歴を残さない）
+      window.history.replaceState({}, '', currentPath + currentSearch + currentHash);
+    }
+  })();
+</script>
+`;
+  
+  // </head>の前にリダイレクトスクリプトを挿入
+  content = content.replace('</head>', redirectScript + '</head>');
+  
   fs.writeFileSync(html404Path, content, 'utf8');
   console.log(`✅ ${html404Path} を作成しました（SPAルーティング用）`);
 }
