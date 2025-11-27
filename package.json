@@ -11,7 +11,7 @@
     "web:clean": "expo start --web --clear",
     "web:port": "expo start --web --port 8082",
     "build:web": "npx expo export --platform web",
-    "build:web:github": "EXPO_PUBLIC_WEB_BASE=/music-practice-apuri GITHUB_PAGES_BASE=/music-practice-apuri npx expo export --platform web && node scripts/fix-github-pages-paths.js",
+    "build:web:github": "EXPO_PUBLIC_WEB_BASE=/music-practice-apuri GITHUB_PAGES_BASE=/music-practice-apuri npx expo export --platform web && node scripts/fix-github-pages-paths.js && node scripts/create-robust-404.js",
     "deploy": "bash scripts/deploy-to-gh-pages.sh",
     "build:android": "eas build --platform android",
     "build:ios": "eas build --platform ios",

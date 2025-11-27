@@ -38,6 +38,19 @@ jobs:
           GITHUB_PAGES_BASE: /music-practice-apuri
           NODE_ENV: production
 
+      - name: 404.htmlの確認
+        run: |
+          if [ ! -f dist/404.html ]; then
+            echo "⚠️  404.htmlが見つかりません。作成します..."
+            cp dist/index.html dist/404.html
+          fi
+          echo "✅ 404.htmlが存在します"
+
+      - name: .nojekyllファイルの作成
+        run: |
+          echo "" > dist/.nojekyll
+          echo "✅ .nojekyllファイルを作成しました"
+
       - name: ビルド成果物のアップロード
         uses: actions/upload-pages-artifact@v3
         with:

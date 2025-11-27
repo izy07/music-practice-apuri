@@ -104,7 +104,7 @@ const html404Path = path.join(DIST_DIR, '404.html');
 if (fs.existsSync(indexPath)) {
   let content = fs.readFileSync(indexPath, 'utf8');
   
-  // 404.htmlの前にリダイレクトスクリプトを追加
+  // より堅牢な404.htmlリダイレクトスクリプト
   const redirectScript = `
 <script>
   // GitHub Pages用: 404エラー時に現在のパスを保持してindex.htmlにリダイレクト
@@ -129,17 +129,20 @@ if (fs.existsSync(indexPath)) {
       return;
     }
     
+    // すでにリダイレクト済みの場合はスキップ（無限ループ防止）
+    if (sessionStorage.getItem('github-pages-redirecting') === 'true') {
+      sessionStorage.removeItem('github-pages-redirecting');
+      return;
+    }
+    
     // すべてのパスをindex.htmlにリダイレクト（Expo Routerがクライアントサイドでルーティング）
     let targetPath;
     let originalPathForRouter = null;
     
     if (currentPath.startsWith(basePath)) {
       // ベースパスで始まる場合: /music-practice-apuri/tutorial -> /music-practice-apuri/index.html
-      // 元のパスを保持（/music-practice-apuri/tutorial）
       originalPathForRouter = currentPath;
-      // 元のパスからベースパスを除いた部分を取得（/tutorial）
       const pathWithoutBase = currentPath.replace(basePath, '') || '/';
-      // クエリパラメータに元のパスを追加
       const queryParams = new URLSearchParams(currentSearch);
       queryParams.set('_redirect', pathWithoutBase);
       targetPath = basePath + '/index.html?' + queryParams.toString() + currentHash;
@@ -148,13 +151,14 @@ if (fs.existsSync(indexPath)) {
       targetPath = basePath + '/index.html' + currentSearch + currentHash;
     } else {
       // ベースパスがない場合: /tutorial -> /music-practice-apuri/index.html
-      // 元のパスをベースパス付きに変換（/music-practice-apuri/tutorial）
       originalPathForRouter = basePath + (currentPath.startsWith('/') ? currentPath : '/' + currentPath);
-      // クエリパラメータに元のパスを追加
       const queryParams = new URLSearchParams(currentSearch);
       queryParams.set('_redirect', currentPath);
       targetPath = basePath + '/index.html?' + queryParams.toString() + currentHash;
     }
+    
+    // リダイレクトフラグを設定
+    sessionStorage.setItem('github-pages-redirecting', 'true');
     
     // 元のパス情報をsessionStorageに保存（Expo Routerが認識できるように）
     if (originalPathForRouter) {
@@ -179,6 +183,49 @@ if (fs.existsSync(indexPath)) {
   
   fs.writeFileSync(html404Path, content, 'utf8');
   console.log(`✅ ${html404Path} を作成しました（SPAルーティング用）`);
+  
+  // index.htmlにも同様のスクリプトを追加（リロード時の404エラーを防ぐ）
+  let indexContent = fs.readFileSync(indexPath, 'utf8');
+  if (!indexContent.includes('github-pages-redirecting')) {
+    const indexRedirectScript = `
+<script>
+  // GitHub Pages用: リロード時の404エラーを防ぐ
+  (function() {
+    const basePath = '${BASE_PATH}';
+    const currentPath = window.location.pathname;
+    
+    // クエリパラメータからリダイレクトパスを取得
+    const urlParams = new URLSearchParams(window.location.search);
+    const redirectPath = urlParams.get('_redirect');
+    
+    // sessionStorageから元のパスを取得
+    const originalPath = sessionStorage.getItem('expo-router-original-path');
+    
+    // リダイレクトが必要な場合
+    if (redirectPath || (originalPath && currentPath.includes('/index.html'))) {
+      const targetPath = redirectPath || originalPath.replace(basePath, '') || '/';
+      if (targetPath !== currentPath.replace(basePath, '').replace('/index.html', '')) {
+        // クエリパラメータを削除
+        urlParams.delete('_redirect');
+        const newSearch = urlParams.toString();
+        const newUrl = basePath + targetPath + (newSearch ? '?' + newSearch : '') + window.location.hash;
+        window.history.replaceState({}, '', newUrl);
+        sessionStorage.removeItem('expo-router-original-path');
+      }
+    }
+  })();
+</script>
+`;
+    
+    if (indexContent.includes('</head>')) {
+      indexContent = indexContent.replace('</head>', indexRedirectScript + '</head>');
+    } else if (indexContent.includes('<head>')) {
+      indexContent = indexContent.replace('<head>', '<head>' + indexRedirectScript);
+    }
+    
+    fs.writeFileSync(indexPath, indexContent, 'utf8');
+    console.log(`✅ ${indexPath} にリダイレクトスクリプトを追加しました`);
+  }
 }
 
 console.log(`✨ パス修正が完了しました！`);
