@@ -13,6 +13,7 @@ import { ArrowRight, ArrowLeft } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { navigateWithBasePath } from '@/lib/navigationUtils';
 
 /**
  * 【チュートリアル画面】新規ユーザー向けのアプリ使い方ガイド
@@ -107,7 +108,7 @@ export default function TutorialScreen() {
       // フォールバック: 直接URLを変更
       if (typeof window !== 'undefined') {
         logger.debug('フォールバック: window.location を使用');
-        window.location.href = '/instrument-selection';
+        navigateWithBasePath('/instrument-selection');
       }
     } finally {
       setIsNavigating(false);
@@ -164,7 +165,7 @@ export default function TutorialScreen() {
             console.error('❌ メイン画面への遷移エラー:', navError);
             // フォールバック: 直接URLを変更
             if (typeof window !== 'undefined') {
-              window.location.href = '/';
+              navigateWithBasePath('/');
             }
           }
         }, 100);
@@ -180,7 +181,7 @@ export default function TutorialScreen() {
             console.error('❌ 楽器選択画面への遷移エラー:', navError);
             // フォールバック: 直接URLを変更
             if (typeof window !== 'undefined') {
-              window.location.href = '/instrument-selection';
+              navigateWithBasePath('/instrument-selection');
             }
           }
         }, 100);
@@ -194,7 +195,7 @@ export default function TutorialScreen() {
         } catch (fallbackError) {
           console.error('❌ フォールバック遷移エラー:', fallbackError);
           if (typeof window !== 'undefined') {
-            window.location.href = '/instrument-selection';
+            navigateWithBasePath('/instrument-selection');
           }
         }
       }, 100);

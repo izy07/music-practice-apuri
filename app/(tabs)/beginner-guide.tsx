@@ -1706,10 +1706,12 @@ export default function BeginnerGuideScreen() {
                 <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.basicPlaying.sound}</Text>
               </View>
               
-              <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>指の使い方・運指の基礎</Text>
-                <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.basicPlaying.fingering}</Text>
-              </View>
+              {'fingering' in currentGuide.basicPlaying && (
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>指の使い方・運指の基礎</Text>
+                  <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.basicPlaying.fingering}</Text>
+                </View>
+              )}
               
               {'bowing' in currentGuide.basicPlaying && currentGuide.basicPlaying.bowing && (
                 <View style={styles.infoItem}>

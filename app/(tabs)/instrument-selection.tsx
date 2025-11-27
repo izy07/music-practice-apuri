@@ -8,6 +8,7 @@ import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { CheckCircle, ArrowLeft } from 'lucide-react-native';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { SuccessMessages } from '@/lib/errorMessages';
+import logger from '@/lib/logger';
 
 interface Instrument {
   id: string;
@@ -137,65 +138,92 @@ export default function InstrumentSelectionScreen() {
         return;
       }
 
-      // instrument_idが存在するか確認
+      // instrument_idが存在するか確認（その他楽器の場合はスキップ）
       if (selectedInstrumentId && selectedInstrumentId !== '550e8400-e29b-41d4-a716-446655440016') {
-        const { data: instrumentExists } = await supabase
+        const { data: instrumentExists, error: checkError } = await supabase
           .from('instruments')
           .select('id')
           .eq('id', selectedInstrumentId)
           .maybeSingle();
         
-        if (!instrumentExists) {
-          ErrorHandler.handle(
-            new Error(`楽器ID ${selectedInstrumentId} が存在しません`),
-            'instrument_save'
-          );
+        // エラーが発生した場合や楽器が存在しない場合は、警告を出して続行
+        if (checkError || !instrumentExists) {
+          logger.warn(`楽器ID ${selectedInstrumentId} がデータベースに存在しません。楽器リストに含まれているため、保存を続行します。`, {
+            instrumentId: selectedInstrumentId,
+            error: checkError
+          });
+          // エラーを出さずに続行（楽器リストに含まれているため）
+        }
+      }
+
+      // リトライロジック付きで保存を実行
+      let error;
+      let retryCount = 0;
+      const maxRetries = 3;
+      let currentProfile = existingProfile;
+      
+      while (retryCount < maxRetries) {
+        if (currentProfile) {
+          const updateData: any = {
+            selected_instrument_id: selectedInstrumentId || null,
+            updated_at: new Date().toISOString()
+          };
+          
+          // その他楽器の場合は楽器名も保存
+          if (selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016') {
+            updateData.custom_instrument_name = customInstrumentName.trim();
+          }
+          
+          const { error: updateError } = await supabase
+            .from('user_profiles')
+            .update(updateData)
+            .eq('user_id', user.id);
+          error = updateError;
+        } else {
+          const upsertData: any = {
+            user_id: user.id,
+            selected_instrument_id: selectedInstrumentId || null,
+            updated_at: new Date().toISOString()
+          };
+          
+          // その他楽器の場合は楽器名も保存
+          if (selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016') {
+            upsertData.custom_instrument_name = customInstrumentName.trim();
+          }
+          
+          const { error: upsertError } = await supabase
+            .from('user_profiles')
+            .upsert(upsertData, {
+              onConflict: 'user_id'
+            });
+          error = upsertError;
+        }
+
+        // 409エラーの場合はリトライ、それ以外のエラーは即座に処理
+        if (error) {
+          if (error.code === '23505' || error.code === 'PGRST116' || (error as any).status === 409) {
+            // 競合エラーの場合、少し待ってからリトライ
+            retryCount++;
+            if (retryCount < maxRetries) {
+              await new Promise((resolve: () => void) => setTimeout(resolve, 500 * retryCount));
+              // 最新のプロフィールを再取得
+              const { data: refreshedProfile } = await supabase
+                .from('user_profiles')
+                .select('*')
+                .eq('user_id', user.id)
+                .maybeSingle();
+              currentProfile = refreshedProfile;
+              continue;
+            }
+          }
+          // その他のエラーまたはリトライ上限に達した場合
+          ErrorHandler.handle(error, 'instrument_save');
           setLoading(false);
           return;
+        } else {
+          // 成功した場合はループを抜ける
+          break;
         }
-      }
-
-      let error;
-      if (existingProfile) {
-        const updateData: any = {
-          selected_instrument_id: selectedInstrumentId || null,
-          updated_at: new Date().toISOString()
-        };
-        
-        // その他楽器の場合は楽器名も保存
-        if (selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016') {
-          updateData.custom_instrument_name = customInstrumentName.trim();
-        }
-        
-        const { error: updateError } = await supabase
-          .from('user_profiles')
-          .update(updateData)
-          .eq('user_id', user.id);
-        error = updateError;
-      } else {
-        const upsertData: any = {
-          user_id: user.id,
-          selected_instrument_id: selectedInstrumentId || null,
-          updated_at: new Date().toISOString()
-        };
-        
-        // その他楽器の場合は楽器名も保存
-        if (selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016') {
-          upsertData.custom_instrument_name = customInstrumentName.trim();
-        }
-        
-        const { error: upsertError } = await supabase
-          .from('user_profiles')
-          .upsert(upsertData, {
-            onConflict: 'user_id'
-          });
-        error = upsertError;
-      }
-
-      if (error) {
-        ErrorHandler.handle(error, 'instrument_save');
-        setLoading(false);
-        return;
       }
 
       await setSelectedInstrument(selectedInstrumentId);

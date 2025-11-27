@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, Linking } from 'react-native';
-import { FileText, Shield, ChevronLeft, Mail, Calendar, Building, AlertTriangle } from 'lucide-react-native';
+import { FileText, Shield, ChevronLeft, Mail, Calendar, Building, AlertTriangle, Phone } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useRouter } from 'expo-router';
 import { safeGoBack } from '@/lib/navigationUtils';
@@ -22,7 +22,7 @@ export default function LegalInfoScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]}>
       {/* ヘッダー */}
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>
         <TouchableOpacity

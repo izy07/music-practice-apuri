@@ -59,9 +59,9 @@ export function PracticeDetailModal({
         selectedInstrument || null
       );
 
-      if (existingRecords && existingRecords.length > 0) {
+      if (existingRecords.data && existingRecords.data.length > 0) {
         // 既存の記録がある場合は、時間を追加せずcontentだけを更新
-        const existing = existingRecords[0];
+        const existing = existingRecords.data[0];
         let existingContent = existing.content || '';
         
         // 既存のcontentから時間詳細を削除（「累計XX分」「XX分」などを削除）
@@ -79,6 +79,11 @@ export function PracticeDetailModal({
         const newContent = existingContent 
           ? `${existingContent}, ${selectedMenu.title}`
           : selectedMenu.title;
+        
+        if (!existing.id) {
+          Alert.alert('エラー', '練習記録のIDが見つかりません');
+          return;
+        }
         
         const success = await updatePracticeSession(existing.id, {
           content: newContent,

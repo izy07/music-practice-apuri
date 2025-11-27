@@ -75,3 +75,5 @@ app/(tabs)/basic-practice/
 
 残りの`basic-practice.tsx`は約467行（推定）まで削減可能
 
+
+

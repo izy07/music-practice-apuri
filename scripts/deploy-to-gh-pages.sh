@@ -12,11 +12,23 @@ cd "$(dirname "$0")/.."
 CURRENT_BRANCH=$(git branch --show-current)
 echo "📍 現在のブランチ: $CURRENT_BRANCH"
 
+# 未コミットの変更をstash（存在する場合）
+if ! git diff-index --quiet HEAD --; then
+  echo "💾 未コミットの変更を一時保存中..."
+  git stash push -m "Deploy stash $(date +%Y-%m-%d_%H:%M:%S)"
+  STASHED=true
+else
+  STASHED=false
+fi
+
 # mainブランチに切り替えてビルド（gh-pagesにはビルドに必要なファイルがないため）
 if [ "$CURRENT_BRANCH" != "main" ]; then
   echo "🔄 mainブランチに切り替えてビルドします..."
   git checkout main || {
     echo "❌ mainブランチに切り替えられませんでした"
+    if [ "$STASHED" = true ]; then
+      git stash pop
+    fi
     exit 1
   }
 fi
@@ -63,6 +75,12 @@ git push origin gh-pages --force
 # 元のブランチに戻る
 echo "🔙 元のブランチ ($CURRENT_BRANCH) に戻ります..."
 git checkout "$CURRENT_BRANCH" 2>/dev/null || echo "⚠️  ブランチ $CURRENT_BRANCH に戻れませんでした"
+
+# stashした変更を戻す（存在する場合）
+if [ "$STASHED" = true ]; then
+  echo "🔄 一時保存した変更を戻します..."
+  git stash pop || echo "⚠️  stashの復元に失敗しました（手動で確認してください）"
+fi
 
 echo "✅ デプロイが完了しました！"
 echo "🌐 数分待ってから https://izy07.github.io/music-practice-apuri/ にアクセスしてください"

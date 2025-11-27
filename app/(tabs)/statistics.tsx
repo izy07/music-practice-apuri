@@ -719,13 +719,13 @@ export default function StatisticsScreen() {
             <View style={styles.analysisSection}>
               <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>週間練習パターン</Text>
               {Object.entries(getAdditionalStats.weeklyPattern)
-                .sort((a, b) => b[1] - a[1])
+                .sort((a, b) => (b[1] as number) - (a[1] as number))
                 .slice(0, 7)
                 .map(([day, count], index) => (
                 <View style={styles.analysisRow} key={index}>
                   <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{day}曜日</Text>
                   <Text style={[styles.analysisValue, { color: TextColor }]}>
-                    {count}回
+                    {count as number}回
                   </Text>
                 </View>
               ))}
@@ -810,12 +810,12 @@ export default function StatisticsScreen() {
             <View style={styles.analysisSection}>
               <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>練習時間帯統計</Text>
               {Object.entries(getAdditionalStats.timeSlotPattern)
-                .sort((a, b) => b[1] - a[1])
+                .sort((a, b) => (b[1] as number) - (a[1] as number))
                 .map(([slot, count], index) => (
                 <View style={styles.analysisRow} key={index}>
                   <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{slot}</Text>
                   <Text style={[styles.analysisValue, { color: TextColor }]}>
-                    {count}回
+                    {count as number}回
                   </Text>
                 </View>
               ))}

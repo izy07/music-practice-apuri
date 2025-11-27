@@ -38,3 +38,5 @@ export function PracticeItemCard({ item, onPress }: PracticeItemCardProps) {
   );
 }
 
+
+

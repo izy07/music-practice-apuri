@@ -134,7 +134,7 @@ export default function MusicDictionaryScreen() {
     };
     
     const byInstrument = (list: EnsembleTerm[]) => {
-      return list.filter(t => t.instrument === selectedInstrument?.name_en);
+      return list.filter(t => t.instrument === currentTheme?.nameEn);
     };
     
     setFilteredEnsemble(byInstrument(byTextEnsemble(ensembleTerms)));
@@ -744,12 +744,6 @@ const styles = StyleSheet.create({
   categoryChipText: {
     fontSize: 14,
     fontWeight: '500',
-  },
-  tabContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 8,
   },
   tabButton: {
     flex: 1,

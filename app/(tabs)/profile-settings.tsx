@@ -16,6 +16,7 @@ import * as ImagePicker from 'expo-image-picker';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { getUserProfile, upsertUserProfile, updateAvatarUrl } from '@/repositories/userRepository';
+import type { UserProfile } from '@/types/models';
 // DateTimePickerは環境によって未導入の場合があるため動的ロード
 let DateTimePicker: any;
 try {
@@ -601,14 +602,14 @@ export default function ProfileSettingsScreen() {
         .map(org => org.name.trim())
         .join(',');
 
-      const upsertRow = {
+      const upsertRow: Partial<UserProfile> = {
         user_id: currentUser.id,
         display_name: nickname.trim(),
-        current_age: currentAge ? parseInt(currentAge) : null,
-        music_start_age: musicStartAge ? parseInt(musicStartAge) : null,
+        current_age: currentAge ? parseInt(currentAge) : undefined,
+        music_start_age: musicStartAge ? parseInt(musicStartAge) : undefined,
         music_experience_years: musicExperienceYears,
-        birthday: birthday ? birthday.toISOString().split('T')[0] : null, // YYYY-MM-DD形式
-        current_organization: organizationsString || null, // カンマ区切りで保存
+        birthday: birthday ? birthday.toISOString().split('T')[0] : undefined, // YYYY-MM-DD形式
+        organization: organizationsString || undefined, // カンマ区切りで保存
         updated_at: new Date().toISOString(),
       };
 

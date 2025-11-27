@@ -1,3 +1,40 @@
 {
-    "liveServer.settings.port": 5501
+  "files.exclude": {
+    "**/.git": true,
+    "**/.DS_Store": true,
+    "**/node_modules": true
+  },
+  "typescript.preferences.includePackageJsonAutoImports": "on",
+  "typescript.validate.enable": true,
+  "typescript.tsserver.exclude": [
+    "**/.github/**"
+  ],
+  "typescript.disableAutomaticTypeAcquisition": false,
+  "files.associations": {
+    "*.yml": "yaml",
+    "*.yaml": "yaml",
+    ".github/workflows/*.yml": "yaml"
+  },
+  "yaml.schemas": {},
+  "yaml.validate": false,
+  "yaml.customTags": [],
+  "[yaml]": {
+    "editor.defaultFormatter": null,
+    "editor.formatOnSave": false
+  },
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/.expo/**": true,
+    "**/dist/**": true,
+    "**/.github/**": true
+  },
+  "search.exclude": {
+    "**/.github": true
+  },
+  "problems.showCurrentInStatus": true,
+  "github-actions.workflows.pinned.workflows": [],
+  "github-actions.workflows.validateWorkflowFiles": false,
+  "github-actions.workflows.validateWorkflowFilesOnOpen": false
 }

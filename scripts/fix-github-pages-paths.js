@@ -9,7 +9,26 @@
 const fs = require('fs');
 const path = require('path');
 
-const BASE_PATH = process.env.GITHUB_PAGES_BASE || '/music-practice-apuri';
+// リポジトリ名に応じてベースパスを自動設定
+// 環境変数で指定されていない場合、リポジトリ名を推測
+let BASE_PATH = process.env.GITHUB_PAGES_BASE || process.env.EXPO_PUBLIC_WEB_BASE;
+
+if (!BASE_PATH) {
+  // package.jsonからリポジトリ名を取得（存在する場合）
+  try {
+    const packageJson = require('../package.json');
+    // リポジトリ名を推測（通常はGitHubのリポジトリ名）
+    // デフォルトは /music-practice-apuri
+    BASE_PATH = '/music-practice-apuri';
+  } catch (e) {
+    BASE_PATH = '/music-practice-apuri';
+  }
+}
+
+// ベースパスが / で始まらない場合は追加
+if (!BASE_PATH.startsWith('/')) {
+  BASE_PATH = '/' + BASE_PATH;
+}
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 
 console.log(`🔧 GitHub Pages用パス修正を開始します...`);
@@ -95,25 +114,68 @@ if (fs.existsSync(indexPath)) {
     const currentSearch = window.location.search;
     const currentHash = window.location.hash;
     
-    // 既にindex.htmlまたはルートの場合は何もしない
-    if (currentPath === basePath || currentPath === basePath + '/' || currentPath.endsWith('/index.html')) {
+    // 静的ファイル（.js, .css, .pngなど）の場合は何もしない
+    if (currentPath.match(/\\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|map|json)$/i)) {
       return;
     }
     
-    // パスがベースパスで始まる場合、そのパスを保持してリダイレクト
-    if (currentPath.startsWith(basePath)) {
-      const pathWithoutBase = currentPath.substring(basePath.length);
-      const newUrl = basePath + '/index.html' + currentSearch + currentHash;
-      
-      // URLを置き換え（履歴を残さない）
-      window.history.replaceState({}, '', currentPath + currentSearch + currentHash);
+    // _expoやassetsなどの内部パスはそのまま
+    if (currentPath.startsWith('/_') || currentPath.startsWith('/assets')) {
+      return;
     }
+    
+    // index.htmlへのリダイレクトを防ぐ（無限ループ防止）
+    if (currentPath.endsWith('/index.html') || currentPath.endsWith('/index')) {
+      return;
+    }
+    
+    // すべてのパスをindex.htmlにリダイレクト（Expo Routerがクライアントサイドでルーティング）
+    let targetPath;
+    let originalPathForRouter = null;
+    
+    if (currentPath.startsWith(basePath)) {
+      // ベースパスで始まる場合: /music-practice-apuri/tutorial -> /music-practice-apuri/index.html
+      // 元のパスを保持（/music-practice-apuri/tutorial）
+      originalPathForRouter = currentPath;
+      // 元のパスからベースパスを除いた部分を取得（/tutorial）
+      const pathWithoutBase = currentPath.replace(basePath, '') || '/';
+      // クエリパラメータに元のパスを追加
+      const queryParams = new URLSearchParams(currentSearch);
+      queryParams.set('_redirect', pathWithoutBase);
+      targetPath = basePath + '/index.html?' + queryParams.toString() + currentHash;
+    } else if (currentPath === '/' || currentPath === '') {
+      // ルートパスの場合: / -> /music-practice-apuri/index.html
+      targetPath = basePath + '/index.html' + currentSearch + currentHash;
+    } else {
+      // ベースパスがない場合: /tutorial -> /music-practice-apuri/index.html
+      // 元のパスをベースパス付きに変換（/music-practice-apuri/tutorial）
+      originalPathForRouter = basePath + (currentPath.startsWith('/') ? currentPath : '/' + currentPath);
+      // クエリパラメータに元のパスを追加
+      const queryParams = new URLSearchParams(currentSearch);
+      queryParams.set('_redirect', currentPath);
+      targetPath = basePath + '/index.html?' + queryParams.toString() + currentHash;
+    }
+    
+    // 元のパス情報をsessionStorageに保存（Expo Routerが認識できるように）
+    if (originalPathForRouter) {
+      sessionStorage.setItem('expo-router-original-path', originalPathForRouter);
+    }
+    
+    // リダイレクト実行
+    window.location.replace(targetPath);
   })();
 </script>
 `;
   
   // </head>の前にリダイレクトスクリプトを挿入
-  content = content.replace('</head>', redirectScript + '</head>');
+  if (content.includes('</head>')) {
+    content = content.replace('</head>', redirectScript + '</head>');
+  } else if (content.includes('<head>')) {
+    content = content.replace('<head>', '<head>' + redirectScript);
+  } else {
+    // headタグがない場合はbodyの前に追加
+    content = content.replace('<body', redirectScript + '<body');
+  }
   
   fs.writeFileSync(html404Path, content, 'utf8');
   console.log(`✅ ${html404Path} を作成しました（SPAルーティング用）`);

@@ -1,0 +1,88 @@
+name: Test with Database
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+jobs:
+  test-with-database:
+    name: データベース付きテスト
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Docker セットアップ
+        uses: docker/setup-buildx-action@v3
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: npm ci
+
+      - name: Supabase CLI のインストール
+        run: |
+          npm install -g supabase
+          supabase --version
+
+      - name: Supabase ローカル環境の起動
+        run: |
+          supabase start
+          supabase status
+        env:
+          SUPABASE_DB_PASSWORD: postgres
+          SUPABASE_DB_PORT: 5432
+
+      - name: データベースマイグレーションの実行
+        run: |
+          supabase db reset
+          supabase db push
+
+      - name: データベース状態の確認
+        run: |
+          supabase db diff
+          echo "✅ データベースマイグレーション完了"
+
+      - name: テスト実行（データベース付き）
+        run: npm run test:ci
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+          NODE_ENV: test
+
+      - name: Supabase ローカル環境の停止
+        if: always()
+        run: supabase stop
+
+      - name: テスト結果のアップロード
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            coverage/
+            test-results/
+          retention-days: 7
+

@@ -19,9 +19,11 @@ const config: ExpoConfig = {
     package: 'com.musicpractice.app',
   },
   web: {
-    bundler: 'metro',
+    // bundler: 'metro', // expo exportでは不要
     // output: 'static', // 開発環境では削除（本番ビルド時のみ使用）
     favicon: './assets/images/favicon.png',
+    // GitHub Pages用のベースパス設定
+    baseUrl: process.env.EXPO_PUBLIC_WEB_BASE || '/',
     // Expo RouterのWebルーティングを有効化
     build: {
       babel: {

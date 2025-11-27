@@ -221,7 +221,6 @@ export default function TabLayout() {
               flex: 0,
             },
             tabBarShowLabel: false,
-            tabBarShowIcon: false,
           }}
         />
       ))}

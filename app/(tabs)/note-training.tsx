@@ -68,7 +68,7 @@ export default function NoteTrainingScreen() {
   
   // タイマー関連
   const [timeLeft, setTimeLeft] = useState<number>(0);
-  const timerRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // 音声再生関連
   const [isPlaying, setIsPlaying] = useState(false);

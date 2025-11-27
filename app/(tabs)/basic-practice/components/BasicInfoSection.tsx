@@ -52,3 +52,5 @@ export function BasicInfoSection({ instrumentKey, onOpenCamera }: BasicInfoSecti
   );
 }
 
+
+

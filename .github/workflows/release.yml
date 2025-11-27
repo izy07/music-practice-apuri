@@ -33,7 +33,7 @@ jobs:
           NODE_ENV: production
 
       - name: ビルド成果物のアップロード
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: production-build
           path: dist/
@@ -119,7 +119,7 @@ jobs:
           git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> release_notes.md
 
       - name: GitHub Release 作成
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           body_path: release_notes.md
           draft: false

@@ -528,7 +528,7 @@ export default function CalendarScreen() {
     
     // カレンダーグリッドの作成（7列 × 必要な行数）
     const totalCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
-    const calendarCells = [];
+    const calendarCells: React.ReactElement[] = [];
     
     for (let i = 0; i < totalCells; i++) {
       const cellIndex = i - firstDay;

@@ -303,7 +303,7 @@ export default function GoalsScreen() {
     const daysInMonth = lastDay.getDate();
     const startingDay = firstDay.getDay();
     
-    const days = [];
+    const days: Array<{ day: number; isCurrentMonth: boolean; date: Date }> = [];
     
     // 前月の日付
     for (let i = 0; i < startingDay; i++) {

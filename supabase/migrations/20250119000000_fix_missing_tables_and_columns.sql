@@ -255,3 +255,5 @@ WHERE event_date IS NULL AND date IS NOT NULL;
 
 
 
+
+

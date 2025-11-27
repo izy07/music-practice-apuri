@@ -29,3 +29,5 @@ if (fs.existsSync(indexPath)) {
   console.warn(`⚠️  ${indexPath} が見つかりません`);
 }
 
+
+

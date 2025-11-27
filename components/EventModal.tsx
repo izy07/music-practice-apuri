@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   TextInput,
   ScrollView,
   Alert,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { X, Calendar, Edit, Trash2 } from 'lucide-react-native';
@@ -17,6 +18,7 @@ import { supabase } from '@/lib/supabase';
 import EventCalendar from './EventCalendar';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { disableBackgroundFocus, enableBackgroundFocus, focusFirstElement } from '@/lib/modalFocusManager';
 
 interface Event {
   id: string;
@@ -47,6 +49,7 @@ export default function EventModal({
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const modalContentRef = useRef<View>(null);
 
   useEffect(() => {
     if (event) {
@@ -59,6 +62,32 @@ export default function EventModal({
       setDescription('');
     }
   }, [event, selectedDate]);
+
+  // Webプラットフォームでのフォーカス管理
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (visible) {
+        disableBackgroundFocus();
+        // モーダルコンテンツにフォーカスを移動
+        setTimeout(() => {
+          if (modalContentRef.current) {
+            const element = (modalContentRef.current as any)?.nativeViewRef?.current;
+            if (element) {
+              focusFirstElement(element);
+            }
+          }
+        }, 100);
+      } else {
+        enableBackgroundFocus();
+      }
+    }
+    
+    return () => {
+      if (Platform.OS === 'web' && !visible) {
+        enableBackgroundFocus();
+      }
+    };
+  }, [visible]);
 
   const openDatePicker = () => {
     setShowDatePicker(true);
@@ -194,11 +223,22 @@ export default function EventModal({
       onRequestClose={handleClose}
     >
       <View style={styles.modalOverlay}>
-        <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
+        <View 
+          ref={modalContentRef}
+          style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}
+          {...(Platform.OS === 'web' ? { 
+            role: 'dialog',
+            'aria-modal': true,
+            'aria-labelledby': 'event-modal-title'
+          } : {})}
+        >
           <SafeAreaView>
             {/* ヘッダー */}
             <View style={styles.header}>
-              <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
+              <Text 
+                id="event-modal-title"
+                style={[styles.headerTitle, { color: currentTheme.text }]}
+              >
                 {event ? 'イベントを編集' : 'イベントを登録'}
               </Text>
               <TouchableOpacity onPress={handleClose} style={styles.closeButton}>

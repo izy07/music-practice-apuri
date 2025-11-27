@@ -358,7 +358,7 @@ export default function TermsOfServiceScreen() {
               🕒 受付時間: 24時間対応
             </Text>
             <Text style={[styles.contactItem, { color: currentTheme.text }]}>
-              📱 アプリ内サポート: 設定 > ヘルプ・サポート
+              📱 アプリ内サポート: 設定 {'>'} ヘルプ・サポート
             </Text>
           </View>
         </View>

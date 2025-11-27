@@ -68,6 +68,41 @@ function RootLayoutContent() {
     LogBox.ignoreLogs(['Unexpected text node']);
   }, []);
 
+  // GitHub Pages用: 404.htmlからリダイレクトされた際に元のパスを復元
+  React.useEffect(() => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && isReady) {
+      // クエリパラメータから元のパスを取得
+      const urlParams = new URLSearchParams(window.location.search);
+      const redirectPath = urlParams.get('_redirect');
+      
+      // sessionStorageからも取得（フォールバック）
+      const originalPath = sessionStorage.getItem('expo-router-original-path');
+      
+      if (redirectPath) {
+        // クエリパラメータから元のパスを復元
+        logger.debug('404.htmlからリダイレクトされたパスを復元（クエリ）:', redirectPath);
+        // クエリパラメータを削除
+        urlParams.delete('_redirect');
+        const newSearch = urlParams.toString();
+        const newUrl = window.location.pathname + (newSearch ? '?' + newSearch : '') + window.location.hash;
+        window.history.replaceState({}, '', newUrl);
+        // 元のパスに遷移（Expo Routerが処理）
+        router.replace(redirectPath as any);
+      } else if (originalPath) {
+        // sessionStorageから元のパスを復元
+        const currentPath = window.location.pathname;
+        if (currentPath.includes('/index.html') && originalPath !== currentPath) {
+          logger.debug('404.htmlからリダイレクトされたパスを復元（sessionStorage）:', originalPath);
+          // sessionStorageから削除
+          sessionStorage.removeItem('expo-router-original-path');
+          // 元のパスに遷移（Expo Routerが処理）
+          const pathWithoutBase = originalPath.replace('/music-practice-apuri', '') || '/';
+          router.replace(pathWithoutBase as any);
+        }
+      }
+    }
+  }, [router, isReady]);
+
   /**
    * 【ナビゲーション関数】安全な画面遷移を実行
    * - Expo Routerの「navigate before mounting」エラーを回避
@@ -96,7 +131,8 @@ function RootLayoutContent() {
         // フォールバック: 直接URLを変更（特にチュートリアル画面の場合）
         if (typeof window !== 'undefined' && typeof path === 'string' && path.includes('tutorial')) {
           logger.debug('フォールバック: window.location を使用');
-          window.location.href = '/tutorial';
+          const { navigateWithBasePath } = require('@/lib/navigationUtils');
+          navigateWithBasePath('/tutorial');
         }
       }
     }, delay);

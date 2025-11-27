@@ -98,6 +98,9 @@ module.exports = {
     'object-curly-spacing': ['warn', 'always'],
     'array-bracket-spacing': ['warn', 'never'],
   },
+  ignorePatterns: [
+    '.github/**/*', // GitHub Actionsのワークフローファイルは除外
+  ],
   overrides: [
     {
       // logger.ts内ではconsole.logの使用を許可

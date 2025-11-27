@@ -57,3 +57,33 @@ export const safeReplace = (route: string, fallbackRoute: string = '/(tabs)/inde
     router.push(fallbackRoute);
   }
 };
+
+/**
+ * GitHub Pages用のベースパスを取得
+ */
+export const getBasePath = (): string => {
+  if (typeof window === 'undefined') {
+    return process.env.EXPO_PUBLIC_WEB_BASE || '/';
+  }
+  
+  // 現在のパスからベースパスを推測
+  const pathname = window.location.pathname;
+  if (pathname.startsWith('/music-practice-apuri')) {
+    return '/music-practice-apuri';
+  }
+  
+  return process.env.EXPO_PUBLIC_WEB_BASE || '/';
+};
+
+/**
+ * ベースパスを考慮したURL遷移（フォールバック用）
+ */
+export const navigateWithBasePath = (path: string): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  
+  const basePath = getBasePath();
+  const fullPath = basePath === '/' ? path : `${basePath}${path}`;
+  window.location.href = fullPath;
+};

@@ -75,7 +75,8 @@ export default function AuthCallback() {
                         logger.error('❌ チュートリアル画面への遷移エラー:', error);
                         ErrorHandler.handle(error, 'チュートリアル画面への遷移', false);
                         // フォールバック: 直接URLを変更
-                        window.location.href = '/tutorial';
+                        const { navigateWithBasePath } = require('@/lib/navigationUtils');
+                        navigateWithBasePath('/tutorial');
                       }
                     }, 500);
                   } else {

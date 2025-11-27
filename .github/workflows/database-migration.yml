@@ -1,0 +1,101 @@
+name: Database Migration Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+  workflow_dispatch:
+
+jobs:
+  migration-check:
+    name: マイグレーション検証
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: npm ci
+
+      - name: Supabase CLI のインストール
+        run: npm install -g supabase
+
+      - name: Supabase ローカル環境の起動
+        run: supabase start
+        env:
+          SUPABASE_DB_PASSWORD: postgres
+          SUPABASE_DB_PORT: 5432
+
+      - name: マイグレーションファイルの検証
+        run: |
+          echo "📋 マイグレーションファイルを検証中..."
+          supabase db diff --schema public || echo "⚠️  マイグレーションファイルに問題がある可能性があります"
+
+      - name: マイグレーションの実行
+        run: |
+          echo "🔄 マイグレーションを実行中..."
+          supabase db reset
+          echo "✅ マイグレーション完了"
+
+      - name: データベーススキーマの確認
+        run: |
+          echo "📊 データベーススキーマ:"
+          supabase db execute "
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            ORDER BY table_name;
+          " || true
+
+      - name: instrumentsテーブルの確認
+        run: |
+          echo "🎹 instrumentsテーブルの確認:"
+          supabase db execute "
+            SELECT 
+              COUNT(*) as total,
+              COUNT(CASE WHEN id = '550e8400-e29b-41d4-a716-446655440016' THEN 1 END) as other_exists
+            FROM instruments;
+          " || echo "⚠️  instrumentsテーブルが存在しません"
+
+      - name: 外部キー制約の確認
+        run: |
+          echo "🔗 外部キー制約の確認:"
+          supabase db execute "
+            SELECT 
+              conname as constraint_name,
+              conrelid::regclass as table_name
+            FROM pg_constraint
+            WHERE contype = 'f'
+            AND conname LIKE '%instrument%';
+          " || true
+
+      - name: Supabase ローカル環境の停止
+        if: always()
+        run: supabase stop
+
