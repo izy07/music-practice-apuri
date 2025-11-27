@@ -16,6 +16,7 @@ import { safeGoBack } from '@/lib/navigationUtils';
  * 【アプリ使い方ガイド画面】既存ユーザー向けの詳細な機能説明
  * - その他画面の「チュートリアル」項目からアクセス
  * - 各機能の使い方を詳しく説明
+ * - 一覧形式で、知りたいセクションをピンポイントで確認可能
  */
 export default function AppGuideScreen() {
   const router = useRouter();
@@ -128,20 +129,15 @@ export default function AppGuideScreen() {
     }
   ];
 
-  const handlePrevious = () => {
-    if (currentSection > 0) {
-      setCurrentSection(currentSection - 1);
+  const toggleSection = (sectionId: string) => {
+    const newExpanded = new Set(expandedSections);
+    if (newExpanded.has(sectionId)) {
+      newExpanded.delete(sectionId);
+    } else {
+      newExpanded.add(sectionId);
     }
+    setExpandedSections(newExpanded);
   };
-
-  const handleNext = () => {
-    if (currentSection < guideSections.length - 1) {
-      setCurrentSection(currentSection + 1);
-    }
-  };
-
-  const currentGuide = guideSections[currentSection];
-  const IconComponent = currentGuide.icon;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
@@ -154,87 +150,56 @@ export default function AppGuideScreen() {
       </View>
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
-        {/* セクションインジケーター */}
-        <View style={styles.sectionIndicator}>
-          {guideSections.map((_, index) => (
-            <View
-              key={index}
-              style={[
-                styles.sectionDot,
-                {
-                  width: index === currentSection ? 12 : 8,
-                  height: index === currentSection ? 12 : 8,
-                  backgroundColor: index === currentSection ? currentTheme.primary : '#E0E0E0',
-                },
-              ]}
-            />
-          ))}
-        </View>
+        {/* セクション一覧 */}
+        {guideSections.map((section) => {
+          const IconComponent = section.icon;
+          const isExpanded = expandedSections.has(section.id);
+          
+          return (
+            <View key={section.id} style={[styles.sectionCard, { backgroundColor: currentTheme.background, borderColor: '#E0E0E0' }]}>
+              {/* セクションヘッダー */}
+              <TouchableOpacity
+                style={styles.sectionHeader}
+                onPress={() => toggleSection(section.id)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.sectionHeaderLeft}>
+                  <View style={[styles.sectionIconSmall, { backgroundColor: `${currentTheme.primary}20` }]}>
+                    <IconComponent size={24} color={currentTheme.primary} />
+                  </View>
+                  <View style={styles.sectionHeaderText}>
+                    <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
+                      {section.title}
+                    </Text>
+                    <Text style={[styles.sectionDescription, { color: currentTheme.textSecondary }]} numberOfLines={1}>
+                      {section.description}
+                    </Text>
+                  </View>
+                </View>
+                {isExpanded ? (
+                  <ChevronUp size={24} color={currentTheme.textSecondary} />
+                ) : (
+                  <ChevronDown size={24} color={currentTheme.textSecondary} />
+                )}
+              </TouchableOpacity>
 
-        {/* 現在のセクション */}
-        <View style={styles.currentSection}>
-          <View style={[styles.sectionIcon, { backgroundColor: `${currentTheme.primary}20` }]}>
-            <IconComponent size={40} color={currentTheme.primary} />
-          </View>
-          <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            {currentGuide.title}
-          </Text>
-          <Text style={[styles.sectionDescription, { color: currentTheme.textSecondary }]}>
-            {currentGuide.description}
-          </Text>
-
-          {/* コンテンツリスト */}
-          <View style={styles.contentList}>
-            {currentGuide.content.map((item, index) => (
-              <View key={index} style={styles.contentItem}>
-                <Text style={[styles.contentText, { color: currentTheme.text }]}>
-                  {item}
-                </Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* ナビゲーションボタン */}
-        <View style={styles.navigationButtons}>
-          {currentSection > 0 && (
-            <TouchableOpacity
-              style={[styles.navButton, styles.prevButton, { borderColor: currentTheme.textSecondary }]}
-              onPress={handlePrevious}
-            >
-              <ArrowLeft size={20} color={currentTheme.text} />
-              <Text style={[styles.prevButtonText, { color: currentTheme.text }]}>前へ</Text>
-            </TouchableOpacity>
-          )}
-
-          {currentSection < guideSections.length - 1 && (
-            <TouchableOpacity
-              style={[styles.navButton, styles.nextButton, { backgroundColor: currentTheme.primary }]}
-              onPress={handleNext}
-            >
-              <Text style={styles.nextButtonText}>次へ</Text>
-              <ArrowRight size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* 最後のセクション */}
-        {currentSection === guideSections.length - 1 && (
-          <View style={styles.finishSection}>
-            <Text style={[styles.finishTitle, { color: currentTheme.text }]}>
-              ガイドを完了しました！
-            </Text>
-            <Text style={[styles.finishDescription, { color: currentTheme.textSecondary }]}>
-              アプリの機能を活用して、楽器練習を継続しましょう。
-            </Text>
-            <TouchableOpacity
-              style={[styles.finishButton, { backgroundColor: currentTheme.primary }]}
-              onPress={() => safeGoBack('/(tabs)/settings', true)} // 強制的にsettings画面に戻る
-            >
-              <Text style={styles.finishButtonText}>完了</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+              {/* 展開されたコンテンツ */}
+              {isExpanded && (
+                <View style={styles.expandedContent}>
+                  <View style={styles.contentList}>
+                    {section.content.map((item, index) => (
+                      <View key={index} style={[styles.contentItem, { backgroundColor: '#F8F9FA' }]}>
+                        <Text style={[styles.contentText, { color: currentTheme.text }]}>
+                          {item}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+            </View>
+          );
+        })}
       </ScrollView>
     </SafeAreaView>
   );
@@ -263,42 +228,58 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    padding: 16,
     paddingBottom: 40,
   },
-  sectionIndicator: {
+  sectionCard: {
+    marginBottom: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  sectionHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 16,
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+  },
+  sectionIconSmall: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 30,
+    marginRight: 12,
   },
-  sectionDot: {
-    borderRadius: 6,
-  },
-  currentSection: {
-    alignItems: 'center',
-    marginBottom: 30,
-  },
-  sectionIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
+  sectionHeaderText: {
+    flex: 1,
   },
   sectionTitle: {
-    fontSize: 24,
+    fontSize: 18,
     fontWeight: '700',
-    textAlign: 'center',
-    marginBottom: 12,
+    marginBottom: 4,
   },
   sectionDescription: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 24,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  expandedContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   contentList: {
     width: '100%',
@@ -309,72 +290,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     marginBottom: 8,
     borderRadius: 8,
-    backgroundColor: '#F8F9FA',
   },
   contentText: {
     fontSize: 15,
     lineHeight: 24,
-  },
-  navigationButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: 20,
-  },
-  navButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 25,
-    minWidth: 120,
-    justifyContent: 'center',
-    gap: 8,
-  },
-  prevButton: {
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-  },
-  prevButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  nextButton: {
-    marginLeft: 'auto',
-  },
-  nextButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  finishSection: {
-    alignItems: 'center',
-    marginTop: 30,
-    padding: 20,
-  },
-  finishTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  finishDescription: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 24,
-  },
-  finishButton: {
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    borderRadius: 30,
-    minWidth: 200,
-    alignItems: 'center',
-  },
-  finishButtonText: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
   },
 });
 
