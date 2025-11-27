@@ -307,8 +307,16 @@ function RootLayoutContent() {
       return;
     }
     // Web環境では、isLoadingだけをチェック（isReadyはタイムアウトで処理済み）
-    if (Platform.OS === 'web' && isLoading) {
+    // ただし、isInitializedは必要（認証状態が初期化されていないと遷移できない）
+    if (Platform.OS === 'web' && (isLoading || !isInitialized)) {
       return;
+    }
+    
+    // ルートパス（segmentsが空）にいる場合の処理
+    const isAtRoot = segments.length === 0;
+    if (isAtRoot && Platform.OS === 'web') {
+      // ルートパスにいる場合は、認証状態に応じて適切な画面に遷移
+      // この処理は認証フローで行われるため、ここでは何もしない
     }
 
     // 未認証ユーザーの場合：ログイン画面に遷移（利用規約・プライバシーポリシーは除外）
