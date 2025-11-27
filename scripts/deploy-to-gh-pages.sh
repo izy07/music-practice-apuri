@@ -37,10 +37,17 @@ else
     git rm -rf . 2>/dev/null || true
 fi
 
-# dist/ の内容をコピー
+# dist/ の内容をコピー（node_modulesと不要なファイルを除外）
 echo "📋 dist/の内容をコピー中..."
-cp -r dist/* .
-cp dist/.nojekyll . 2>/dev/null || echo "" > .nojekyll
+# まずindex.html、favicon.ico、metadata.jsonをコピー
+cp dist/index.html . 2>/dev/null || true
+cp dist/favicon.ico . 2>/dev/null || true
+cp dist/metadata.json . 2>/dev/null || true
+# _expoとassetsディレクトリをコピー
+cp -r dist/_expo . 2>/dev/null || true
+cp -r dist/assets . 2>/dev/null || true
+# .nojekyllファイルを作成
+echo "" > .nojekyll
 
 # すべてをコミット
 echo "💾 コミット中..."
