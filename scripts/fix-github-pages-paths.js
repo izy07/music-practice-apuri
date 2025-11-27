@@ -47,14 +47,22 @@ if (fs.existsSync(indexPath)) {
   let content = fs.readFileSync(indexPath, 'utf8');
   
   // baseタグを追加（すべての相対パスを正しく解決するため）
-  const baseTag = `<base href="${BASE_PATH}/" />`;
+  // 注意: baseタグはheadタグの最初に配置する必要がある
+  const baseTag = `<base href="${BASE_PATH}/">`;
   if (!content.includes('<base')) {
-    // headタグの直後にbaseタグを追加
+    // headタグの直後にbaseタグを追加（他のメタタグより前に）
     content = content.replace(
       /(<head[^>]*>)/i,
       `$1\n  ${baseTag}`
     );
     console.log(`✅ baseタグを追加しました: ${BASE_PATH}/`);
+  } else {
+    // 既存のbaseタグを更新
+    content = content.replace(
+      /<base[^>]*>/i,
+      baseTag
+    );
+    console.log(`✅ baseタグを更新しました: ${BASE_PATH}/`);
   }
   
   // CSPメタタグが存在しない場合は追加
@@ -73,6 +81,10 @@ if (fs.existsSync(indexPath)) {
   // /favicon.ico -> /music-practice-apuri/favicon.ico
   
   const basePathNoSlash = BASE_PATH.replace(/^\//, '');
+  
+  // baseタグを追加したので、相対パスは自動的に解決される
+  // ただし、絶対パス（/で始まる）はbaseタグの影響を受けないため、修正が必要
+  // baseタグがある場合でも、絶対パスは明示的に修正する
   
   // すべての絶対パスを修正（ベースパスが既に含まれている場合はスキップ）
   // より厳密な正規表現で、ベースパスが既に含まれている場合を正確に検出
@@ -97,6 +109,21 @@ if (fs.existsSync(indexPath)) {
   content = content.replace(/(href|src)="\/assets\/([^"]+)"/g, (match, attr, path) => {
     if (!path.startsWith(basePathNoSlash)) {
       return `${attr}="${BASE_PATH}/assets/${path}"`;
+    }
+    return match;
+  });
+  
+  // metadata.jsonから読み込まれるパスも確認
+  // scriptタグのsrc属性で相対パスを使用している場合、baseタグで解決されるが、
+  // 念のため絶対パスも修正
+  content = content.replace(/<script[^>]*src="([^"]+)"/g, (match, src) => {
+    // 相対パス（./ や ../ で始まる、または / で始まらない）はそのまま
+    if (src.startsWith('./') || src.startsWith('../') || !src.startsWith('/')) {
+      return match;
+    }
+    // 絶対パスで、ベースパスが含まれていない場合は修正
+    if (!src.startsWith(BASE_PATH)) {
+      return match.replace(src, BASE_PATH + src);
     }
     return match;
   });
