@@ -132,10 +132,21 @@ if (fs.existsSync(indexPath)) {
   console.log(`✅ ${indexPath} を修正しました`);
   
   // 修正後の内容を確認（デバッグ用）
-  const scriptTags = (content.match(/<script[^>]*src="([^"]+)"/g) || []).length;
-  const linkTags = (content.match(/<link[^>]*href="([^"]+)"/g) || []).length;
-  console.log(`   - スクリプトタグ: ${scriptTags}個`);
-  console.log(`   - リンクタグ: ${linkTags}個`);
+  const scriptTags = content.match(/<script[^>]*src="([^"]+)"/g) || [];
+  const linkTags = content.match(/<link[^>]*href="([^"]+)"/g) || [];
+  const baseTagExists = content.includes('<base');
+  
+  console.log(`   - baseタグ: ${baseTagExists ? '✅ 存在' : '❌ 不存在'}`);
+  console.log(`   - スクリプトタグ: ${scriptTags.length}個`);
+  scriptTags.forEach((tag, index) => {
+    const srcMatch = tag.match(/src="([^"]+)"/);
+    if (srcMatch) {
+      const src = srcMatch[1];
+      const isCorrect = src.startsWith(BASE_PATH) || src.startsWith('./') || src.startsWith('../') || !src.startsWith('/');
+      console.log(`     ${index + 1}. ${src} ${isCorrect ? '✅' : '❌ 修正が必要'}`);
+    }
+  });
+  console.log(`   - リンクタグ: ${linkTags.length}個`);
 } else {
   console.error(`❌ ${indexPath} が見つかりません`);
   process.exit(1);
