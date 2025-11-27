@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+  <title>Music Practice</title>
+  <style>
+    html, body, #root {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+    #root {
+      display: flex;
+      flex-direction: column;
+    }
+    /* Expo Routerタブバーのスクロール矢印を非表示 */
+    [data-testid*="scroll-arrow"],
+    [class*="scroll-arrow"],
+    [class*="ScrollArrow"],
+    button[aria-label*="scroll"],
+    button[aria-label*="arrow"],
+    button[aria-label*="arrow-down"],
+    svg[class*="arrow"],
+    [class*="chevron-down"] {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+    }
+    
+    /* タブバーの右側の余白を完全に削除 */
+    nav[role="tablist"],
+    [class*="tab-bar"],
+    [class*="TabBar"] {
+      padding-right: 0 !important;
+      margin-right: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+    }
+    
+    /* タブバーの最後の要素の右側余白を削除 */
+    nav[role="tablist"] > *:last-child,
+    [class*="tab-bar"] > *:last-child,
+    [class*="TabBar"] > *:last-child {
+      padding-right: 0 !important;
+      margin-right: 0 !important;
+    }
+    
+    /* タブバーのルートコンテナとすべての親要素の余白を削除 */
+    nav[role="tablist"],
+    nav[class*="tab"],
+    nav[class*="Tab"],
+    div[class*="tab-bar"],
+    div[class*="TabBar"],
+    [class*="tab-bar"],
+    [class*="TabBar"],
+    [role="tablist"],
+    [data-testid*="tab-bar"],
+    [data-testid*="TabBar"] {
+      padding: 0 !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      margin: 0 !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 100% !important;
+      box-sizing: border-box !important;
+      overflow: hidden !important;
+    }
+    
+    /* タブバーのスクロールコンテナの余白を削除 */
+    [class*="tab-bar"] [class*="scroll"],
+    [class*="TabBar"] [class*="scroll"],
+    [class*="tab-bar"] [class*="ScrollView"],
+    [class*="TabBar"] [class*="ScrollView"],
+    [role="tablist"] [class*="scroll"],
+    [role="tablist"] [class*="ScrollView"],
+    nav[role="tablist"] > div,
+    nav[class*="tab"] > div,
+    [class*="tab-bar"] > div,
+    [class*="TabBar"] > div {
+      padding: 0 !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+      margin: 0 !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 100% !important;
+      box-sizing: border-box !important;
+      overflow-x: hidden !important;
+      overflow-y: hidden !important;
+    }
+    
+    /* タブバーのコンテンツコンテナの余白を削除 */
+    [class*="tab-bar"] > *,
+    [class*="TabBar"] > *,
+    [role="tablist"] > *,
+    [class*="tab-bar"] [class*="content"],
+    [class*="TabBar"] [class*="content"],
+    nav[role="tablist"] > *,
+    nav[class*="tab"] > * {
+      padding: 0 !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+      margin: 0 !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      box-sizing: border-box !important;
+    }
+    
+    /* タブバーの最後の要素の余白を削除 */
+    [class*="tab-bar"] > *:last-child,
+    [class*="TabBar"] > *:last-child,
+    [role="tablist"] > *:last-child,
+    [class*="tab-bar"] [class*="content"] > *:last-child,
+    [class*="TabBar"] [class*="content"] > *:last-child,
+    nav[role="tablist"] > *:last-child {
+      padding-right: 0 !important;
+      margin-right: 0 !important;
+    }
+    
+    /* タブアイテムの余白を削除（表示されているタブのみ） */
+    [class*="tab-bar"] button:not([style*="display: none"]):not([style*="width: 0"]):not([style*="flex: 0"]):not(:empty),
+    [class*="TabBar"] button:not([style*="display: none"]):not([style*="width: 0"]):not([style*="flex: 0"]):not(:empty),
+    [role="tablist"] button:not([style*="display: none"]):not([style*="width: 0"]):not([style*="flex: 0"]):not(:empty),
+    [role="tab"]:not([style*="display: none"]):not([style*="width: 0"]):not([style*="flex: 0"]):not(:empty),
+    [class*="tab-item"]:not([style*="display: none"]):not([style*="width: 0"]):not([style*="flex: 0"]):not(:empty),
+    [class*="TabItem"]:not([style*="display: none"]):not([style*="width: 0"]):not([style*="flex: 0"]):not(:empty),
+    nav[role="tablist"] button:not([style*="display: none"]):not([style*="width: 0"]):not([style*="flex: 0"]):not(:empty),
+    nav[class*="tab"] button:not([style*="display: none"]):not([style*="width: 0"]):not([style*="flex: 0"]):not(:empty) {
+      padding: 0 !important;
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+      margin: 0 !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      flex: 1 !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+      width: auto !important;
+    }
+    
+    /* 非表示タブ（空のボタンや幅0のボタン）を完全に削除 */
+    [class*="tab-bar"] button:empty,
+    [class*="TabBar"] button:empty,
+    [role="tablist"] button:empty,
+    [role="tab"]:empty,
+    [class*="tab-bar"] button[style*="display: none"],
+    [class*="TabBar"] button[style*="display: none"],
+    [role="tablist"] button[style*="display: none"],
+    [class*="tab-bar"] button[aria-hidden="true"],
+    [class*="TabBar"] button[aria-hidden="true"],
+    [role="tablist"] button[aria-hidden="true"],
+    /* 幅0またはflex: 0の要素を非表示 */
+    [class*="tab-bar"] button[style*="width: 0"],
+    [class*="TabBar"] button[style*="width: 0"],
+    [role="tablist"] button[style*="width: 0"],
+    [class*="tab-bar"] button[style*="flex: 0"],
+    [class*="TabBar"] button[style*="flex: 0"],
+    [role="tablist"] button[style*="flex: 0"] {
+      display: none !important;
+      width: 0 !important;
+      height: 0 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      flex: 0 !important;
+      min-width: 0 !important;
+      max-width: 0 !important;
+      position: absolute !important;
+      left: -9999px !important;
+    }
+    
+    /* 非表示タブの親要素もスペースを取らないようにする */
+    [class*="tab-bar"] > *:empty,
+    [class*="TabBar"] > *:empty,
+    [role="tablist"] > *:empty {
+      display: none !important;
+      width: 0 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      flex: 0 !important;
+    }
+    
+    /* タブバーのコンテンツコンテナで、表示されているタブのみをカウント */
+    [role="tablist"] > *:not([style*="display: none"]):not(:empty):not([style*="width: 0"]):not([style*="flex: 0"]) {
+      flex: 1 !important;
+    }
+    
+    /* 非表示タブの親要素もスペースを取らないようにする */
+    [role="tablist"] > *[style*="display: none"],
+    [role="tablist"] > *[style*="width: 0"],
+    [role="tablist"] > *[style*="flex: 0"] {
+      display: none !important;
+      width: 0 !important;
+      flex: 0 !important;
+      padding: 0 !important;
+      margin: 0 !important;
+    }
+    
+    /* タブバーの右側の余白を完全に削除（すべての要素に対して） */
+    [role="tablist"] * {
+      box-sizing: border-box !important;
+    }
+    
+    /* タブバーの最後の表示されているタブの右側余白を削除 */
+    [role="tablist"] > *:last-child:not([style*="display: none"]):not(:empty),
+    [role="tablist"] > *:last-child button,
+    [role="tablist"] > *:last-child [role="tab"],
+    nav[role="tablist"] > *:last-child:not([style*="display: none"]):not(:empty),
+    nav[role="tablist"] > *:last-child button,
+    nav[role="tablist"] > *:last-child [role="tab"],
+    [class*="tab-bar"] > *:last-child,
+    [class*="TabBar"] > *:last-child {
+      padding-right: 0 !important;
+      margin-right: 0 !important;
+      padding-end: 0 !important;
+      margin-end: 0 !important;
+      border-right: none !important;
+    }
+    
+    /* タブバーのコンテナ全体の右側余白を削除 */
+    [role="tablist"],
+    nav[role="tablist"],
+    [class*="tab-bar"],
+    [class*="TabBar"],
+    [class*="tab-bar-content"],
+    [class*="TabBarContent"] {
+      padding-right: 0 !important;
+      margin-right: 0 !important;
+      padding-end: 0 !important;
+      margin-end: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    /* タブバーの内部コンテナの右側余白を削除 */
+    [role="tablist"] > div,
+    nav[role="tablist"] > div,
+    [class*="tab-bar"] > div,
+    [class*="TabBar"] > div {
+      padding-right: 0 !important;
+      margin-right: 0 !important;
+      padding-end: 0 !important;
+      margin-end: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    
+    /* タブバーのすべての子要素の余白を削除（再帰的） */
+    [class*="tab-bar"] *,
+    [class*="TabBar"] *,
+    [role="tablist"] *,
+    nav[role="tablist"] * {
+      box-sizing: border-box !important;
+    }
+    
+    /* タブバーの親コンテナの余白も削除 */
+    body > div,
+    #root > div,
+    [class*="expo-router"] {
+      padding-right: 0 !important;
+      margin-right: 0 !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+    }
+    
+    /* タブバーの右側余白を完全に削除 - より強力なルール */
+    nav[role="tablist"] {
+      justify-content: flex-start !important;
+    }
+    
+    /* タブバーの最後のタブの右側余白を完全に削除 */
+    nav[role="tablist"] > button:last-child,
+    nav[role="tablist"] > a:last-child,
+    nav[role="tablist"] > div:last-child button,
+    [class*="tab-bar"] button:last-child,
+    [class*="TabBar"] button:last-child {
+      padding-right: 0 !important;
+      margin-right: 0 !important;
+      padding-end: 0 !important;
+      margin-end: 0 !important;
+      border-right: none !important;
+    }
+    
+    /* タブバーのコンテナ全体を100%幅に */
+    nav[role="tablist"],
+    [class*="tab-bar"],
+    [class*="TabBar"] {
+      width: 100vw !important;
+      max-width: 100vw !important;
+      margin-right: 0 !important;
+      padding-right: 0 !important;
+    }
+    
+    /* すべてのタブボタンを均等に配置 */
+    nav[role="tablist"] > button,
+    nav[role="tablist"] > a,
+    [class*="tab-bar"] button,
+    [class*="TabBar"] button {
+      flex: 1 1 0% !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+    }
+    
+    /* タブバーの右側余白を完全に削除 - 最強のルール */
+    body,
+    html,
+    #root,
+    #root > *,
+    [class*="expo-router"],
+    [data-expo-router-root],
+    nav[role="tablist"],
+    nav[role="tablist"] *,
+    [class*="tab-bar"],
+    [class*="tab-bar"] *,
+    [class*="TabBar"],
+    [class*="TabBar"] * {
+      box-sizing: border-box !important;
+    }
+    
+    /* タブバーコンテナの右側余白を完全に削除 */
+    nav[role="tablist"]:after,
+    nav[role="tablist"]::after,
+    [class*="tab-bar"]:after,
+    [class*="tab-bar"]::after,
+    [class*="TabBar"]:after,
+    [class*="TabBar"]::after {
+      display: none !important;
+      content: none !important;
+      width: 0 !important;
+      margin: 0 !important;
+      padding: 0 !important;
+    }
+    
+    /* タブバー全体の幅を100vwに固定し、右側余白を削除 */
+    nav[role="tablist"],
+    [class*="tab-bar"],
+    [class*="TabBar"] {
+      position: relative !important;
+      left: 0 !important;
+      right: 0 !important;
+      width: 100vw !important;
+      max-width: 100vw !important;
+      margin-right: 0 !important;
+      padding-right: 0 !important;
+      padding-end: 0 !important;
+      margin-end: 0 !important;
+      overflow: hidden !important;
+    }
+    
+    /* タブバーの最後の要素とそのすべての子要素の右側余白を削除 */
+    nav[role="tablist"] > *:last-child,
+    nav[role="tablist"] > *:last-child *,
+    [class*="tab-bar"] > *:last-child,
+    [class*="tab-bar"] > *:last-child *,
+    [class*="TabBar"] > *:last-child,
+    [class*="TabBar"] > *:last-child * {
+      padding-right: 0 !important;
+      margin-right: 0 !important;
+      padding-end: 0 !important;
+      margin-end: 0 !important;
+      border-right: none !important;
+    }
+    
+    /* タブバーのコンテンツを左寄せし、右側に余白を作らない */
+    nav[role="tablist"],
+    [class*="tab-bar-content"],
+    [class*="TabBarContent"] {
+      justify-content: flex-start !important;
+      align-items: stretch !important;
+      width: 100% !important;
+      max-width: 100% !important;
+      flex-wrap: nowrap !important;
+    }
+    
+    /* すべてのタブアイテムを均等に配置し、右側余白を削除 */
+    [role="tablist"] > *,
+    [class*="tab-bar"] > *,
+    [class*="TabBar"] > * {
+      flex: 1 1 0% !important;
+      min-width: 0 !important;
+      padding-right: 0 !important;
+      margin-right: 0 !important;
+      padding-end: 0 !important;
+      margin-end: 0 !important;
+      box-sizing: border-box !important;
+    }
+  </style>
+  <!-- Expo Router Web Support -->
+  <script>
+    // Expo RouterのWebルーティングを有効化
+    // すべてのルートをindex.htmlにリダイレクト
+    if (typeof window !== 'undefined') {
+      // クライアントサイドルーティングを有効化
+      window.__EXPO_ROUTER_ENABLED__ = true;
+    }
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+</body>
+</html>

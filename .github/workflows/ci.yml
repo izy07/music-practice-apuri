@@ -1,0 +1,125 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # テストジョブ
+  test:
+    name: テスト実行
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: npm ci
+
+      - name: テスト実行
+        run: npm run test:ci
+
+      - name: カバレッジレポートのアップロード
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+
+  # Lint チェック
+  lint:
+    name: コード品質チェック
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: npm ci
+
+      - name: 型チェック
+        run: npx tsc --noEmit
+
+  # ビルドチェック
+  build:
+    name: ビルド確認
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: npm ci
+
+      - name: Web ビルド
+        run: npm run build:web
+
+      - name: ビルド成果物のアップロード
+        uses: actions/upload-artifact@v3
+        with:
+          name: web-build
+          path: dist/
+          retention-days: 7
+
+  # セキュリティチェック
+  security:
+    name: セキュリティ監査
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: npm ci
+
+      - name: 脆弱性チェック
+        run: npm audit --production
+        continue-on-error: true
+
+      - name: テストデータ漏洩チェック
+        run: |
+          if grep -r "test@example.com" supabase/migrations/; then
+            echo "⚠️ テストデータがマイグレーションに含まれています"
+            exit 1
+          fi
+          echo "✅ テストデータの漏洩なし"
+
+      - name: 環境変数チェック
+        run: |
+          if grep -r "testpassword123" app/ components/ lib/; then
+            echo "⚠️ ハードコードされたパスワードが検出されました"
+            exit 1
+          fi
+          echo "✅ ハードコードされた認証情報なし"
+

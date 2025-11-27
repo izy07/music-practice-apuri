@@ -1,0 +1,52 @@
+-- 組織作成時のメンバーシップ自動追加とRLSポリシー修正
+-- 注意: organizationsテーブルとuser_group_membershipsテーブルが存在する場合のみ実行されます
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'organizations') THEN
+    DROP TRIGGER IF EXISTS on_organization_created ON organizations;
+    DROP FUNCTION IF EXISTS auto_add_organization_creator();
+    
+    CREATE OR REPLACE FUNCTION auto_add_organization_creator()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_group_memberships') THEN
+        INSERT INTO user_group_memberships (user_id, organization_id, role, sub_group_id)
+        VALUES (NEW.created_by, NEW.id, 'admin', NULL)
+        ON CONFLICT (user_id, organization_id, sub_group_id) 
+        DO UPDATE SET role = 'admin';
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+    CREATE TRIGGER on_organization_created
+      AFTER INSERT ON organizations
+      FOR EACH ROW
+      EXECUTE FUNCTION auto_add_organization_creator();
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'organizations')
+     AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'user_group_memberships') THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_policies 
+      WHERE schemaname = 'public'
+      AND tablename = 'user_group_memberships' 
+      AND policyname = '組織作成者は自分自身をadminとして追加可能'
+    ) THEN
+      CREATE POLICY "組織作成者は自分自身をadminとして追加可能" ON user_group_memberships
+        FOR INSERT WITH CHECK (
+          user_id = auth.uid() 
+          AND role = 'admin'
+          AND EXISTS (
+            SELECT 1 FROM organizations 
+            WHERE id = organization_id 
+            AND created_by = auth.uid()
+          )
+        );
+    END IF;
+  END IF;
+END $$;

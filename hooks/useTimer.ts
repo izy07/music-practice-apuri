@@ -1,0 +1,77 @@
+import { useState, useEffect } from 'react';
+import TimerService from '@/components/TimerService';
+import logger from '@/lib/logger';
+
+export function useTimer(onTimerComplete?: () => void) {
+  const [timerSeconds, setTimerSeconds] = useState(0);
+  const [stopwatchSeconds, setStopwatchSeconds] = useState(0);
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [isStopwatchRunning, setIsStopwatchRunning] = useState(false);
+  const timerService = TimerService.getInstance();
+
+  useEffect(() => {
+    // Initialize with current timer state
+    setTimerSeconds(timerService.getTimerSeconds());
+    setStopwatchSeconds(timerService.getStopwatchSeconds());
+    setIsTimerRunning(timerService.isTimerRunning());
+    setIsStopwatchRunning(timerService.isStopwatchRunning());
+
+    // Listen for timer updates
+    const listener = (newTimerSeconds: number, newStopwatchSeconds: number, newIsTimerRunning: boolean, newIsStopwatchRunning: boolean) => {
+      const prevTimerSeconds = timerSeconds;
+      const prevIsTimerRunning = isTimerRunning;
+      
+      setTimerSeconds(newTimerSeconds);
+      setStopwatchSeconds(newStopwatchSeconds);
+      setIsTimerRunning(newIsTimerRunning);
+      setIsStopwatchRunning(newIsStopwatchRunning);
+      
+      // タイマー完了の検出
+      if (prevIsTimerRunning && !newIsTimerRunning && newTimerSeconds === 0 && onTimerComplete) {
+        logger.debug('useTimer: タイマー完了検出');
+        onTimerComplete();
+      }
+    };
+
+    timerService.addListener(listener);
+
+    return () => {
+      timerService.removeListener(listener);
+    };
+  }, []);
+
+  const startTimer = () => timerService.startTimer();
+  const pauseTimer = () => timerService.pauseTimer();
+  const resetTimer = () => timerService.resetTimer();
+  const clearTimer = () => timerService.clearTimer();
+  const setTimerPreset = (seconds: number) => {
+    logger.debug('useTimer setTimerPreset called with:', seconds);
+    timerService.setTimerPreset(seconds);
+    const newSeconds = timerService.getTimerSeconds();
+    logger.debug('TimerService returned:', newSeconds);
+    // 設定後に状態を強制的に更新
+    setTimerSeconds(newSeconds);
+    logger.debug('useTimer state updated to:', newSeconds);
+  };
+  const addTimerTime = (seconds: number) => timerService.addTimerTime(seconds);
+  
+  const startStopwatch = () => timerService.startStopwatch();
+  const pauseStopwatch = () => timerService.pauseStopwatch();
+  const resetStopwatch = () => timerService.resetStopwatch();
+
+  return {
+    timerSeconds,
+    stopwatchSeconds,
+    isTimerRunning,
+    isStopwatchRunning,
+    startTimer,
+    pauseTimer,
+    resetTimer,
+    clearTimer,
+    setTimerPreset,
+    addTimerTime,
+    startStopwatch,
+    pauseStopwatch,
+    resetStopwatch,
+  };
+}

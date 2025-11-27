@@ -1,0 +1,129 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  # ビルドとデプロイ
+  build-and-deploy:
+    name: ビルド & デプロイ
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: npm ci
+
+      - name: テスト実行（必須）
+        run: npm run test:ci
+
+      - name: 本番ビルド
+        run: npm run build:web
+        env:
+          NODE_ENV: production
+
+      - name: ビルド成果物のアップロード
+        uses: actions/upload-artifact@v3
+        with:
+          name: production-build
+          path: dist/
+
+      # オプション: ウェブホスティングへのデプロイ
+      # - name: Deploy to Vercel
+      #   run: npx vercel --prod
+      #   env:
+      #     VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+  # Android ビルド
+  build-android:
+    name: Android APK ビルド
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: npm ci
+
+      - name: Expo CLI セットアップ
+        run: npm install -g eas-cli
+
+      - name: EAS ビルド (Android)
+        run: eas build --platform android --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+  # iOS ビルド  
+  build-ios:
+    name: iOS IPA ビルド
+    runs-on: macos-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: npm ci
+
+      - name: Expo CLI セットアップ
+        run: npm install -g eas-cli
+
+      - name: EAS ビルド (iOS)
+        run: eas build --platform ios --non-interactive
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+
+  # リリースノート作成
+  create-release:
+    name: GitHubリリース作成
+    runs-on: ubuntu-latest
+    needs: [build-and-deploy]
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: リリースノート生成
+        id: release_notes
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "## 🎉 リリース $VERSION" > release_notes.md
+          echo "" >> release_notes.md
+          echo "### 変更内容" >> release_notes.md
+          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> release_notes.md
+
+      - name: GitHub Release 作成
+        uses: softprops/action-gh-release@v1
+        with:
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

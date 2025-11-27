@@ -1,0 +1,929 @@
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  Platform,
+  Dimensions,
+  ScrollView,
+  Modal,
+} from 'react-native';
+import { Mic, MicOff, Play, Pause, Square, Star, Trash2, Save } from 'lucide-react-native';
+import { useInstrumentTheme } from './InstrumentThemeContext';
+import { supabase } from '@/lib/supabase';
+import { uploadRecordingBlob, saveRecording } from '@/lib/database';
+import { useRouter } from 'expo-router';
+import { ErrorHandler } from '@/lib/errorHandler';
+import logger from '@/lib/logger';
+
+const { width } = Dimensions.get('window');
+
+interface AudioRecorderProps {
+  visible: boolean;
+  onSave: (audioData: {
+    title: string;
+    memo: string;
+    isFavorite: boolean;
+    duration: number;
+    audioUrl: string;
+    recordingId?: string; // 保存された録音ID（オプション）
+  }) => void;
+  onClose: () => void;
+  onRecordingSaved?: () => void; // 録音保存後のコールバック
+  onBack?: () => void; // 戻るボタンのカスタム動作
+  selectedDate?: Date | null; // 保存日（未指定なら現在時刻）
+}
+
+export default function AudioRecorder({ visible, onSave, onClose, onRecordingSaved, onBack, selectedDate }: AudioRecorderProps) {
+  const { currentTheme } = useInstrumentTheme();
+  const router = useRouter();
+  const [isRecording, setIsRecording] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
+  const [memo, setMemo] = useState('');
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
+  const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
+  const [songs, setSongs] = useState<Array<{id: string, title: string, artist: string}>>([]);
+  const [showSongSelector, setShowSongSelector] = useState(false);
+  
+  // Web Audio API用の参照
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
+  const recordingIntervalRef = useRef<number | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioBlobRef = useRef<Blob | null>(null);
+
+  // 録音時間の制限（1分 = 60秒）
+  const MAX_RECORDING_TIME = 60;
+
+  useEffect(() => {
+    // コンポーネントのクリーンアップ（改善版）
+    return () => {
+      // 録音タイマーのクリア
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+      
+      // オーディオ要素のクリア
+      if (audioElementRef.current) {
+        audioElementRef.current.pause();
+        audioElementRef.current.src = '';
+        audioElementRef.current = null;
+      }
+      
+      // MediaRecorderの完全なクリーンアップ
+      if (mediaRecorderRef.current) {
+        try {
+          if (mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+          }
+        } catch (error) {
+          logger.warn('MediaRecorder stop error during cleanup:', error);
+        }
+        mediaRecorderRef.current = null;
+      }
+      
+      // オーディオチャンクのクリア
+      if (audioChunksRef.current.length > 0) {
+        audioChunksRef.current = [];
+      }
+      
+      // オーディオBlobのクリア
+      if (audioBlobRef.current) {
+        audioBlobRef.current = null;
+      }
+      
+      // AudioContextのクリア
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        try {
+          audioContextRef.current.suspend();
+        } catch (error) {
+          logger.warn('AudioContext suspend error during cleanup:', error);
+        }
+      }
+    };
+  }, []);
+
+  // 楽曲リストを読み込み
+  useEffect(() => {
+    if (visible) {
+      loadSongs();
+    }
+  }, [visible]);
+
+  // 楽曲リストを読み込む
+  const loadSongs = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data, error } = await supabase
+          .from('my_songs')
+          .select('id, title, artist')
+          .eq('user_id', user.id)
+          .order('title', { ascending: true });
+
+        if (error) {
+          // Error loading songs
+        } else {
+          setSongs(data || []);
+        }
+      }
+    } catch (error) {
+      // Error loading songs
+    }
+  };
+
+  // 録音開始
+  const startRecording = async () => {
+    try {
+      if (Platform.OS !== 'web') {
+        Alert.alert('録音機能', '録音機能はWeb環境でのみ利用できます');
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        Alert.alert('エラー', 'このブラウザでは録音機能を利用できません');
+        return;
+      }
+
+      // マイク権限の事前確認
+      try {
+        const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        if (permission.state === 'denied') {
+          Alert.alert('マイク権限が必要', 'ブラウザの設定でマイクの使用を許可してください');
+          return;
+        }
+      } catch (permissionError) {
+        logger.debug('Permission API not supported, proceeding with getUserMedia');
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          sampleRate: 44100,
+        } 
+      });
+      
+      // サポートされているMIMEタイプを確認
+      let mimeType = 'audio/webm;codecs=opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'audio/webm';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'audio/mp4';
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = '';
+          }
+        }
+      }
+
+      // MediaRecorderの初期化
+      const mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      // 録音開始時刻を記録
+      const startTime = Date.now();
+
+      // MediaRecorderのイベントリスナーを適切に管理
+      const handleDataAvailable = (event: BlobEvent) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      const handleStop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
+        audioBlobRef.current = audioBlob;
+        const newAudioUrl = URL.createObjectURL(audioBlob);
+        setAudioUrl(newAudioUrl);
+        
+        // 実際の録音時間を計算（開始時刻からの経過時間）
+        const actualDuration = Math.round((Date.now() - startTime) / 1000);
+        setRecordingDuration(actualDuration);
+        
+        // ストリームを停止
+        stream.getTracks().forEach(track => {
+          track.stop();
+          track.enabled = false;
+        });
+        
+        // MediaRecorderのイベントリスナーを削除
+        mediaRecorder.removeEventListener('dataavailable', handleDataAvailable);
+        mediaRecorder.removeEventListener('stop', handleStop);
+        mediaRecorder.removeEventListener('error', handleError);
+        
+        // MediaRecorderのクリーンアップ
+        if (mediaRecorderRef.current) {
+          mediaRecorderRef.current = null;
+        }
+        
+        // チャンクのクリア
+        audioChunksRef.current = [];
+      };
+
+      const handleError = (event: Event) => {
+        ErrorHandler.handle(event, 'MediaRecorder', true);
+        Alert.alert('録音エラー', '録音中にエラーが発生しました');
+        setIsRecording(false);
+        
+        // エラー時のクリーンアップ
+        mediaRecorder.removeEventListener('dataavailable', handleDataAvailable);
+        mediaRecorder.removeEventListener('stop', handleStop);
+        mediaRecorder.removeEventListener('error', handleError);
+      };
+
+      // イベントリスナーを追加
+      mediaRecorder.addEventListener('dataavailable', handleDataAvailable);
+      mediaRecorder.addEventListener('stop', handleStop);
+      mediaRecorder.addEventListener('error', handleError);
+
+      // 録音開始
+      mediaRecorder.start(100); // 100ms間隔でデータを取得
+      setIsRecording(true);
+      setRecordingTime(0);
+      setRecordingDuration(0);
+      audioChunksRef.current = [];
+
+      // より正確な録音時間のカウント（Date.now()ベース）: 更新頻度を緩和
+      recordingIntervalRef.current = window.setInterval(() => {
+        const elapsedTime = Math.round((Date.now() - startTime) / 1000);
+        setRecordingTime(elapsedTime);
+        
+        if (elapsedTime >= MAX_RECORDING_TIME) {
+          stopRecording('auto');
+        }
+      }, 250); // UI更新を250ms間隔にしてCPU負荷を軽減
+
+    } catch (error) {
+      ErrorHandler.handle(error, 'Recording start', true);
+      if (error instanceof Error) {
+        if (error.name === 'NotAllowedError') {
+          Alert.alert('マイク権限が必要', 'ブラウザの設定でマイクの使用を許可してください');
+        } else if (error.name === 'NotFoundError') {
+          Alert.alert('マイクが見つかりません', 'マイクが接続されているか確認してください');
+        } else if (error.name === 'NotSupportedError') {
+          Alert.alert('録音機能がサポートされていません', 'このブラウザでは録音機能を利用できません');
+        } else {
+          Alert.alert('エラー', '録音を開始できませんでした。マイクの権限を確認してください。');
+        }
+      } else {
+        Alert.alert('エラー', '録音を開始できませんでした。マイクの権限を確認してください。');
+      }
+    }
+  };
+
+  // 録音停止
+  const stopRecording = (cause: 'auto' | 'manual' = 'manual') => {
+    if (mediaRecorderRef.current && isRecording) {
+      // 録音時間は onstop イベントで確定されるため、ここでは設定しない
+      
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+
+      // 停止時の通知
+      Alert.alert(
+        '録音停止',
+        cause === 'auto' ? '最大1分に達したため自動停止しました' : '録音を停止しました'
+      );
+    }
+  };
+
+  // 再生開始
+  const startPlayback = () => {
+    if (!audioUrl) return;
+
+    if (Platform.OS !== 'web') {
+      Alert.alert('再生機能', '再生機能はWeb環境でのみ利用できます');
+      return;
+    }
+
+    if (!audioElementRef.current) {
+      audioElementRef.current = new Audio(audioUrl);
+    }
+
+    audioElementRef.current.play();
+    setIsPlaying(true);
+
+    audioElementRef.current.onended = () => {
+      setIsPlaying(false);
+    };
+  };
+
+  // 再生停止
+  const stopPlayback = () => {
+    if (audioElementRef.current) {
+      audioElementRef.current.pause();
+      audioElementRef.current.currentTime = 0;
+      setIsPlaying(false);
+    }
+  };
+
+  // 録音保存（データベースに保存）
+  const handleSave = async () => {
+    if (isSavingRef.current) {
+      logger.warn('既に保存処理中です');
+      return;
+    }
+    
+    if (!audioUrl || !audioBlobRef.current) {
+      Alert.alert('エラー', '録音データがありません');
+      return;
+    }
+
+    if (!title.trim()) {
+      setTitle('録音'); // デフォルトタイトルを設定
+    }
+
+    logger.debug('録音保存処理開始');
+    setIsSaving(true);
+    isSavingRef.current = true;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('エラー', 'ログインが必要です');
+        setIsSaving(false);
+        isSavingRef.current = false;
+        return;
+      }
+
+      // 録音時間を確実に設定
+      const finalDuration = recordingDuration > 0 ? recordingDuration : recordingTime;
+
+      // 1. 音声ファイルをSupabase Storageにアップロード
+      let filePath = null;
+      try {
+        const { path, error: uploadError } = await uploadRecordingBlob(
+          user.id,
+          audioBlobRef.current,
+          'wav'
+        );
+
+        if (uploadError) {
+          // ファイルアップロードに失敗した場合でも録音データは保存する
+          filePath = null;
+        } else {
+          filePath = path;
+        }
+      } catch (uploadError) {
+        // ファイルアップロードエラーでも続行
+        filePath = null;
+      }
+
+      // 2. 録音レコードをデータベースに保存（ファイルパスなしでも保存）
+      const recordingTitle = title.trim() || '録音'; // タイトルが空の場合はデフォルトを使用
+      // 現在選択されている楽器IDを取得
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('selected_instrument_id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      const instrumentId = profile?.selected_instrument_id || null;
+      
+      const recordedAt = selectedDate ? new Date(selectedDate) : new Date();
+      logger.debug('録音保存開始:', {
+        title: recordingTitle,
+        instrumentId,
+        duration: finalDuration,
+        hasFilePath: !!filePath,
+        recordedAt: recordedAt.toISOString()
+      });
+      
+      const { data: savedRecording, error: saveError } = await saveRecording({
+        user_id: user.id,
+        instrument_id: instrumentId, // 現在の楽器IDを追加
+        song_id: selectedSongId, // 選択された楽曲IDを追加
+        title: recordingTitle,
+        memo: memo.trim(),
+        file_path: filePath || '', // ファイルパスがnullの場合は空文字列を使用
+        duration_seconds: finalDuration,
+        is_favorite: isFavorite,
+        recorded_at: recordedAt.toISOString(),
+      });
+
+      if (saveError) {
+        ErrorHandler.handle(saveError, '録音保存', true);
+        throw saveError;
+      }
+
+      logger.debug('録音保存成功:', savedRecording);
+
+      // 3. カレンダーデータ更新のためのカスタムイベントを発火
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
+          detail: { 
+            action: 'recording_saved', 
+            date: recordedAt,
+            recordingId: savedRecording?.id 
+          }
+        }));
+        console.log('📢 カレンダーデータ更新イベントを発火しました');
+      }
+
+      // 4. 録音データをonSaveコールバックに渡す（モーダル内に表示するため）
+      const audioData = {
+        title: recordingTitle,
+        memo: memo.trim(),
+        isFavorite: isFavorite,
+        duration: finalDuration,
+        audioUrl: filePath || audioUrl || '', // 保存されたファイルパスまたは元のURL
+        recordingId: savedRecording?.id // 保存された録音ID
+      };
+      
+      // onSaveコールバックを呼び出して録音データを渡す
+      onSave(audioData);
+
+      // 5. 録音動画ライブラリに保存（ローカル状態の更新）
+      // 録音データをローカル状態に追加（必要に応じて）
+      if (onRecordingSaved) {
+        try {
+          await onRecordingSaved();
+        } catch (error) {
+          console.error('❌ onRecordingSavedコールバックエラー:', error);
+        }
+      }
+
+      // 成功メッセージ（ファイルアップロードの状況に応じて）
+      const successMessage = filePath 
+        ? '録音データが録音ライブラリとSupabaseに保存されました' 
+        : '録音記録が録音ライブラリとSupabaseに保存されました（音声ファイルのアップロードは失敗）';
+      
+      // 録音モーダルを閉じる（親モーダルは開いたまま）
+      onClose();
+
+    } catch (error) {
+      console.error('💥 録音保存エラー:', error);
+      ErrorHandler.handle(error, 'recording_save');
+    } finally {
+      // 保存状態を必ずリセット
+      console.log('🔄 保存状態をリセット');
+      setIsSaving(false);
+      isSavingRef.current = false;
+    }
+  };
+
+  // 録音削除
+  const handleDelete = () => {
+    Alert.alert(
+      '録音削除',
+      'この録音を削除しますか？',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '削除',
+          style: 'destructive',
+          onPress: () => {
+            if (audioUrl) {
+              URL.revokeObjectURL(audioUrl);
+            }
+            setAudioUrl(null);
+            setTitle('');
+            setMemo('');
+            setIsFavorite(false);
+            setRecordingTime(0);
+            setRecordingDuration(0);
+            audioBlobRef.current = null;
+          }
+        }
+      ]
+    );
+  };
+
+  // 時間フォーマット
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  if (!visible) return null;
+
+  return (
+    <View style={[styles.container, { backgroundColor: currentTheme.background }]}>
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => {
+            if (onBack) {
+              onBack(); // カスタムの戻る動作
+            } else {
+              onClose(); // デフォルトの動作
+            }
+          }}
+        >
+          <Text style={[styles.backButtonText, { color: currentTheme.text }]}>← 戻る</Text>
+        </TouchableOpacity>
+        
+        <Text style={[styles.title, { color: currentTheme.text }]}>
+          演奏録音・再生
+        </Text>
+        
+        <View style={styles.closeButton} />
+      </View>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* 録音コントロール */}
+        <View style={styles.recordingSection}>
+          <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
+            録音コントロール
+          </Text>
+          
+          <View style={styles.recordingControls}>
+            {!isRecording ? (
+              <TouchableOpacity
+                style={[styles.recordButton, { backgroundColor: currentTheme.primary }]}
+                onPress={startRecording}
+              >
+                <Mic size={24} color="#FFFFFF" />
+                <Text style={styles.recordButtonText}>録音開始</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.stopButton, { backgroundColor: '#FF4444' }]}
+                onPress={() => stopRecording('manual')}
+              >
+                <MicOff size={24} color="#FFFFFF" />
+                <Text style={styles.stopButtonText}>録音停止</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* 録音時間表示 */}
+          <View style={styles.timeDisplay}>
+            <Text style={[styles.timeText, { color: currentTheme.text }]}>
+              {isRecording ? '録音中: ' : '録音時間: '}
+              {isRecording ? formatTime(recordingTime) : formatTime(recordingDuration)}
+            </Text>
+            {isRecording && (
+              <Text style={[styles.maxTimeText, { color: currentTheme.textSecondary }]}>
+                最大: {formatTime(MAX_RECORDING_TIME)}
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {/* 録音データ表示 */}
+        {audioUrl && (
+          <View style={styles.audioSection}>
+            <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
+              録音データ
+            </Text>
+            
+            <View style={styles.audioInfo}>
+              <Text style={[styles.audioDuration, { color: currentTheme.textSecondary }]}>
+                録音時間: {formatTime(recordingDuration)}
+              </Text>
+            </View>
+
+            {/* 再生コントロール */}
+            <View style={styles.playbackControls}>
+              {!isPlaying ? (
+                <TouchableOpacity
+                  style={[styles.playButton, { backgroundColor: currentTheme.primary }]}
+                  onPress={startPlayback}
+                >
+                  <Play size={20} color="#FFFFFF" />
+                  <Text style={styles.playButtonText}>再生</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.pauseButton, { backgroundColor: '#FF9800' }]}
+                  onPress={stopPlayback}
+                >
+                  <Pause size={20} color="#FFFFFF" />
+                  <Text style={styles.pauseButtonText}>停止</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* メタデータ入力 */}
+        {audioUrl && (
+          <View style={styles.metadataSection}>
+            <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
+              録音情報
+            </Text>
+            
+            {/* タイトル入力 */}
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: currentTheme.text }]}>タイトル（省略可）</Text>
+              <TextInput
+                style={[styles.input, { 
+                  borderColor: currentTheme.secondary,
+                  backgroundColor: currentTheme.surface,
+                  color: currentTheme.text
+                }]}
+                value={title}
+                onChangeText={setTitle}
+                placeholder="録音のタイトルを入力（省略可）"
+                placeholderTextColor={currentTheme.textSecondary}
+              />
+            </View>
+
+            {/* メモ入力 */}
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: currentTheme.text }]}>メモ</Text>
+              <TextInput
+                style={[styles.textArea, { 
+                  borderColor: currentTheme.secondary,
+                  backgroundColor: currentTheme.surface,
+                  color: currentTheme.text
+                }]}
+                value={memo}
+                onChangeText={setMemo}
+                placeholder="録音についてのメモを入力"
+                placeholderTextColor={currentTheme.textSecondary}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+
+            {/* お気に入り設定 */}
+            <View style={styles.favoriteSection}>
+              <TouchableOpacity
+                style={styles.favoriteButton}
+                onPress={() => setIsFavorite(!isFavorite)}
+              >
+                <Star 
+                  size={24} 
+                  color={isFavorite ? '#FFD700' : '#CCCCCC'} 
+                  fill={isFavorite ? '#FFD700' : 'none'}
+                />
+                <Text style={[styles.favoriteText, { color: currentTheme.text }]}>
+                  {isFavorite ? 'お気に入り' : 'お気に入りに追加'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {/* アクションボタン */}
+        {audioUrl && (
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={[styles.deleteButton, { backgroundColor: '#FF4444' }]}
+              onPress={handleDelete}
+              disabled={isSaving}
+            >
+              <Trash2 size={20} color="#FFFFFF" />
+              <Text style={styles.deleteButtonText}>削除</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.saveButton, 
+                { backgroundColor: currentTheme.primary },
+                isSaving && styles.disabledButton
+              ]}
+              onPress={handleSave}
+              disabled={isSaving}
+              activeOpacity={isSaving ? 1 : 0.7}
+            >
+              <Save size={20} color="#FFFFFF" />
+              <Text style={styles.saveButtonText}>
+                {isSaving ? '保存中...' : '保存'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+    backgroundColor: '#FFFFFF',
+  },
+  backButton: {
+    padding: 8,
+    minWidth: 60,
+    alignItems: 'flex-start',
+  },
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  closeButton: {
+    padding: 8,
+    minWidth: 60,
+    alignItems: 'flex-end',
+  },
+  content: {
+    flex: 1,
+    padding: 20,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 16,
+  },
+  recordingSection: {
+    marginBottom: 24,
+  },
+  recordingControls: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  recordButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    gap: 8,
+    minWidth: 180,
+    justifyContent: 'center',
+  },
+  recordButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  stopButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 16,
+    gap: 8,
+    minWidth: 180,
+    justifyContent: 'center',
+  },
+  stopButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  timeDisplay: {
+    alignItems: 'center',
+    gap: 4,
+  },
+  timeText: {
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  maxTimeText: {
+    fontSize: 14,
+  },
+  audioSection: {
+    marginBottom: 24,
+    padding: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    elevation: 4,
+  },
+  audioInfo: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  audioDuration: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  playbackControls: {
+    alignItems: 'center',
+  },
+  playButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 6,
+    minWidth: 120,
+    justifyContent: 'center',
+  },
+  playButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  pauseButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 6,
+    minWidth: 120,
+    justifyContent: 'center',
+  },
+  pauseButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  metadataSection: {
+    marginBottom: 24,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  input: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+  },
+  textArea: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  favoriteSection: {
+    marginTop: 8,
+  },
+  favoriteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  favoriteText: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+    marginBottom: 20,
+  },
+  saveButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 16,
+    gap: 8,
+  },
+  saveButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 16,
+    gap: 8,
+  },
+  deleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  disabledButton: {
+    opacity: 0.7,
+  },
+});
