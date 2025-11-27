@@ -31,7 +31,7 @@ jobs:
           cache: 'npm'
 
       - name: 依存関係のインストール
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Webビルド（GitHub Pages用）
         run: npm run build:web:github

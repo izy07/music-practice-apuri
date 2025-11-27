@@ -23,7 +23,7 @@ jobs:
           cache: 'npm'
 
       - name: 依存関係のインストール
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: テスト実行（モック使用）
         run: npm run test:ci
@@ -71,7 +71,7 @@ jobs:
           cache: 'npm'
 
       - name: 依存関係のインストール
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Supabase CLI のインストール
         run: |
@@ -123,7 +123,7 @@ jobs:
           cache: 'npm'
 
       - name: 依存関係のインストール
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: 型チェック
         run: npx tsc --noEmit
@@ -145,7 +145,7 @@ jobs:
           cache: 'npm'
 
       - name: 依存関係のインストール
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Web ビルド
         run: npm run build:web
@@ -173,7 +173,7 @@ jobs:
           cache: 'npm'
 
       - name: 依存関係のインストール
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: 脆弱性チェック
         run: npm audit --production

@@ -41,7 +41,7 @@ jobs:
           cache: 'npm'
 
       - name: 依存関係のインストール
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Supabase CLI のインストール
         run: npm install -g supabase
