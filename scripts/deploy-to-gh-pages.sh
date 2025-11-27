@@ -43,6 +43,8 @@ echo "📋 dist/の内容をコピー中..."
 cp dist/index.html . 2>/dev/null || true
 cp dist/favicon.ico . 2>/dev/null || true
 cp dist/metadata.json . 2>/dev/null || true
+# 404.htmlをコピー（SPAルーティング用）
+cp dist/404.html . 2>/dev/null || cp dist/index.html 404.html || true
 # _expoとassetsディレクトリをコピー
 cp -r dist/_expo . 2>/dev/null || true
 cp -r dist/assets . 2>/dev/null || true

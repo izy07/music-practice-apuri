@@ -80,5 +80,13 @@ if (fs.existsSync(expoStaticDir)) {
   // 必要に応じて、JSファイル内のパスも修正できます
 }
 
+// 404.htmlを作成（GitHub PagesでSPAのクライアントサイドルーティングを有効化）
+const html404Path = path.join(DIST_DIR, '404.html');
+if (fs.existsSync(indexPath)) {
+  const content = fs.readFileSync(indexPath, 'utf8');
+  fs.writeFileSync(html404Path, content, 'utf8');
+  console.log(`✅ ${html404Path} を作成しました（SPAルーティング用）`);
+}
+
 console.log(`✨ パス修正が完了しました！`);
 

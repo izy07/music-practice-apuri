@@ -158,6 +158,26 @@ export const updateSelectedInstrument = async (
     async () => {
       logger.debug(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:start`, { userId, instrumentId });
       
+      // instrument_idが存在するか確認（nullの場合はスキップ）
+      if (instrumentId) {
+        const { data: instrumentExists, error: checkError } = await supabase
+          .from('instruments')
+          .select('id')
+          .eq('id', instrumentId)
+          .maybeSingle();
+        
+        if (checkError) {
+          logger.error(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:checkError`, checkError);
+          throw checkError;
+        }
+        
+        if (!instrumentExists) {
+          const error = new Error(`楽器ID ${instrumentId} が存在しません`);
+          logger.error(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:invalidInstrumentId`, { instrumentId });
+          throw error;
+        }
+      }
+      
       const { error } = await supabase
         .from('user_profiles')
         .update({

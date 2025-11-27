@@ -137,10 +137,28 @@ export default function InstrumentSelectionScreen() {
         return;
       }
 
+      // instrument_idが存在するか確認
+      if (selectedInstrumentId && selectedInstrumentId !== '550e8400-e29b-41d4-a716-446655440016') {
+        const { data: instrumentExists } = await supabase
+          .from('instruments')
+          .select('id')
+          .eq('id', selectedInstrumentId)
+          .maybeSingle();
+        
+        if (!instrumentExists) {
+          ErrorHandler.handle(
+            new Error(`楽器ID ${selectedInstrumentId} が存在しません`),
+            'instrument_save'
+          );
+          setLoading(false);
+          return;
+        }
+      }
+
       let error;
       if (existingProfile) {
         const updateData: any = {
-          selected_instrument_id: selectedInstrumentId,
+          selected_instrument_id: selectedInstrumentId || null,
           updated_at: new Date().toISOString()
         };
         
@@ -157,7 +175,7 @@ export default function InstrumentSelectionScreen() {
       } else {
         const upsertData: any = {
           user_id: user.id,
-          selected_instrument_id: selectedInstrumentId,
+          selected_instrument_id: selectedInstrumentId || null,
           updated_at: new Date().toISOString()
         };
         

@@ -408,16 +408,14 @@ export default function BasicPracticeScreen() {
                   </TouchableOpacity>
                 </View>
                 <Text style={[styles.basicInfoText, { color: currentTheme.textSecondary }]}>
-                  {/* instrumentBasics データが不足しているため一時的にコメントアウト */}
-                  {'正しい姿勢を保ちましょう'}
+                  {instrumentBasics[instrumentKey]?.posture || instrumentBasics.other.posture}
                 </Text>
               </View>
               
               <View style={styles.basicInfoItem}>
                 <Text style={[styles.basicInfoLabel, { color: currentTheme.text }]}>楽器の持ち方</Text>
                 <Text style={[styles.basicInfoText, { color: currentTheme.textSecondary }]}>
-                  {/* instrumentBasics データが不足しているため一時的にコメントアウト */}
-                  {'正しい持ち方を学びましょう'}
+                  {instrumentBasics[instrumentKey]?.grip || instrumentBasics.other.grip}
                 </Text>
               </View>
             </View>
