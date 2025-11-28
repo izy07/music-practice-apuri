@@ -9,10 +9,12 @@ import { useTimer } from '@/hooks/useTimer';
 import { formatLocalDate } from '@/lib/dateUtils';
 import { COMMON_STYLES } from '@/lib/appStyles';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
-import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { savePracticeSessionWithIntegration } from '@/repositories/practiceSessionRepository';
 import { logger } from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import Stopwatch from '@/components/timer/Stopwatch';
+import { styles } from '@/lib/tabs/timer/styles';
 
 const { width } = Dimensions.get('window');
 
@@ -259,7 +261,7 @@ const settingsReducer = (state: SettingsState, action: SettingsAction): Settings
 };
 
 export default function TimerScreen() {
-  const { isAuthenticated, isLoading } = useAuthAdvanced();
+  const { isAuthenticated, isLoading, user } = useAuthAdvanced();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const [mode, setMode] = useState<'timer' | 'stopwatch'>('timer');
   
@@ -314,23 +316,15 @@ export default function TimerScreen() {
   const timerPresetRef = useRef<number>(0); // タイマー設定時間を保存
   const wasTimerRunningRef = useRef<boolean>(false); // 前回のタイマー実行状態を保存
   const audioContextRef = useRef<AudioContext | null>(null); // AudioContextを保存
-  const [lapTimes, setLapTimes] = useState<Array<{ id: number; time: number; lapTime: number }>>([]); // ラップタイムのリスト
-  const lapIdRef = useRef<number>(0); // ラップID用のカウンター
-  const previousLapTimeRef = useRef<number>(0); // 前回のラップタイム
   
   const {
     timerSeconds,
-    stopwatchSeconds,
     isTimerRunning,
-    isStopwatchRunning,
     startTimer,
     pauseTimer,
     resetTimer,
     clearTimer,
     setTimerPreset: originalSetTimerPreset,
-    startStopwatch,
-    pauseStopwatch,
-    resetStopwatch,
   } = useTimer(() => {
     // タイマー完了時の処理
     logger.debug('タイマー完了コールバック実行', { soundOn: settings.soundOn, vibrateOn: settings.vibrateOn });
@@ -425,101 +419,26 @@ export default function TimerScreen() {
   // 既存記録との統合処理
   const savePracticeRecordWithIntegration = async (minutes: number) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      if (!user || !user.id) {
         throw new Error('ユーザーが認証されていません');
       }
 
-      const today = formatLocalDate(new Date());
-      
-      // 今日の既存の練習記録を取得（全ての記録）
-      let query = supabase
-        .from('practice_sessions')
-        .select('id, duration_minutes, input_method, content')
-        .eq('user_id', user.id)
-        .eq('practice_date', today);
-      
-      // 楽器が選択されている場合はフィルタリング
-      if (selectedInstrument) {
-        query = query.eq('instrument_id', selectedInstrument);
-      } else {
-        query = query.is('instrument_id', null);
-      }
-      
-      const { data: existingRecords, error: fetchError } = await query;
+      const result = await savePracticeSessionWithIntegration(
+        user.id,
+        minutes,
+        {
+          instrumentId: selectedInstrument || null,
+          content: 'タイマー',
+          inputMethod: 'timer',
+          existingContentPrefix: 'タイマー'
+        }
+      );
 
-      // テーブルが存在しない場合のエラーハンドリング
-      if (fetchError && fetchError.code === 'PGRST205') {
-        ErrorHandler.handle(fetchError, 'practice_sessionsテーブル読み込み', true);
-        logger.error('practice_sessionsテーブルが存在しません:', fetchError);
-        Alert.alert('エラー', 'データベースの設定が完了していません。管理者にお問い合わせください。');
-        return false;
+      if (!result.success) {
+        throw new Error(result.error?.message || '練習記録の保存に失敗しました');
       }
-
-      if (existingRecords && existingRecords.length > 0) {
-        // 既存の記録がある場合は時間を加算して更新
-        const existing = existingRecords[0];
-        const totalMinutes = existing.duration_minutes + minutes;
-        
-        // 既存の記録を更新
-        // contentから時間詳細を削除
-        let existingContent = existing.content || '';
-        existingContent = existingContent
-          .replace(/\s*\(累計\d+分\)/g, '')
-          .replace(/\s*累計\d+分/g, '')
-          .replace(/\s*\+\s*[^,]+?\d+分/g, '')
-          .replace(/\s*[^,]+?\d+分/g, '')
-          .replace(/練習記録/g, '')
-          .replace(/^[\s,]+|[\s,]+$/g, '')
-          .replace(/,\s*,/g, ',')
-          .trim();
-        
-        const updateContent = existingContent
-          ? `${existingContent}, タイマー`
-          : 'タイマー';
-        
-        const { error } = await supabase
-          .from('practice_sessions')
-          .update({
-            duration_minutes: totalMinutes,
-            content: updateContent,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existing.id);
-        
-        if (error) {
-          throw error;
-        }
-        
-        // 他の記録を削除（統合のため）
-        if (existingRecords.length > 1) {
-          const otherRecordIds = existingRecords.slice(1).map((record: any) => record.id);
-          await supabase
-            .from('practice_sessions')
-            .delete()
-            .in('id', otherRecordIds);
-        }
-        
-        logger.info(`タイマー記録を追加: ${existing.duration_minutes}分 → ${totalMinutes}分`);
-      } else {
-        // 新規記録として挿入
-        const { error } = await supabase
-          .from('practice_sessions')
-          .insert({
-            user_id: user.id,
-            practice_date: today,
-            duration_minutes: minutes,
-            content: 'タイマーで計測した練習',
-            input_method: 'timer',
-            instrument_id: selectedInstrument || null
-          });
-        
-        if (error) {
-          throw error;
-        }
-        
-        logger.info(`新規タイマー記録を保存: ${minutes}分`);
-      }
+      
+      logger.info(`タイマー記録を保存: ${minutes}分`);
       
       // カレンダー画面に更新を通知
       if (typeof window !== 'undefined') {
@@ -1035,37 +954,25 @@ export default function TimerScreen() {
   };
 
   const handleStartPause = () => {
-    if (mode === 'timer') {
-      if (timerSeconds === 0 && !isTimerRunning) {
-        // Set timer if not set
-        const totalSeconds = customTime.hours * 3600 + customTime.minutes * 60 + customTime.seconds;
-        if (totalSeconds > 0) {
-          logger.debug('Setting timer preset to:', totalSeconds);
-          setTimerPreset(totalSeconds);
-          setTimeout(() => startTimer(), 100);
-        } else {
-          Alert.alert('エラー', 'タイマー時間を設定してください');
-        }
-      } else if (isTimerRunning) {
-        pauseTimer();
+    if (timerSeconds === 0 && !isTimerRunning) {
+      // Set timer if not set
+      const totalSeconds = customTime.hours * 3600 + customTime.minutes * 60 + customTime.seconds;
+      if (totalSeconds > 0) {
+        logger.debug('Setting timer preset to:', totalSeconds);
+        setTimerPreset(totalSeconds);
+        setTimeout(() => startTimer(), 100);
       } else {
-        startTimer();
+        Alert.alert('エラー', 'タイマー時間を設定してください');
       }
+    } else if (isTimerRunning) {
+      pauseTimer();
     } else {
-      if (isStopwatchRunning) {
-        pauseStopwatch();
-      } else {
-        startStopwatch();
-      }
+      startTimer();
     }
   };
 
   const handleReset = () => {
-    if (mode === 'timer') {
-      resetTimer();
-    } else {
-      resetStopwatch();
-    }
+    resetTimer();
   };
 
   const handleClear = () => {
@@ -1121,8 +1028,8 @@ export default function TimerScreen() {
     }
   };
 
-  const currentSeconds = mode === 'timer' ? timerSeconds : stopwatchSeconds;
-  const isRunning = mode === 'timer' ? isTimerRunning : isStopwatchRunning;
+  const currentSeconds = timerSeconds;
+  const isRunning = isTimerRunning;
 
   // プログレス計算（左回りで時間の経過とともに減る）
   const totalTimerSeconds = customTime.hours * 3600 + customTime.minutes * 60 + customTime.seconds;
@@ -1269,54 +1176,12 @@ export default function TimerScreen() {
 
           {/* ストップウォッチモード：シンプルな表示 */}
           {mode === 'stopwatch' && (
-            <View style={styles.stopwatchContainer}>
-              {/* 時間表示 */}
-              <View style={[styles.stopwatchTimeContainer, { backgroundColor: currentTheme.surface }]}>
-                <Text style={[styles.stopwatchTime, { color: currentTheme.text }]}>
-                  {formatTime(currentSeconds)}
-                </Text>
-              </View>
-              
-              {/* ラップタイムリスト */}
-              {lapTimes.length > 0 && (
-                <View style={[styles.lapTimesContainer, { backgroundColor: currentTheme.surface }]}>
-                  <View style={styles.lapTimesHeader}>
-                    <Text style={[styles.lapTimesTitle, { color: currentTheme.text }]}>
-                      ラップ ({lapTimes.length})
-                    </Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setLapTimes([]);
-                        lapIdRef.current = 0;
-                        previousLapTimeRef.current = 0;
-                      }}
-                    >
-                      <Text style={[styles.clearLapsButton, { color: currentTheme.primary }]}>クリア</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <ScrollView style={styles.lapTimesList} showsVerticalScrollIndicator={false}>
-                    {lapTimes.map((lap, index) => (
-                      <View key={lap.id} style={[styles.lapTimeItem, { borderBottomColor: currentTheme.textSecondary + '20' }]}>
-                        <Text style={[styles.lapNumber, { color: currentTheme.textSecondary }]}>
-                          #{lapTimes.length - index}
-                        </Text>
-                        <Text style={[styles.lapTimeText, { color: currentTheme.text }]}>
-                          {formatTime(lap.lapTime)}
-                        </Text>
-                        <Text style={[styles.lapTotalTime, { color: currentTheme.textSecondary }]}>
-                          {formatTime(lap.time)}
-                        </Text>
-                      </View>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
-            </View>
+            <Stopwatch />
           )}
 
           {/* コントロールボタン */}
           <View style={styles.controlButtonsContainer}>
-            {mode === 'timer' ? (
+            {mode === 'timer' && (
               // タイマーモード：円形ボタン
               <>
                 <TouchableOpacity
@@ -1352,69 +1217,6 @@ export default function TimerScreen() {
                   )}
                 </TouchableOpacity>
               </>
-            ) : (
-              // ストップウォッチモード：シンプルなボタンレイアウト
-              <View style={styles.stopwatchControls}>
-                {isStopwatchRunning ? (
-                  // 計測中：ラップボタンと一時停止ボタン
-                  <>
-                    <TouchableOpacity
-                      style={[styles.stopwatchButton, { backgroundColor: currentTheme.secondary }]}
-                      onPress={() => {
-                        const currentLapTime = currentSeconds - previousLapTimeRef.current;
-                        const newLap = {
-                          id: lapIdRef.current++,
-                          time: currentSeconds,
-                          lapTime: currentLapTime,
-                        };
-                        setLapTimes(prev => [newLap, ...prev]);
-                        previousLapTimeRef.current = currentSeconds;
-                      }}
-                    >
-                      <Text style={[styles.stopwatchButtonText, { color: currentTheme.text }]}>ラップ</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.stopwatchButton, styles.stopwatchMainButton, { 
-                        backgroundColor: currentTheme.primary
-                      }]}
-                      onPress={pauseStopwatch}
-                    >
-                      <Pause size={28} color={currentTheme.surface} />
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  // 停止中：開始ボタンとリセットボタン
-                  <>
-                    {currentSeconds > 0 && (
-                      <TouchableOpacity
-                        style={[styles.stopwatchButton, { backgroundColor: currentTheme.secondary }]}
-                        onPress={() => {
-                          resetStopwatch();
-                          setLapTimes([]);
-                          lapIdRef.current = 0;
-                          previousLapTimeRef.current = 0;
-                        }}
-                      >
-                        <RotateCcw size={24} color={currentTheme.text} />
-                      </TouchableOpacity>
-                    )}
-                    <TouchableOpacity
-                      style={[styles.stopwatchButton, styles.stopwatchMainButton, { 
-                        backgroundColor: currentTheme.primary
-                      }]}
-                      onPress={() => {
-                        startStopwatch();
-                        // リセット後、最初のラップを記録する準備
-                        if (currentSeconds === 0) {
-                          previousLapTimeRef.current = 0;
-                        }
-                      }}
-                    >
-                      <Play size={28} color={currentTheme.surface} />
-                    </TouchableOpacity>
-                  </>
-                )}
-              </View>
             )}
           </View>
           
@@ -1587,343 +1389,3 @@ export default function TimerScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8F9FA',
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingBottom: 100,
-  },
-  modeToggle: {
-    flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 0,
-    marginTop: 20,
-    marginBottom: 12,
-    elevation: 4,
-    overflow: 'hidden',
-  },
-  modeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    minHeight: 44,
-    borderRadius: 12,
-    gap: 6,
-  },
-  modeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 0,
-  },
-  timerContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    paddingVertical: 4,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    marginBottom: 8,
-    elevation: 0,
-    position: 'relative',
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-  },
-  circularProgressContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    marginVertical: 0,
-  },
-  timerCenterContent: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  timerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#FFFFFF',
-  },
-  timerDisplay: {
-    fontSize: 48,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    color: '#00D4FF',
-    marginBottom: 8,
-  },
-  alarmTimeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  alarmIcon: {
-    fontSize: 16,
-    marginRight: 4,
-  },
-  alarmTime: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FF6B35',
-  },
-  controlButtonsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 20,
-    marginTop: 20,
-  },
-  controlButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 0,
-  },
-  completedIndicator: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    backgroundColor: '#4CAF50',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  completedText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  timerSettings: {
-    marginBottom: 4,
-  },
-  customTimeContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 12,
-    marginBottom: 6,
-    
-    
-    elevation: 4,
-    overflow: 'hidden',
-    width: '100%',
-  },
-  wheelsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 8,
-  },
-  wheelBlock: {
-    alignItems: 'center',
-  },
-  wheelLabel: {
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  wheelColon: {
-    fontSize: 18,
-    fontWeight: '700',
-    marginHorizontal: 4,
-  },
-  applyButton: {
-    backgroundColor: '#8B4513',
-    borderRadius: 12,
-    paddingVertical: 3,
-    alignItems: 'center',
-  },
-  applyButtonText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  settingsContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
-    
-    
-    elevation: 4,
-  },
-  settingsTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#333333',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  settingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
-  },
-  settingLeft: {
-    flex: 1,
-    marginRight: 16,
-  },
-  settingLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  settingDescription: {
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  testSoundButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    marginRight: 8,
-  },
-  testSoundButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  smallChoiceButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    marginLeft: 6,
-  },
-  stopwatchContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 20,
-    width: '100%',
-  },
-  stopwatchTimeContainer: {
-    width: '100%',
-    paddingVertical: 40,
-    paddingHorizontal: 20,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    marginBottom: 20,
-  },
-  stopwatchTime: {
-    fontSize: 80,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    letterSpacing: 2,
-    textAlign: 'center',
-  },
-  stopwatchControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    width: '100%',
-    paddingHorizontal: 20,
-  },
-  stopwatchButton: {
-    minWidth: 100,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  stopwatchMainButton: {
-    minWidth: 120,
-    height: 64,
-    borderRadius: 32,
-  },
-  stopwatchButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  lapTimesContainer: {
-    width: '100%',
-    maxWidth: 400,
-    marginTop: 20,
-    padding: 16,
-    borderRadius: 16,
-    maxHeight: 300,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
-  lapTimesHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  lapTimesTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  clearLapsButton: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  lapTimesList: {
-    maxHeight: 240,
-  },
-  lapTimeItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    borderBottomWidth: 1,
-  },
-  lapNumber: {
-    fontSize: 16,
-    fontWeight: '600',
-    minWidth: 50,
-    color: '#666',
-  },
-  lapTimeText: {
-    fontSize: 20,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    flex: 1,
-    textAlign: 'center',
-    letterSpacing: 1,
-  },
-  lapTotalTime: {
-    fontSize: 16,
-    fontWeight: '500',
-    fontFamily: 'monospace',
-    minWidth: 90,
-    textAlign: 'right',
-    color: '#999',
-  },
-  largeControlButton: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-  },
-});

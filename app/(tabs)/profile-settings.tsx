@@ -3,7 +3,6 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, User, Music, Target, Plus, Minus, Edit, Trash2, Award, Users, Clock, MapPin, Camera, Calendar } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { supabase } from '@/lib/supabase';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
@@ -15,8 +14,13 @@ import SafeView from '@/components/SafeView';
 import * as ImagePicker from 'expo-image-picker';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
-import { getUserProfile, upsertUserProfile, updateAvatarUrl } from '@/repositories/userRepository';
+import { getUserProfile, upsertUserProfile, updateAvatarUrl, getCurrentUser, deleteBreakPeriod, deletePastOrganization, deleteAward, deletePerformance } from '@/repositories/userRepository';
 import type { UserProfile } from '@/types/models';
+import PastOrgEditorModal from '@/components/profile-settings/PastOrgEditorModal';
+import AwardEditorModal from '@/components/profile-settings/AwardEditorModal';
+import PerformanceEditorModal from '@/components/profile-settings/PerformanceEditorModal';
+import AgeSelectorModal from '@/components/profile-settings/AgeSelectorModal';
+import { styles } from '@/lib/tabs/profile-settings/styles';
 // DateTimePickerは環境によって未導入の場合があるため動的ロード
 let DateTimePicker: any;
 try {
@@ -76,25 +80,18 @@ export default function ProfileSettingsScreen() {
 
   // 過去の所属団体 追加用フルスクリーンモーダル
   const [showPastOrgEditor, setShowPastOrgEditor] = useState(false);
-  const [draftPastOrg, setDraftPastOrg] = useState<{ name: string; startYm: string; endYm: string }>({
-    name: '',
-    startYm: '',
-    endYm: '',
-  });
   const [perfForm, setPerfForm] = useState({ title: '', venue: '', date: '', role: '', description: '' });
 
   // 受賞追加用モーダル
   const [showAwardEditor, setShowAwardEditor] = useState(false);
-  const [draftAward, setDraftAward] = useState('');
   // 演奏経験追加用モーダル
   const [showPerformanceEditor, setShowPerformanceEditor] = useState(false);
-  const [draftPerformance, setDraftPerformance] = useState('');
 
   // getCurrentUser関数を先に定義
-  const getCurrentUser = async () => {
+  const loadCurrentUser = async () => {
     try {
       setLoading(true);
-      const { data: { user } } = await supabase.auth.getUser();
+      const user = await getCurrentUser();
       if (user) {
         setCurrentUser(user);
         
@@ -152,7 +149,7 @@ export default function ProfileSettingsScreen() {
   useEffect(() => {
     if (isLoading) return;
     if (!isAuthenticated) return; // 認証されていない場合は早期リターン
-    getCurrentUser();
+    loadCurrentUser();
   }, [isLoading]);
 
   // 誕生日または音楽開始年齢が変更された時の処理
@@ -448,31 +445,43 @@ export default function ProfileSettingsScreen() {
   };
 
   // 削除関数
-  const deleteBreakPeriod = async (id: string) => {
+  const handleDeleteBreakPeriod = async (id: string) => {
     try {
-      await supabase.from('user_break_periods').delete().eq('id', id);
+      const result = await deleteBreakPeriod(id);
+      if (result.error) {
+        ErrorHandler.handle(result.error, '休止期間の削除', false);
+        return;
+      }
       setBreakPeriods(prev => prev.filter(item => item.id !== id));
-            } catch (error) {
-          // Delete break period error
-        }
+    } catch (error) {
+      ErrorHandler.handle(error, '休止期間の削除', false);
+    }
   };
 
-  const deletePastOrganization = async (id: string) => {
+  const handleDeletePastOrganization = async (id: string) => {
     try {
-      await supabase.from('user_past_organizations').delete().eq('id', id);
+      const result = await deletePastOrganization(id);
+      if (result.error) {
+        ErrorHandler.handle(result.error, '過去の所属団体の削除', false);
+        return;
+      }
       setPastOrganizations(prev => prev.filter(item => item.id !== id));
-            } catch (error) {
-          // Delete past organization error
-        }
+    } catch (error) {
+      ErrorHandler.handle(error, '過去の所属団体の削除', false);
+    }
   };
 
-  const deleteAward = async (id: string) => {
+  const handleDeleteAward = async (id: string) => {
     try {
-      await supabase.from('user_awards').delete().eq('id', id);
+      const result = await deleteAward(id);
+      if (result.error) {
+        ErrorHandler.handle(result.error, '受賞の削除', false);
+        return;
+      }
       setAwards(prev => prev.filter(item => item.id !== id));
-            } catch (error) {
-          // Delete award error
-        }
+    } catch (error) {
+      ErrorHandler.handle(error, '受賞の削除', false);
+    }
   };
 
   // 追加保存関数（経歴・実績）
@@ -571,13 +580,17 @@ export default function ProfileSettingsScreen() {
     }
   };
 
-  const deletePerformance = async (id: string) => {
+  const handleDeletePerformance = async (id: string) => {
     try {
-      await supabase.from('user_performances').delete().eq('id', id);
+      const result = await deletePerformance(id);
+      if (result.error) {
+        ErrorHandler.handle(result.error, '演奏経験の削除', false);
+        return;
+      }
       setPerformances(prev => prev.filter(item => item.id !== id));
-            } catch (error) {
-          // Delete performance error
-        }
+    } catch (error) {
+      ErrorHandler.handle(error, '演奏経験の削除', false);
+    }
   };
 
   const saveProfile = async () => {
@@ -662,15 +675,6 @@ export default function ProfileSettingsScreen() {
   const formatBirthday = (date: Date | null) => {
     if (!date) return '誕生日を選択';
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
-  };
-
-  // 年齢選択肢を生成（3歳から80歳まで）
-  const generateAgeOptions = () => {
-    const ages = [];
-    for (let i = 3; i <= 80; i++) {
-      ages.push(i);
-    }
-    return ages;
   };
 
   const handleAgeSelection = (age: number) => {
@@ -1045,7 +1049,7 @@ export default function ProfileSettingsScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.actionButton}
-                      onPress={() => deleteBreakPeriod(period.id)}
+                      onPress={() => handleDeleteBreakPeriod(period.id)}
                     >
                       <Trash2 size={16} color={currentTheme.secondary} />
                     </TouchableOpacity>
@@ -1210,163 +1214,38 @@ export default function ProfileSettingsScreen() {
           </TouchableOpacity>
         </View>
       </ScrollView>
-      {/* 過去の所属団体 追加用モーダル */}
-      <Modal visible={showPastOrgEditor} animationType="none" presentationStyle="fullScreen">
-        <SafeView>
-          <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}> 
-            <TouchableOpacity style={styles.headerBack} onPress={() => setShowPastOrgEditor(false)}>
-              <ArrowLeft size={24} color={currentTheme.text} />
-            </TouchableOpacity>
-            <Text style={[styles.headerTitle, { color: currentTheme.text }]}>所属団体を追加</Text>
-            <View style={{ width: 24 }} />
-          </View>
-          <ScrollView style={styles.content}>
-            <View style={styles.subSection}>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={[styles.input, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary, color: currentTheme.text }]}
-                  placeholder="例: ○○吹奏楽部 2020-04〜2023-03"
-                  placeholderTextColor={currentTheme.textSecondary}
-                  value={draftPastOrg.name}
-                  onChangeText={(t) => setDraftPastOrg(s => ({ ...s, name: t }))}
-                />
-              </View>
-              <TouchableOpacity
-                style={[styles.saveAllButton, { backgroundColor: currentTheme.primary }]}
-                onPress={() => {
-                  setPastOrgs((rows) => [...rows, { name: draftPastOrg.name, startYm: '', endYm: '' }]);
-                  setShowPastOrgEditor(false);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.saveAllButtonText}>この内容で追加</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </SafeView>
-      </Modal>
-
-      {/* 受賞追加用モーダル */}
-      <Modal visible={showAwardEditor} animationType="none" presentationStyle="fullScreen">
-        <SafeView>
-          <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}> 
-            <TouchableOpacity style={styles.headerBack} onPress={() => setShowAwardEditor(false)}>
-              <ArrowLeft size={24} color={currentTheme.text} />
-            </TouchableOpacity>
-            <Text style={[styles.headerTitle, { color: currentTheme.text }]}>受賞/実績を追加</Text>
-            <View style={{ width: 24 }} />
-          </View>
-          <ScrollView style={styles.content}>
-            <View style={styles.subSection}>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={[styles.input, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary, color: currentTheme.text }]}
-                  placeholder="例: ○○コンクール 金賞 2022-06"
-                  placeholderTextColor={currentTheme.textSecondary}
-                  value={draftAward}
-                  onChangeText={setDraftAward}
-                />
-              </View>
-              <TouchableOpacity
-                style={[styles.saveAllButton, { backgroundColor: currentTheme.primary }]}
-                onPress={() => {
-                  setAwardsEdit((rows) => [...rows, { title: draftAward, dateYm: '', result: '' }]);
-                  setShowAwardEditor(false);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.saveAllButtonText}>この内容で追加</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </SafeView>
-      </Modal>
-
-      {/* 演奏経験追加用モーダル */}
-      <Modal visible={showPerformanceEditor} animationType="none" presentationStyle="fullScreen">
-        <SafeView>
-          <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}> 
-            <TouchableOpacity style={styles.headerBack} onPress={() => setShowPerformanceEditor(false)}>
-              <ArrowLeft size={24} color={currentTheme.text} />
-            </TouchableOpacity>
-            <Text style={[styles.headerTitle, { color: currentTheme.text }]}>演奏経験・実績を追加</Text>
-            <View style={{ width: 24 }} />
-          </View>
-          <ScrollView style={styles.content}>
-            <View style={styles.subSection}>
-              <View style={styles.inputContainer}>
-                <TextInput
-                  style={[styles.input, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary, color: currentTheme.text }]}
-                  placeholder="例: 定期演奏会 ソロ 2023-02"
-                  placeholderTextColor={currentTheme.textSecondary}
-                  value={draftPerformance}
-                  onChangeText={setDraftPerformance}
-                />
-              </View>
-              <TouchableOpacity
-                style={[styles.saveAllButton, { backgroundColor: currentTheme.primary }]}
-                onPress={() => {
-                  setPerformancesEdit((rows) => [...rows, { title: draftPerformance }]);
-                  setShowPerformanceEditor(false);
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.saveAllButtonText}>この内容で追加</Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
-        </SafeView>
-      </Modal>
-
-      {/* 年齢選択モーダル */}
-      <Modal
+      
+      {/* モーダルコンポーネント */}
+      <PastOrgEditorModal
+        visible={showPastOrgEditor}
+        onClose={() => setShowPastOrgEditor(false)}
+        onSave={(name) => {
+          setPastOrgs((rows) => [...rows, { name, startYm: '', endYm: '' }]);
+        }}
+      />
+      
+      <AwardEditorModal
+        visible={showAwardEditor}
+        onClose={() => setShowAwardEditor(false)}
+        onSave={(title) => {
+          setAwardsEdit((rows) => [...rows, { title, dateYm: '', result: '' }]);
+        }}
+      />
+      
+      <PerformanceEditorModal
+        visible={showPerformanceEditor}
+        onClose={() => setShowPerformanceEditor(false)}
+        onSave={(title) => {
+          setPerformancesEdit((rows) => [...rows, { title }]);
+        }}
+      />
+      
+      <AgeSelectorModal
         visible={showAgeSelectorModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowAgeSelectorModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.ageSelectorModal, { backgroundColor: currentTheme.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>音楽開始年齢を選択</Text>
-              <TouchableOpacity
-                style={styles.modalCloseButton}
-                onPress={() => setShowAgeSelectorModal(false)}
-              >
-                <Text style={[styles.modalCloseText, { color: currentTheme.textSecondary }]}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={styles.ageGridContainer} showsVerticalScrollIndicator={false}>
-              <View style={styles.ageGrid}>
-                {generateAgeOptions().map((age) => (
-                  <TouchableOpacity
-                    key={age}
-                    style={[
-                      styles.ageOption,
-                      { 
-                        backgroundColor: musicStartAge === age.toString() ? currentTheme.primary : currentTheme.background,
-                        borderColor: currentTheme.secondary
-                      }
-                    ]}
-                    onPress={() => handleAgeSelection(age)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={[
-                      styles.ageOptionText,
-                      { 
-                        color: musicStartAge === age.toString() ? '#FFFFFF' : currentTheme.text
-                      }
-                    ]}>
-                      {age}歳
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+        selectedAge={musicStartAge}
+        onClose={() => setShowAgeSelectorModal(false)}
+        onSelect={handleAgeSelection}
+      />
 
       {/* 誕生日選択DateTimePicker - モバイルのみ */}
       {showBirthdayPicker && Platform.OS !== 'web' && (
@@ -1382,676 +1261,3 @@ export default function ProfileSettingsScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  headerCenter: {
-    flex: 1,
-    alignItems: 'center',
-    marginHorizontal: 16,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    fontWeight: '400',
-  },
-  saveButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  saveButtonDisabled: {
-    backgroundColor: '#CCCCCC',
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 12,
-  },
-  // Modern Card Styles
-  modernCard: {
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 14,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  cardHeaderText: {
-    flex: 1,
-  },
-  cardTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 2,
-  },
-  cardSubtitle: {
-    fontSize: 12,
-    fontWeight: '400',
-  },
-  inputGroup: {
-    padding: 14,
-    paddingTop: 10,
-  },
-  inputWrapper: {
-    marginBottom: 12,
-  },
-  modernLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  modernInput: {
-    borderWidth: 2,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  // New Design Styles
-  profileOverviewCard: {
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 6,
-    alignItems: 'center',
-  },
-  avatarContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-    alignSelf: 'center',
-    position: 'relative',
-  },
-  avatarImage: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-  },
-  cameraIcon: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  profileInfo: {
-    alignItems: 'center',
-    width: '100%',
-  },
-  profileName: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 0,
-  },
-  profileEmail: {
-    fontSize: 12,
-    fontWeight: '400',
-    marginBottom: 2,
-  },
-  profileOrganization: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  infoSection: {
-    borderRadius: 16,
-    marginBottom: 12,
-    paddingHorizontal: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  sectionTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.05)',
-  },
-  sectionIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  formGroup: {
-    padding: 12,
-  },
-  formRow: {
-    marginBottom: 6,
-  },
-  formItem: {
-    marginBottom: 4,
-  },
-  formLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 6,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
-  },
-  formInput: {
-    borderWidth: 2,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  saveButtonNew: {
-    margin: 12,
-    marginTop: 6,
-    paddingVertical: 10,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  careerTabs: {
-    flexDirection: 'row',
-    padding: 12,
-    paddingTop: 8,
-    gap: 8,
-  },
-  careerTab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 10,
-    gap: 6,
-  },
-  careerTabText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  section: {
-    borderRadius: 16,
-    padding: 20,
-    marginTop: 20,
-    elevation: 4,
-  },
-  basicInfoSection: {
-    borderRadius: 16,
-    padding: 14,
-    marginTop: 12,
-    marginBottom: 6,
-    elevation: 4,
-  },
-  instrumentSection: {
-    borderRadius: 16,
-    padding: 14,
-    marginTop: 6,
-    marginBottom: 6,
-    elevation: 4,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  sectionTitleOld: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginLeft: 12,
-  },
-  sectionDescription: {
-    fontSize: 14,
-    marginBottom: 16,
-  },
-  input: {
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 15,
-    borderWidth: 1,
-    marginBottom: 6,
-  },
-  inputWrapperOld: {
-    position: 'relative',
-  },
-  clearButton: {
-    position: 'absolute',
-    right: 12,
-    top: 12,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#00000010',
-    zIndex: 10,
-    elevation: 10,
-  },
-  clearButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  helpText: {
-    fontSize: 12,
-    fontStyle: 'italic',
-  },
-  birthdayErrorText: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  datePickerButton: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  datePickerButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  birthdayRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  dateInputSmall: {
-    borderWidth: 2,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    width: 90,
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  dateInputXs: {
-    borderWidth: 2,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    width: 70,
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  dateSep: {
-    marginHorizontal: 4,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '700',
-    marginLeft: 6,
-  },
-  instrumentGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
-  instrumentItem: {
-    width: '23%',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    alignItems: 'center',
-    borderWidth: 2,
-    minHeight: 80,
-    justifyContent: 'center',
-    
-    
-    
-    elevation: 3,
-  },
-  instrumentContent: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  instrumentEmoji: {
-    fontSize: 20,
-    marginBottom: 4,
-  },
-  instrumentName: {
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 2,
-    textAlign: 'center',
-  },
-  instrumentNameEn: {
-    fontSize: 10,
-    textAlign: 'center',
-  },
-  levelContainer: {
-    gap: 12,
-  },
-  levelItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 2,
-  },
-  levelContent: {
-    flex: 1,
-  },
-  levelName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  levelDescription: {
-    fontSize: 14,
-  },
-  levelCheckmark: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkmarkText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  // 新しいスタイル
-  inputRow: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 8,
-  },
-  inputContainer: {
-    flex: 1,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#495057',
-  },
-  experienceDisplay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    padding: 12,
-    backgroundColor: '#E3F2FD',
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  experienceText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  subSection: {
-    marginBottom: 10,
-  },
-  subSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  subSectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  addButton: {
-    width: 32,
-    height: 32,
-    padding: 6,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  careerItem: {
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#E9ECEF',
-  },
-  careerItemContent: {
-    flex: 1,
-  },
-  careerItemTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  careerItemSubtitle: {
-    fontSize: 14,
-    marginBottom: 4,
-  },
-  careerItemDescription: {
-    fontSize: 14,
-    fontStyle: 'italic',
-    marginTop: 4,
-  },
-  careerItemActions: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 12,
-  },
-  actionButton: {
-    padding: 8,
-    borderRadius: 8,
-  },
-  linkButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  linkButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  changeInstrumentButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    borderWidth: 2,
-    gap: 8,
-  },
-  changeInstrumentButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  saveAllButton: {
-    marginTop: 10,
-    marginBottom: 8,
-    paddingVertical: 10,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
-  saveAllButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  headerBack: {
-    padding: 8,
-  },
-  // 年齢選択関連スタイル
-  ageSelectorButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderWidth: 2,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  ageSelectorText: {
-    fontSize: 16,
-    fontWeight: '500',
-    flex: 1,
-  },
-  ageSelectorArrow: {
-    fontSize: 12,
-    marginLeft: 8,
-  },
-  experienceDisplayNew: {
-    borderWidth: 2,
-    borderRadius: 16,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  experienceTextNew: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  experienceSubtext: {
-    fontSize: 12,
-    fontStyle: 'italic',
-  },
-  // 年齢選択モーダルスタイル
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  ageSelectorModal: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '70%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.1)',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  modalCloseButton: {
-    padding: 8,
-  },
-  modalCloseText: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  ageGridContainer: {
-    maxHeight: 400,
-  },
-  ageGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    padding: 16,
-    justifyContent: 'space-between',
-  },
-  ageOption: {
-    width: '18%',
-    aspectRatio: 1,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 8,
-  },
-  ageOptionText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-});

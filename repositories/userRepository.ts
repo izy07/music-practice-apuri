@@ -287,12 +287,117 @@ export const getCurrentUser = async () => {
   return user;
 };
 
+/**
+ * ユーザーの休止期間を削除
+ */
+export const deleteBreakPeriod = async (
+  breakPeriodId: string
+): Promise<RepositoryResult<void>> => {
+  return safeExecute(
+    async () => {
+      logger.debug(`[${REPOSITORY_CONTEXT}] deleteBreakPeriod:start`, { breakPeriodId });
+      
+      const { error } = await supabase
+        .from('user_break_periods')
+        .delete()
+        .eq('id', breakPeriodId);
+
+      if (error) {
+        throw error;
+      }
+
+      logger.debug(`[${REPOSITORY_CONTEXT}] deleteBreakPeriod:success`);
+    },
+    `${REPOSITORY_CONTEXT}.deleteBreakPeriod`
+  );
+};
+
+/**
+ * ユーザーの過去の所属団体を削除
+ */
+export const deletePastOrganization = async (
+  organizationId: string
+): Promise<RepositoryResult<void>> => {
+  return safeExecute(
+    async () => {
+      logger.debug(`[${REPOSITORY_CONTEXT}] deletePastOrganization:start`, { organizationId });
+      
+      const { error } = await supabase
+        .from('user_past_organizations')
+        .delete()
+        .eq('id', organizationId);
+
+      if (error) {
+        throw error;
+      }
+
+      logger.debug(`[${REPOSITORY_CONTEXT}] deletePastOrganization:success`);
+    },
+    `${REPOSITORY_CONTEXT}.deletePastOrganization`
+  );
+};
+
+/**
+ * ユーザーの受賞を削除
+ */
+export const deleteAward = async (
+  awardId: string
+): Promise<RepositoryResult<void>> => {
+  return safeExecute(
+    async () => {
+      logger.debug(`[${REPOSITORY_CONTEXT}] deleteAward:start`, { awardId });
+      
+      const { error } = await supabase
+        .from('user_awards')
+        .delete()
+        .eq('id', awardId);
+
+      if (error) {
+        throw error;
+      }
+
+      logger.debug(`[${REPOSITORY_CONTEXT}] deleteAward:success`);
+    },
+    `${REPOSITORY_CONTEXT}.deleteAward`
+  );
+};
+
+/**
+ * ユーザーの演奏経験を削除
+ */
+export const deletePerformance = async (
+  performanceId: string
+): Promise<RepositoryResult<void>> => {
+  return safeExecute(
+    async () => {
+      logger.debug(`[${REPOSITORY_CONTEXT}] deletePerformance:start`, { performanceId });
+      
+      const { error } = await supabase
+        .from('user_performances')
+        .delete()
+        .eq('id', performanceId);
+
+      if (error) {
+        throw error;
+      }
+
+      logger.debug(`[${REPOSITORY_CONTEXT}] deletePerformance:success`);
+    },
+    `${REPOSITORY_CONTEXT}.deletePerformance`
+  );
+};
+
 // 後方互換性のためのエクスポート
 export const userRepository = {
   getProfile: getUserProfile,
   upsertProfile: upsertUserProfile,
   updatePracticeLevel,
   updateAvatarUrl,
+  getCurrentUser,
+  deleteBreakPeriod,
+  deletePastOrganization,
+  deleteAward,
+  deletePerformance,
 };
 
 export default userRepository;
