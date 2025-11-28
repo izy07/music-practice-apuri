@@ -207,16 +207,22 @@ function RootLayoutContent() {
       }
 
       // ユーザープロフィールの詳細情報を取得
+      // tutorial_completedとonboarding_completedカラムを含めて取得
       const { data: profile, error } = await supabase
         .from('user_profiles')
-        .select('selected_instrument_id, tutorial_completed, onboarding_completed')
+        .select('id, user_id, display_name, selected_instrument_id, tutorial_completed, onboarding_completed, created_at, updated_at')
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 
       if (error) {
-        ErrorHandler.handle(error, 'プロフィール取得', false);
+        // カラムが存在しないエラーの場合は無視して続行
+        if (error.code === 'PGRST116' || error.message?.includes('column') || error.message?.includes('does not exist')) {
+          logger.warn('user_profilesテーブルの一部カラムが存在しません。デフォルト値を使用します。', { error });
+        } else {
+          ErrorHandler.handle(error, 'プロフィール取得', false);
+        }
         
         // プロフィールが存在しない場合は新規作成
         const { data: newProfile, error: createError } = await supabase
@@ -224,8 +230,6 @@ function RootLayoutContent() {
           .insert({
             user_id: user.id,
             display_name: user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー',
-            practice_level: 'beginner',
-            total_practice_minutes: 0,
           })
           .select()
           .single();
@@ -266,9 +270,13 @@ function RootLayoutContent() {
       }
 
       // 進捗状況に基づく画面遷移
-      if (profile?.onboarding_completed) {
+      // tutorial_completedとonboarding_completedはオプショナル（カラムが存在しない場合がある）
+      const tutorialCompleted = (profile as any)?.tutorial_completed ?? false;
+      const onboardingCompleted = (profile as any)?.onboarding_completed ?? false;
+      
+      if (onboardingCompleted) {
         navigateWithDelay('/(tabs)/');
-      } else if (profile?.selected_instrument_id && !profile?.tutorial_completed) {
+      } else if (profile?.selected_instrument_id && !tutorialCompleted) {
         navigateWithDelay('/(tabs)/tutorial');
       } else if (profile?.selected_instrument_id) {
         navigateWithDelay('/(tabs)/');
