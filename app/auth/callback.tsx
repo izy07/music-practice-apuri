@@ -43,9 +43,18 @@ export default function AuthCallback() {
             }
           }
           
-          // エラー付きリダイレクトを検出
+          // Google OAuthエラー検出（一時的に無効化 - 後で再実装予定）
+          // TODO: Google OAuth認証を再実装する際は、この部分を復元してください
           const oauthError = params.get('error') || params.get('error_code');
           
+          if (oauthError && oauthError.includes('google')) {
+            logger.warn('⚠️ Google OAuthエラー（機能は無効化されています）:', oauthError);
+            // Google OAuthは無効化されているため、ログイン画面にリダイレクト
+            router.replace('/auth/login');
+            return;
+          }
+          
+          // その他のOAuthエラーは無視（Google以外の認証プロバイダー用）
           if (oauthError) {
             logger.error('❌ OAuthエラー:', oauthError, Object.fromEntries(params.entries()));
             

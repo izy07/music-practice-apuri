@@ -279,7 +279,8 @@ url = ""
 skip_nonce_check = false
 
 [auth.external.google]
-enabled = true
+# 一時的に無効化 - 後で再実装予定
+enabled = false
 client_id = "env(GOOGLE_CLIENT_ID)"
 # DO NOT commit your OAuth provider secret to git. Use environment variable substitution instead:
 secret = "env(GOOGLE_CLIENT_SECRET)"

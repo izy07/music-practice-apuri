@@ -1,12 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
-import { supabase } from '@/lib/supabase';
-import { Plus, ArrowLeft, CheckCircle2, BookOpen, Users, Edit2, Trash2 } from 'lucide-react-native';
-import logger from '@/lib/logger';
-import { ErrorHandler } from '@/lib/errorHandler';
+import { ArrowLeft, BookOpen, Users } from 'lucide-react-native';
 
 type MusicTerm = {
   id: string;
@@ -40,236 +37,16 @@ export default function MusicDictionaryScreen() {
   const [filteredEnsemble, setFilteredEnsemble] = useState<EnsembleTerm[]>([]);
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'tempo' | 'dynamics' | 'expression' | 'articulation' | 'accidental'>('all');
   const [activeTab, setActiveTab] = useState<'music' | 'ensemble'>('music');
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [editingTerm, setEditingTerm] = useState<MusicTerm | null>(null);
-  const [newTerm, setNewTerm] = useState({
-    term: '',
-    reading: '',
-    meaning_ja: '',
-    description_ja: '',
-    category: 'tempo'
-  });
-
-  useEffect(() => {
-    loadTerms();
-    loadEnsembleTerms();
-  }, []);
-
-  const loadTerms = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('music_terms')
-        .select('*')
-        .order('term', { ascending: true });
-      
-      if (error) {
-        ErrorHandler.handle(error, '音楽用語取得', false);
-        return;
-      }
-      
-      setTerms(data || []);
-      setFiltered(data || []);
-    } catch (err) {
-      ErrorHandler.handle(err, '音楽用語取得', false);
-    }
-  };
-
-  const loadEnsembleTerms = async () => {
-    // 合奏用語のデータ（楽器別）
-    const ensembleData: EnsembleTerm[] = [
-      // ヴァイオリンの合奏用語
-      { id: 'v1', term: 'div.', reading: 'ディビジ', meaning_ja: '分割', description_ja: 'パートを複数に分けて演奏する', instrument: 'Violin' },
-      { id: 'v2', term: 'unis.', reading: 'ユニゾン', meaning_ja: '同音', description_ja: '全パートが同じ音を演奏する', instrument: 'Violin' },
-      { id: 'v3', term: 'solo', reading: 'ソロ', meaning_ja: '独奏', description_ja: '一人で演奏する部分', instrument: 'Violin' },
-      { id: 'v4', term: 'tutti', reading: 'トゥッティ', meaning_ja: '全奏', description_ja: '全員で演奏する部分', instrument: 'Violin' },
-      
-      // ピアノの合奏用語
-      { id: 'p1', term: 'm.g.', reading: 'マノ・ガウチェ', meaning_ja: '左手', description_ja: '左手で演奏する部分', instrument: 'Piano' },
-      { id: 'p2', term: 'm.d.', reading: 'マノ・デストラ', meaning_ja: '右手', description_ja: '右手で演奏する部分', instrument: 'Piano' },
-      { id: 'p3', term: 'colla parte', reading: 'コラ・パルテ', meaning_ja: 'パートに合わせて', description_ja: '他の楽器に合わせて演奏', instrument: 'Piano' },
-      
-      // フルートの合奏用語
-      { id: 'f1', term: 'a2', reading: 'ア・ドゥエ', meaning_ja: '2人で', description_ja: '2人で同じパートを演奏', instrument: 'Flute' },
-      { id: 'f2', term: 'a3', reading: 'ア・トレ', meaning_ja: '3人で', description_ja: '3人で同じパートを演奏', instrument: 'Flute' },
-      
-      // トランペットの合奏用語
-      { id: 't1', term: 'rip.', reading: 'リピエノ', meaning_ja: '補強', description_ja: '他の楽器を補強する', instrument: 'Trumpet' },
-      { id: 't2', term: 'fanfare', reading: 'ファンファーレ', meaning_ja: 'ファンファーレ', description_ja: '華やかな合奏部分', instrument: 'Trumpet' },
-      
-      // ドラムの合奏用語
-      { id: 'd1', term: 'fill', reading: 'フィル', meaning_ja: 'フィル', description_ja: 'フレーズのつなぎ部分', instrument: 'Drums' },
-      { id: 'd2', term: 'break', reading: 'ブレイク', meaning_ja: 'ブレイク', description_ja: '他の楽器が休む間の演奏', instrument: 'Drums' },
-    ];
-    
-    setEnsembleTerms(ensembleData);
-    setFilteredEnsemble(ensembleData);
-  };
 
   useEffect(() => {
     const q = query.trim().toLowerCase();
     
-    // 音楽用語のフィルタリング
-    const byText = (list: MusicTerm[]) => {
-      if (!q) return list;
-      return list.filter((t) =>
-        [t.term, t.reading, t.meaning_ja, t.meaning_en, t.description_ja || '', t.description_en || '']
-          .join(' ').toLowerCase().includes(q)
-      );
-    };
+    // 音楽用語のフィルタリング（空のリストなので常に空）
+    setFiltered([]);
     
-    const byCategory = (list: MusicTerm[]) => {
-      if (categoryFilter === 'all') return list;
-      return list.filter((t) => t.category === categoryFilter);
-    };
-    
-    setFiltered(byCategory(byText(terms)));
-    
-    // 合奏用語のフィルタリング
-    const byTextEnsemble = (list: EnsembleTerm[]) => {
-      if (!q) return list;
-      return list.filter((t) =>
-        [t.term, t.reading, t.meaning_ja, t.description_ja || '']
-          .join(' ').toLowerCase().includes(q)
-      );
-    };
-    
-    const byInstrument = (list: EnsembleTerm[]) => {
-      return list.filter(t => t.instrument === currentTheme?.nameEn);
-    };
-    
-    setFilteredEnsemble(byInstrument(byTextEnsemble(ensembleTerms)));
-  }, [query, terms, ensembleTerms, categoryFilter, selectedInstrument]);
-
-  const addUserTerm = async () => {
-    if (!newTerm.term.trim() || !newTerm.meaning_ja.trim()) {
-      Alert.alert('エラー', '用語と意味は必須です');
-      return;
-    }
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        Alert.alert('エラー', '認証が必要です');
-        return;
-      }
-
-      if (editingTerm) {
-        // 編集モード
-        const { error } = await supabase
-          .from('music_terms')
-          .update({
-            term: newTerm.term,
-            reading: newTerm.reading,
-            meaning_ja: newTerm.meaning_ja,
-            description_ja: newTerm.description_ja || null,
-            category: newTerm.category,
-          })
-          .eq('id', editingTerm.id)
-          .eq('user_id', user.id)
-          .eq('is_user_added', true);
-
-        if (error) {
-          logger.error('用語更新エラー:', error);
-          Alert.alert('エラー', `用語の更新に失敗しました: ${error.message}`);
-          return;
-        }
-
-        Alert.alert('成功', '用語を更新しました');
-      } else {
-        // 新規追加モード
-        const { error } = await supabase
-          .from('music_terms')
-          .insert({
-            term: newTerm.term,
-            reading: newTerm.reading,
-            meaning_ja: newTerm.meaning_ja,
-            meaning_en: '',
-            description_ja: newTerm.description_ja || null,
-            description_en: null,
-            category: newTerm.category,
-            frequency: 'rare',
-            is_user_added: true,
-            user_id: user.id
-          });
-
-        if (error) {
-          logger.error('用語追加エラー:', error);
-          Alert.alert('エラー', `用語の追加に失敗しました: ${error.message}`);
-          return;
-        }
-
-        Alert.alert('成功', '用語を追加しました');
-      }
-
-      setShowAddModal(false);
-      setEditingTerm(null);
-      setNewTerm({
-        term: '',
-        reading: '',
-        meaning_ja: '',
-        description_ja: '',
-        category: 'tempo'
-      });
-      loadTerms();
-    } catch (error) {
-      ErrorHandler.handle(error, editingTerm ? '用語更新' : '用語追加', true);
-      Alert.alert('エラー', editingTerm ? '用語の更新に失敗しました' : '用語の追加に失敗しました');
-    }
-  };
-
-  const handleEditTerm = (term: MusicTerm) => {
-    setEditingTerm(term);
-    setNewTerm({
-      term: term.term,
-      reading: term.reading,
-      meaning_ja: term.meaning_ja,
-      description_ja: term.description_ja || '',
-      category: term.category
-    });
-    setShowAddModal(true);
-  };
-
-  const handleDeleteTerm = async (term: MusicTerm) => {
-    Alert.alert(
-      '確認',
-      `「${term.term}」を削除しますか？`,
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        {
-          text: '削除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { data: { user } } = await supabase.auth.getUser();
-              if (!user) {
-                Alert.alert('エラー', '認証が必要です');
-                return;
-              }
-
-              const { error } = await supabase
-                .from('music_terms')
-                .delete()
-                .eq('id', term.id)
-                .eq('user_id', user.id)
-                .eq('is_user_added', true);
-
-              if (error) {
-                logger.error('用語削除エラー:', error);
-                Alert.alert('エラー', `用語の削除に失敗しました: ${error.message}`);
-                return;
-              }
-
-              Alert.alert('成功', '用語を削除しました');
-              loadTerms();
-            } catch (error) {
-              ErrorHandler.handle(error, '用語削除', true);
-              Alert.alert('エラー', '用語の削除に失敗しました');
-            }
-          }
-        }
-      ]
-    );
-  };
+    // 合奏用語のフィルタリング（空のリストなので常に空）
+    setFilteredEnsemble([]);
+  }, [query, categoryFilter, selectedInstrument]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}> 
@@ -278,12 +55,7 @@ export default function MusicDictionaryScreen() {
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
         <Text style={[styles.title, { color: currentTheme.text }]}>音楽用語辞典</Text>
-        <TouchableOpacity 
-          style={[styles.addButton, { backgroundColor: currentTheme.primary }]}
-          onPress={() => setShowAddModal(true)}
-        >
-          <Plus size={20} color="#FFFFFF" />
-        </TouchableOpacity>
+        <View style={{ width: 40 }} />
       </View>
 
       {/* タブ切り替え */}
@@ -421,22 +193,6 @@ export default function MusicDictionaryScreen() {
                     </View>
                   </View>
                 </View>
-                {t.is_user_added && (
-                  <View style={styles.actionButtons}>
-                    <TouchableOpacity
-                      onPress={() => handleEditTerm(t)}
-                      style={[styles.actionButton, { backgroundColor: currentTheme.primary + '20' }]}
-                    >
-                      <Edit2 size={16} color={currentTheme.primary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      onPress={() => handleDeleteTerm(t)}
-                      style={[styles.actionButton, { backgroundColor: '#F44336' + '20' }]}
-                    >
-                      <Trash2 size={16} color="#F44336" />
-                    </TouchableOpacity>
-                  </View>
-                )}
               </View>
               <Text style={[styles.meaning, { color: currentTheme.text }]}>{t.meaning_ja}</Text>
               {t.description_ja ? (
@@ -459,141 +215,6 @@ export default function MusicDictionaryScreen() {
           <Text style={[styles.empty, { color: currentTheme.textSecondary }]}>一致する用語がありません</Text>
         )}
       </ScrollView>
-
-      {/* 用語追加モーダル */}
-      <Modal
-        visible={showAddModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowAddModal(false)}
-      >
-        <SafeAreaView style={[styles.modalContainer, { backgroundColor: currentTheme.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: currentTheme.secondary }]}>
-            <TouchableOpacity
-              onPress={() => {
-                setShowAddModal(false);
-                setEditingTerm(null);
-                setNewTerm({
-                  term: '',
-                  reading: '',
-                  meaning_ja: '',
-                  description_ja: '',
-                  category: 'tempo'
-                });
-              }}
-              style={styles.modalCloseButton}
-            >
-              <Text style={[styles.modalCloseText, { color: currentTheme.textSecondary }]}>
-                キャンセル
-              </Text>
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
-              {editingTerm ? '用語を編集' : '用語を追加'}
-            </Text>
-            <TouchableOpacity
-              onPress={addUserTerm}
-              style={[styles.modalSaveButton, { backgroundColor: currentTheme.primary }]}
-            >
-              <CheckCircle2 size={20} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-          
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-            <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, { color: currentTheme.text }]}>用語 *</Text>
-              <TextInput
-                style={[styles.formInput, { 
-                  backgroundColor: currentTheme.surface,
-                  color: currentTheme.text,
-                  borderColor: currentTheme.secondary
-                }]}
-                value={newTerm.term}
-                onChangeText={(text) => setNewTerm(prev => ({ ...prev, term: text }))}
-                placeholder="用語を入力"
-                placeholderTextColor={currentTheme.textSecondary}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, { color: currentTheme.text }]}>読み方</Text>
-              <TextInput
-                style={[styles.formInput, { 
-                  backgroundColor: currentTheme.surface,
-                  color: currentTheme.text,
-                  borderColor: currentTheme.secondary
-                }]}
-                value={newTerm.reading}
-                onChangeText={(text) => setNewTerm(prev => ({ ...prev, reading: text }))}
-                placeholder="読み方を入力"
-                placeholderTextColor={currentTheme.textSecondary}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, { color: currentTheme.text }]}>意味 *</Text>
-              <TextInput
-                style={[styles.formInput, { 
-                  backgroundColor: currentTheme.surface,
-                  color: currentTheme.text,
-                  borderColor: currentTheme.secondary
-                }]}
-                value={newTerm.meaning_ja}
-                onChangeText={(text) => setNewTerm(prev => ({ ...prev, meaning_ja: text }))}
-                placeholder="意味を入力"
-                placeholderTextColor={currentTheme.textSecondary}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, { color: currentTheme.text }]}>説明</Text>
-              <TextInput
-                style={[styles.formTextArea, { 
-                  backgroundColor: currentTheme.surface,
-                  color: currentTheme.text,
-                  borderColor: currentTheme.secondary
-                }]}
-                value={newTerm.description_ja}
-                onChangeText={(text) => setNewTerm(prev => ({ ...prev, description_ja: text }))}
-                placeholder="詳細な説明を入力"
-                placeholderTextColor={currentTheme.textSecondary}
-                multiline
-                numberOfLines={4}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, { color: currentTheme.text }]}>カテゴリ</Text>
-              <View style={styles.categoryContainer}>
-                {['tempo', 'dynamics', 'expression', 'articulation', 'accidental'].map(category => (
-                  <TouchableOpacity
-                    key={category}
-                    style={[
-                      styles.categoryChip,
-                      newTerm.category === category && { 
-                        backgroundColor: category === 'tempo' ? '#FF9800' :
-                                         category === 'dynamics' ? '#2196F3' :
-                                         category === 'expression' ? '#9C27B0' :
-                                         category === 'articulation' ? '#4CAF50' : '#F44336'
-                      }
-                    ]}
-                    onPress={() => setNewTerm(prev => ({ ...prev, category }))}
-                  >
-                    <Text style={[
-                      styles.categoryChipText,
-                      { color: newTerm.category === category ? '#FFFFFF' : currentTheme.text }
-                    ]}>
-                      {category === 'tempo' ? '🎵 速度記号' :
-                       category === 'dynamics' ? '💪 強弱記号' :
-                       category === 'expression' ? '💡 発想標語' :
-                       category === 'articulation' ? '🎸 奏法記号' : '♯ 変化記号'}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 }

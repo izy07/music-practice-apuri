@@ -8,7 +8,13 @@ echo "🚀 GitHub Actions用データベースセットアップを開始しま�
 # Supabase CLIのインストール確認
 if ! command -v supabase &> /dev/null; then
   echo "📦 Supabase CLIをインストール中..."
-  npm install -g supabase
+  curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz | tar -xz
+  sudo mv supabase /usr/local/bin/
+  supabase --version || {
+    echo "❌ Supabase CLIのインストールに失敗しました"
+    exit 1
+  }
+  echo "✅ Supabase CLIのインストールが完了しました"
 fi
 
 # Supabaseローカル環境の起動

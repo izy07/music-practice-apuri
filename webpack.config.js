@@ -58,14 +58,9 @@ module.exports = async function (env, argv) {
     '.json',
   ];
 
-  // evalを避けるためにdevtoolをsource-mapに設定
-  if (config.devtool) {
-    // 開発環境ではsource-map、本番環境ではfalse（ソースマップなし）またはsource-map
-    config.devtool = process.env.NODE_ENV === 'production' ? 'source-map' : 'eval-source-map';
-  } else {
-    // devtoolが設定されていない場合のみ設定
-    config.devtool = process.env.NODE_ENV === 'production' ? 'source-map' : 'eval-source-map';
-  }
+  // evalを避けるためにdevtoolをsource-mapに設定（CSPでevalがブロックされるため）
+  // 開発環境と本番環境の両方でsource-mapを使用
+  config.devtool = 'source-map';
 
   return config;
 };

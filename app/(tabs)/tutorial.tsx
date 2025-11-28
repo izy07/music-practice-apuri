@@ -137,12 +137,13 @@ export default function TutorialScreen() {
         .eq('user_id', user.id);
 
       if (updateError) {
-        console.error('❌ チュートリアル完了状況の保存エラー:', updateError);
+        logger.error('❌ チュートリアル完了状況の保存エラー:', updateError);
+        ErrorHandler.handle(updateError, 'チュートリアル完了状況の保存', false);
       } else {
-        console.log('✅ チュートリアル完了状況を保存しました');
+        logger.debug('✅ チュートリアル完了状況を保存しました');
       }
 
-      console.log('🔍 楽器選択状況を確認中...');
+      logger.debug('🔍 楽器選択状況を確認中...');
       // 楽器選択済みか確認
       const { data: profile } = await supabase
         .from('user_profiles')
@@ -153,16 +154,17 @@ export default function TutorialScreen() {
         .maybeSingle();
 
       if (profile?.selected_instrument_id) {
-        console.log('✅ 楽器選択済み - メイン画面に遷移');
-        console.log('🎵 選択済み楽器ID:', profile.selected_instrument_id);
+        logger.debug('✅ 楽器選択済み - メイン画面に遷移');
+        logger.debug('🎵 選択済み楽器ID:', profile.selected_instrument_id);
         
         // 確実な遷移のため、少し遅延してから実行
         setTimeout(() => {
           try {
             router.replace('/(tabs)/' as any);
-            console.log('✅ メイン画面への遷移完了');
+            logger.debug('✅ メイン画面への遷移完了');
           } catch (navError) {
-            console.error('❌ メイン画面への遷移エラー:', navError);
+            logger.error('❌ メイン画面への遷移エラー:', navError);
+            ErrorHandler.handle(navError, 'メイン画面への遷移', false);
             // フォールバック: 直接URLを変更
             if (typeof window !== 'undefined') {
               navigateWithBasePath('/');
@@ -170,15 +172,16 @@ export default function TutorialScreen() {
           }
         }, 100);
       } else {
-        console.log('🎓 楽器未選択 - 楽器選択画面に遷移');
+        logger.debug('🎓 楽器未選択 - 楽器選択画面に遷移');
         
         // 確実な遷移のため、少し遅延してから実行
         setTimeout(() => {
           try {
             router.replace('/(tabs)/instrument-selection');
-            console.log('✅ 楽器選択画面への遷移完了');
+            logger.debug('✅ 楽器選択画面への遷移完了');
           } catch (navError) {
-            console.error('❌ 楽器選択画面への遷移エラー:', navError);
+            logger.error('❌ 楽器選択画面への遷移エラー:', navError);
+            ErrorHandler.handle(navError, '楽器選択画面への遷移', false);
             // フォールバック: 直接URLを変更
             if (typeof window !== 'undefined') {
               navigateWithBasePath('/instrument-selection');
@@ -187,13 +190,15 @@ export default function TutorialScreen() {
         }, 100);
       }
     } catch (error) {
-      console.error('❌ 完了処理エラー:', error);
+      logger.error('❌ 完了処理エラー:', error);
+      ErrorHandler.handle(error, 'チュートリアル完了処理', false);
       // 失敗時も選択画面へフォールバック
       setTimeout(() => {
         try {
           router.replace('/(tabs)/instrument-selection');
         } catch (fallbackError) {
-          console.error('❌ フォールバック遷移エラー:', fallbackError);
+          logger.error('❌ フォールバック遷移エラー:', fallbackError);
+          ErrorHandler.handle(fallbackError, 'フォールバック遷移', false);
           if (typeof window !== 'undefined') {
             navigateWithBasePath('/instrument-selection');
           }

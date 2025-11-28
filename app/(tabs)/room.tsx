@@ -314,7 +314,9 @@ export default function RoomScreen() {
                   value={uploadForm.title} 
                   onChangeText={(text) => setUploadForm(prev => ({ ...prev, title: text }))} 
                   placeholder="例：交響曲第5番" 
-                  placeholderTextColor={currentTheme.textSecondary} 
+                  placeholderTextColor={currentTheme.textSecondary}
+                  nativeID="room-title-input"
+                  accessibilityLabel="楽譜タイトル"
                 /> 
               </View> 
 
@@ -331,7 +333,9 @@ export default function RoomScreen() {
                   value={uploadForm.composer} 
                   onChangeText={(text) => setUploadForm(prev => ({ ...prev, composer: text }))} 
                   placeholder="例：ベートーヴェン" 
-                  placeholderTextColor={currentTheme.textSecondary} 
+                  placeholderTextColor={currentTheme.textSecondary}
+                  nativeID="room-composer-input"
+                  accessibilityLabel="作曲者"
                 /> 
               </View> 
 
@@ -348,7 +352,9 @@ export default function RoomScreen() {
                   value={uploadForm.filePath} 
                   onChangeText={(text) => setUploadForm(prev => ({ ...prev, filePath: text }))} 
                   placeholder="ファイルパスを入力" 
-                  placeholderTextColor={currentTheme.textSecondary} 
+                  placeholderTextColor={currentTheme.textSecondary}
+                  nativeID="room-filepath-input"
+                  accessibilityLabel="ファイルパス"
                 /> 
               </View>
 
@@ -366,7 +372,9 @@ export default function RoomScreen() {
                   onChangeText={(text) => setUploadForm(prev => ({ ...prev, pageCount: parseInt(text) || 1 }))} 
                   placeholder="1" 
                   placeholderTextColor={currentTheme.textSecondary} 
-                  keyboardType="numeric" 
+                  keyboardType="numeric"
+                  nativeID="room-pagecount-input"
+                  accessibilityLabel="ページ数" 
                 /> 
               </View>
 

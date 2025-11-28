@@ -245,7 +245,7 @@ export const useAuth = () => {
 
       // 現在の画面がチュートリアル/楽器選択/基礎練なら干渉しない
       const group = segments[0] as string | undefined;
-      const child = group === '(tabs)' ? segments[1] as string | undefined : undefined;
+      const child = group === '(tabs)' && segments.length > 1 ? (segments[1] as string | undefined) : undefined;
       if (group === '(tabs)' && (child === 'tutorial' || child === 'instrument-selection' || child === 'basic-practice')) {
         logger.debug('navigateAfterAuth: チュートリアル/楽器選択/基礎練中のため自動遷移をスキップ');
         return;

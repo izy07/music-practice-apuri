@@ -53,7 +53,7 @@ export interface AuthHookReturn extends AuthState {
   // 認証アクション
   signIn: (formData: AuthFormData) => Promise<boolean>;
   signUp: (formData: AuthFormData) => Promise<boolean>;
-  signInWithGoogle: () => Promise<boolean>;
+  signInWithGoogle: () => Promise<boolean>; // 一時的に無効化
   signOut: () => Promise<void>;
   clearSession: () => Promise<void>;
   resetPassword: (email: string) => Promise<boolean>;
@@ -515,96 +515,12 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     }
   }, [handleAuthenticatedUser, clearInstrumentThemeLocal]);
 
-  // Googleログイン処理
+  // Googleログイン処理（一時的に削除 - 後で再実装予定）
+  // TODO: Google OAuth認証を再実装する際は、この関数を復元してください
   const signInWithGoogle = useCallback(async (): Promise<boolean> => {
-    try {
-      logger.debug('Googleログイン処理開始');
-      updateAuthState({ isLoading: true, error: null });
-      
-      // ローカル開発環境の場合はモック認証
-      // Web環境とネイティブアプリ環境の両方をサポート
-      const isLocalDevelopment = 
-        (typeof window !== 'undefined' && 
-         (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) ||
-        process.env.NODE_ENV === 'development';
-      
-      if (isLocalDevelopment) {
-        logger.debug('ローカル開発環境 - モックGoogle認証を実行');
-        logger.debug('環境:', typeof window !== 'undefined' ? 'Web' : 'Native App');
-        
-        // モック認証に1秒待機を追加してリアルな感じを出す
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        const mockUser: AuthUser = {
-          id: `google_user_${Date.now()}`,
-          email: 'google.user@gmail.com',
-          name: 'Google User',
-          avatar_url: undefined,
-          created_at: new Date().toISOString(),
-          last_sign_in_at: new Date().toISOString(),
-          selected_instrument_id: null,
-          tutorial_completed: false,
-          onboarding_completed: false,
-        };
-        
-        updateAuthState({
-          user: mockUser,
-          isAuthenticated: true,
-          isLoading: false,
-          isInitialized: true,
-          error: null,
-        });
-        
-        logger.debug('モックGoogle認証成功:', mockUser.email);
-        return true;
-      }
-      
-      // 本番環境での実際のGoogle OAuth認証
-      logger.debug('本番環境 - 実際のGoogle OAuth認証を実行');
-      
-      // リダイレクトURLを環境に応じて設定
-      const redirectTo = typeof window !== 'undefined' 
-        ? `${window.location.origin}/auth/callback`
-        : 'exp://localhost:8081/auth/callback'; // React Native用
-      
-      logger.debug('リダイレクトURL:', redirectTo);
-      
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo,
-          queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
-          },
-          skipBrowserRedirect: false,
-        },
-      });
-      
-      if (error) {
-        ErrorHandler.handle(error, 'Googleログイン', false);
-        updateAuthState({ 
-          isLoading: false, 
-          error: getAuthErrorMessage(error) 
-        });
-        return false;
-      }
-      
-      logger.debug('Google OAuth認証リクエスト送信成功');
-      logger.debug('リダイレクト先:', data.url);
-      
-      // Web環境の場合、ブラウザがリダイレクトするので、ここでは成功として返す
-      // 実際の認証完了はコールバックURLで処理される
-      return true;
-      
-    } catch (error) {
-      ErrorHandler.handle(error, 'Googleログイン処理', false);
-      updateAuthState({ 
-        isLoading: false, 
-        error: error instanceof Error ? error.message : 'Googleログインに失敗しました' 
-      });
-      return false;
-    }
+    logger.warn('Googleログイン機能は一時的に無効化されています');
+    Alert.alert('機能無効', 'Googleログイン機能は一時的に無効化されています。メール/パスワード認証をご利用ください。');
+    return false;
   }, []);
 
   // ログアウト処理

@@ -5,7 +5,7 @@ import { Stack } from 'expo-router'; // 画面遷移のスタックナビゲー�
 import { Platform } from 'react-native';
 import { useRouter, useSegments } from 'expo-router'; // ルーティング関連のフック
 import { useFrameworkReady } from '@/hooks/useFrameworkReady'; // フレームワーク準備状態の管理
-import { useAuthAdvanced } from '@/hooks/useAuthAdvanced'; // 新しい認証フック
+import { useAuthSimple } from '@/hooks/useAuthSimple'; // シンプルな認証フック
 import { useIdleTimeout } from '@/hooks/useIdleTimeout'; // アイドルタイムアウト機能
 import { LanguageProvider } from '@/components/LanguageContext'; // 多言語対応の管理
 import { InstrumentThemeProvider } from '@/components/InstrumentThemeContext'; // 楽器別テーマの管理
@@ -45,12 +45,17 @@ function RootLayoutContent() {
     needsTutorial,
     canAccessMainApp,
     signOut 
-  } = useAuthAdvanced();
+  } = useAuthSimple();
 
   // アイドルタイムアウト機能（1時間操作なしで自動ログアウト）
+  // useIdleTimeoutはPromise<void>を期待するが、useAuthSimpleのsignOutはPromise<boolean>を返すためラッパーを作成
+  const handleSignOut = React.useCallback(async (): Promise<void> => {
+    await signOut();
+  }, [signOut]);
+  
   useIdleTimeout({
     isAuthenticated,
-    onLogout: signOut,
+    onLogout: handleSignOut,
     timeoutMs: TIMEOUT.IDLE_MS,
     enabled: isAuthenticated && !isLoading && isInitialized, // 認証済みで初期化完了時のみ有効
   });
@@ -394,8 +399,9 @@ function RootLayoutContent() {
      * - 完全なルートパス（http://localhost:8081/）にアクセスした場合のみ
      * - 楽器選択状況に応じて適切な画面に遷移
      * - (tabs)内の画面（楽器選択、チュートリアル等）は完全に除外
+     * 
+     * 注意: isAtRootは上記321行目で既に宣言されているため、ここでは使用のみ
      */
-    const isAtRoot = (segments as readonly string[]).length === 0;
     if (isAuthenticated && isAtRoot) {
       // ユーザー進捗状況をチェック
       checkUserProgressAndNavigate();

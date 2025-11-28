@@ -15,8 +15,22 @@ config.resolver.alias = {
 // Expo RouterのWebサポートを有効化
 config.resolver.sourceExts = [...(config.resolver.sourceExts || []), 'web.js', 'web.jsx', 'web.ts', 'web.tsx'];
 
-// Webプラットフォームでのサーバー設定を改善
-if (process.env.EXPO_PLATFORM === 'web' || process.env.EXPO_PUBLIC_PLATFORM === 'web') {
+// Webプラットフォームでの設定
+const isWeb = process.env.EXPO_PLATFORM === 'web' || process.env.EXPO_PUBLIC_PLATFORM === 'web';
+
+if (isWeb) {
+  // WebプラットフォームではHermesエンジンを無効化
+  config.transformer = {
+    ...config.transformer,
+    // WebではHermesパーサーを使用しない
+    getTransformOptions: async () => ({
+      transform: {
+        experimentalImportSupport: false,
+        inlineRequires: true,
+      },
+    }),
+  };
+
   // Metroサーバーの設定
   config.server = {
     ...config.server,

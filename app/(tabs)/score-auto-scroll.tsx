@@ -234,8 +234,12 @@ export default function ScoreAutoScrollScreen() {
   };
 
   const authorizeDrive = async () => {
+    if (Platform.OS === 'web') {
+      logger.warn('Google Drive authorization is not available on web');
+      return;
+    }
     const clientId = ensureGoogleClientId();
-    if (!clientId) return;
+    if (!clientId || !AuthSession) return;
     try {
       const redirectUri = AuthSession.makeRedirectUri({ useProxy: true });
       const result = await AuthSession.startAsync({

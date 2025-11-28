@@ -50,7 +50,6 @@ export default function LoginScreen() {
   const router = useRouter();
   const {
     signIn,
-    signInWithGoogle,
     isLoading,
     error,
     clearError,
@@ -201,26 +200,6 @@ export default function LoginScreen() {
     }
   };
 
-  // Googleログイン処理
-  const handleGoogleLogin = async () => {
-    logger.debug('Googleログイン処理開始');
-    
-    try {
-      const success = await signInWithGoogle();
-      logger.debug('Googleログイン結果:', success);
-      
-      if (success) {
-        logger.debug('Googleログイン成功 - 自動遷移を待機中');
-        // useEffectで自動遷移が実行される
-      } else {
-        logger.debug('Googleログイン失敗');
-        Alert.alert('エラー', 'Googleログインに失敗しました。もう一度お試しください。');
-      }
-    } catch (error) {
-      ErrorHandler.handle(error, 'Googleログイン処理', true);
-      Alert.alert('エラー', 'Googleログインに失敗しました。もう一度お試しください。');
-    }
-  };
 
   // パスワード再設定メール送信
   const handleResetPassword = async () => {
@@ -429,31 +408,6 @@ export default function LoginScreen() {
                 <Text style={{ color: colors.primary }}>パスワードをお忘れですか？</Text>
               </TouchableOpacity>
 
-              {/* Googleログインボタン */}
-              <TouchableOpacity
-                style={[
-                  styles.googleButton,
-                  isLoading && styles.googleButtonDisabled,
-                ]}
-                onPress={handleGoogleLogin}
-                disabled={isLoading}
-              >
-                <Text style={styles.googleButtonIcon}>🔍</Text>
-                <Text style={styles.googleButtonText}>
-                  {isLoading ? '処理中...' : (__DEV__ || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) ? 'Googleでログイン (開発版)' : 'Googleでログイン')}
-                </Text>
-              </TouchableOpacity>
-
-              {/* ローカル開発環境の注意書き */}
-              {(__DEV__ || (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'))) && (
-                <View style={styles.devNotice}>
-                  <Text style={styles.devNoticeIcon}>ℹ️</Text>
-                  <Text style={styles.devNoticeText}>
-                    開発環境: Googleログインはモック認証で動作します{'\n'}
-                    本番環境では実際のGoogleアカウントでログインできます
-                  </Text>
-                </View>
-              )}
             </View>
 
             {/* 新規登録リンク */}
@@ -607,33 +561,6 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 14,
     marginHorizontal: 16,
-  },
-  googleButton: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
-    elevation: 2,
-  },
-  googleButtonDisabled: {
-    backgroundColor: '#F5F5F5',
-    borderColor: '#CCC',
-    elevation: 0,
-    boxShadow: 'none',
-  },
-  googleButtonIcon: {
-    fontSize: 16,
-    marginRight: 12,
-  },
-  googleButtonText: {
-    color: '#333',
-    fontSize: 16,
-    fontWeight: '500',
   },
   devNotice: {
     flexDirection: 'row',

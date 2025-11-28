@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Linking, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Linking, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, Target, Calendar, CircleCheck as CheckCircle, Edit3, Trash2, Users, Trophy, CheckCircle2, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { Plus, Target, Calendar, CircleCheck as CheckCircle, Edit3, Trash2, CheckCircle2, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
@@ -10,6 +10,7 @@ import { supabase } from '@/lib/supabase';
 import { COMMON_STYLES } from '@/lib/styles';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { styles } from '@/lib/tabs/goals/styles';
 import { CompletedGoalsSection } from './goals/components/_CompletedGoalsSection';
 import { goalService } from '@/services/goalService';
 import { getUserProfile } from '@/repositories/userRepository';
@@ -20,7 +21,7 @@ interface Goal {
   description?: string;
   target_date?: string;
   progress_percentage: number;
-  goal_type: 'personal_short' | 'personal_long' | 'group';
+  goal_type: 'personal_short' | 'personal_long';
   is_active: boolean;
   is_completed: boolean;
   completed_at?: string;
@@ -37,25 +38,6 @@ interface GoalFromDB extends Omit<Goal, 'show_on_calendar'> {
 interface UserProfile {
   nickname?: string;
   organization?: string;
-}
-
-interface GoalSong {
-  id: string;
-  user_id: string;
-  goal_id: string;
-  song_id: string;
-  notes?: string;
-  created_at: string;
-  updated_at: string;
-  my_songs: {
-    id: string;
-    title: string;
-    composer: string;
-    artist: string;
-    genre?: string;
-    difficulty: string;
-    status: string;
-  };
 }
 
 interface Event {
@@ -75,12 +57,11 @@ export default function GoalsScreen() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [completedGoals, setCompletedGoals] = useState<Goal[]>([]);
   const [showAddGoalForm, setShowAddGoalForm] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [newGoal, setNewGoal] = useState({
     title: '',
     description: '',
     target_date: '',
-    goal_type: 'personal_short' as 'personal_short' | 'personal_long' | 'group'
+    goal_type: 'personal_short' as 'personal_short' | 'personal_long'
   });
   
   // カレンダー関連の状態
@@ -669,112 +650,10 @@ export default function GoalsScreen() {
     );
   };
 
-  // イベントの保存
-  // const saveEvent = async () => { // This function was removed as per the edit hint
-  //   if (!eventForm.title.trim() || !eventForm.date.trim()) {
-  //     Alert.alert('エラー', 'イベント名と日付を入力してください');
-  //     return;
-  // }
-
-  //   try {
-  //     const { data: { user } } = await supabase.auth.getUser();
-  //     if (user) {
-  //       if (editingEvent) {
-  //         // 更新
-  //         await supabase
-  //           .from('events')
-  //           .update({
-  //             title: eventForm.title,
-  //             date: eventForm.date,
-  //             description: eventForm.description || null
-  //           })
-  //           .eq('id', editingEvent.id);
-  //       } else {
-  //         // 新規作成
-  //         await supabase
-  //           .from('events')
-  //           .insert({
-  //             user_id: user.id,
-  //             title: eventForm.title,
-  //             date: eventForm.date,
-  //             description: eventForm.description || null,
-  //             is_completed: false
-  //           });
-  //       }
-
-  //       Alert.alert('成功', editingEvent ? 'イベントを更新しました' : 'イベントを登録しました');
-        
-  //       // フォームをリセット
-  //       setEventForm({
-  //         title: '',
-  //         date: '',
-  //         description: ''
-  //       });
-        
-  //       // 編集モードをリセット
-  //       setEditingEvent(null);
-        
-  //       // モーダルを閉じる
-  //       setShowEventModal(false);
-        
-  //       // イベントを再読み込み
-  //       loadEvents();
-  //     }
-  //   } catch (error) {
-  //     console.error('Error saving event:', error);
-  //     Alert.alert('エラー', 'イベントの保存に失敗しました');
-  //   }
-  // };
-
-  // イベントの削除
-  // const deleteEvent = async (eventId: string) => { // This function was removed as per the edit hint
-  //   Alert.alert(
-  //     '削除確認',
-  //     'このイベントを削除しますか？',
-  //     [
-  //       { text: 'キャンセル', style: 'cancel' },
-  //       { text: '削除', style: 'destructive', onPress: async () => {
-  //         try {
-  //           await supabase
-  //             .from('events')
-  //             .delete()
-  //             .eq('id', eventId);
-
-  //           loadEvents();
-  //           loadCompletedEvents();
-  //         } catch (error) {
-  //           console.error('Error deleting event:', error);
-  //           Alert.alert('エラー', 'イベントの削除に失敗しました');
-  //         }
-  //       }}
-  //     ]
-  //   );
-  // };
-
-  // イベントの完了
-  // const completeEvent = async (eventId: string) => { // This function was removed as per the edit hint
-  //   try {
-  //     await supabase
-  //       .from('events')
-  //       .update({ 
-  //         is_completed: true, 
-  //         completed_at: new Date().toISOString()
-  //       })
-  //       .eq('id', eventId);
-
-  //     Alert.alert('おめでとうございます！', 'イベントを完了しました！');
-  //     loadEvents();
-  //     loadCompletedEvents();
-  //   } catch (error) {
-  //     console.error('Error completing event:', error);
-  //     Alert.alert('エラー', 'イベントの完了処理に失敗しました');
-  //   }
-  // };
   const getGoalTypeLabel = (type: string) => {
     switch (type) {
       case 'personal_short': return '個人目標（短期）';
       case 'personal_long': return '個人目標（長期）';
-      case 'group': return '団体目標';
       default: return '目標';
     }
   };
@@ -783,7 +662,6 @@ export default function GoalsScreen() {
     switch (type) {
       case 'personal_short': return '#4CAF50';
       case 'personal_long': return '#2196F3';
-      case 'group': return '#FF9800';
       default: return '#8B4513';
     }
   };
@@ -878,96 +756,6 @@ export default function GoalsScreen() {
     </View>
   );
 
-  // 団体目標セクション
-  const renderGroupGoals = () => (
-    <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
-      <View style={styles.sectionHeader}>
-        <Users size={24} color={currentTheme.primary} />
-        <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-          {userProfile.organization}での目標！
-        </Text>
-      </View>
-      
-      {goals.filter(goal => goal.goal_type === 'group').length === 0 ? (
-        <View style={styles.emptyState}>
-          <Text style={[styles.emptyStateText, { color: currentTheme.textSecondary }]}>
-            団体目標が設定されていません
-          </Text>
-          <TouchableOpacity
-            style={[styles.addButton, { backgroundColor: currentTheme.primary }]}
-            onPress={() => setNewGoal({...newGoal, goal_type: 'group'})}
-          >
-            <Plus size={16} color="#FFFFFF" />
-            <Text style={styles.addButtonText}>団体目標を追加</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={styles.goalsList}>
-          {goals.filter(goal => goal.goal_type === 'group').map(goal => (
-            <View key={goal.id} style={[styles.goalCard, { borderColor: '#E0E0E0' }]}>
-              <View style={styles.goalHeader}>
-                <Text style={[styles.goalTitle, { color: currentTheme.text }]}>
-                  {goal.title}
-                </Text>
-                <View style={styles.goalActions}>
-                  <TouchableOpacity
-                    style={[styles.editButton, { backgroundColor: currentTheme.primary }]}
-                    onPress={() => editGoal(goal)}
-                  >
-                    <Edit3 size={12} color="#FFFFFF" />
-                    <Text style={styles.editButtonText}>編集</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.deleteButton, { backgroundColor: '#FF4444' }]}
-                    onPress={() => {
-                      logger.debug('削除ボタンがクリックされました（達成済み目標）。goalId:', goal.id);
-                      deleteGoal(goal.id);
-                    }}
-                    activeOpacity={0.7}
-                    disabled={isDeleting}
-                  >
-                    <Trash2 size={12} color="#FFFFFF" />
-                    <Text style={styles.deleteButtonText}>削除</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-              
-              <Text style={[styles.goalDescription, { color: currentTheme.textSecondary }]}>
-                {goal.description}
-              </Text>
-              
-              <View style={styles.progressSection}>
-                <View style={styles.progressBar}>
-                  <View 
-                    style={[
-                      styles.progressFill, 
-                      { 
-                        width: `${goal.progress_percentage}%`,
-                        backgroundColor: currentTheme.primary 
-                      }
-                    ]} 
-                  />
-                </View>
-                <Text style={[styles.progressText, { color: currentTheme.textSecondary }]}>
-                  {goal.progress_percentage}%
-                </Text>
-              </View>
-              
-              <View style={styles.goalFooter}>
-                <Text style={[styles.goalTypeBadgeText, { color: currentTheme.textSecondary }]}>
-                  団体目標
-                </Text>
-                <Text style={[styles.goalDeadline, { color: currentTheme.textSecondary }]}>
-                  期限: {goal.target_date ? new Date(goal.target_date).toLocaleDateString('ja-JP') : '未設定'}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      )}
-    </View>
-  );
-
   // 達成済み目標セクション（コンポーネント化済み）
   const renderCompletedGoals = () => (
     <CompletedGoalsSection
@@ -996,9 +784,11 @@ export default function GoalsScreen() {
               setNewGoal({...newGoal, title: text});
             }
           }}
-          placeholder={newGoal.goal_type === 'personal_short' ? '例: ○○を弾けるようになりたい' : newGoal.goal_type === 'personal_long' ? '例: 綺麗な音を出せるようになりたい' : '例: コンクールで金賞を取る'}
+          placeholder={newGoal.goal_type === 'personal_short' ? '例: ○○を弾けるようになりたい' : '例: 綺麗な音を出せるようになりたい'}
           placeholderTextColor={currentTheme.textSecondary}
           maxLength={50}
+          nativeID="goal-title-input"
+          accessibilityLabel="目標タイトル"
         />
         <Text style={[styles.characterCount, { color: currentTheme.textSecondary }]}>
           {newGoal.title.length}/50文字
@@ -1019,6 +809,8 @@ export default function GoalsScreen() {
           placeholderTextColor={currentTheme.textSecondary}
           multiline
           numberOfLines={3}
+          nativeID="goal-description-input"
+          accessibilityLabel="詳細説明"
         />
       </View>
 
@@ -1081,7 +873,7 @@ export default function GoalsScreen() {
             backgroundColor: currentTheme.background,
             borderColor: currentTheme.secondary
           }]}
-          onPress={() => setShowDatePicker(true)}
+          onPress={() => setShowCalendar(true)}
           activeOpacity={0.7}
         >
           <Text style={[
@@ -1117,16 +909,6 @@ export default function GoalsScreen() {
             長期目標
           </Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.typeButton, newGoal.goal_type === 'group' && { backgroundColor: currentTheme.primary }]}
-          onPress={() => setNewGoal({...newGoal, goal_type: 'group'})}
-        >
-          <Text style={[styles.typeButtonText, { 
-            color: newGoal.goal_type === 'group' ? '#FFFFFF' : currentTheme.text 
-          }]}>
-            団体目標
-          </Text>
-        </TouchableOpacity>
       </View>
 
       <TouchableOpacity 
@@ -1136,65 +918,6 @@ export default function GoalsScreen() {
         <Text style={styles.saveButtonText}>目標を保存</Text>
       </TouchableOpacity>
     </View>
-  );
-
-  // ミニカレンダーモーダル
-  const renderCalendarModal = () => (
-    <Modal
-      visible={showCalendar}
-      transparent={true}
-      animationType="fade"
-      onRequestClose={() => setShowCalendar(false)}
-    >
-      <View style={styles.calendarOverlay}>
-        <View style={styles.calendarModal}>
-          <View style={styles.calendarHeader}>
-            <TouchableOpacity onPress={() => changeMonth('prev')}>
-              <ChevronLeft size={24} color="#666666" />
-            </TouchableOpacity>
-            <Text style={styles.calendarTitle}>
-              {currentMonth.getFullYear()}年{currentMonth.getMonth() + 1}月
-            </Text>
-            <TouchableOpacity onPress={() => changeMonth('next')}>
-              <ChevronRight size={24} color="#666666" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.calendarGrid}>
-            {getDaysInMonth(currentMonth).map((dayData, index) => {
-              const formattedDayDate = `${dayData.date.getFullYear()}-${String(dayData.date.getMonth() + 1).padStart(2, '0')}-${String(dayData.date.getDate()).padStart(2, '0')}`;
-              
-                              return (
-                  <View key={index}>
-                    <TouchableOpacity
-                      style={[
-                        styles.calendarDay,
-                        !dayData.isCurrentMonth && styles.calendarDayOtherMonth,
-                      ]}
-                      onPress={() => selectDate(dayData.date)}
-                    >
-                      <Text style={[
-                        styles.calendarDayText,
-                        { color: dayData.isCurrentMonth ? currentTheme.text : currentTheme.textSecondary },
-                      ]}>
-                        {dayData.day}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                );
-            })}
-          </View>
-
-          {/* 閉じるボタン */}
-          <TouchableOpacity
-            style={[styles.calendarCloseButton, { backgroundColor: currentTheme.primary }]}
-            onPress={() => setShowCalendar(false)}
-          >
-            <Text style={styles.calendarCloseButtonText}>閉じる</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
   );
 
   return (
@@ -1259,30 +982,6 @@ export default function GoalsScreen() {
             <Text style={[styles.addButtonText, { color: '#FFFFFF' }]}>目標を追加</Text>
           </TouchableOpacity>
         </View>
-
-        {/* 2. 団体目標セクション */}
-        {userProfile.organization && (
-          <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
-            <View style={styles.sectionHeader}>
-              <Users size={24} color={currentTheme.primary} />
-              <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-                {userProfile.organization}での目標！
-              </Text>
-            </View>
-            
-            <TouchableOpacity
-              style={[styles.groupGoalCard, { borderColor: currentTheme.primary }]}
-              onPress={() => setNewGoal({...newGoal, goal_type: 'group'})}
-            >
-              <Text style={[styles.groupGoalText, { color: currentTheme.textSecondary }]}>
-                {goals.filter(goal => goal.goal_type === 'group').length > 0 
-                  ? goals.filter(goal => goal.goal_type === 'group')[0].title
-                  : '県大会優勝する！'
-                }
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
 
         {/* 設定した目標セクション */}
         <View style={[styles.section, { backgroundColor: 'transparent', marginTop: 16 }]}>
@@ -1491,722 +1190,3 @@ export default function GoalsScreen() {
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8F9FA',
-  },
-  content: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: 12,
-    paddingBottom: 40,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#333333',
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#007AFF',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  addGoalForm: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
-    elevation: 4,
-  },
-  formTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333333',
-    marginBottom: 16,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    backgroundColor: '#FFFFFF',
-  },
-  textArea: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
-  buttonRow: {
-    flexDirection: 'row',
-    marginBottom: 16,
-    gap: 8,
-  },
-  typeButton: {
-    flex: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-    alignItems: 'center',
-  },
-  typeButtonActive: {
-    backgroundColor: '#8B4513',
-    borderColor: '#8B4513',
-  },
-  typeButtonText: {
-    fontSize: 12,
-    color: '#666666',
-  },
-  typeButtonTextActive: {
-    color: '#FFFFFF',
-  },
-  saveButton: {
-    backgroundColor: '#8B4513',
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  goalsList: {
-    gap: 12,
-  },
-  goalCard: {
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-    marginBottom: 16,
-    marginHorizontal: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  goalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  goalHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  goalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 8,
-    lineHeight: 28,
-    letterSpacing: -0.3,
-  },
-  deleteButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FF4444',
-    shadowColor: '#FF4444',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  deleteButtonText: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    lineHeight: 22,
-  },
-  goalDescription: {
-    fontSize: 14,
-    marginBottom: 12,
-    lineHeight: 20,
-  },
-  progressText: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginLeft: 8,
-  },
-  // 新しいセクション用のスタイル
-  section: {
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 12,
-    elevation: 3,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-    gap: 12,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  goalTypes: {
-    gap: 12,
-    marginBottom: 16,
-  },
-  goalTypeCard: {
-    padding: 16,
-    borderWidth: 2,
-    borderRadius: 12,
-    backgroundColor: '#F8F9FA',
-    flex: 1,
-  },
-  goalTypeTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  goalTypeDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-    flexWrap: 'wrap',
-  },
-  addGoalButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 24,
-    gap: 8,
-  },
-
-  groupGoalCard: {
-    padding: 16,
-    borderWidth: 2,
-    borderRadius: 0,
-    backgroundColor: '#F8F9FA',
-    alignItems: 'center',
-  },
-  groupGoalText: {
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-    flexWrap: 'wrap',
-  },
-  editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    gap: 6,
-    alignSelf: 'flex-start',
-    backgroundColor: '#E8E8E8',
-  },
-  editButtonText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#FFFFFF',
-  },
-  completedGoalCard: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    elevation: 2,
-  },
-  completedGoalBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 0,
-    alignSelf: 'flex-start',
-    marginBottom: 8,
-  },
-  completedGoalBadgeText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  completedGoalTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 8,
-    lineHeight: 22,
-    flexWrap: 'wrap',
-  },
-  completedGoalDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  completedGoalDate: {
-    fontSize: 12,
-    fontStyle: 'italic',
-  },
-  emptyText: {
-    fontSize: 16,
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-  // イベント用のスタイル
-  addEventButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 0,
-    gap: 8,
-    marginBottom: 16,
-  },
-  addEventButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  eventCard: {
-    padding: 16,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 0,
-    marginBottom: 12,
-  },
-  eventHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  eventTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    flex: 1,
-    marginRight: 16,
-  },
-  eventActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  eventActionButton: {
-    padding: 8,
-    borderRadius: 0,
-    minWidth: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  eventDate: {
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  eventDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  // 達成済みイベント用のスタイル
-  completedEventCard: {
-    padding: 16,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 0,
-    marginBottom: 12,
-  },
-  completedEventTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  completedEventDate: {
-    fontSize: 14,
-    marginBottom: 8,
-  },
-  completedEventDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: 8,
-  },
-  completedEventCompletionDate: {
-    fontSize: 12,
-    fontStyle: 'italic',
-  },
-  // モーダル用のスタイル
-  modalContainer: {
-    flex: 1,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-  },
-  modalCloseButton: {
-    padding: 8,
-  },
-  modalCloseText: {
-    fontSize: 16,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  modalSaveButton: {
-    padding: 8,
-  },
-  modalSaveText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  modalContent: {
-    flex: 1,
-    padding: 20,
-  },
-  formGroup: {
-    marginBottom: 20,
-  },
-  formLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  formInput: {
-    borderWidth: 1,
-    borderRadius: 0,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-  },
-  formTextArea: {
-    borderWidth: 1,
-    borderRadius: 0,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    minHeight: 100,
-  },
-  // 日付入力用のスタイル
-  dateInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  calendarButton: {
-    padding: 12,
-    borderRadius: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  // カレンダー用のスタイル
-  calendarOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  calendarModal: {
-    width: 320,
-    borderRadius: 16,
-    padding: 20,
-    elevation: 10,
-  },
-  calendarHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  calendarNavButton: {
-    padding: 8,
-    borderRadius: 8,
-  },
-  calendarTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  weekdayHeader: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  weekdayText: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  calendarGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 20,
-  },
-  calendarDay: {
-    width: '14.28%',
-    aspectRatio: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 8,
-    margin: 1,
-  },
-  calendarDayOtherMonth: {
-    opacity: 0.3,
-  },
-  calendarDaySelected: {
-    backgroundColor: '#8B4513',
-  },
-  calendarDayText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  calendarDayTextSelected: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  calendarCloseButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  calendarCloseButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  // 横分割セクション用のスタイル
-  splitSectionContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 24,
-  },
-  splitSection: {
-    flex: 1,
-    padding: 16,
-    borderRadius: 0,
-  },
-  splitSectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  composerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  // 空状態表示用のスタイル
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 20,
-    marginBottom: 16,
-  },
-  emptyStateText: {
-    fontSize: 16,
-    marginBottom: 10,
-  },
-  goalFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  goalDeadline: {
-    fontSize: 14,
-  },
-  goalActions: {
-    flexDirection: 'row',
-    gap: 8,
-    alignSelf: 'flex-end',
-    marginTop: 8,
-  },
-  addButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  progressLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  progressBar: {
-    flex: 1,
-    height: 8,
-    backgroundColor: '#E0E0E0',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 4,
-  },
-  progressButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 8,
-  },
-  progressButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: '#E0E0E0',
-  },
-  shortGoalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 12,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 10,
-    gap: 6,
-    shadowColor: '#4CAF50',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  actionButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    letterSpacing: 0.3,
-  },
-  calendarToggleActions: {
-    flexDirection: 'row',
-    marginTop: 8,
-    gap: 8,
-  },
-  calendarToggleButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    gap: 4,
-  },
-  calendarToggleButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 0.1,
-  },
-  progressButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333333',
-  },
-  goalDate: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  goalDateText: {
-    fontSize: 14,
-    marginLeft: 8,
-  },
-  progressSection: {
-    marginTop: 12,
-  },
-  goalTypeBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 20,
-    alignSelf: 'flex-start',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  goalTypeBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    letterSpacing: 0.3,
-  },
-  dateInput: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    minHeight: 48,
-  },
-  dateInputText: {
-    fontSize: 16,
-    flex: 1,
-  },
-  simpleGoalForm: {
-    marginTop: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  characterCount: {
-    fontSize: 12,
-    textAlign: 'right',
-    marginTop: 4,
-  },
-  dateSelectorRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  yearMonthSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  monthSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  selectorButton: {
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    minWidth: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectorButtonText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  yearMonthText: {
-    fontSize: 16,
-    fontWeight: '600',
-    minWidth: 80,
-    textAlign: 'center',
-  },
-});

@@ -348,7 +348,7 @@ export default function TunerScreen() {
   const timeDomainBufferRef = useRef<Float32Array | null>(null) as React.MutableRefObject<Float32Array | null>;
 
   // メトロノーム用のref
-  const metronomeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const metronomeIntervalRef = useRef<number | null>(null);
 
   // 平滑化処理用
   const smoothedFrequencyRef = useRef<number>(0);

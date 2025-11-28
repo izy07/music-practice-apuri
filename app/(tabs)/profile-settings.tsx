@@ -703,7 +703,7 @@ export default function ProfileSettingsScreen() {
           <TouchableOpacity 
             style={[styles.avatarContainer, { backgroundColor: `${currentTheme.primary}20` }]}
             onPress={() => {
-              console.log('🖼️ アバター画像がタップされました');
+              logger.debug('🖼️ アバター画像がタップされました');
               showImagePicker();
             }}
             activeOpacity={0.8}

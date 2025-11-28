@@ -3,8 +3,15 @@
 ## エラーの原因
 - Metro bundlerがバンドルを生成する際にエラーが発生
 - MIMEタイプが'application/json'になっている（通常は'application/javascript'であるべき）
+- **WebプラットフォームでHermesエンジンが使用されている**（Webでは不要）
+  - エラーURLに`transform.engine=hermes`パラメータが含まれている
+  - HermesはReact Native（iOS/Android）専用で、Webでは使用できない
 
 ## 対処手順
+
+### 0. Metro設定の確認（重要）
+`metro.config.js`でWebプラットフォーム用の設定が正しく行われているか確認してください。
+特に、WebプラットフォームではHermesエンジンを無効化する必要があります。
 
 ### 1. 既存のMetro bundlerプロセスを停止
 ```bash
@@ -50,4 +57,32 @@ Metro bundlerのターミナル出力で、実際のエラーメッセージを�
 - `app/(tabs)/share.tsx`
 
 これらのファイルで型エラーや構文エラーがないか確認してください。
+
+## Webプラットフォーム特有の問題
+
+### Hermesエンジンの問題
+Webプラットフォームで`transform.engine=hermes`パラメータが含まれている場合、以下の対処を行ってください：
+
+1. **Metro設定の確認**
+   - `metro.config.js`でWebプラットフォーム用の設定が正しいか確認
+   - WebプラットフォームではHermesエンジンを無効化する必要がある
+
+2. **キャッシュの完全クリア**
+   ```bash
+   # すべてのキャッシュをクリア
+   rm -rf .expo
+   rm -rf .metro
+   rm -rf node_modules/.cache
+   npx expo start --web --clear
+   ```
+
+3. **ブラウザのキャッシュクリア**
+   - ブラウザの開発者ツールで「キャッシュの無効化とハード再読み込み」を実行
+   - または、シークレットモードでアクセス
+
+4. **ポートの確認**
+   - 他のプロセスがポート8081を使用していないか確認
+   ```bash
+   lsof -ti:8081
+   ```
 

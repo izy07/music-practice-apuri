@@ -44,8 +44,14 @@ jobs:
 
       - name: Supabase CLI のインストール
         run: |
-          npm install -g supabase
-          supabase --version
+          echo "📦 Supabase CLIをインストールします..."
+          curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz | tar -xz
+          sudo mv supabase /usr/local/bin/
+          supabase --version || {
+            echo "❌ Supabase CLIのインストールに失敗しました"
+            exit 1
+          }
+          echo "✅ Supabase CLIのインストールが完了しました"
 
       - name: Supabase ローカル環境の起動
         run: |

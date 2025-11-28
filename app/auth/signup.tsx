@@ -152,37 +152,6 @@ export default function SignupScreen() {
     }
   };
   
-  const signInWithGoogle = async () => {
-    logger.debug('Google認証（一般的なパターン）');
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      // Supabaseで直接Google認証処理
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`
-        }
-      });
-      
-      if (error) {
-        ErrorHandler.handle(error, 'Google認証', true);
-        setError(error.message || 'Google認証に失敗しました');
-        setIsLoading(false);
-        return false;
-      }
-      
-      logger.debug('Google認証成功:', data);
-      setIsLoading(false);
-      return true;
-    } catch (err) {
-      ErrorHandler.handle(err, 'Google認証', true);
-      setError('Google認証に失敗しました');
-      setIsLoading(false);
-      return false;
-    }
-  };
   
   const clearError = () => setError(null);
   
@@ -366,27 +335,6 @@ export default function SignupScreen() {
     }
   };
 
-  // Google新規登録処理
-  const handleGoogleSignup = async () => {
-    logger.debug('🔐 Google新規登録処理開始');
-    
-    try {
-    const success = await signInWithGoogle();
-      logger.debug('📊 Google新規登録結果:', success);
-      
-    if (success) {
-        logger.debug('✅ Google新規登録成功 - 自動遷移を待機中');
-        // useEffectで自動遷移が実行される
-      } else {
-        logger.debug('❌ Google新規登録失敗');
-        Alert.alert('エラー', 'Google新規登録に失敗しました。もう一度お試しください。');
-      }
-    } catch (error) {
-      logger.error('💥 Google新規登録処理エラー:', error);
-      ErrorHandler.handle(error, 'Google新規登録処理', true);
-      Alert.alert('エラー', 'Google新規登録に失敗しました。もう一度お試しください。');
-    }
-  };
 
   // ログイン画面への遷移
   const goToLogin = () => {
@@ -637,31 +585,6 @@ export default function SignupScreen() {
                 </View>
               </TouchableOpacity>
 
-              {/* 分割線 */}
-              <View style={styles.divider}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>または</Text>
-                <View style={styles.dividerLine} />
-              </View>
-
-              {/* Google新規登録ボタン */}
-              <TouchableOpacity
-                style={[
-                  styles.googleButton,
-                  isLoading ? styles.googleButtonDisabled : null,
-                ]}
-                onPress={handleGoogleSignup}
-                disabled={isLoading}
-              >
-                <View style={styles.googleButtonContent}>
-                  <View style={styles.googleIconContainer}>
-                    <Text style={styles.googleButtonIcon}>G</Text>
-                  </View>
-                  <Text style={styles.googleButtonText}>
-                    {isLoading ? '処理中...' : 'Googleで新規登録'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
             </View>
 
             {/* 利用規約 */}
@@ -893,67 +816,6 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 14,
     fontWeight: '700',
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 6,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: colors.border,
-  },
-  dividerText: {
-    color: colors.textSecondary,
-    fontSize: 14,
-    marginHorizontal: 16,
-  },
-  googleButton: {
-    backgroundColor: colors.surface,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderWidth: 2,
-    borderColor: colors.border,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  googleButtonDisabled: {
-    backgroundColor: colors.background,
-    borderColor: colors.textSecondary,
-    elevation: 0,
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
-  },
-  googleButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleIconContainer: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#4A5568',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  googleButtonIcon: {
-    fontSize: 14,
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  googleButtonText: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
   },
   termsContainer: {
     marginBottom: 8,
