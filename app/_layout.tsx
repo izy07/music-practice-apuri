@@ -408,7 +408,7 @@ function RootLayoutContent() {
      * - 楽器選択状況に応じて適切な画面に遷移
      * - (tabs)内の画面（楽器選択、チュートリアル等）は完全に除外
      * 
-     * 注意: isAtRootは上記321行目で既に宣言されているため、ここでは使用のみ
+     * 注意: isAtRootは上記329行目で既に宣言されているため、ここでは使用のみ
      */
     if (isAuthenticated && isAtRoot) {
       // ユーザー進捗状況をチェック
