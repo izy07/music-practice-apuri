@@ -440,11 +440,14 @@ export default function TimerScreen() {
       
       logger.info(`タイマー記録を保存: ${minutes}分`);
       
-      // カレンダー画面に更新を通知
+      // カレンダー画面に更新を通知（少し遅延させてデータベースの反映を待つ）
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
-          detail: { action: 'saved', date: new Date() }
-        }));
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
+            detail: { action: 'saved', date: new Date(), source: 'timer' }
+          }));
+          logger.debug('✅ カレンダー更新通知を送信しました');
+        }, 500); // 500ms待機してからイベントを発火
       }
       
       return true;
@@ -457,16 +460,24 @@ export default function TimerScreen() {
 
   const savePracticeRecord = async (minutes: number) => {
     try {
-      await savePracticeRecordWithIntegration(minutes);
+      const result = await savePracticeRecordWithIntegration(minutes);
       
-      // 成功メッセージ
-      Alert.alert(
-        '保存完了',
-        `${minutes}分の練習記録を保存しました！`,
-        [{ text: 'OK' }]
-      );
-      
-      return true;
+      if (result) {
+        // 成功メッセージ（自動記録の場合は表示しない）
+        if (!settings.autoSave) {
+          Alert.alert(
+            '保存完了',
+            `${minutes}分の練習記録を保存しました！`,
+            [{ text: 'OK' }]
+          );
+        } else {
+          logger.debug('自動記録で保存完了（メッセージは表示しない）');
+        }
+        
+        return true;
+      } else {
+        throw new Error('練習記録の保存に失敗しました');
+      }
     } catch (error) {
       ErrorHandler.handle(error, '練習記録保存', true);
       logger.error('練習記録保存エラー:', error);

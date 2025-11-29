@@ -218,29 +218,36 @@ export default function CalendarScreen() {
 
   // タイマーからの練習記録更新通知をリッスン
   useEffect(() => {
-    const handlePracticeRecordUpdate = async (event: Event & { detail?: { action?: string } }) => {
-      logger.debug('練習記録更新通知を受信:', (event as CustomEvent).detail);
+    const handlePracticeRecordUpdate = async (event: Event & { detail?: { action?: string; source?: string } }) => {
+      const detail = (event as CustomEvent).detail;
+      logger.debug('練習記録更新通知を受信:', detail);
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const action = (event as CustomEvent).detail?.action;
+          const action = detail?.action;
+          const source = detail?.source;
           
-          // 録音保存の場合は録音データも更新
-          if (action === 'recording_saved') {
-            await Promise.all([
-              loadPracticeData(user),
-              loadTotalPracticeTime(user),
-              loadRecordingsData(user)
-            ]);
-            logger.info('✅ 録音保存後のカレンダーデータを更新しました');
-          } else {
-            // 通常の練習記録更新
-            await Promise.all([
-              loadPracticeData(user),
-              loadTotalPracticeTime(user)
-            ]);
-            logger.info('✅ カレンダーデータを更新しました');
-          }
+          // タイマーからの通知の場合は少し待機してから更新（データベースの反映を待つ）
+          const delay = source === 'timer' ? 1000 : 0;
+          
+          setTimeout(async () => {
+            // 録音保存の場合は録音データも更新
+            if (action === 'recording_saved') {
+              await Promise.all([
+                loadPracticeData(user),
+                loadTotalPracticeTime(user),
+                loadRecordingsData(user)
+              ]);
+              logger.info('✅ 録音保存後のカレンダーデータを更新しました');
+            } else {
+              // 通常の練習記録更新（タイマー含む）
+              await Promise.all([
+                loadPracticeData(user),
+                loadTotalPracticeTime(user)
+              ]);
+              logger.info('✅ カレンダーデータを更新しました（ソース:', source || 'unknown', '）');
+            }
+          }, delay);
         }
       } catch (error) {
         ErrorHandler.handle(error, 'カレンダー更新', false);
