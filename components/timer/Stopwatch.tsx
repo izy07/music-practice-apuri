@@ -112,7 +112,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
               style={[styles.stopwatchButton, { backgroundColor: currentTheme.secondary }]}
               onPress={handleLap}
             >
-              <Text style={[styles.stopwatchButtonText, { color: currentTheme.text, fontSize: 12 }]}>ラップ</Text>
+              <Text style={[styles.stopwatchButtonText, { color: currentTheme.text }]}>ラップ</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.stopwatchButton, styles.stopwatchMainButton, { 
@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   stopwatchTime: {
-    fontSize: 48,
+    fontSize: 56,
     fontWeight: '700',
     fontFamily: 'monospace',
     letterSpacing: 1,
@@ -204,7 +204,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
   stopwatchButtonText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
   },
   lapTimesContainer: {
@@ -230,11 +230,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   lapTimesTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '600',
   },
   clearLapsButton: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
   },
   lapTimesList: {
@@ -248,18 +248,18 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   lapNumber: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '500',
     width: 30,
   },
   lapTimeText: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '600',
     flex: 1,
     textAlign: 'center',
   },
   lapTotalTime: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '500',
     width: 70,
     textAlign: 'right',

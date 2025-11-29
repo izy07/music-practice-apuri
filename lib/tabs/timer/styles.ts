@@ -32,7 +32,7 @@ export const styles = StyleSheet.create({
     gap: 4,
   },
   modeButtonText: {
-    fontSize: 12,
+    fontSize: 15,
     fontWeight: '600',
     marginLeft: 0,
   },
@@ -67,17 +67,17 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   timerTitle: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 6,
     color: '#FFFFFF',
   },
   timerDisplay: {
-    fontSize: 32,
+    fontSize: 42,
     fontWeight: '700',
     fontFamily: 'monospace',
     color: '#00D4FF',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   alarmTimeContainer: {
     flexDirection: 'row',
@@ -89,7 +89,7 @@ export const styles = StyleSheet.create({
     marginRight: 4,
   },
   alarmTime: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     color: '#FF6B35',
   },
@@ -145,23 +145,23 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
   },
   wheelLabel: {
-    fontSize: 10,
-    marginBottom: 2,
+    fontSize: 12,
+    marginBottom: 4,
   },
   wheelColon: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
-    marginHorizontal: 2,
+    marginHorizontal: 4,
   },
   applyButton: {
     backgroundColor: '#8B4513',
     borderRadius: 8,
-    paddingVertical: 6,
+    paddingVertical: 8,
     alignItems: 'center',
   },
   applyButtonText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
   },
   settingsContainer: {
@@ -172,17 +172,17 @@ export const styles = StyleSheet.create({
     elevation: 2,
   },
   settingsTitle: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
     color: '#333333',
-    marginBottom: 12,
+    marginBottom: 14,
     textAlign: 'center',
   },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
@@ -191,13 +191,13 @@ export const styles = StyleSheet.create({
     marginRight: 12,
   },
   settingLabel: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '600',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   settingDescription: {
-    fontSize: 10,
-    lineHeight: 14,
+    fontSize: 12,
+    lineHeight: 16,
   },
   testSoundButton: {
     paddingHorizontal: 12,
@@ -206,7 +206,7 @@ export const styles = StyleSheet.create({
     marginRight: 8,
   },
   testSoundButtonText: {
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '600',
   },
   smallChoiceButton: {
