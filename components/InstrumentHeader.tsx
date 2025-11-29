@@ -331,7 +331,7 @@ export default function InstrumentHeader() {
                 style={styles.toolItem}
                 onPress={() => {
                   setShowLearningTools(false);
-                  router.push('/(tabs)/music-dictionary');
+                  Alert.alert('音楽用語辞典', 'この機能は現在開発中です', [{ text: 'OK' }]);
                 }}
               >
                 <BookOpen size={24} color="#2196F3" />
