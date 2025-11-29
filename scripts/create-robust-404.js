@@ -76,7 +76,8 @@ const redirectScript = `
       redirectPath = '/';
     } else {
       // ケース3: ベースパスがない場合（最も重要）
-      // 例: /auth/login
+      // 例: /auth/login または /auth/signup
+      // GitHub Pagesでは、ベースパスがないパスにアクセスした場合、404.htmlが呼ばれる
       const normalizedPath = currentPath.startsWith('/') ? currentPath : '/' + currentPath;
       originalPath = normalizedBasePath + normalizedPath;
       redirectPath = normalizedPath;
@@ -86,7 +87,7 @@ const redirectScript = `
     const queryParams = new URLSearchParams(currentSearch);
     queryParams.set('_redirect', redirectPath);
     
-    // リダイレクト先URLを構築
+    // リダイレクト先URLを構築（必ずベースパス + /index.html）
     targetPath = normalizedBasePath + '/index.html?' + queryParams.toString() + currentHash;
     
     // リダイレクトフラグを設定（無限ループ防止）
