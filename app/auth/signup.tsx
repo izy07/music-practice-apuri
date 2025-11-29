@@ -272,18 +272,42 @@ export default function SignupScreen() {
       logger.debug('📊 新規登録結果:', result);
       
       if (result.success) {
-        logger.debug('✅ 新規登録成功 - onAuthStateChangeで認証状態が更新され、自動的にナビゲーションされます');
+        logger.debug('✅ 新規登録成功 - 認証状態を確認して画面遷移を実行します');
         setSignupSuccess(true);
-        // 手動でナビゲーションしない（_layout.tsxのonAuthStateChangeで処理）
-        // ただし、onAuthStateChangeが発火しない場合に備えて、少し待ってからセッションを確認
-        setTimeout(async () => {
+        
+        // セッションが確立されるまで待機（最大5秒）
+        let sessionEstablished = false;
+        for (let i = 0; i < 10; i++) {
           const { data: sessionData } = await supabase.auth.getSession();
           if (sessionData.session) {
-            logger.debug('✅ セッション確認済み - 認証状態が更新されているはずです');
-          } else {
-            logger.warn('⚠️ セッションが確立されていません - onAuthStateChangeを待機中');
+            logger.debug('✅ セッション確認成功 - 画面遷移を実行します');
+            sessionEstablished = true;
+            break;
           }
-        }, 1000);
+          
+          if (i < 9) {
+            logger.debug(`⏳ セッション確認中 (試行 ${i + 1}/10)...`);
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+        
+        if (sessionEstablished) {
+          // セッションが確立されたら、少し待ってから画面遷移を実行
+          // _layout.tsxのcheckUserProgressAndNavigateが実行されるのを待つ
+          setTimeout(() => {
+            logger.debug('🔄 画面遷移を実行します');
+            // プロフィールが作成されるまで少し待つ
+            setTimeout(() => {
+              router.replace('/(tabs)/tutorial');
+            }, 1000);
+          }, 500);
+        } else {
+          logger.warn('⚠️ セッションが確立されていません - 手動で画面遷移を試みます');
+          // セッションが確立されていない場合でも、画面遷移を試みる
+          setTimeout(() => {
+            router.replace('/(tabs)/tutorial');
+          }, 2000);
+        }
       } else {
         logger.debug('❌ 新規登録失敗');
         const errorMessage = result.error || '登録に失敗しました。メールが既に登録済みか、入力内容に誤りがあります。';
