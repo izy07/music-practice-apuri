@@ -44,6 +44,7 @@ const TAB_CONFIG = [
 const VISIBLE_TAB_NAMES = TAB_CONFIG.map(tab => tab.name);
 
 // 非表示にするタブ（タブバーに表示されない画面）
+// 注意: basic-practiceは削除（index.tsxが直接Screenとして認識されるため重複を避ける）
 const HIDDEN_TABS = [
   'statistics',
   'instrument-selection',
@@ -65,7 +66,7 @@ const HIDDEN_TABS = [
   'pricing-plans',
   'score-auto-scroll',
   'help-support',
-  'basic-practice',
+  // 'basic-practice', // 削除: index.tsxが直接Screenとして認識されるため重複を避ける
   'room',
   'support',
   'org-overview',

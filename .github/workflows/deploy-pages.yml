@@ -61,20 +61,19 @@ jobs:
           [ -f dist/.nojekyll ] && echo "✅ .nojekyll が存在します" || echo "⚠️  .nojekyll が見つかりません"
           [ -f dist/metadata.json ] && echo "✅ metadata.json が存在します" || echo "⚠️  metadata.json が見つかりません"
 
-      - name: 404.htmlの確認と作成
+      - name: 404.htmlの作成（SPAルーティング用）
         run: |
-          if [ ! -f dist/404.html ]; then
-            echo "⚠️  404.htmlが見つかりません。作成します..."
-            if [ -f dist/index.html ]; then
-              cp dist/index.html dist/404.html
-              echo "✅ 404.htmlを作成しました"
-            else
-              echo "❌ index.htmlが見つからないため、404.htmlを作成できません"
-              exit 1
-            fi
+          echo "🔧 404.htmlを作成します..."
+          if [ -f dist/index.html ]; then
+            node scripts/create-robust-404.js
+            echo "✅ 404.htmlを作成しました"
           else
-            echo "✅ 404.htmlが存在します"
+            echo "❌ index.htmlが見つからないため、404.htmlを作成できません"
+            exit 1
           fi
+        env:
+          GITHUB_PAGES_BASE: /music-practice-apuri
+          EXPO_PUBLIC_WEB_BASE: /music-practice-apuri
 
       - name: .nojekyllファイルの作成
         run: |

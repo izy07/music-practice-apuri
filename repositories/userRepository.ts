@@ -39,7 +39,7 @@ export const getUserProfile = async (
       
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('*')
+        .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -73,7 +73,7 @@ export const upsertUserProfile = async (
           },
           { onConflict: 'user_id' }
         )
-        .select()
+        .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
         .single();
 
       if (error) {
@@ -256,19 +256,90 @@ export const updateUserProfile = async (
     async () => {
       logger.debug(`[${REPOSITORY_CONTEXT}] updateUserProfile:start`, { userId, updates });
       
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('user_profiles')
         .update({
           ...updates,
           updated_at: new Date().toISOString(),
         })
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
       
       if (error) {
+        // 400エラーの場合、詳細な情報をログ出力
+        if (error.status === 400 || error.code === 'PGRST116' || error.code === 'PGRST205') {
+          // エラーの詳細をコンソールに出力（開発時のデバッグ用）
+          console.error('❌ user_profiles更新エラー（詳細）:', {
+            code: error.code,
+            message: error.message,
+            status: error.status,
+            details: error.details,
+            hint: error.hint,
+            userId,
+            updates,
+            timestamp: new Date().toISOString()
+          });
+          
+          logger.error(`[${REPOSITORY_CONTEXT}] updateUserProfile:400エラー`, {
+            error: {
+              code: error.code,
+              message: error.message,
+              status: error.status,
+              details: error.details,
+              hint: error.hint
+            },
+            userId,
+            updates,
+            possibleCauses: [
+              'RLSポリシーが正しく設定されていない',
+              'user_profilesテーブルが存在しない',
+              'user_idカラムが存在しない',
+              '権限が不足している',
+              '外部キー制約違反（selected_instrument_idが存在しないinstruments.idを参照）',
+              'カラムが存在しない',
+              '更新しようとしているカラムが存在しない'
+            ],
+            troubleshooting: [
+              'SupabaseダッシュボードでRLSポリシーを確認',
+              'scripts/check_user_profiles_status.sqlを実行してテーブル状態を確認',
+              'エラーのdetailsとhintを確認'
+            ]
+          });
+          
+          // 外部キー制約違反の場合は、エラーを無視して続行（楽器が存在しない場合）
+          if (error.code === '23503' || (error.message?.includes('violates foreign key constraint') && error.message?.includes('instruments'))) {
+            logger.warn(`[${REPOSITORY_CONTEXT}] updateUserProfile:外部キー制約違反 - selected_instrument_idをNULLに設定して再試行`, {
+              userId,
+              updates,
+              error: error.message
+            });
+            
+            // selected_instrument_idを除外して再試行
+            const { selected_instrument_id, ...updatesWithoutInstrument } = updates;
+            if (Object.keys(updatesWithoutInstrument).length > 0) {
+              const { error: retryError } = await supabase
+                .from('user_profiles')
+                .update({
+                  ...updatesWithoutInstrument,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('user_id', userId)
+                .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
+              
+              if (retryError) {
+                logger.error(`[${REPOSITORY_CONTEXT}] updateUserProfile:再試行も失敗`, retryError);
+                throw retryError;
+              }
+              
+              logger.warn(`[${REPOSITORY_CONTEXT}] updateUserProfile:selected_instrument_idを除外して更新成功`);
+              return; // 成功した場合はここで終了
+            }
+          }
+        }
         throw error;
       }
       
-      logger.debug(`[${REPOSITORY_CONTEXT}] updateUserProfile:success`);
+      logger.debug(`[${REPOSITORY_CONTEXT}] updateUserProfile:success`, { data });
     },
     `${REPOSITORY_CONTEXT}.updateUserProfile`
   );

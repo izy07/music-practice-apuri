@@ -95,7 +95,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
   const rateLimiter = useRef(createRateLimiter()).current;
   
   // 新規登録画面の場合はユーザー取得を停止（Hooksの順序を保持）
-  const authChild = segments[1];
+  const authChild = segments.length > 1 ? (segments as readonly string[])[1] : undefined;
   const isSignupScreen = authChild === 'signup';
   
   // ローカル状態（グローバル状態のコピー）
@@ -218,17 +218,24 @@ export const useAuthAdvanced = (): AuthHookReturn => {
   const handleAuthenticatedUser = useCallback(async (user: any): Promise<AuthUser | null> => {
     try {
       
-      // ユーザープロフィールを取得
+      // ユーザープロフィールを取得（基本カラムのみで取得）
       const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
-        .select('*')
+        .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
       
       if (profileError) {
-        ErrorHandler.handle(profileError, 'プロフィール取得', false);
-        
-        // プロフィールが存在しない場合は新規作成
+        // 400エラー（カラムが存在しない）の場合は、カラムが存在しないものとして処理
+        if (profileError.status === 400 || profileError.code === 'PGRST116' || profileError.code === 'PGRST205') {
+          // カラムが存在しないエラーの場合は、デフォルト値を使用して処理を続行
+          if (profileError.message?.includes('column') || profileError.message?.includes('does not exist') || profileError.message?.includes('tutorial_completed') || profileError.message?.includes('onboarding_completed')) {
+            logger.warn('user_profilesテーブルにtutorial_completedまたはonboarding_completedカラムが存在しません。デフォルト値を使用します。', { error: profileError });
+            // プロフィールが存在しないものとして処理を続行（新規作成を試みる）
+          }
+        }
+        // PGRST116エラー（プロフィールが存在しない）の場合は新規作成を試みる
+        if (profileError.code === 'PGRST116' || profileError.status === 400) {
         const displayName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
         
         const { data: newProfile, error: createError } = await supabase
@@ -238,10 +245,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             display_name: displayName,
             practice_level: 'beginner',
             total_practice_minutes: 0,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
           })
-          .select()
+            .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
           .single();
         
         if (createError) {
@@ -271,16 +276,17 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         }
         
         // 新規作成されたプロフィールを使用
+          if (newProfile) {
         const authUser: AuthUser = {
           id: user.id,
           email: user.email || '',
           name: newProfile.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー',
-          avatar_url: newProfile.avatar_url || user.user_metadata?.avatar_url,
+              avatar_url: (newProfile as any).avatar_url || user.user_metadata?.avatar_url,
           created_at: user.created_at,
           last_sign_in_at: user.last_sign_in_at,
           selected_instrument_id: newProfile.selected_instrument_id || null,
-          tutorial_completed: newProfile.tutorial_completed || false,
-          onboarding_completed: newProfile.onboarding_completed || false,
+              tutorial_completed: (newProfile as any).tutorial_completed ?? false,
+              onboarding_completed: (newProfile as any).onboarding_completed ?? false,
         };
         
         updateAuthState({
@@ -291,20 +297,26 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           error: null,
         });
         return authUser;
+          }
+        } else {
+          ErrorHandler.handle(profileError, 'プロフィール取得', false);
+        }
       }
       
+      // プロフィールが存在する場合
+      if (profile) {
       // プロフィール情報をAuthUser形式に変換
       const profileName = profile.display_name || user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
       const authUser: AuthUser = {
         id: user.id,
         email: user.email || '',
         name: profileName,
-        avatar_url: profile.avatar_url,
+          avatar_url: (profile as any).avatar_url,
         created_at: user.created_at,
         last_sign_in_at: user.last_sign_in_at,
         selected_instrument_id: profile.selected_instrument_id || null,
-        tutorial_completed: profile.tutorial_completed || false,
-        onboarding_completed: profile.onboarding_completed || false,
+          tutorial_completed: (profile as any).tutorial_completed ?? false,
+          onboarding_completed: (profile as any).onboarding_completed ?? false,
       };
       
       logger.debug('ユーザー情報取得完了:', {
@@ -312,6 +324,31 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         hasInstrument: !!authUser.selected_instrument_id,
         tutorialCompleted: authUser.tutorial_completed,
       });
+        
+        updateAuthState({
+          user: authUser,
+          isAuthenticated: true,
+          isLoading: false,
+          isInitialized: true,
+          error: null,
+        });
+        
+        return authUser;
+      }
+      
+      // プロフィールが存在しない場合（エラーでもPGRST116でもない場合）
+      const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
+      const authUser: AuthUser = {
+        id: user.id,
+        email: user.email || '',
+        name: fallbackName,
+        avatar_url: user.user_metadata?.avatar_url,
+        created_at: user.created_at,
+        last_sign_in_at: user.last_sign_in_at,
+        selected_instrument_id: null,
+        tutorial_completed: false,
+        onboarding_completed: false,
+      };
       
       updateAuthState({
         user: authUser,

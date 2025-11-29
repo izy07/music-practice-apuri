@@ -5,7 +5,7 @@ import { Stack } from 'expo-router'; // 画面遷移のスタックナビゲー�
 import { Platform } from 'react-native';
 import { useRouter, useSegments } from 'expo-router'; // ルーティング関連のフック
 import { useFrameworkReady } from '@/hooks/useFrameworkReady'; // フレームワーク準備状態の管理
-import { useAuthSimple } from '@/hooks/useAuthSimple'; // シンプルな認証フック
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced'; // 認証フック（統一版）
 import { useIdleTimeout } from '@/hooks/useIdleTimeout'; // アイドルタイムアウト機能
 import { LanguageProvider } from '@/components/LanguageContext'; // 多言語対応の管理
 import { InstrumentThemeProvider } from '@/components/InstrumentThemeContext'; // 楽器別テーマの管理
@@ -45,10 +45,10 @@ function RootLayoutContent() {
     needsTutorial,
     canAccessMainApp,
     signOut 
-  } = useAuthSimple();
+  } = useAuthAdvanced();
 
   // アイドルタイムアウト機能（1時間操作なしで自動ログアウト）
-  // useIdleTimeoutはPromise<void>を期待するが、useAuthSimpleのsignOutはPromise<boolean>を返すためラッパーを作成
+  // useAuthAdvancedのsignOutはPromise<void>を返すため、そのまま使用可能
   const handleSignOut = React.useCallback(async (): Promise<void> => {
     await signOut();
   }, [signOut]);
@@ -70,7 +70,38 @@ function RootLayoutContent() {
 
   // React Native Web特有の警告を抑制（開発時のノイズを減らす）
   React.useEffect(() => {
-    LogBox.ignoreLogs(['Unexpected text node']);
+    // LogBoxはReact Native環境でのみ有効（Web環境では無効）
+    if (Platform.OS !== 'web') {
+      LogBox.ignoreLogs([
+        'Unexpected text node',
+        // pointerEventsの警告は、Expo RouterのBottomTabBarが内部でAnimatedコンポーネントを使用しているため、
+        // 直接修正は困難。警告を抑制する。
+        'props.pointerEvents is deprecated. Use style.pointerEvents',
+        // aria-hidden警告は、モーダルやオーバーレイでフォーカス管理が適切に行われている場合でも
+        // 発生する可能性があるため、開発環境でのみ抑制する。
+        'Blocked aria-hidden',
+      ]);
+    } else {
+      // Web環境では、コンソールの警告を抑制（開発環境のみ）
+      if (__DEV__ && typeof console !== 'undefined') {
+        const originalWarn = console.warn;
+        console.warn = (...args: unknown[]) => {
+          const message = args[0]?.toString() || '';
+          // pointerEventsの警告を無視
+          if (message.includes('props.pointerEvents is deprecated')) {
+            return;
+          }
+          // aria-hidden警告を無視（より広範囲にマッチ）
+          if (message.includes('Blocked aria-hidden') || 
+              message.includes('aria-hidden') || 
+              message.includes('descendant retained focus') ||
+              message.includes('assistive technology')) {
+            return;
+          }
+          originalWarn.apply(console, args);
+        };
+      }
+    }
   }, []);
 
   // GitHub Pages用: 404.htmlからリダイレクトされた際に元のパスを復元
@@ -198,95 +229,139 @@ function RootLayoutContent() {
    */
   const checkUserProgressAndNavigate = async () => {
     try {
+      // まず、セッションが確立されていることを確認（最大5回までリトライ）
+      let sessionEstablished = false;
+      let user: any = null;
       
-      // ユーザー情報を取得
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        navigateWithDelay('/(tabs)/tutorial');
+      for (let i = 0; i < 5; i++) {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData.session?.user) {
+          sessionEstablished = true;
+          user = sessionData.session.user;
+          logger.debug(`✅ セッション確認成功 (試行 ${i + 1})`, { userId: user.id });
+          break;
+        }
+        
+        if (i < 4) {
+          logger.debug(`⏳ セッション確認中 (試行 ${i + 1}/5)...`);
+          await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)));
+        }
+      }
+      
+      if (!sessionEstablished || !user) {
+        logger.warn('⚠️ セッションが確立されていません - 認証が完了するまで待機します');
+        // セッションが確立されていない場合は遷移しない
         return;
       }
 
-      // ユーザープロフィールの詳細情報を取得
-      // tutorial_completedとonboarding_completedカラムを含めて取得
-      const { data: profile, error } = await supabase
-        .from('user_profiles')
-        .select('id, user_id, display_name, selected_instrument_id, tutorial_completed, onboarding_completed, created_at, updated_at')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // プロフィールが確実に存在することを確認（最大5回までリトライ）
+      let profile: any = null;
+      
+      for (let i = 0; i < 5; i++) {
+        const { data: baseProfile, error: baseError } = await supabase
+          .from('user_profiles')
+          .select('id, user_id, display_name, selected_instrument_id, created_at, updated_at')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
 
-      if (error) {
-        // カラムが存在しないエラーの場合は無視して続行
-        if (error.code === 'PGRST116' || error.message?.includes('column') || error.message?.includes('does not exist')) {
-          logger.warn('user_profilesテーブルの一部カラムが存在しません。デフォルト値を使用します。', { error });
+        if (baseError) {
+          // 400エラー（カラムが存在しない）の場合は無視して続行
+          if (baseError.status === 400 || baseError.code === 'PGRST116' || baseError.code === 'PGRST205' || baseError.message?.includes('column') || baseError.message?.includes('does not exist') || baseError.message?.includes('tutorial_completed') || baseError.message?.includes('onboarding_completed')) {
+            logger.warn('user_profilesテーブルの一部カラムが存在しません。デフォルト値を使用します。', { error: baseError });
+            // エラーを無視して続行（プロフィールが存在しないものとして処理）
+          } else {
+            ErrorHandler.handle(baseError, 'プロフィール取得', false);
+          }
         } else {
-          ErrorHandler.handle(error, 'プロフィール取得', false);
+          profile = baseProfile;
         }
         
-        // プロフィールが存在しない場合は新規作成
-        const { data: newProfile, error: createError } = await supabase
-          .from('user_profiles')
-          .insert({
-            user_id: user.id,
-            display_name: user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー',
-          })
-          .select()
-          .single();
-        
-        if (createError) {
-          ErrorHandler.handle(createError, 'プロフィール作成', false);
-          navigateWithDelay('/(tabs)/tutorial');
-          return;
+        if (profile) {
+          logger.debug(`✅ プロフィール確認成功 (試行 ${i + 1})`, { profileId: profile.id });
+          break;
         }
         
-        // 新規作成されたプロフィールを使用
-        navigateWithDelay('/(tabs)/instrument-selection');
-        return;
+        if (i < 4) {
+          logger.debug(`⏳ プロフィール確認中 (試行 ${i + 1}/5)...`);
+          await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)));
+        }
       }
 
-      // プロフィールが存在しない場合
+      // プロフィールが存在しない場合は新規作成（基本カラムのみ）
       if (!profile) {
+        logger.debug('プロフィールが存在しないため、作成します');
         const { data: newProfile, error: createError } = await supabase
           .from('user_profiles')
           .insert({
             user_id: user.id,
-            display_name: user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー',
+            display_name: user.user_metadata?.name || user.user_metadata?.display_name || user.email?.split('@')[0] || 'ユーザー',
             practice_level: 'beginner',
             total_practice_minutes: 0,
           })
-          .select()
+          .select('id, user_id, display_name, selected_instrument_id, created_at, updated_at')
           .single();
         
         if (createError) {
-          ErrorHandler.handle(createError, 'プロフィール作成', false);
-          navigateWithDelay('/(tabs)/tutorial');
-          return;
+          // 既にプロフィールが存在する場合は成功として扱う（競合エラー）
+          if (createError.code === '23505') {
+            logger.debug('プロフィールは既に存在します（競合エラー） - 再度取得を試みます');
+            // 再度取得を試みる
+            const { data: retryProfile } = await supabase
+              .from('user_profiles')
+              .select('id, user_id, display_name, selected_instrument_id, created_at, updated_at')
+              .eq('user_id', user.id)
+              .maybeSingle();
+            profile = retryProfile;
+          } else {
+            ErrorHandler.handle(createError, 'プロフィール作成', false);
+            logger.error('❌ プロフィール作成に失敗しました - 認証が完了するまで待機します');
+            return;
+          }
+        } else {
+          profile = newProfile;
+          logger.debug('✅ プロフィール作成成功', { profileId: profile?.id });
         }
-        
-        // 新規作成されたプロフィールを使用
-        navigateWithDelay('/(tabs)/instrument-selection');
+      }
+
+      // プロフィールが確実に存在することを確認
+      if (!profile) {
+        logger.warn('⚠️ プロフィールが作成されていません - 認証が完了するまで待機します');
         return;
       }
 
+      // プロフィールにデフォルト値を設定
+      profile = {
+        ...profile,
+        tutorial_completed: false,
+        onboarding_completed: false,
+      };
+
+      logger.debug('✅ 認証とプロフィール確認完了 - 画面遷移を実行します', { 
+        userId: user.id, 
+        profileId: profile.id 
+      });
+
       // 進捗状況に基づく画面遷移
-      // tutorial_completedとonboarding_completedはオプショナル（カラムが存在しない場合がある）
-      const tutorialCompleted = (profile as any)?.tutorial_completed ?? false;
+      // 楽器が選択されている場合は、tutorial_completedに関係なくメイン画面に遷移
+      // （楽器選択画面でtutorial_completedを更新しているため）
       const onboardingCompleted = (profile as any)?.onboarding_completed ?? false;
       
       if (onboardingCompleted) {
         navigateWithDelay('/(tabs)/');
-      } else if (profile?.selected_instrument_id && !tutorialCompleted) {
-        navigateWithDelay('/(tabs)/tutorial');
       } else if (profile?.selected_instrument_id) {
+        // 楽器が選択されている場合はメイン画面に遷移
+        // tutorial_completedは楽器選択時に更新されるため、ここではチェックしない
         navigateWithDelay('/(tabs)/');
       } else {
+        // 楽器が選択されていない場合は楽器選択画面に遷移
         navigateWithDelay('/(tabs)/instrument-selection');
       }
     } catch (error) {
       ErrorHandler.handle(error, 'ユーザー進捗状況チェック', false);
-      logger.debug('エラー時はチュートリアル画面にフォールバック');
-      navigateWithDelay('/(tabs)/tutorial');
+      logger.error('❌ 認証確認中にエラーが発生しました - 認証が完了するまで待機します', error);
+      // エラー時は遷移しない（認証が完了するまで待機）
     }
   };
 
@@ -299,10 +374,6 @@ function RootLayoutContent() {
    * - 認証済み + 楽器未選択 → チュートリアル画面
    */
   useEffect(() => {
-    // 新規登録画面の場合は認証フックを無効化（画面遷移をスキップ）
-    if (isSignupScreen) {
-      return;
-    }
     /**
      * 【パス解析】現在のURLパスを解析して認証関連画面かどうかを判定
      * - segments[0] === 'auth': 認証関連画面（/auth/login, /auth/signup, /auth/callback）
@@ -332,6 +403,12 @@ function RootLayoutContent() {
     if (!isAuthenticated) {
       // 利用規約・プライバシーポリシー画面は許可
       if (segments[0] === 'terms-of-service' || segments[0] === 'privacy-policy') {
+        return;
+      }
+      
+      // 新規登録画面の場合は、認証フックを無効化（画面遷移をスキップ）
+      // ただし、認証済みユーザーが新規登録画面にいる場合は遷移を許可
+      if (isSignupScreen) {
         return;
       }
       
