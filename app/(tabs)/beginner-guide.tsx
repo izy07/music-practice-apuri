@@ -328,23 +328,13 @@ export default function BeginnerGuideScreen() {
             
             <View style={styles.infoGrid}>
               <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>日常的なお手入れ手順</Text>
+                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>日常的なお手入れ</Text>
                 <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.maintenance.daily}</Text>
               </View>
               
               <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>楽器の保管方法</Text>
+                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>保管方法</Text>
                 <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.maintenance.storage}</Text>
-              </View>
-              
-              <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>注意すべきポイント</Text>
-                <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.maintenance.attention}</Text>
-              </View>
-              
-              <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>お手入れ用品の紹介</Text>
-                <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.maintenance.supplies}</Text>
               </View>
             </View>
           </View>
