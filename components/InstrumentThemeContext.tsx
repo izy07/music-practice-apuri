@@ -482,9 +482,10 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     try {
       // データベースから楽器データを読み込む（色設定はローカルのdefaultInstrumentsを優先）
       // 注意: データベースにも色設定があるが、コードの色設定を優先する
+      // color_backgroundカラムが存在しない可能性があるため、基本カラムのみ取得
       const { data: instruments, error } = await supabase
         .from('instruments')
-        .select('id, name, name_en, color_primary, color_secondary, color_accent, color_background');
+        .select('id, name, name_en, color_primary, color_secondary, color_accent');
       
       if (error) {
         ErrorHandler.handle(error, '楽器データ読み込み', false);
@@ -503,7 +504,6 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
           color_primary?: string;
           color_secondary?: string;
           color_accent?: string;
-          color_background?: string;
         }) => {
           // ローカルのdefaultInstrumentsから同じIDの楽器を探す
           const localInstrument = defaultInstruments.find(local => local.id === dbInst.id);
@@ -525,6 +525,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
             };
           } else {
             // ローカルにない場合は、データベースの色設定を使用（フォールバック）
+            // color_backgroundカラムが存在しない可能性があるため、デフォルト値を使用
             return {
               id: dbInst.id,
               name: dbInst.name,
@@ -532,7 +533,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
               primary: dbInst.color_primary || '#8B4513',
               secondary: dbInst.color_secondary || '#F8F9FA',
               accent: dbInst.color_accent || '#8B4513',
-              background: dbInst.color_background || '#FEFEFE',
+              background: '#FEFEFE', // デフォルト背景色（color_backgroundカラムが存在しない場合）
               surface: '#FFFFFF',
               text: '#2D3748',
               textSecondary: '#718096',
