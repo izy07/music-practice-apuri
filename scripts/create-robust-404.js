@@ -81,6 +81,17 @@ const redirectScript = `
       const normalizedPath = currentPath.startsWith('/') ? currentPath : '/' + currentPath;
       originalPath = normalizedBasePath + normalizedPath;
       redirectPath = normalizedPath;
+      
+      // デバッグログ（開発環境のみ）
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        console.log('404.html: ベースパスがないパスを検出', {
+          currentPath,
+          normalizedPath,
+          originalPath,
+          redirectPath,
+          normalizedBasePath
+        });
+      }
     }
     
     // クエリパラメータにリダイレクトパスを追加
@@ -89,6 +100,15 @@ const redirectScript = `
     
     // リダイレクト先URLを構築（必ずベースパス + /index.html）
     targetPath = normalizedBasePath + '/index.html?' + queryParams.toString() + currentHash;
+    
+    // デバッグログ（開発環境のみ）
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      console.log('404.html: リダイレクト先', {
+        targetPath,
+        redirectPath,
+        normalizedBasePath
+      });
+    }
     
     // リダイレクトフラグを設定（無限ループ防止）
     sessionStorage.setItem('github-pages-redirecting', 'true');
