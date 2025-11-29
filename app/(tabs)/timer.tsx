@@ -1376,7 +1376,7 @@ export default function TimerScreen() {
                         await AsyncStorage.setItem('timer_sound_type', opt.id);
                       }}
                     >
-                      <Text style={{ color: settings.soundType === opt.id ? currentTheme.surface : currentTheme.text, fontWeight: '600' }}>{opt.label}</Text>
+                      <Text style={{ color: settings.soundType === opt.id ? currentTheme.surface : currentTheme.text, fontWeight: '600', fontSize: 10 }}>{opt.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
