@@ -83,8 +83,11 @@ function RootLayoutContent() {
       ]);
     } else {
       // Web環境では、コンソールの警告を抑制（開発環境のみ）
-      if (__DEV__ && typeof console !== 'undefined') {
+      if (__DEV__ && typeof window !== 'undefined' && typeof console !== 'undefined') {
         const originalWarn = console.warn;
+        const originalError = console.error;
+        
+        // console.warnの抑制
         console.warn = (...args: unknown[]) => {
           const message = args[0]?.toString() || '';
           // pointerEventsの警告を無視
@@ -95,10 +98,25 @@ function RootLayoutContent() {
           if (message.includes('Blocked aria-hidden') || 
               message.includes('aria-hidden') || 
               message.includes('descendant retained focus') ||
-              message.includes('assistive technology')) {
+              message.includes('assistive technology') ||
+              message.includes('The focus must not be hidden')) {
             return;
           }
           originalWarn.apply(console, args);
+        };
+        
+        // console.errorの抑制（aria-hidden警告がerrorとして表示される場合がある）
+        console.error = (...args: unknown[]) => {
+          const message = args[0]?.toString() || '';
+          // aria-hidden警告を無視
+          if (message.includes('Blocked aria-hidden') || 
+              message.includes('aria-hidden') || 
+              message.includes('descendant retained focus') ||
+              message.includes('assistive technology') ||
+              message.includes('The focus must not be hidden')) {
+            return;
+          }
+          originalError.apply(console, args);
         };
       }
     }

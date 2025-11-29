@@ -57,7 +57,7 @@ export default function SignupScreen() {
   const [error, setError] = useState<string | null>(null);
   
   // 独立した認証処理関数（世に出回っているアプリの一般的なパターン）
-  const signUp = async (formData: any) => {
+  const signUp = async (formData: any): Promise<{ success: boolean; error?: string }> => {
     logger.debug('新規登録処理（簡素化版）:', formData.email);
     setIsLoading(true);
     setError(null);
@@ -89,12 +89,13 @@ export default function SignupScreen() {
           const userMessage = 'このメールアドレスは既に登録されています。\n\nメール確認が済んでいない場合は、Inbucket（http://127.0.0.1:54324）でメールを確認するか、ログイン画面から再度ログインしてください。';
           setError(userMessage);
           
-          return false;
+          return { success: false, error: userMessage };
         }
         
-        setError(error.message || '新規登録に失敗しました');
+        const errorMessage = error.message || '新規登録に失敗しました';
+        setError(errorMessage);
         setIsLoading(false);
-        return false;
+        return { success: false, error: errorMessage };
       }
       
       logger.debug('✅ 新規登録成功:', { 
@@ -109,24 +110,26 @@ export default function SignupScreen() {
       if (data.session) {
         logger.debug('✅ セッション確立済み - onAuthStateChangeで処理されます');
         setIsLoading(false);
-        return true;
+        return { success: true };
       } else if (data.user) {
         logger.debug('⏳ セッション未確立 - onAuthStateChangeで検出されるまで待機');
         // セッションが確立されるまで少し待つ（onAuthStateChangeで検出される）
         // 新規登録画面では手動でナビゲーションしない（_layout.tsxで処理）
         setIsLoading(false);
-        return true;
+        return { success: true };
       } else {
         logger.error('❌ ユーザー情報が取得できません');
-        setError('ユーザー情報の取得に失敗しました。もう一度お試しください。');
+        const errorMessage = 'ユーザー情報の取得に失敗しました。もう一度お試しください。';
+        setError(errorMessage);
         setIsLoading(false);
-        return false;
+        return { success: false, error: errorMessage };
       }
     } catch (err) {
       ErrorHandler.handle(err, '新規登録', true);
-      setError('新規登録に失敗しました');
+      const errorMessage = '新規登録に失敗しました';
+      setError(errorMessage);
       setIsLoading(false);
-      return false;
+      return { success: false, error: errorMessage };
     }
   };
   
@@ -265,10 +268,10 @@ export default function SignupScreen() {
     
     try {
       // 新規登録処理を実行
-      const success = await signUp(formData);
-      logger.debug('📊 新規登録結果:', success);
+      const result = await signUp(formData);
+      logger.debug('📊 新規登録結果:', result);
       
-      if (success) {
+      if (result.success) {
         logger.debug('✅ 新規登録成功 - onAuthStateChangeで認証状態が更新され、自動的にナビゲーションされます');
         setSignupSuccess(true);
         // 手動でナビゲーションしない（_layout.tsxのonAuthStateChangeで処理）
@@ -283,17 +286,19 @@ export default function SignupScreen() {
         }, 1000);
       } else {
         logger.debug('❌ 新規登録失敗');
-        const fallbackMsg = error || '登録に失敗しました。メールが既に登録済みか、入力内容に誤りがあります。';
-        setUiError(fallbackMsg);
+        const errorMessage = result.error || '登録に失敗しました。メールが既に登録済みか、入力内容に誤りがあります。';
+        setUiError(errorMessage);
         // 画面下のフィールドにも明示的にエラー表示
         setFormErrors(prev => ({
           ...prev,
-          email: fallbackMsg,
-          password: fallbackMsg.toLowerCase().includes('password') ? fallbackMsg : prev.password,
+          email: errorMessage,
+          password: errorMessage.toLowerCase().includes('password') ? errorMessage : prev.password,
         }));
         
         // 既に登録されているユーザーの場合はログイン画面への誘導
-        if (error?.includes('既に登録されています') || error?.includes('already exists') || error?.includes('User already registered')) {
+        if (errorMessage.includes('既に登録されています') || 
+            errorMessage.includes('already exists') || 
+            errorMessage.includes('User already registered')) {
           Alert.alert(
             'アカウントが既に存在します',
             'このメールアドレスは既に登録されています。ログインしますか？',
