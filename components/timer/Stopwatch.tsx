@@ -168,10 +168,10 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   stopwatchTime: {
-    fontSize: 64,
+    fontSize: 56,
     fontWeight: '700',
     fontFamily: 'monospace',
-    letterSpacing: 1.5,
+    letterSpacing: 1,
     textAlign: 'center',
   },
   stopwatchControls: {
@@ -248,13 +248,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   lapNumber: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     minWidth: 50,
     color: '#666',
   },
   lapTimeText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     fontFamily: 'monospace',
     flex: 1,
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   lapTotalTime: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
     fontFamily: 'monospace',
     minWidth: 90,

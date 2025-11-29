@@ -32,7 +32,7 @@ export const styles = StyleSheet.create({
     gap: 6,
   },
   modeButtonText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     marginLeft: 0,
   },
@@ -67,17 +67,17 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   timerTitle: {
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: '600',
-    marginBottom: 6,
+    marginBottom: 8,
     color: '#FFFFFF',
   },
   timerDisplay: {
-    fontSize: 36,
+    fontSize: 48,
     fontWeight: '700',
     fontFamily: 'monospace',
     color: '#00D4FF',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   alarmTimeContainer: {
     flexDirection: 'row',
@@ -89,7 +89,7 @@ export const styles = StyleSheet.create({
     marginRight: 4,
   },
   alarmTime: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     color: '#FF6B35',
   },
@@ -149,7 +149,7 @@ export const styles = StyleSheet.create({
     marginBottom: 4,
   },
   wheelColon: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '700',
     marginHorizontal: 4,
   },
@@ -161,7 +161,7 @@ export const styles = StyleSheet.create({
   },
   applyButtonText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '600',
   },
   settingsContainer: {
@@ -172,10 +172,10 @@ export const styles = StyleSheet.create({
     elevation: 4,
   },
   settingsTitle: {
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: '700',
     color: '#333333',
-    marginBottom: 14,
+    marginBottom: 16,
     textAlign: 'center',
   },
   settingRow: {
@@ -191,13 +191,13 @@ export const styles = StyleSheet.create({
     marginRight: 16,
   },
   settingLabel: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
     marginBottom: 4,
   },
   settingDescription: {
-    fontSize: 11,
-    lineHeight: 15,
+    fontSize: 12,
+    lineHeight: 16,
   },
   testSoundButton: {
     paddingHorizontal: 12,
@@ -206,7 +206,7 @@ export const styles = StyleSheet.create({
     marginRight: 8,
   },
   testSoundButtonText: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
   },
   smallChoiceButton: {
@@ -241,10 +241,10 @@ export const styles = StyleSheet.create({
     marginBottom: 20,
   },
   stopwatchTime: {
-    fontSize: 64,
+    fontSize: 56,
     fontWeight: '700',
     fontFamily: 'monospace',
-    letterSpacing: 1.5,
+    letterSpacing: 1,
     textAlign: 'center',
   },
   stopwatchControls: {
@@ -322,13 +322,13 @@ export const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   lapNumber: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
     minWidth: 50,
     color: '#666',
   },
   lapTimeText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     fontFamily: 'monospace',
     flex: 1,
@@ -336,7 +336,7 @@ export const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   lapTotalTime: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
     fontFamily: 'monospace',
     minWidth: 90,
