@@ -6,9 +6,9 @@
 
 UPDATE instruments 
 SET 
-  color_primary = '#9B7A5A',      -- バイオリンらしい優雅な茶色（ダスティブラウン）
+  color_primary = '#8B6F47',      -- バイオリンらしい優雅な茶色（ダークゴールドブラウン）
   color_secondary = '#D4C4B0',    -- 優雅なライトベージュ
-  color_accent = '#7A5F3F',       -- ダークブラウン（ニス仕上げの深み）
+  color_accent = '#6B4E3D',       -- ダークブラウン（ニス仕上げの深み）
   color_background = '#F5EDE0',   -- 温かみのあるアイボリー背景
   updated_at = now()
 WHERE id = '550e8400-e29b-41d4-a716-446655440003'
