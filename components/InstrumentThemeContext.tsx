@@ -480,10 +480,11 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
 
   const loadInstrumentsFromDB = React.useCallback(async () => {
     try {
-      // データベースから楽器データを読み込むが、色設定はローカルのdefaultInstrumentsを優先
+      // データベースから楽器データを読み込む（色設定はローカルのdefaultInstrumentsを優先）
+      // 注意: データベースにも色設定があるが、コードの色設定を優先する
       const { data: instruments, error } = await supabase
         .from('instruments')
-        .select('id, name, name_en');
+        .select('id, name, name_en, color_primary, color_secondary, color_accent, color_background');
       
       if (error) {
         ErrorHandler.handle(error, '楽器データ読み込み', false);
@@ -494,12 +495,22 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
 
       if (instruments && instruments.length > 0) {
         // データベースの楽器名とローカルの色設定をマージ
-        const mappedInstruments: Instrument[] = instruments.map((dbInst: { id: string; name: string; name_en: string }) => {
+        // 重要: ローカルのdefaultInstrumentsの色設定を優先（コードで管理）
+        const mappedInstruments: Instrument[] = instruments.map((dbInst: { 
+          id: string; 
+          name: string; 
+          name_en: string;
+          color_primary?: string;
+          color_secondary?: string;
+          color_accent?: string;
+          color_background?: string;
+        }) => {
           // ローカルのdefaultInstrumentsから同じIDの楽器を探す
           const localInstrument = defaultInstruments.find(local => local.id === dbInst.id);
           
           if (localInstrument) {
-            // ローカルの色設定を使用（最新の色設定）
+            // ローカルの色設定を使用（最新の色設定をコードで管理）
+            // データベースの色設定は無視される
             return {
               id: dbInst.id,
               name: dbInst.name,
@@ -513,16 +524,16 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
               textSecondary: localInstrument.textSecondary,
             };
           } else {
-            // ローカルにない場合はデフォルト色を使用
+            // ローカルにない場合は、データベースの色設定を使用（フォールバック）
             return {
               id: dbInst.id,
               name: dbInst.name,
               nameEn: dbInst.name_en,
-              primary: '#8B4513',
-              secondary: '#F8F9FA',
-              accent: '#8B4513',
-              background: '#FEFEFE',
-              surface: '#F5F5F5',
+              primary: dbInst.color_primary || '#8B4513',
+              secondary: dbInst.color_secondary || '#F8F9FA',
+              accent: dbInst.color_accent || '#8B4513',
+              background: dbInst.color_background || '#FEFEFE',
+              surface: '#FFFFFF',
               text: '#2D3748',
               textSecondary: '#718096',
             };
