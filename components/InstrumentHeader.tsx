@@ -314,7 +314,8 @@ export default function InstrumentHeader() {
                 </Text>
               </TouchableOpacity>
               
-              <TouchableOpacity
+              {/* 音符ゲーム機能は削除（開発中） */}
+              {/* <TouchableOpacity
                 style={styles.toolItem}
                 onPress={() => {
                   setShowLearningTools(false);
@@ -325,7 +326,7 @@ export default function InstrumentHeader() {
                 <Text style={[styles.toolText, { color: currentTheme.text }]}>
                   音符ゲーム
                 </Text>
-              </TouchableOpacity>
+              </TouchableOpacity> */}
               
               <TouchableOpacity 
                 style={styles.toolItem}

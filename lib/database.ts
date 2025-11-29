@@ -417,34 +417,34 @@ export const updateGoal = async (goalId: string, updates: Partial<{
 
 // (removed) AIチャット履歴の保存
 
-// 音符トレーニング結果の保存
-export const saveNoteTrainingResult = async (userId: string, result: {
-  mode: 'basic' | 'instrument' | 'endless';
-  level: number;
-  score: number;
-  correct_count: number;
-  total_count: number;
-  max_streak: number;
-  play_time: number;
-  created_at: string;
-}) => {
-  try {
-    const { data, error } = await supabase
-      .from('note_training_results')
-      .insert({
-        user_id: userId,
-        ...result,
-      })
-      .select()
-      .single();
+// 音符トレーニング結果の保存（機能削除のためコメントアウト）
+// export const saveNoteTrainingResult = async (userId: string, result: {
+//   mode: 'basic' | 'instrument' | 'endless';
+//   level: number;
+//   score: number;
+//   correct_count: number;
+//   total_count: number;
+//   max_streak: number;
+//   play_time: number;
+//   created_at: string;
+// }) => {
+//   try {
+//     const { data, error } = await supabase
+//       .from('note_training_results')
+//       .insert({
+//         user_id: userId,
+//         ...result,
+//       })
+//       .select()
+//       .single();
 
-    if (error) throw error;
-    return { data, error: null };
-  } catch (error) {
-    ErrorHandler.handle(error, '音符トレーニング結果保存', false);
-    return { data: null, error };
-  }
-};
+//     if (error) throw error;
+//     return { data, error: null };
+//   } catch (error) {
+//     ErrorHandler.handle(error, '音符トレーニング結果保存', false);
+//     return { data: null, error };
+//   }
+// };
 
 // ====== 録音・動画ライブラリ関連 ======
 
