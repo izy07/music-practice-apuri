@@ -3,7 +3,7 @@ export const instrumentGuides = {
       name: 'バイオリン',
       nameEn: 'Violin',
       emoji: '🎻',
-      color: '#9B7A5A', // バイオリンらしい優雅な茶色
+      color: '#8B6F47', // バイオリンらしい優雅な茶色（ダークゴールドブラウン）
       hero: {
         tagline: '歌うように奏でる弦の響き',
         subtitle: '姿勢・ボウイング・音程づくりを最速で身につけよう',

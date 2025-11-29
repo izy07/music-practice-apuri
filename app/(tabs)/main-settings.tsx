@@ -514,6 +514,19 @@ export default function MainSettingsScreen() {
         text: '#4A5D4A',
         textSecondary: '#6B8A7A',
       }
+    },
+    {
+      id: 'violin-brown',
+      name: 'バイオリン茶色',
+      colors: {
+        background: '#F5EDE0', // 温かみのあるアイボリー背景
+        surface: '#FFFFFF',
+        primary: '#8B6F47', // バイオリンらしい優雅な茶色（ダークゴールドブラウン）
+        secondary: '#D4C4B0', // 優雅なライトベージュ
+        accent: '#6B4E3D', // ダークブラウン（ニス仕上げの深み）
+        text: '#3D2F1F',
+        textSecondary: '#6B4E3D',
+      }
     }
   ];
 

@@ -64,13 +64,13 @@ const defaultInstruments: Instrument[] = [
     id: '550e8400-e29b-41d4-a716-446655440003',
     name: 'バイオリン',
     nameEn: 'Violin',
-    primary: '#9B7A5A', // バイオリンらしい優雅な茶色（ダスティブラウン）
+    primary: '#8B6F47', // バイオリンらしい優雅な茶色（ダークゴールドブラウン）
     secondary: '#D4C4B0', // 優雅なライトベージュ
-    accent: '#7A5F3F', // ダークブラウン（ニス仕上げの深み）
+    accent: '#6B4E3D', // ダークブラウン（ニス仕上げの深み）
     background: '#F5EDE0', // 温かみのあるアイボリー背景
     surface: '#FFFFFF',
     text: '#3D2F1F',
-    textSecondary: '#7A5F3F',
+    textSecondary: '#6B4E3D',
   },
   {
     id: '550e8400-e29b-41d4-a716-446655440004',
