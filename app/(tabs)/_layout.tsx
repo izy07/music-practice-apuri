@@ -225,6 +225,25 @@ export default function TabLayout() {
           }}
         />
       ))}
+      
+      {/* basic-practiceを明示的に登録（Stackレイアウトを使用） */}
+      <Tabs.Screen
+        name="basic-practice"
+        options={{
+          tabBarButton: () => null, // タブバーから完全に除外
+          tabBarItemStyle: { 
+            display: 'none',
+            width: 0,
+            height: 0,
+            padding: 0,
+            margin: 0,
+            minWidth: 0,
+            maxWidth: 0,
+            flex: 0,
+          },
+          tabBarShowLabel: false,
+        }}
+      />
     </Tabs>
   );
 }
