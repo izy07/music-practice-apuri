@@ -83,7 +83,10 @@ export default function RepresentativeSongsScreen() {
         if (songsError.code === 'PGRST205' || songsError.code === 'PGRST116' || songsError.status === 404 || 
             songsError.message?.includes('Could not find the table') || 
             songsError.message?.includes('does not exist')) {
-          console.warn('representative_songsテーブルが存在しません。空のリストを表示します。', songsError);
+          // 開発環境でのみ警告を表示
+          if (__DEV__) {
+            console.warn('representative_songsテーブルが存在しません。空のリストを表示します。', songsError);
+          }
           setSongs([]);
           return;
         }
