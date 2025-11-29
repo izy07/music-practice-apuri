@@ -11,6 +11,27 @@
     (function() {
       if (typeof window === 'undefined') return;
       
+      // aria-hidden属性の設定を完全にブロック
+      const originalSetAttribute = Element.prototype.setAttribute;
+      Element.prototype.setAttribute = function(name, value) {
+        if (name === 'aria-hidden' && value === 'true') {
+          // aria-hidden="true"の設定をブロック
+          // フォーカス可能な要素が含まれている場合は設定を許可しない
+          const focusableSelector = 'input, textarea, select, button, a, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
+          try {
+            const focusableElements = this.querySelectorAll ? this.querySelectorAll(focusableSelector) : [];
+            if (focusableElements.length > 0) {
+              // フォーカス可能な要素が含まれている場合は設定をブロック
+              return;
+            }
+          } catch (e) {
+            // エラーが発生した場合は設定をブロック（安全のため）
+            return;
+          }
+        }
+        return originalSetAttribute.call(this, name, value);
+      };
+      
       // フォーカス可能な要素のセレクタ
       const focusableSelector = 'input, textarea, select, button, a, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
       

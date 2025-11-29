@@ -339,7 +339,8 @@ export default function InstrumentSelectionScreen() {
             tutorial_completed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+          .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
         
         if (updateTutorialError) {
           // カラムが存在しない場合は無視
