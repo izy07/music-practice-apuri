@@ -10,6 +10,7 @@ import TuningSoundPlayer from '@/components/TuningSoundPlayer';
 import PostureCameraModal from '@/components/PostureCameraModal';
 import { instrumentGuides } from '@/data/instrumentGuides';
 import { styles } from '@/lib/tabs/beginner-guide/styles';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 export default function BeginnerGuideScreen() {
   const router = useRouter();
