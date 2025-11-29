@@ -1115,7 +1115,7 @@ export default function TimerScreen() {
             ]}
             onPress={() => setMode('timer')}
           >
-            <TimerIcon size={16} color={mode === 'timer' ? currentTheme.surface : currentTheme.primary} />
+            <TimerIcon size={20} color={mode === 'timer' ? currentTheme.surface : currentTheme.primary} />
             <Text style={[
               styles.modeButtonText, 
               { color: mode === 'timer' ? currentTheme.surface : currentTheme.primary }
@@ -1131,7 +1131,7 @@ export default function TimerScreen() {
             ]}
             onPress={() => setMode('stopwatch')}
           >
-            <Clock size={16} color={mode === 'stopwatch' ? currentTheme.surface : currentTheme.primary} />
+            <Clock size={20} color={mode === 'stopwatch' ? currentTheme.surface : currentTheme.primary} />
             <Text style={[
               styles.modeButtonText, 
               { color: mode === 'stopwatch' ? currentTheme.surface : currentTheme.primary }
@@ -1148,8 +1148,8 @@ export default function TimerScreen() {
             <View style={styles.circularProgressContainer}>
               <AnimatedCircularProgress
                 progress={progress}
-                size={200}
-                strokeWidth={8}
+                size={280}
+                strokeWidth={10}
                 color={currentTheme.primary}
                 backgroundColor="#2A2A2A"
               />
@@ -1376,7 +1376,7 @@ export default function TimerScreen() {
                         await AsyncStorage.setItem('timer_sound_type', opt.id);
                       }}
                     >
-                      <Text style={{ color: settings.soundType === opt.id ? currentTheme.surface : currentTheme.text, fontWeight: '600', fontSize: 12 }}>{opt.label}</Text>
+                      <Text style={{ color: settings.soundType === opt.id ? currentTheme.surface : currentTheme.text, fontWeight: '600', fontSize: 14 }}>{opt.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
