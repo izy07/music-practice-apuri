@@ -34,8 +34,8 @@ export const styles = StyleSheet.create({
     width: 44,
   },
   navigation: {
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
@@ -56,9 +56,9 @@ export const styles = StyleSheet.create({
     elevation: 1,
   },
   navLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    marginLeft: 10,
+    marginLeft: 6,
   },
   content: {
     flex: 1,
