@@ -314,19 +314,18 @@ export default function InstrumentHeader() {
                 </Text>
               </TouchableOpacity>
               
-              {/* 音符ゲーム機能は削除（開発中） */}
-              {/* <TouchableOpacity
+              <TouchableOpacity
                 style={styles.toolItem}
                 onPress={() => {
                   setShowLearningTools(false);
-                  router.push('/(tabs)/note-training');
+                  Alert.alert('音符トレーニング', 'この機能は現在開発中です', [{ text: 'OK' }]);
                 }}
               >
                 <Music size={24} color="#4CAF50" />
                 <Text style={[styles.toolText, { color: currentTheme.text }]}>
                   音符ゲーム
                 </Text>
-              </TouchableOpacity> */}
+              </TouchableOpacity>
               
               <TouchableOpacity 
                 style={styles.toolItem}
