@@ -262,7 +262,7 @@ export default function BeginnerGuideScreen() {
               <View style={[styles.iconContainer, { backgroundColor: `${currentGuide.color}20` }]}>
                 <Target size={24} color={currentGuide.color} />
               </View>
-              <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>運指表・音階表</Text>
+              <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>運指表・チューニング</Text>
             </View>
             
             <View style={styles.infoGrid}>
@@ -280,34 +280,10 @@ export default function BeginnerGuideScreen() {
                 <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>練習のコツ</Text>
                 <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.fingering.tips}</Text>
               </View>
-            </View>
-          </View>
-        );
-
-      case 'tuning':
-        return (
-          <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
-            <View style={styles.sectionHeader}>
-              <View style={[styles.iconContainer, { backgroundColor: `${currentGuide.color}20` }]}>
-                <Play size={24} color={currentGuide.color} />
-              </View>
-              <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>チューニング音機能</Text>
-            </View>
-            
-            <View style={styles.infoGrid}>
+              
               <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>楽器別の基準音再生</Text>
+                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>チューニング</Text>
                 <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.tuning.reference}</Text>
-              </View>
-              
-              <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>チューニング用の音源提供</Text>
-                <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.tuning.individual}</Text>
-              </View>
-              
-              <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>音の長さ・音量調整機能</Text>
-                <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.tuning.adjustment}</Text>
               </View>
             </View>
             
@@ -468,8 +444,7 @@ export default function BeginnerGuideScreen() {
           {[
             { id: 'overview', label: '基本情報', icon: BookOpen },
             { id: 'basicPlaying', label: '演奏方法', icon: Music },
-            { id: 'fingering', label: '運指表', icon: Target },
-            { id: 'tuning', label: 'チューニング', icon: Play },
+            { id: 'fingering', label: '運指表・チューニング', icon: Target },
             { id: 'maintenance', label: 'お手入れ', icon: Wrench },
             { id: 'tips', label: 'アドバイス', icon: Lightbulb },
             { id: 'repertoire', label: '練習曲', icon: Music },
