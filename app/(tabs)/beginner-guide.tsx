@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, BookOpen, Music, Target, Heart, History, Star, Play, Wrench, Lightbulb, Youtube, Image as ImageIcon, Camera } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
-import TuningSoundPlayer from '@/components/TuningSoundPlayer';
 import PostureCameraModal from '@/components/PostureCameraModal';
 import { instrumentGuides } from '@/data/instrumentGuides';
 import { styles } from '@/lib/tabs/beginner-guide/styles';
@@ -262,7 +261,7 @@ export default function BeginnerGuideScreen() {
               <View style={[styles.iconContainer, { backgroundColor: `${currentGuide.color}20` }]}>
                 <Target size={24} color={currentGuide.color} />
               </View>
-              <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>運指表・チューニング</Text>
+              <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>運指表</Text>
             </View>
             
             <View style={styles.infoGrid}>
@@ -281,14 +280,17 @@ export default function BeginnerGuideScreen() {
                 <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.fingering.tips}</Text>
               </View>
               
-              <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>チューニング</Text>
-                <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.tuning.reference}</Text>
-              </View>
+              {/* 運指表の画像 */}
+              {currentGuide.fingering.image && (
+                <View style={styles.fingeringImageContainer}>
+                  <Image
+                    source={{ uri: currentGuide.fingering.image }}
+                    style={styles.fingeringImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              )}
             </View>
-            
-            {/* チューニング音プレイヤー */}
-            <TuningSoundPlayer instrumentId={selectedInstrument || 'violin'} />
           </View>
         );
 
@@ -444,7 +446,7 @@ export default function BeginnerGuideScreen() {
           {[
             { id: 'overview', label: '基本情報', icon: BookOpen },
             { id: 'basicPlaying', label: '演奏方法', icon: Music },
-            { id: 'fingering', label: '運指表・チューニング', icon: Target },
+            { id: 'fingering', label: '運指表', icon: Target },
             { id: 'maintenance', label: 'お手入れ', icon: Wrench },
             { id: 'tips', label: 'アドバイス', icon: Lightbulb },
             { id: 'repertoire', label: '練習曲', icon: Music },

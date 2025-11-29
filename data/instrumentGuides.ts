@@ -30,7 +30,8 @@ export const instrumentGuides = {
       fingering: {
         basic: '最初に覚える音：A線の開放弦（A音）、1の指（B音）、2の指（C音）、3の指（D音）',
         chart: '各弦の運指表を参考に、基本的な音階を練習しましょう。',
-        tips: '正しい指の形と位置を意識して練習することが大切です。'
+        tips: '正しい指の形と位置を意識して練習することが大切です。',
+        image: null // 運指表の画像URLをここに設定（例: 'https://example.com/fingering.jpg'）
       },
       tuning: {
         reference: '各弦の基準音：G線（G3）、D線（D4）、A線（A4）、E線（E5）',
@@ -238,7 +239,8 @@ export const instrumentGuides = {
       fingering: {
         basic: '最初に覚える音：6弦の開放弦（E音）、1の指（F音）、3の指（G音）',
         chart: '各弦の運指表を参考に、基本的なコードを練習しましょう。',
-        tips: '正しい指の形と位置を意識して練習することが大切です。'
+        tips: '正しい指の形と位置を意識して練習することが大切です。',
+        image: null // 運指表の画像URLをここに設定（例: 'https://example.com/fingering.jpg'）
       },
       tuning: {
         reference: '各弦の基準音：6弦（E2）、5弦（A2）、4弦（D3）、3弦（G3）、2弦（B3）、1弦（E4）',
@@ -550,7 +552,8 @@ export const instrumentGuides = {
       fingering: {
         basic: '最初に覚える音：A線の開放弦（A音）、1の指（B音）、2の指（C音）、3の指（D音）',
         chart: '各弦の運指表を参考に、基本的な音階を練習しましょう。',
-        tips: '正しい指の形と位置を意識して練習することが大切です。'
+        tips: '正しい指の形と位置を意識して練習することが大切です。',
+        image: null // 運指表の画像URLをここに設定（例: 'https://example.com/fingering.jpg'）
       },
       tuning: {
         reference: '各弦の基準音：C線（C3）、G線（G3）、D線（D4）、A線（A4）',
@@ -728,7 +731,8 @@ export const instrumentGuides = {
       fingering: {
         basic: '最初に覚える音：A線の開放弦（A音）、1の指（B音）、2の指（C音）、3の指（D音）',
         chart: '各弦の運指表を参考に、基本的な音階を練習しましょう。',
-        tips: '正しい指の形と位置を意識して練習することが大切です。'
+        tips: '正しい指の形と位置を意識して練習することが大切です。',
+        image: null // 運指表の画像URLをここに設定（例: 'https://example.com/fingering.jpg'）
       },
       tuning: {
         reference: '各弦の基準音：C線（C2）、G線（G2）、D線（D3）、A線（A3）',
@@ -815,7 +819,8 @@ export const instrumentGuides = {
       fingering: {
         basic: '最初に覚える音：A線の開放弦（A音）、1の指（B音）、2の指（C音）、3の指（D音）',
         chart: '各弦の運指表を参考に、基本的な音階を練習しましょう。',
-        tips: '正しい指の形と位置を意識して練習することが大切です。'
+        tips: '正しい指の形と位置を意識して練習することが大切です。',
+        image: null // 運指表の画像URLをここに設定（例: 'https://example.com/fingering.jpg'）
       },
       tuning: {
         reference: '各弦の基準音：E線（E1）、A線（A1）、D線（D2）、G線（G2）',

@@ -277,4 +277,20 @@ export const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
+  fingeringImageContainer: {
+    marginTop: 20,
+    padding: 20,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fingeringImage: {
+    width: '100%',
+    minHeight: 200,
+    maxHeight: 400,
+    borderRadius: 12,
+  },
 });
