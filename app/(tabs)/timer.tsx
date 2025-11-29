@@ -1115,7 +1115,7 @@ export default function TimerScreen() {
             ]}
             onPress={() => setMode('timer')}
           >
-            <TimerIcon size={18} color={mode === 'timer' ? currentTheme.surface : currentTheme.primary} />
+            <TimerIcon size={16} color={mode === 'timer' ? currentTheme.surface : currentTheme.primary} />
             <Text style={[
               styles.modeButtonText, 
               { color: mode === 'timer' ? currentTheme.surface : currentTheme.primary }
@@ -1131,7 +1131,7 @@ export default function TimerScreen() {
             ]}
             onPress={() => setMode('stopwatch')}
           >
-            <Clock size={18} color={mode === 'stopwatch' ? currentTheme.surface : currentTheme.primary} />
+            <Clock size={16} color={mode === 'stopwatch' ? currentTheme.surface : currentTheme.primary} />
             <Text style={[
               styles.modeButtonText, 
               { color: mode === 'stopwatch' ? currentTheme.surface : currentTheme.primary }
@@ -1148,8 +1148,8 @@ export default function TimerScreen() {
             <View style={styles.circularProgressContainer}>
               <AnimatedCircularProgress
                 progress={progress}
-                size={280}
-                strokeWidth={12}
+                size={200}
+                strokeWidth={8}
                 color={currentTheme.primary}
                 backgroundColor="#2A2A2A"
               />
@@ -1188,7 +1188,7 @@ export default function TimerScreen() {
                   style={[styles.controlButton, { backgroundColor: currentTheme.secondary }]}
                   onPress={resetTimer}
                 >
-                  <RotateCcw size={24} color={currentTheme.text} />
+                  <RotateCcw size={20} color={currentTheme.text} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -1211,9 +1211,9 @@ export default function TimerScreen() {
                   }}
                 >
                   {isTimerRunning ? (
-                    <Pause size={24} color={currentTheme.surface} />
+                    <Pause size={20} color={currentTheme.surface} />
                   ) : (
-                    <Play size={24} color={currentTheme.surface} />
+                    <Play size={20} color={currentTheme.surface} />
                   )}
                 </TouchableOpacity>
               </>

@@ -112,7 +112,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
               style={[styles.stopwatchButton, { backgroundColor: currentTheme.secondary }]}
               onPress={handleLap}
             >
-              <Text style={[styles.stopwatchButtonText, { color: currentTheme.text }]}>ラップ</Text>
+              <Text style={[styles.stopwatchButtonText, { color: currentTheme.text, fontSize: 12 }]}>ラップ</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.stopwatchButton, styles.stopwatchMainButton, { 
@@ -120,7 +120,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
               }]}
               onPress={pauseStopwatch}
             >
-              <Pause size={28} color={currentTheme.surface} />
+              <Pause size={22} color={currentTheme.surface} />
             </TouchableOpacity>
           </>
         ) : (
@@ -131,7 +131,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
                 style={[styles.stopwatchButton, { backgroundColor: currentTheme.secondary }]}
                 onPress={handleReset}
               >
-                <RotateCcw size={24} color={currentTheme.text} />
+                <RotateCcw size={20} color={currentTheme.text} />
               </TouchableOpacity>
             )}
             <TouchableOpacity
@@ -140,7 +140,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
               }]}
               onPress={handleStart}
             >
-              <Play size={28} color={currentTheme.surface} />
+              <Play size={22} color={currentTheme.surface} />
             </TouchableOpacity>
           </>
         )}
@@ -152,9 +152,9 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
 const styles = StyleSheet.create({
   stopwatchTimeContainer: {
     width: '100%',
-    paddingVertical: 40,
-    paddingHorizontal: 20,
-    borderRadius: 20,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 2,
@@ -165,30 +165,30 @@ const styles = StyleSheet.create({
       shadowRadius: 8,
       elevation: 2,
     }),
-    marginBottom: 20,
+    marginBottom: 12,
   },
   stopwatchTime: {
-    fontSize: 80,
+    fontSize: 48,
     fontWeight: '700',
     fontFamily: 'monospace',
-    letterSpacing: 2,
+    letterSpacing: 1,
     textAlign: 'center',
   },
   stopwatchControls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 16,
+    gap: 12,
     width: '100%',
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
   },
   stopwatchButton: {
-    minWidth: 100,
-    height: 56,
-    borderRadius: 28,
+    minWidth: 80,
+    height: 44,
+    borderRadius: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
     elevation: 2,
     ...createShadowStyle({
       shadowColor: '#000',
@@ -199,12 +199,12 @@ const styles = StyleSheet.create({
     }),
   },
   stopwatchMainButton: {
-    minWidth: 120,
-    height: 64,
-    borderRadius: 32,
+    minWidth: 100,
+    height: 48,
+    borderRadius: 24,
   },
   stopwatchButtonText: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
   },
   lapTimesContainer: {
@@ -230,11 +230,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   lapTimesTitle: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
   },
   clearLapsButton: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '600',
   },
   lapTimesList: {
@@ -248,20 +248,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   lapNumber: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '500',
-    width: 40,
+    width: 30,
   },
   lapTimeText: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
     flex: 1,
     textAlign: 'center',
   },
   lapTotalTime: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '500',
-    width: 80,
+    width: 70,
     textAlign: 'right',
   },
 });
