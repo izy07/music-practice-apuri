@@ -11,14 +11,44 @@
     (function() {
       if (typeof window === 'undefined') return;
       
+      // フォーカスイベントを監視して、フォーカスされた要素の祖先のaria-hiddenを削除
+      const handleFocus = (event: FocusEvent) => {
+        const target = event.target as HTMLElement;
+        if (!target) return;
+        
+        // フォーカスされた要素のすべての祖先をチェック
+        let current: HTMLElement | null = target.parentElement;
+        while (current) {
+          if (current.hasAttribute('aria-hidden') && current.getAttribute('aria-hidden') === 'true') {
+            // aria-hiddenを削除
+            current.removeAttribute('aria-hidden');
+          }
+          current = current.parentElement;
+        }
+      };
+      
+      // DOMが読み込まれたらイベントリスナーを追加
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+          document.addEventListener('focusin', handleFocus, true);
+        });
+      } else {
+        document.addEventListener('focusin', handleFocus, true);
+      }
+      
       // MutationObserverでaria-hidden属性の追加を監視
       const observer = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
           if (mutation.type === 'attributes' && mutation.attributeName === 'aria-hidden') {
             const target = mutation.target as HTMLElement;
             // フォーカス可能な要素が含まれている場合はaria-hiddenを削除
-            if (target.hasAttribute('aria-hidden') && target.querySelector(':focus')) {
-              target.removeAttribute('aria-hidden');
+            if (target.hasAttribute('aria-hidden') && target.getAttribute('aria-hidden') === 'true') {
+              // フォーカス可能な要素をチェック
+              const focusableElements = target.querySelectorAll('input, textarea, select, button, a, [tabindex]:not([tabindex="-1"])');
+              if (focusableElements.length > 0) {
+                // フォーカス可能な要素が含まれている場合はaria-hiddenを削除
+                target.removeAttribute('aria-hidden');
+              }
             }
           }
         });
