@@ -1,4 +1,5 @@
 import { StyleSheet, Platform } from 'react-native';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 export const styles = StyleSheet.create({
   container: {
@@ -64,10 +65,13 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 24,
     alignItems: 'center',
     elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 8,
+    }),
   },
   noteDisplayContainer: {
     position: 'relative',
@@ -172,10 +176,13 @@ export const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#FFFFFF',
     transform: [{ translateX: -4 }],
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 4,
+    }),
   },
   tuningBarBackground: {
     position: 'absolute',
@@ -214,10 +221,13 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E9ECEF',
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+      elevation: 2,
+    }),
   },
   qualityText: {
     fontSize: 13,
@@ -231,10 +241,13 @@ export const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 4,
+    }),
     marginHorizontal: 0,
   },
   settingsTitle: {
@@ -269,10 +282,13 @@ export const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+      elevation: 2,
+    }),
   },
   displayModeButtonText: {
     fontSize: 14,
@@ -291,10 +307,13 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+      elevation: 2,
+    }),
   },
   frequencyButtonText: {
     fontSize: 18,
@@ -445,14 +464,13 @@ export const styles = StyleSheet.create({
     overflow: 'hidden',
     marginTop: 2,
     backgroundColor: '#F5F5F5', // ライトグレー色
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 8,
+    }),
   },
   customDisplayArea: {
     backgroundColor: '#FFFFFF', // 白色
@@ -579,13 +597,13 @@ export const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     marginHorizontal: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 4,
+    }),
     elevation: 4,
   },
   // 楽器別説明のスタイル
@@ -628,10 +646,13 @@ export const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#E0E0E0',
     elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 4,
+    }),
   },
   noteDisplayModeHeader: {
     marginBottom: 20,
@@ -738,10 +759,13 @@ export const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 4,
+    }),
     borderWidth: 2,
     borderColor: '#E0E0E0',
     overflow: 'hidden', // 枠内の要素がはみ出さないように
@@ -819,11 +843,13 @@ export const styles = StyleSheet.create({
     borderRadius: 6,
     top: -2,
     marginLeft: -6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.3,
+      shadowRadius: 4,
+      elevation: 4,
+    }),
   },
   simpleCentsContainer: {
     height: 28, // セント表示の固定高さを確保
@@ -843,10 +869,13 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 48,
     borderRadius: 24,
     elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 4,
+    }),
   },
   simpleStartButtonText: {
     fontSize: 18,

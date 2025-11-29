@@ -1,7 +1,7 @@
 /**
  * 楽器別練習メニューデータ
  */
-import { PracticeItem } from '../_types';
+import { PracticeItem } from '../types';
 
 export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
     piano: [

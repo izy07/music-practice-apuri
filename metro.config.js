@@ -44,20 +44,30 @@ if (isWeb) {
       // バンドルリクエストからHermesパラメータを削除
       if (url.includes('.bundle') || url.includes('/node_modules/') || url.includes('entry.bundle')) {
         try {
-          const [path, query] = url.split('?');
-          if (query) {
-            // Hermes関連のパラメータを削除
-            const params = new URLSearchParams(query);
-            params.delete('transform.engine');
-            params.delete('unstable_transformProfile');
-            const newQuery = params.toString();
-            return newQuery ? `${path}?${newQuery}` : path;
-          }
-          return path;
+          const urlObj = new URL(url, 'http://localhost');
+          // Hermes関連のパラメータを削除
+          urlObj.searchParams.delete('transform.engine');
+          urlObj.searchParams.delete('unstable_transformProfile');
+          // パスとクエリを再構築
+          const newUrl = urlObj.pathname + (urlObj.search ? urlObj.search : '');
+          return newUrl;
         } catch (error) {
-          // エラーが発生した場合は元のURLを返す
-          console.warn('Metro rewriteRequestUrl error:', error);
-          return url;
+          // URL解析に失敗した場合は、文字列操作で処理
+          try {
+            const [path, query] = url.split('?');
+            if (query) {
+              const params = new URLSearchParams(query);
+              params.delete('transform.engine');
+              params.delete('unstable_transformProfile');
+              const newQuery = params.toString();
+              return newQuery ? `${path}?${newQuery}` : path;
+            }
+            return path;
+          } catch (fallbackError) {
+            // エラーが発生した場合は元のURLを返す
+            console.warn('Metro rewriteRequestUrl error:', error, fallbackError);
+            return url;
+          }
         }
       }
       

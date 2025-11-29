@@ -24,22 +24,15 @@ function MyComponent() {
 - ✅ リダイレクトループ検出
 - ✅ 認証状態のリアルタイム同期
 
-### 非推奨: `useAuth` ⚠️
+### 標準化完了 ✅
 
-**後方互換性のために残されています。新規コードでは使用しないでください。**
+**認証フックは`useAuthAdvanced`に統一されました。**
 
-既存のコードで`useAuth`を使用している場合は、段階的に`useAuthAdvanced`へ移行してください。
+- ✅ `useAuthAdvanced` - 標準認証フック（全箇所で使用）
+- ❌ `useAuth` - 削除済み（古い実装）
+- ⚠️ `useAuthSimple` - 非推奨（`app/_layout.tsx`で`useAuthAdvanced`に移行済み）
 
-**移行ガイド:**
-```typescript
-// 変更前
-import { useAuth } from '@/hooks/useAuth';
-
-// 変更後
-import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
-
-// APIは互換性があるため、多くの場合はインポートを変えるだけでOK
-```
+**全ての認証処理で`useAuthAdvanced`を使用してください。**
 
 ---
 

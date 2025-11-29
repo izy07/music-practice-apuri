@@ -11,6 +11,7 @@ import { useOrganization } from '@/hooks/useOrganization';
 import type { Organization } from '@/types/organization';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 export default function ShareScreen() {
   const router = useRouter();
@@ -747,10 +748,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 10,
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
+    }),
   },
   actionButtonText: {
     fontSize: 16,

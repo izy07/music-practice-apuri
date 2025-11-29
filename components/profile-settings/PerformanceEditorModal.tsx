@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal 
 import { ArrowLeft } from 'lucide-react-native';
 import SafeView from '@/components/SafeView';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 interface PerformanceEditorModalProps {
   visible: boolean;
@@ -103,10 +104,13 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.15,
+      shadowRadius: 6,
+      elevation: 3,
+    }),
     elevation: 3,
   },
   saveButtonText: {

@@ -21,6 +21,7 @@ import { canAccessFeature } from '@/lib/subscriptionService';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { safeGoBack } from '@/lib/navigationUtils';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 const { width } = Dimensions.get('window');
 
@@ -684,10 +685,13 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 16,
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
+    }),
   },
   timeFilterTitle: {
     fontSize: 16,

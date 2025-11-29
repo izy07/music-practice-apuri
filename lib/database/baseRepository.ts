@@ -102,9 +102,34 @@ export function isSupabaseColumnError(error: unknown): boolean {
  * Supabaseテーブル不存在エラーを判定
  */
 export function isSupabaseTableNotFoundError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
+  if (!error) return false;
   
-  const code = (error as any).code;
-  return code === 'PGRST116' || code === 'PGRST205';
+  const errorObj = error as any;
+  const code = errorObj?.code;
+  const status = errorObj?.status || errorObj?.statusCode;
+  const message = errorObj?.message || String(error);
+  
+  // エラーオブジェクト全体を文字列化して検索
+  let errorString = '';
+  try {
+    errorString = JSON.stringify(errorObj).toLowerCase();
+  } catch {
+    errorString = `${code || ''} ${status || ''} ${message || ''}`.toLowerCase();
+  }
+  
+  return (
+    code === 'PGRST116' || 
+    code === 'PGRST205' ||
+    status === 404 ||
+    status === '404' ||
+    Number(status) === 404 ||
+    message?.toLowerCase().includes('404') ||
+    message?.toLowerCase().includes('not found') ||
+    message?.toLowerCase().includes('does not exist') ||
+    errorString.includes('404') ||
+    errorString.includes('not found') ||
+    errorString.includes('pgrst116') ||
+    errorString.includes('pgrst205')
+  );
 }
 

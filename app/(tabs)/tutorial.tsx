@@ -127,18 +127,47 @@ export default function TutorialScreen() {
       }
 
       // チュートリアル完了状況をデータベースに保存
+      // カラムが存在しない場合に備えて、エラーハンドリングを追加
+      const updateData: any = {
+        updated_at: new Date().toISOString()
+      };
+      
+      // カラムが存在する場合のみ追加
+      // tutorial_completedカラムが存在するかどうかを確認
+      // カラムが存在しない場合はエラーになるため、try-catchで処理
+      try {
+        const { error: checkError } = await supabase
+          .from('user_profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .limit(1);
+        
+        // プロフィールが存在する場合、tutorial_completedカラムの更新を試みる
+        // カラムが存在しない場合はエラーになるが、それは後で処理される
+        updateData.tutorial_completed = true;
+        updateData.tutorial_completed_at = new Date().toISOString();
+      } catch (checkErr: any) {
+        // カラムが存在しない場合はスキップ
+        if (checkErr?.message?.includes('column') || checkErr?.message?.includes('does not exist') || checkErr?.code === 'PGRST204') {
+          logger.warn('tutorial_completedカラムが存在しません。スキップします。');
+        } else {
+          logger.warn('tutorial_completedカラムの確認中にエラーが発生しました。スキップします。', { checkErr });
+        }
+      }
+      
       const { error: updateError } = await supabase
         .from('user_profiles')
-        .update({
-          tutorial_completed: true,
-          tutorial_completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('user_id', user.id);
 
       if (updateError) {
-        logger.error('❌ チュートリアル完了状況の保存エラー:', updateError);
-        ErrorHandler.handle(updateError, 'チュートリアル完了状況の保存', false);
+        // カラムが存在しないエラーの場合は無視
+        if (updateError.code === 'PGRST116' || updateError.message?.includes('column') || updateError.message?.includes('does not exist')) {
+          logger.warn('tutorial_completedカラムが存在しません。スキップします。', { updateError });
+        } else {
+          logger.error('❌ チュートリアル完了状況の保存エラー:', updateError);
+          ErrorHandler.handle(updateError, 'チュートリアル完了状況の保存', false);
+        }
       } else {
         logger.debug('✅ チュートリアル完了状況を保存しました');
       }

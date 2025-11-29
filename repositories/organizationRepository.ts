@@ -9,7 +9,7 @@
 import { supabase } from '@/lib/supabase';
 import type { Organization, UpdateOrganizationInput } from '@/types/organization';
 import type { RepositoryResult } from '@/lib/database/interfaces';
-import { safeExecute } from '@/lib/database/baseRepository';
+import { safeExecute, normalizeError, isSupabaseTableNotFoundError } from '@/lib/database/baseRepository';
 import { isOrganizationArray } from '@/types/organization';
 import logger from '@/lib/logger';
 
@@ -22,10 +22,11 @@ export const organizationRepository = {
    * user_group_membershipsとJOINして、確実に現在のユーザーがメンバーである組織のみを取得
    */
   async getUserOrganizations(): Promise<RepositoryResult<Organization[]>> {
-    return safeExecute(async () => {
+    // 404エラーを特別に処理するため、safeExecuteを使わずに直接処理
+    try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        return [];
+        return { data: [], error: null };
       }
 
       // user_group_membershipsとJOINして、現在のユーザーがメンバーである組織のみを取得
@@ -37,7 +38,55 @@ export const organizationRepository = {
         `)
         .eq('user_id', user.id);
 
-      if (error) throw error;
+      if (error) {
+        // 404エラーの場合、テーブルが存在しない可能性がある
+        // これは正常な動作（テーブルが存在しない場合）なので、エラーとして扱わない
+        const errorObj = error as any;
+        const errorCode = errorObj?.code;
+        const errorStatus = errorObj?.status || errorObj?.statusCode;
+        const errorMessage = errorObj?.message || String(error);
+        
+        // エラーオブジェクト全体を文字列化して検索（より確実に404を検出）
+        let errorString = '';
+        try {
+          errorString = JSON.stringify(errorObj).toLowerCase();
+        } catch {
+          // 循環参照などの場合は、エラーオブジェクトの主要プロパティを文字列化
+          errorString = `${errorCode || ''} ${errorStatus || ''} ${errorMessage || ''}`.toLowerCase();
+        }
+        
+        // 404エラーまたはテーブル不存在エラーを検出（より包括的に）
+        // まず、isSupabaseTableNotFoundError関数を使用
+        const isNotFoundError = isSupabaseTableNotFoundError(error) ||
+          errorCode === 'PGRST116' || 
+          errorCode === 'PGRST205' ||
+          errorStatus === 404 ||
+          errorStatus === '404' ||
+          Number(errorStatus) === 404 ||
+          errorMessage?.toLowerCase().includes('404') ||
+          errorMessage?.toLowerCase().includes('not found') ||
+          errorMessage?.toLowerCase().includes('does not exist') ||
+          (errorMessage?.toLowerCase().includes('relation') && errorMessage?.toLowerCase().includes('does not exist')) ||
+          errorString.includes('404') ||
+          errorString.includes('not found') ||
+          errorString.includes('pgrst116') ||
+          errorString.includes('pgrst205');
+        
+        if (isNotFoundError) {
+          // デバッグモードでのみログに記録（本番環境では無視）
+          if (__DEV__) {
+            logger.debug('[organizationRepository] getUserOrganizations:テーブルが存在しないため空配列を返します', {
+              code: errorCode,
+              status: errorStatus,
+              message: errorMessage?.substring(0, 100), // 最初の100文字のみ
+            });
+          }
+          // テーブルが存在しない場合は空配列を返す（エラーとして扱わない）
+          return { data: [], error: null };
+        }
+        // その他のエラーは通常通り処理
+        throw error;
+      }
 
       // JOIN結果から組織データを抽出
       const organizations = (data || [])
@@ -55,8 +104,56 @@ export const organizationRepository = {
         return dateB - dateA;
       });
 
-      return sorted;
-    }, 'getUserOrganizations');
+      return { data: sorted, error: null };
+    } catch (error) {
+      // エラーが404エラーの可能性がある場合は再チェック
+      const errorObj = error as any;
+      const errorCode = errorObj?.code;
+      const errorStatus = errorObj?.status || errorObj?.statusCode;
+      const errorMessage = errorObj?.message || String(error);
+      
+      // エラーオブジェクト全体を文字列化して検索（より確実に404を検出）
+      let errorString = '';
+      try {
+        errorString = JSON.stringify(errorObj).toLowerCase();
+      } catch {
+        errorString = String(error).toLowerCase();
+      }
+      
+      // より包括的な404エラー検出
+      // まず、isSupabaseTableNotFoundError関数を使用
+      const isNotFoundError = isSupabaseTableNotFoundError(error) ||
+        errorCode === 'PGRST116' || 
+        errorCode === 'PGRST205' ||
+        errorStatus === 404 ||
+        errorStatus === '404' ||
+        Number(errorStatus) === 404 ||
+        errorMessage?.toLowerCase().includes('404') ||
+        errorMessage?.toLowerCase().includes('not found') ||
+        errorMessage?.toLowerCase().includes('does not exist') ||
+        (errorMessage?.toLowerCase().includes('relation') && errorMessage?.toLowerCase().includes('does not exist')) ||
+        errorString.includes('404') ||
+        errorString.includes('not found') ||
+        errorString.includes('pgrst116') ||
+        errorString.includes('pgrst205');
+      
+      if (isNotFoundError) {
+        // 404エラーの場合は空配列を返す（エラーとして扱わない）
+        if (__DEV__) {
+          logger.debug('[organizationRepository] getUserOrganizations:テーブルが存在しないため空配列を返します（catch）', {
+            code: errorCode,
+            status: errorStatus,
+            message: errorMessage?.substring(0, 100),
+          });
+        }
+        return { data: [], error: null };
+      }
+      
+      // 404以外のエラーのみログに記録
+      const normalizedError = normalizeError(error, 'getUserOrganizations');
+      logger.error(`[organizationRepository] getUserOrganizations:error`, { error: normalizedError });
+      return { data: null, error: normalizedError };
+    }
   },
 
   /**

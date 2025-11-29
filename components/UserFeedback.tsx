@@ -2,6 +2,7 @@ import React, { memo, useMemo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CheckCircle, AlertCircle, Info, X } from 'lucide-react-native';
 import { useThemeColors } from '@/hooks/useThemeColors';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 interface UserFeedbackProps {
   type: 'success' | 'error' | 'info';
@@ -124,10 +125,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginHorizontal: 16,
     marginVertical: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
+    }),
     elevation: 3,
   },
   content: {

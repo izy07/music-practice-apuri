@@ -7,8 +7,8 @@ import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Target, Camera } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
-import { instrumentBasics } from '../data/instrumentBasics';
-import { styles } from '../styles/styles';
+import { instrumentBasics } from '../data/_instrumentBasics';
+import { styles } from '../styles';
 
 export interface BasicInfoSectionProps {
   instrumentKey: string;

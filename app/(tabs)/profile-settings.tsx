@@ -615,16 +615,22 @@ export default function ProfileSettingsScreen() {
         .map(org => org.name.trim())
         .join(',');
 
+      // 基本カラムのみを含める（存在しないカラムを除外）
       const upsertRow: Partial<UserProfile> = {
         user_id: currentUser.id,
         display_name: nickname.trim(),
-        current_age: currentAge ? parseInt(currentAge) : undefined,
-        music_start_age: musicStartAge ? parseInt(musicStartAge) : undefined,
-        music_experience_years: musicExperienceYears,
-        birthday: birthday ? birthday.toISOString().split('T')[0] : undefined, // YYYY-MM-DD形式
-        organization: organizationsString || undefined, // カンマ区切りで保存
         updated_at: new Date().toISOString(),
       };
+      
+      // オプショナルカラム（存在する場合のみ追加）
+      // これらのカラムはマイグレーション（20250120000003_add_age_fields.sql）で追加される必要があります
+      // カラムが存在しない場合のエラーを避けるため、一旦コメントアウト
+      // マイグレーションを実行した後、以下のコメントを解除してください
+      // if (currentAge) upsertRow.current_age = parseInt(currentAge);
+      // if (musicStartAge) upsertRow.music_start_age = parseInt(musicStartAge);
+      // if (musicExperienceYears) upsertRow.music_experience_years = musicExperienceYears;
+      // if (birthday) upsertRow.birthday = birthday.toISOString().split('T')[0];
+      // if (organizationsString) upsertRow.organization = organizationsString;
 
       logger.debug('保存データ:', upsertRow);
 

@@ -1,4 +1,5 @@
 import { StyleSheet } from 'react-native';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 export const styles = StyleSheet.create({
   container: {
@@ -46,10 +47,13 @@ export const styles = StyleSheet.create({
     position: 'relative',
     borderWidth: 2,
     borderColor: '#E0E0E0',
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
+    ...createShadowStyle({
+      shadowColor: 'transparent',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      elevation: 0,
+    }),
   },
   circularProgressContainer: {
     alignItems: 'center',
@@ -231,10 +235,13 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 2,
+    }),
     marginBottom: 20,
   },
   stopwatchTime: {
@@ -260,10 +267,13 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 24,
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
+    }),
   },
   stopwatchMainButton: {
     minWidth: 120,
@@ -282,10 +292,13 @@ export const styles = StyleSheet.create({
     borderRadius: 16,
     maxHeight: 300,
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 2,
+    }),
   },
   lapTimesHeader: {
     flexDirection: 'row',

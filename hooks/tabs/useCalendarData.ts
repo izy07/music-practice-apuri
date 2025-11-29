@@ -271,12 +271,30 @@ export function useCalendarData(currentDate: Date) {
         .order('date', { ascending: true });
 
       if (error) {
-        if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
+        // 400エラー（Bad Request）の場合、dateカラムが存在しない可能性が高い
+        if (error.code === '42703' || error.code === 'PGRST116' || error.status === 400 || 
+            error.message?.includes('column') || error.message?.includes('does not exist') || 
+            error.message?.includes('date') || error.message?.includes('date')) {
+          logger.warn('ℹ️ eventsテーブルのdateカラムが存在しません。マイグレーションを実行してください。', { 
+            error: {
+              code: error.code,
+              message: error.message,
+              status: error.status,
+              details: error.details,
+              hint: error.hint
+            }
+          });
+          setEvents({});
+          return;
+        }
+        if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
           logger.info('ℹ️ eventsテーブルが存在しません。マイグレーションを実行してください。');
+          setEvents({});
           return;
         }
         ErrorHandler.handle(error, 'イベント読み込み', false);
         logger.error('❌ イベント読み込みエラー:', error);
+        setEvents({});
         return;
       }
 

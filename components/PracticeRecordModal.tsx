@@ -56,38 +56,6 @@ export default function PracticeRecordModal({
     existingRecording: typeof existingRecording;
   } | null>(null); // 録音画面に移動する前のフォーム状態と録音状態
 
-  // 選択された日付の練習記録を取得
-  useEffect(() => {
-    if (visible && selectedDate && !showAudioRecorder) {
-      // 録音画面から戻ってきた場合
-      if (formStateBeforeRecording) {
-        // フォーム状態を復元
-        setMinutes(formStateBeforeRecording.minutes);
-        setContent(formStateBeforeRecording.content);
-        // 録音状態も復元
-        if (formStateBeforeRecording.existingRecording) {
-          setExistingRecording(formStateBeforeRecording.existingRecording);
-        }
-        // フォーム状態をクリア
-        setFormStateBeforeRecording(null);
-        // 録音状態を保持してデータを再読み込み（既存の録音状態を上書きしない）
-        loadExistingRecord(true);
-      } else {
-        // 通常のモーダルオープン時はリセット
-        setExistingRecord(null);
-        setExistingRecording(null);
-        setMinutes('');
-        setContent('');
-        setAudioUrl('');
-        setVideoUrl('');
-        setTimerMinutes(0);
-        setIsRecordingJustSaved(false); // フラグをリセット
-        // データを再読み込み
-        loadExistingRecord();
-      }
-    }
-  }, [visible, selectedDate, showAudioRecorder]);
-
   // 既存の練習記録を読み込む
   const loadExistingRecord = useCallback(async (preserveExistingRecording = false) => {
     try {
@@ -263,7 +231,39 @@ export default function PracticeRecordModal({
     } catch (error) {
       ErrorHandler.handle(error, '既存記録の読み込み', false);
     }
-  }, [selectedDate, selectedInstrument, isRecordingJustSaved]);
+  }, [selectedDate, selectedInstrument, isRecordingJustSaved, visible, existingRecording]);
+
+  // 選択された日付の練習記録を取得
+  useEffect(() => {
+    if (visible && selectedDate && !showAudioRecorder) {
+      // 録音画面から戻ってきた場合
+      if (formStateBeforeRecording) {
+        // フォーム状態を復元
+        setMinutes(formStateBeforeRecording.minutes);
+        setContent(formStateBeforeRecording.content);
+        // 録音状態も復元
+        if (formStateBeforeRecording.existingRecording) {
+          setExistingRecording(formStateBeforeRecording.existingRecording);
+        }
+        // フォーム状態をクリア
+        setFormStateBeforeRecording(null);
+        // 録音状態を保持してデータを再読み込み（既存の録音状態を上書きしない）
+        loadExistingRecord(true);
+      } else {
+        // 通常のモーダルオープン時はリセット
+        setExistingRecord(null);
+        setExistingRecording(null);
+        setMinutes('');
+        setContent('');
+        setAudioUrl('');
+        setVideoUrl('');
+        setTimerMinutes(0);
+        setIsRecordingJustSaved(false); // フラグをリセット
+        // データを再読み込み（モーダルが開かれたときに必ず最新データを取得）
+        loadExistingRecord(false);
+      }
+    }
+  }, [visible, selectedDate, showAudioRecorder, loadExistingRecord, formStateBeforeRecording]);
 
   // 練習記録更新イベントをリッスン（クイック記録などで更新された場合に再読み込み）
   useEffect(() => {
@@ -367,11 +367,14 @@ export default function PracticeRecordModal({
         // コールバックを呼び出す
         onRecordingSaved?.();
         
-        // 録音保存後は再読み込みをスキップ（既に状態が設定されているため）
-        // フラグは一定時間後にリセット
+        // 録音保存後、少し遅延してからデータを再取得（データベースへの反映を待つ）
         setTimeout(() => {
           setIsRecordingJustSaved(false);
-        }, 3000);
+          // フラグをリセットした後、データを再取得して確実に録音済み状態を表示
+          if (visible && selectedDate) {
+            loadExistingRecord(false);
+          }
+        }, 1000); // 1秒後に再取得（データベースへの反映を待つ）
         
         Alert.alert('保存完了', '録音を保存しました');
       }
@@ -411,11 +414,14 @@ export default function PracticeRecordModal({
         duration: audioData.duration
       });
       
-      // 録音保存後は再読み込みをスキップ（既に状態が設定されているため）
-      // フラグは一定時間後にリセット
+      // 録音保存後、少し遅延してからデータを再取得（データベースへの反映を待つ）
       setTimeout(() => {
         setIsRecordingJustSaved(false);
-      }, 3000);
+        // フラグをリセットした後、データを再取得して確実に録音済み状態を表示
+        if (visible && selectedDate) {
+          loadExistingRecord(false);
+        }
+      }, 1000); // 1秒後に再取得（データベースへの反映を待つ）
     } else {
       // 録音IDがない場合（保存前の状態）は、録音情報を表示
       setAudioTitle(audioData.title);

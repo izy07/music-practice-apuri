@@ -7,7 +7,7 @@ import React from 'react';
 import { View } from 'react-native';
 import type { PracticeItem } from '../types/practice.types';
 import { PracticeItemCard } from './PracticeItemCard';
-import { styles } from '../styles/styles';
+import { styles } from '../styles';
 
 export interface PracticeMenuSectionProps {
   menus: PracticeItem[];

@@ -1,7 +1,7 @@
 /**
  * レベル定義データ
  */
-import { Level } from '../_types';
+import { Level } from '../types';
 
 export const levels: Level[] = [
   {

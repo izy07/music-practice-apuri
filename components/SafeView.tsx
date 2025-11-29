@@ -6,7 +6,7 @@ type Props = ViewProps & {
 };
 
 // View直下に生テキストが混入しても落ちないように安全に包むラッパー
-export default function SafeView({ children, ...rest }: Props) {
+export default function SafeView({ children, pointerEvents, style, ...rest }: Props) {
   const normalizedChildren = React.Children.map(children, (child) => {
     if (typeof child === 'string') {
       const trimmed = child.trim();
@@ -18,7 +18,14 @@ export default function SafeView({ children, ...rest }: Props) {
     return child as React.ReactElement | null;
   });
 
-  return <View {...rest}>{normalizedChildren}</View>;
+  // pointerEventsをstyleに移動（非推奨警告を回避）
+  // pointerEventsをrestから除外して、propsとして渡さないようにする
+  const { pointerEvents: _, ...restWithoutPointerEvents } = rest as any;
+  const viewStyle = pointerEvents 
+    ? [{ pointerEvents: pointerEvents as any }, style]
+    : style;
+
+  return <View style={viewStyle} {...restWithoutPointerEvents}>{normalizedChildren}</View>;
 }
 
 

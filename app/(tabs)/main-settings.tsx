@@ -7,6 +7,7 @@ import {
   ScrollView,
   Alert,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Mic, Volume2, Play, Pause, Settings, Eye, EyeOff, Check, Palette } from 'lucide-react-native';
@@ -28,6 +29,7 @@ import { userRepository } from '@/repositories/userRepository';
 import { COMMON_STYLES } from '@/lib/styles';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 const { width, height } = Dimensions.get('window');
 
@@ -1137,14 +1139,13 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginBottom: 20,
+    ...createShadowStyle({
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+      shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 4,
+    }),
   },
   cardHeader: {
     flexDirection: 'row',
@@ -1160,14 +1161,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
+    ...createShadowStyle({
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
+      shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
+    }),
   },
   settingHeader: {
     flexDirection: 'row',
@@ -1200,14 +1200,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    ...createShadowStyle({
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
+      shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+    }),
   },
   controlButtonText: {
     fontSize: 18,
@@ -1219,14 +1218,13 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     alignItems: 'center',
+    ...createShadowStyle({
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
+      shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
+    }),
   },
   valueText: {
     fontSize: 16,
@@ -1251,14 +1249,13 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     minWidth: 70,
     justifyContent: 'center',
+    ...createShadowStyle({
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+      shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    }),
   },
   tabButtonText: {
     fontSize: 11,

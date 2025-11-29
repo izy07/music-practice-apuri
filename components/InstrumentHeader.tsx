@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useInstrumentTheme } from './InstrumentThemeContext';
@@ -9,69 +9,48 @@ import { ErrorHandler } from '@/lib/errorHandler';
 
 export default function InstrumentHeader() {
   const router = useRouter();
-  const { selectedInstrument, currentTheme, setSelectedInstrument } = useInstrumentTheme();
+  const { selectedInstrument, currentTheme, setSelectedInstrument, dbInstruments } = useInstrumentTheme();
   const [showLearningTools, setShowLearningTools] = useState(false);
   const [showAppealModal, setShowAppealModal] = useState(false);
-  const [instrumentInfo, setInstrumentInfo] = useState<{ id: string; name: string; name_en: string } | null>(null);
+  
+  // 楽器情報をコンテキストのキャッシュから取得（データベースクエリ不要）
+  const instrumentInfo = useMemo(() => {
+    if (!selectedInstrument) return null;
+    
+    // コンテキストのdbInstrumentsから楽器情報を取得
+    const instrument = dbInstruments.find(inst => inst.id === selectedInstrument);
+    if (instrument) {
+      return {
+        id: instrument.id,
+        name: instrument.name,
+        name_en: instrument.nameEn,
+      };
+    }
+    return null;
+  }, [selectedInstrument, dbInstruments]);
+
+  // ユーザーの過去の楽器選択を取得（初回のみ、最適化）
   const [userInstrumentInfo, setUserInstrumentInfo] = useState<{ id: string; name: string; name_en: string } | null>(null);
-
-  // 楽器情報を取得
+  
   useEffect(() => {
-    const fetchInstrumentInfo = async () => {
-      if (selectedInstrument) {
-        try {
-          // 認証状態を確認
-          const { data: { session } } = await supabase.auth.getSession();
-          if (!session || !session.user) {
-            // 認証されていない場合は何もしない
-            return;
-          }
-
-          const { data, error } = await supabase
-            .from('instruments')
-            .select('id, name, name_en')
-            .eq('id', selectedInstrument)
-            .single();
-
-          if (data && !error) {
-            setInstrumentInfo(data);
-          }
-        } catch (error) {
-          // 認証関連のエラーは静かに無視
-          if (error && typeof error === 'object' && 'message' in error) {
-            const errorMessage = (error as { message?: string }).message;
-            if (errorMessage && 
-                !errorMessage.includes('JWT') && 
-                !errorMessage.includes('401') && 
-                !errorMessage.includes('403') && 
-                !errorMessage.includes('406')) {
-              ErrorHandler.handle(error, '楽器情報取得', false);
-            }
-          }
-        }
-      } else {
-        setInstrumentInfo(null);
-      }
-    };
-
-    fetchInstrumentInfo();
-  }, [selectedInstrument]);
-
-  // ユーザーの過去の楽器選択を取得
-  useEffect(() => {
+    let cancelled = false;
+    
     const fetchUserInstrument = async () => {
+      // 既にselectedInstrumentがある場合はスキップ
+      if (selectedInstrument) {
+        return;
+      }
+      
       try {
         // 認証状態を確認
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session || !session.user) {
-          // 認証されていない場合は何もしない
+        if (!session || !session.user || cancelled) {
           return;
         }
 
         // セッションが有効かチェック
         const now = Math.floor(Date.now() / 1000);
         if (session.expires_at && session.expires_at < now) {
-          // セッションが期限切れの場合は何もしない
           return;
         }
 
@@ -83,8 +62,10 @@ export default function InstrumentHeader() {
           .limit(1)
           .maybeSingle();
 
+        if (cancelled) return;
+
         if (profile?.selected_instrument_id && !error) {
-          // コンテキストに未反映の場合は即時反映（テーマや他画面にも即適用）
+          // コンテキストに未反映の場合は即時反映
           if (!selectedInstrument) {
             try {
               await setSelectedInstrument(profile.selected_instrument_id);
@@ -92,17 +73,20 @@ export default function InstrumentHeader() {
               // 失敗しても表示用のフォールバックは続ける
             }
           }
-          const { data: instrumentData, error: instrumentError } = await supabase
-            .from('instruments')
-            .select('id, name, name_en')
-            .eq('id', profile.selected_instrument_id)
-            .single();
-
-          if (instrumentData && !instrumentError) {
-            setUserInstrumentInfo(instrumentData);
+          
+          // コンテキストのキャッシュから楽器情報を取得（データベースクエリ不要）
+          const instrument = dbInstruments.find(inst => inst.id === profile.selected_instrument_id);
+          if (instrument && !cancelled) {
+            setUserInstrumentInfo({
+              id: instrument.id,
+              name: instrument.name,
+              name_en: instrument.nameEn,
+            });
           }
         }
       } catch (error) {
+        if (cancelled) return;
+        
         // 認証関連のエラーは静かに無視
         if (error && typeof error === 'object' && 'message' in error) {
           const errorMessage = (error as { message?: string }).message;
@@ -118,7 +102,11 @@ export default function InstrumentHeader() {
     };
 
     fetchUserInstrument();
-  }, []);
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedInstrument, dbInstruments, setSelectedInstrument]);
 
 
   const getInstrumentName = () => {

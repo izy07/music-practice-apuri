@@ -10,6 +10,7 @@ import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import * as authService from '@/lib/authService';
 import logger from '@/lib/logger';
+import { ErrorHandler } from '@/lib/errorHandler';
 import { STORAGE_KEYS, withUser } from '@/lib/storageKeys';
 import { storageManager, emitStorageEvent } from '@/lib/storageManager';
 import { performanceTracker } from '@/lib/performanceTracker';
@@ -97,7 +98,7 @@ export function useAuthSimple(): SimpleAuthHookReturn {
           id: user.id,
           email: user.email || email,
           displayName: profileResult.profile?.display_name || email.split('@')[0],
-          tutorialCompleted: profileResult.profile?.tutorial_completed ?? false,
+          tutorialCompleted: false, // カラムが存在しない場合があるため、デフォルト値を使用
         });
       } else {
         updateAuthState({ isLoading: false });
@@ -144,7 +145,7 @@ export function useAuthSimple(): SimpleAuthHookReturn {
               id: user.id,
               email: user.email || email,
               displayName: profileResult.profile?.display_name || email.split('@')[0],
-              tutorialCompleted: profileResult.profile?.tutorial_completed ?? false,
+              tutorialCompleted: false, // カラムが存在しない場合があるため、デフォルト値を使用
             });
           }).catch((profileError) => {
             // プロフィール取得に失敗しても、ユーザー情報は設定する
@@ -382,7 +383,7 @@ export function useAuthSimple(): SimpleAuthHookReturn {
               id: user.id,
               email: user.email || '',
               displayName: (profileResult as any).profile?.display_name || user.email?.split('@')[0],
-              tutorialCompleted: (profileResult as any).profile?.tutorial_completed ?? false,
+              tutorialCompleted: false, // カラムが存在しない場合があるため、デフォルト値を使用
             });
             // 認証初期化完了を記録
             performanceTracker.markAuthInitialized();
@@ -420,23 +421,79 @@ export function useAuthSimple(): SimpleAuthHookReturn {
 
     // 認証状態の変更を監視
     const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      logger.debug(`[${AUTH_HOOK_CONTEXT}] onAuthStateChange`, { event });
+      logger.debug(`[${AUTH_HOOK_CONTEXT}] onAuthStateChange`, { event, hasSession: !!session });
 
       if (!mounted) return;
 
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         if (session?.user) {
-          // プロフィール取得を試みる（新規登録直後はプロフィールが存在しない可能性があるため、エラーは無視）
-          // getUserProfileはエラーを返さないように修正されているため、エラーチェックは不要
+          logger.debug(`[${AUTH_HOOK_CONTEXT}] 認証成功 - プロフィール確認開始`, { userId: session.user.id });
+          
+          // プロフィール取得を試みる
           const profileResult = await authService.getUserProfile(session.user.id);
+          
+          // プロフィールが存在しない場合は作成（データベーストリガーが動作していない場合のフォールバック）
+          if (!profileResult.profile) {
+            logger.debug(`[${AUTH_HOOK_CONTEXT}] プロフィールが存在しないため、作成します`, { userId: session.user.id });
+            
+            const displayName = session.user.user_metadata?.display_name || 
+                               session.user.user_metadata?.name || 
+                               session.user.email?.split('@')[0] || 
+                               'ユーザー';
+            
+            try {
+              const { data: newProfile, error: createError } = await supabase
+                .from('user_profiles')
+                .insert({
+                  user_id: session.user.id,
+                  display_name: displayName,
+                  practice_level: 'beginner',
+                  total_practice_minutes: 0,
+                })
+                .select('id, user_id, display_name')
+                .single();
+              
+              if (createError) {
+                // 既にプロフィールが存在する場合は成功として扱う（競合エラー）
+                if (createError.code === '23505') {
+                  logger.debug(`[${AUTH_HOOK_CONTEXT}] プロフィールは既に存在します（競合エラー）`);
+                  // 再度取得を試みる
+                  const retryResult = await authService.getUserProfile(session.user.id);
+                  if (retryResult.profile) {
+                    profileResult.profile = retryResult.profile;
+                  }
+                } else {
+                  logger.error(`[${AUTH_HOOK_CONTEXT}] プロフィール作成エラー:`, createError);
+                  ErrorHandler.handle(createError, 'プロフィール作成', false);
+                }
+              } else {
+                logger.debug(`[${AUTH_HOOK_CONTEXT}] ✅ プロフィール作成成功`, { profileId: newProfile?.id });
+                profileResult.profile = newProfile;
+              }
+            } catch (profileErr: any) {
+              logger.error(`[${AUTH_HOOK_CONTEXT}] プロフィール作成例外:`, profileErr);
+              ErrorHandler.handle(profileErr, 'プロフィール作成', false);
+            }
+          }
+          
           setUser({
             id: session.user.id,
             email: session.user.email || '',
-            displayName: profileResult.profile?.display_name || session.user.email?.split('@')[0] || '',
+            displayName: profileResult.profile?.display_name || 
+                        session.user.user_metadata?.display_name || 
+                        session.user.user_metadata?.name || 
+                        session.user.email?.split('@')[0] || 
+                        '',
             tutorialCompleted: profileResult.profile?.tutorial_completed ?? false,
+          });
+          
+          logger.debug(`[${AUTH_HOOK_CONTEXT}] ✅ 認証状態更新完了`, { 
+            userId: session.user.id,
+            hasProfile: !!profileResult.profile 
           });
         }
       } else if (event === 'SIGNED_OUT') {
+        logger.debug(`[${AUTH_HOOK_CONTEXT}] サインアウト`);
         setUser(null);
       }
     });

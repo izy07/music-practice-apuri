@@ -28,6 +28,7 @@ import { supabase } from '@/lib/supabase';
 import { COMMON_STYLES, APP_COLORS } from '@/lib/appStyles';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -57,12 +58,13 @@ export default function SignupScreen() {
   
   // 独立した認証処理関数（世に出回っているアプリの一般的なパターン）
   const signUp = async (formData: any) => {
-    logger.debug('新規登録処理（一般的なパターン）:', formData.email);
+    logger.debug('新規登録処理（簡素化版）:', formData.email);
     setIsLoading(true);
     setError(null);
     
     try {
       // Supabaseで直接新規登録処理（ニックネームをuser_metadataに含める）
+      // プロフィール作成はデータベーストリガーまたはonAuthStateChangeで処理
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -81,11 +83,9 @@ export default function SignupScreen() {
         if (error.message?.includes('User already registered') || 
             error.message?.includes('already exists') ||
             error.code === 'signup_disabled') {
-          // メール確認待ちの可能性があるので、情報を表示
           logger.debug('ユーザーが既に存在します - メール確認状況を確認');
           setIsLoading(false);
           
-          // エラーメッセージを更新
           const userMessage = 'このメールアドレスは既に登録されています。\n\nメール確認が済んでいない場合は、Inbucket（http://127.0.0.1:54324）でメールを確認するか、ログイン画面から再度ログインしてください。';
           setError(userMessage);
           
@@ -97,53 +97,31 @@ export default function SignupScreen() {
         return false;
       }
       
-      logger.debug('新規登録成功:', data);
-      logger.debug('ニックネーム設定:', formData.name.trim());
+      logger.debug('✅ 新規登録成功:', { 
+        userId: data.user?.id, 
+        hasSession: !!data.session,
+        email: data.user?.email 
+      });
       
-      logger.debug('セッションが確立されました');
-      
-      // セッションがない場合、自動的にサインインしてセッションを確立
-      if (!data.session && data.user) {
-        logger.debug('セッションなし - 自動サインイン開始');
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: formData.email,
-          password: formData.password,
-        });
-        
-        if (signInError) {
-          ErrorHandler.handle(signInError, '自動サインイン', false);
-        } else {
-          logger.debug('自動サインイン成功 - セッション確立');
-        }
+      // セッションが確立されている場合は成功
+      // セッションがない場合は、onAuthStateChangeで検出されるまで待つ
+      // プロフィール作成はデータベーストリガーまたはonAuthStateChangeで処理
+      if (data.session) {
+        logger.debug('✅ セッション確立済み - onAuthStateChangeで処理されます');
+        setIsLoading(false);
+        return true;
+      } else if (data.user) {
+        logger.debug('⏳ セッション未確立 - onAuthStateChangeで検出されるまで待機');
+        // セッションが確立されるまで少し待つ（onAuthStateChangeで検出される）
+        // 新規登録画面では手動でナビゲーションしない（_layout.tsxで処理）
+        setIsLoading(false);
+        return true;
+      } else {
+        logger.error('❌ ユーザー情報が取得できません');
+        setError('ユーザー情報の取得に失敗しました。もう一度お試しください。');
+        setIsLoading(false);
+        return false;
       }
-      
-      // プロフィール作成処理を追加
-      if (data.user) {
-        try {
-          logger.debug('プロフィール作成開始');
-          const { error: profileError } = await supabase
-            .from('user_profiles')
-            .insert({
-              user_id: data.user.id,
-              display_name: formData.name.trim(),
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            });
-          
-          if (profileError) {
-            ErrorHandler.handle(profileError, 'プロフィール作成', false);
-            // プロフィール作成に失敗しても新規登録は成功とする
-          } else {
-            logger.debug('プロフィール作成成功');
-          }
-        } catch (profileErr) {
-          ErrorHandler.handle(profileErr, 'プロフィール作成', false);
-          // プロフィール作成に失敗しても新規登録は成功とする
-        }
-      }
-      
-      setIsLoading(false);
-      return true;
     } catch (err) {
       ErrorHandler.handle(err, '新規登録', true);
       setError('新規登録に失敗しました');
@@ -290,17 +268,21 @@ export default function SignupScreen() {
       const success = await signUp(formData);
       logger.debug('📊 新規登録結果:', success);
       
-    if (success) {
-        logger.debug('✅ 新規登録成功 - チュートリアル画面に遷移');
+      if (success) {
+        logger.debug('✅ 新規登録成功 - onAuthStateChangeで認証状態が更新され、自動的にナビゲーションされます');
         setSignupSuccess(true);
-        
-        // 即座にチュートリアル画面に遷移（認証状態の更新を待たない）
-        setTimeout(() => {
-          logger.debug('🚀 チュートリアル画面に遷移');
-          router.replace('/(tabs)/tutorial');
-        }, 500); // アニメーション表示のために短い遅延
-    } else {
-      logger.debug('❌ 新規登録失敗');
+        // 手動でナビゲーションしない（_layout.tsxのonAuthStateChangeで処理）
+        // ただし、onAuthStateChangeが発火しない場合に備えて、少し待ってからセッションを確認
+        setTimeout(async () => {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData.session) {
+            logger.debug('✅ セッション確認済み - 認証状態が更新されているはずです');
+          } else {
+            logger.warn('⚠️ セッションが確立されていません - onAuthStateChangeを待機中');
+          }
+        }, 1000);
+      } else {
+        logger.debug('❌ 新規登録失敗');
         const fallbackMsg = error || '登録に失敗しました。メールが既に登録済みか、入力内容に誤りがあります。';
         setUiError(fallbackMsg);
         // 画面下のフィールドにも明示的にエラー表示
@@ -331,7 +313,11 @@ export default function SignupScreen() {
     } catch (error) {
       logger.error('💥 新規登録処理エラー:', error);
       ErrorHandler.handle(error, '新規登録処理', true);
+      setError('新規登録に失敗しました。もう一度お試しください。');
       Alert.alert('エラー', '新規登録に失敗しました。もう一度お試しください。');
+    } finally {
+      // 確実にisLoadingをfalseにする
+      setIsLoading(false);
     }
   };
 
@@ -647,10 +633,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
     elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+      elevation: 4,
+    }),
     borderWidth: 2,
     borderColor: colors.primary,
   },
@@ -726,17 +715,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 8,
     elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+      elevation: 1,
+    }),
   },
   inputFocus: {
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.15,
-    shadowRadius: 0,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.15,
+      shadowRadius: 0,
+      elevation: 2,
+    }),
   },
   inputError: {
     borderColor: colors.error,
@@ -780,18 +775,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     marginTop: 6,
     elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 4,
+    }),
   },
   signupButtonDisabled: {
     backgroundColor: colors.textSecondary,
     elevation: 0,
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0,
-    shadowRadius: 0,
+    ...createShadowStyle({
+      shadowColor: 'transparent',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0,
+      shadowRadius: 0,
+      elevation: 0,
+    }),
   },
   buttonContent: {
     flexDirection: 'row',

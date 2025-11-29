@@ -7,7 +7,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, Modal } from 'react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import type { Level } from '../types/practice.types';
-import { styles } from '../styles/styles';
+import { styles } from '../styles';
 
 export interface LevelSelectionModalProps {
   visible: boolean;

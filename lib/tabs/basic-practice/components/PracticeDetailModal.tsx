@@ -12,7 +12,7 @@ import logger from '@/lib/logger';
 import { getCurrentUser } from '@/repositories/userRepository';
 import { getPracticeSessionsByDate, updatePracticeSession, createPracticeSession } from '@/repositories/practiceSessionRepository';
 import type { PracticeItem } from '../types/practice.types';
-import { styles } from '../styles/styles';
+import { styles } from '../styles';
 
 export interface PracticeDetailModalProps {
   visible: boolean;

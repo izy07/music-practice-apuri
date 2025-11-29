@@ -1,7 +1,7 @@
 /**
  * 楽器別基礎情報データ（姿勢・持ち方）
  */
-import { InstrumentBasics } from '../_types';
+import { InstrumentBasics } from '../types';
 
 export const instrumentBasics: { [key: string]: InstrumentBasics } = {
     piano: {

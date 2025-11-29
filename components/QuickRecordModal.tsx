@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase';
 import { formatLocalDate } from '@/lib/dateUtils';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 interface QuickRecordModalProps {
   visible: boolean;
@@ -340,16 +341,12 @@ const getTimeButtonStyle = () => ({
   borderWidth: 1,
   borderColor: '#E0E0E0',
   elevation: 2,
-  ...(Platform.OS === 'web' ? {
-    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
-  } : {
+  ...createShadowStyle({
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
+    elevation: 2,
   }),
 });
 

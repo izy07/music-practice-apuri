@@ -53,6 +53,9 @@ export class OrganizationService {
         logger.debug(`[${SERVICE_CONTEXT}] getUserOrganizations:start`);
         
         const result = await organizationRepository.getUserOrganizations();
+        
+        // 404エラーはリポジトリ層で処理済み（error: null, data: []）
+        // その他のエラーのみスロー
         if (result.error) {
           throw result.error;
         }

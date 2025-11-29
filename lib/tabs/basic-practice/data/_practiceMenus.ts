@@ -1,7 +1,7 @@
 /**
  * 練習メニューデータ定義
  */
-import { PracticeItem } from '../_types';
+import { PracticeItem } from '../types';
 
 // 共通（デフォルト）練習メニュー
 export const genericMenus: PracticeItem[] = [

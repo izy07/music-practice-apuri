@@ -10,6 +10,7 @@ import { formatLocalDate } from '@/lib/dateUtils';
 import { organizationRepository } from '@/repositories/organizationRepository';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 type UnifiedSchedule = PracticeSchedule & {
   organization_id: string;
@@ -628,10 +629,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 0,
     elevation: 4,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 4,
+    }),
   },
   weekHeader: {
     flexDirection: 'row',
@@ -712,10 +716,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 12,
     elevation: 2,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowOffset: { width: 0, height: 1 },
-    shadowRadius: 2,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 2,
+    }),
   },
   scheduleType: {
     paddingHorizontal: 8,

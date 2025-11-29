@@ -27,6 +27,7 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { safeGoBack } from '@/lib/navigationUtils';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 export default function SupportScreen() {
   const router = useRouter();
@@ -264,10 +265,13 @@ const styles = StyleSheet.create({
     padding: 24,
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
+    }),
     elevation: 3,
   },
   messageTitle: {
@@ -284,11 +288,13 @@ const styles = StyleSheet.create({
   section: {
     borderRadius: 12,
     marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    }),
   },
   sectionHeader: {
     flexDirection: 'row',

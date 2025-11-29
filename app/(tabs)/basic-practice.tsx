@@ -12,16 +12,16 @@ import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import PostureCameraModal from '@/components/PostureCameraModal';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
-import type { PracticeItem } from './basic-practice/types/practice.types';
-import { usePracticeLevel } from './basic-practice/hooks/usePracticeLevel';
-import { usePracticeMenu } from './basic-practice/hooks/usePracticeMenu';
-import { LevelSelector } from './basic-practice/components/LevelSelector';
-import { PracticeMenuSection } from './basic-practice/components/PracticeMenuSection';
-import { BasicInfoSection } from './basic-practice/components/BasicInfoSection';
-import { LevelSelectionModal } from './basic-practice/components/LevelSelectionModal';
-import { PracticeDetailModal } from './basic-practice/components/PracticeDetailModal';
-import { getInstrumentKey, getInstrumentName } from './basic-practice/utils/instrumentUtils';
-import { styles } from './basic-practice/styles/styles';
+import type { PracticeItem } from '@/lib/tabs/basic-practice/types';
+import { usePracticeLevel } from '@/lib/tabs/basic-practice/hooks/usePracticeLevel';
+import { usePracticeMenu } from '@/lib/tabs/basic-practice/hooks/usePracticeMenu';
+import { LevelSelector } from '@/lib/tabs/basic-practice/components/LevelSelector';
+import { PracticeMenuSection } from '@/lib/tabs/basic-practice/components/PracticeMenuSection';
+import { BasicInfoSection } from '@/lib/tabs/basic-practice/components/BasicInfoSection';
+import { LevelSelectionModal } from '@/lib/tabs/basic-practice/components/LevelSelectionModal';
+import { PracticeDetailModal } from '@/lib/tabs/basic-practice/components/PracticeDetailModal';
+import { getInstrumentKey, getInstrumentName } from '@/lib/tabs/basic-practice/utils';
+import { styles } from '@/lib/tabs/basic-practice/styles';
 
 export default function BasicPracticeScreen() {
   const router = useRouter();
@@ -33,7 +33,7 @@ export default function BasicPracticeScreen() {
 
   // 楽器キーと名前の取得
   const instrumentKey = getInstrumentKey(selectedInstrument);
-  const instrumentName = getInstrumentName(instrumentKey);
+  const instrumentName = getInstrumentName(selectedInstrument, null);
 
   // レベル管理フック
   const {
@@ -127,3 +127,4 @@ export default function BasicPracticeScreen() {
     </SafeAreaView>
   );
 }
+

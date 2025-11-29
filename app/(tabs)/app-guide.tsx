@@ -12,6 +12,7 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft, ChevronDown, ChevronUp, BookOpen, Calendar, Target, BarChart3, Music, Timer, Mic, Settings } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { safeGoBack } from '@/lib/navigationUtils';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 /**
  * 【アプリ使い方ガイド画面】既存ユーザー向けの詳細な機能説明
@@ -237,16 +238,12 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     borderWidth: 1,
     overflow: 'hidden',
-    ...(Platform.OS === 'web' ? {
-      boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.1)',
-    } : {
+    ...createShadowStyle({
       shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 1,
-      },
+      shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.1,
       shadowRadius: 2,
+      elevation: 2,
     }),
     elevation: 2,
   },

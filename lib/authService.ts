@@ -20,10 +20,14 @@ export interface UserProfileResult {
     id?: string;
     user_id: string;
     display_name?: string;
-    tutorial_completed?: boolean;
-    onboarding_completed?: boolean;
+    selected_instrument_id?: string;
+    practice_level?: string;
+    total_practice_minutes?: number;
     created_at?: string;
     updated_at?: string;
+    // オプショナルカラム（カラムが存在しない場合がある）
+    tutorial_completed?: boolean;
+    onboarding_completed?: boolean;
   } | null;
   error?: string;
 }
@@ -186,7 +190,7 @@ export async function getUserProfile(userId: string): Promise<UserProfileResult>
   try {
     const { data, error } = await supabase
       .from('user_profiles')
-      .select('id, user_id, display_name, tutorial_completed, onboarding_completed, created_at, updated_at')
+      .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
       .eq('user_id', userId)
       .maybeSingle();
 

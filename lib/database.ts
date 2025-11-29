@@ -207,18 +207,45 @@ export const saveTunerSettings = async (userId: string, settings: {
   volume: number;
 }) => {
   try {
-    const { data, error } = await supabase
+    // まず既存のレコードを確認
+    const { data: existingData, error: checkError } = await supabase
       .from('user_settings')
-      .upsert({
-        user_id: userId,
-        tuner_settings: settings,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' })
-      .select()
+      .select('id, user_id')
+      .eq('user_id', userId)
       .single();
 
-    if (error) throw error;
-    return { data, error: null };
+    let result;
+    if (existingData && !checkError) {
+      // 既存のレコードがある場合は更新
+      const { data, error } = await supabase
+        .from('user_settings')
+        .update({
+          tuner_settings: settings,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      result = { data, error: null };
+    } else {
+      // レコードが存在しない場合は挿入
+      const { data, error } = await supabase
+        .from('user_settings')
+        .insert({
+          user_id: userId,
+          tuner_settings: settings,
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      result = { data, error: null };
+    }
+
+    return result;
   } catch (error) {
     ErrorHandler.handle(error, 'チューナー設定保存', false);
     return { data: null, error };

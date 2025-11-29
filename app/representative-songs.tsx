@@ -5,6 +5,7 @@ import { ArrowLeft, Play, ExternalLink } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { supabase } from '@/lib/supabase';
+import { createShadowStyle } from '@/lib/shadowStyles';
 
 const { width } = Dimensions.get('window');
 
@@ -320,10 +321,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 8,
     elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 1,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 1,
+      elevation: 1,
+    }),
   },
   songHeader: {
     flexDirection: 'row',

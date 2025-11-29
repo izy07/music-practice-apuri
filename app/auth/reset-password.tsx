@@ -492,7 +492,6 @@ const styles = StyleSheet.create({
   resetButtonDisabled: {
     backgroundColor: colors.textSecondary,
     elevation: 0,
-    shadowOpacity: 0,
   },
   resetButtonText: {
     color: '#FFF',

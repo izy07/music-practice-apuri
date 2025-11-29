@@ -129,6 +129,7 @@ export async function createUserProfile(
   try {
     logger.debug('[createUserProfile] プロフィール作成開始:', { userId, displayName });
     
+    // プロフィール作成（基本カラムのみ - tutorial_completedとonboarding_completedはカラムが存在しない場合があるため含めない）
     const { data, error } = await supabase
       .from('user_profiles')
       .insert({
@@ -137,7 +138,7 @@ export async function createUserProfile(
         practice_level: 'beginner',
         total_practice_minutes: 0,
       })
-      .select()
+      .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
       .single();
     
     if (error) {
@@ -145,6 +146,15 @@ export async function createUserProfile(
       if (error.code === '23505') { // unique_violation
         logger.debug('[createUserProfile] プロフィールは既に存在します:', { userId });
         return { success: true };
+      }
+      
+      // カラムが存在しない場合のエラーを明確に報告
+      if (error.code === '42703' || error.message?.includes('column') || error.message?.includes('does not exist')) {
+        logger.error('[createUserProfile] データベーススキーマエラー: 必要なカラムが存在しません。マイグレーションを実行してください。', { error: error.message });
+        return {
+          success: false,
+          error: 'データベーススキーマが不完全です。管理者に連絡するか、マイグレーションを実行してください。',
+        };
       }
       
       logger.error('[createUserProfile] プロフィール作成エラー:', { error: error.message });
@@ -158,6 +168,16 @@ export async function createUserProfile(
     return { success: true };
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    // カラムが存在しない場合のエラーを明確に報告
+    if (errorMessage.includes('column') || errorMessage.includes('does not exist')) {
+      logger.error('[createUserProfile] データベーススキーマエラー: 必要なカラムが存在しません。マイグレーションを実行してください。', { error: errorMessage });
+      return {
+        success: false,
+        error: 'データベーススキーマが不完全です。管理者に連絡するか、マイグレーションを実行してください。',
+      };
+    }
+    
     logger.error('[createUserProfile] プロフィール作成例外:', { error: errorMessage });
     return {
       success: false,

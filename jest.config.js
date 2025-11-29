@@ -67,7 +67,7 @@ module.exports = {
       },
     },
   }),
-  testEnvironment: 'node',
+  // testEnvironmentはjest-expoプリセットが自動設定するため削除
   globals: {
     __DEV__: true,
   },

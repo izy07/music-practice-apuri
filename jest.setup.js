@@ -2,14 +2,14 @@
 import '@testing-library/react-native/extend-expect';
 
 // グローバルモック設定
-global.console = {
-  ...console,
-  log: jest.fn(),
-  debug: jest.fn(),
-  info: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
-};
+// consoleを直接置き換えるのではなく、各メソッドをモック化
+if (typeof global.console !== 'undefined') {
+  global.console.log = jest.fn();
+  global.console.debug = jest.fn();
+  global.console.info = jest.fn();
+  global.console.warn = jest.fn();
+  global.console.error = jest.fn();
+}
 
 // AsyncStorage のモック
 jest.mock('@react-native-async-storage/async-storage', () => ({
