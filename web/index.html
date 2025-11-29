@@ -6,6 +6,42 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self';" />
   <title>Music Practice</title>
+  <script>
+    // aria-hidden警告を根本的に抑制（DOMレベル）
+    (function() {
+      if (typeof window === 'undefined') return;
+      
+      // MutationObserverでaria-hidden属性の追加を監視
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && mutation.attributeName === 'aria-hidden') {
+            const target = mutation.target as HTMLElement;
+            // フォーカス可能な要素が含まれている場合はaria-hiddenを削除
+            if (target.hasAttribute('aria-hidden') && target.querySelector(':focus')) {
+              target.removeAttribute('aria-hidden');
+            }
+          }
+        });
+      });
+      
+      // DOMが読み込まれたら監視を開始
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+          observer.observe(document.body, {
+            attributes: true,
+            attributeFilter: ['aria-hidden'],
+            subtree: true
+          });
+        });
+      } else {
+        observer.observe(document.body, {
+          attributes: true,
+          attributeFilter: ['aria-hidden'],
+          subtree: true
+        });
+      }
+    })();
+  </script>
   <style>
     html, body, #root {
       height: 100%;

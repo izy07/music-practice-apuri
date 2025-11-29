@@ -180,7 +180,8 @@ export default function InstrumentSelectionScreen() {
           const { error: updateError } = await supabase
             .from('user_profiles')
             .update(updateData)
-            .eq('user_id', user.id);
+            .eq('user_id', user.id)
+            .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
           error = updateError;
         } else {
           const upsertData: any = {
@@ -200,7 +201,8 @@ export default function InstrumentSelectionScreen() {
             .from('user_profiles')
             .upsert(upsertData, {
               onConflict: 'user_id'
-            });
+            })
+            .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
           error = upsertError;
         }
 
