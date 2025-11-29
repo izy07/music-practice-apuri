@@ -86,6 +86,7 @@ function RootLayoutContent() {
       if (__DEV__ && typeof window !== 'undefined' && typeof console !== 'undefined') {
         const originalWarn = console.warn;
         const originalError = console.error;
+        const originalLog = console.log;
         
         // console.warnの抑制
         console.warn = (...args: unknown[]) => {
@@ -99,7 +100,8 @@ function RootLayoutContent() {
               message.includes('aria-hidden') || 
               message.includes('descendant retained focus') ||
               message.includes('assistive technology') ||
-              message.includes('The focus must not be hidden')) {
+              message.includes('The focus must not be hidden') ||
+              message.includes('WAI-ARIA')) {
             return;
           }
           originalWarn.apply(console, args);
@@ -113,11 +115,45 @@ function RootLayoutContent() {
               message.includes('aria-hidden') || 
               message.includes('descendant retained focus') ||
               message.includes('assistive technology') ||
-              message.includes('The focus must not be hidden')) {
+              message.includes('The focus must not be hidden') ||
+              message.includes('WAI-ARIA')) {
             return;
           }
           originalError.apply(console, args);
         };
+        
+        // console.logの抑制（aria-hidden警告がlogとして表示される場合がある）
+        console.log = (...args: unknown[]) => {
+          const message = args[0]?.toString() || '';
+          // aria-hidden警告を無視
+          if (message.includes('Blocked aria-hidden') || 
+              message.includes('aria-hidden') || 
+              message.includes('descendant retained focus') ||
+              message.includes('assistive technology') ||
+              message.includes('The focus must not be hidden') ||
+              message.includes('WAI-ARIA')) {
+            return;
+          }
+          originalLog.apply(console, args);
+        };
+        
+        // エラーイベントリスナーでaria-hidden警告を抑制
+        if (typeof window.addEventListener === 'function') {
+          window.addEventListener('error', (event: Event) => {
+            const errorEvent = event as ErrorEvent;
+            const message = errorEvent.message || '';
+            if (message.includes('Blocked aria-hidden') || 
+                message.includes('aria-hidden') || 
+                message.includes('descendant retained focus') ||
+                message.includes('assistive technology') ||
+                message.includes('The focus must not be hidden') ||
+                message.includes('WAI-ARIA')) {
+              event.preventDefault();
+              event.stopPropagation();
+              event.stopImmediatePropagation();
+            }
+          }, true); // capture phaseで実行
+        }
       }
     }
   }, []);

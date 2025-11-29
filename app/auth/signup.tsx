@@ -287,7 +287,11 @@ export default function SignupScreen() {
       } else {
         logger.debug('❌ 新規登録失敗');
         const errorMessage = result.error || '登録に失敗しました。メールが既に登録済みか、入力内容に誤りがあります。';
+        
+        // error変数とuiError変数の両方に設定して確実に表示
+        setError(errorMessage);
         setUiError(errorMessage);
+        
         // 画面下のフィールドにも明示的にエラー表示
         setFormErrors(prev => ({
           ...prev,
@@ -299,20 +303,23 @@ export default function SignupScreen() {
         if (errorMessage.includes('既に登録されています') || 
             errorMessage.includes('already exists') || 
             errorMessage.includes('User already registered')) {
-          Alert.alert(
-            'アカウントが既に存在します',
-            'このメールアドレスは既に登録されています。ログインしますか？',
-            [
-              { text: 'キャンセル', style: 'cancel' },
-              {
-                text: 'ログイン',
-                onPress: () => {
-                  logger.debug('🎯 ログイン画面に遷移');
-                  router.push('/auth/login');
+          // 少し遅延してからアラートを表示（UI更新を待つ）
+          setTimeout(() => {
+            Alert.alert(
+              'アカウントが既に存在します',
+              'このメールアドレスは既に登録されています。ログインしますか？',
+              [
+                { text: 'キャンセル', style: 'cancel' },
+                {
+                  text: 'ログイン',
+                  onPress: () => {
+                    logger.debug('🎯 ログイン画面に遷移');
+                    router.push('/auth/login');
+                  },
                 },
-              },
-            ]
-          );
+              ]
+            );
+          }, 100);
         }
       }
     } catch (error) {
@@ -407,14 +414,14 @@ export default function SignupScreen() {
             </Animated.View>
 
             {/* エラー表示 */}
-            {error && (
+            {(error || uiError) && (
               <Animated.View
                 style={[
                   styles.errorContainer,
                   { transform: [{ scale: pulseAnim }] },
                 ]}
               >
-                <Text style={styles.errorText}>⚠️ {error}</Text>
+                <Text style={styles.errorText}>⚠️ {error || uiError}</Text>
               </Animated.View>
             )}
 
