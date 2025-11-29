@@ -120,9 +120,10 @@ export const updatePracticeSession = async (
   updates: Partial<PracticeSession>
 ): Promise<{ data: PracticeSession | null; error: SupabaseError }> => {
   try {
+    // updated_atカラムが存在しない可能性があるため、payloadから除外
+    const { updated_at, ...updatesWithoutTimestamp } = updates;
     const payload = {
-      ...updates,
-      updated_at: new Date().toISOString(),
+      ...updatesWithoutTimestamp,
     };
     
     const { data, error } = await supabase
@@ -133,6 +134,24 @@ export const updatePracticeSession = async (
       .single();
     
     if (error) {
+      // updated_atカラムが存在しないエラーの場合は、payloadから除外して再試行
+      if (error.code === 'PGRST204' && error.message?.includes('updated_at')) {
+        logger.warn(`[${REPOSITORY_CONTEXT}] updatePracticeSession:updated_at column not found, retrying without it`);
+        const { data: retryData, error: retryError } = await supabase
+          .from('practice_sessions')
+          .update(updatesWithoutTimestamp)
+          .eq('id', sessionId)
+          .select()
+          .single();
+        
+        if (retryError) {
+          ErrorHandler.handle(retryError, `${REPOSITORY_CONTEXT}:updatePracticeSession`, false);
+          return { data: null, error: retryError };
+        }
+        
+        return { data: retryData, error: null };
+      }
+      
       ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:updatePracticeSession`, false);
       return { data: null, error };
     }
