@@ -488,6 +488,14 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         .select('id, name, name_en, color_primary, color_secondary, color_accent');
       
       if (error) {
+        // color_backgroundカラムが存在しないエラー（42703）の場合は警告のみ
+        if (error.code === '42703' && error.message?.includes('color_background')) {
+          logger.warn('color_backgroundカラムが存在しません。基本カラムのみで処理を続行します。');
+          // エラーを無視して、ローカルのdefaultInstrumentsを使用
+          setDbInstruments(defaultInstruments);
+          return;
+        }
+        
         ErrorHandler.handle(error, '楽器データ読み込み', false);
         // エラーの場合はローカルのdefaultInstrumentsを使用
         setDbInstruments(defaultInstruments);
