@@ -500,7 +500,7 @@ export default function BeginnerGuideScreen() {
               ]}
               onPress={() => setActiveSection(item.id)}
             >
-              <item.icon size={18} color={activeSection === item.id ? '#FFFFFF' : currentTheme.textSecondary} />
+              <item.icon size={16} color={activeSection === item.id ? '#FFFFFF' : currentTheme.textSecondary} />
               <Text style={[
                 styles.navLabel,
                 { color: activeSection === item.id ? '#FFFFFF' : currentTheme.textSecondary }
