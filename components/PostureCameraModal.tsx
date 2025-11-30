@@ -57,10 +57,25 @@ export default function PostureCameraModal({ visible, onClose, instrumentName }:
 
   if (!permission.granted) {
     return (
-      <Modal visible={visible} animationType="slide" transparent>
+      <Modal 
+        visible={visible} 
+        animationType="slide" 
+        transparent
+        onRequestClose={onClose}
+      >
         <View style={styles.overlay}>
-          <View style={[styles.permissionContainer, { backgroundColor: currentTheme.surface }]}>
-            <Text style={[styles.permissionTitle, { color: currentTheme.text }]}>
+          <View 
+            style={[styles.permissionContainer, { backgroundColor: currentTheme.surface }]}
+            {...(Platform.OS === 'web' ? { 
+              role: 'dialog',
+              'aria-modal': true,
+              'aria-labelledby': 'camera-permission-modal-title'
+            } : {})}
+          >
+            <Text 
+              id="camera-permission-modal-title"
+              style={[styles.permissionTitle, { color: currentTheme.text }]}
+            >
               カメラの権限が必要です
             </Text>
             <Text style={[styles.permissionText, { color: currentTheme.textSecondary }]}>
@@ -115,12 +130,27 @@ export default function PostureCameraModal({ visible, onClose, instrumentName }:
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent>
+    <Modal 
+      visible={visible} 
+      animationType="slide" 
+      transparent
+      onRequestClose={onClose}
+    >
       <View style={styles.overlay}>
-        <View style={styles.modalContainer}>
+        <View 
+          style={styles.modalContainer}
+          {...(Platform.OS === 'web' ? { 
+            role: 'dialog',
+            'aria-modal': true,
+            'aria-labelledby': 'posture-camera-modal-title'
+          } : {})}
+        >
           {/* ヘッダー */}
           <View style={[styles.header, { backgroundColor: currentTheme.surface }]}>
-            <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
+            <Text 
+              id="posture-camera-modal-title"
+              style={[styles.headerTitle, { color: currentTheme.text }]}
+            >
               {instrumentName} 姿勢チェック
             </Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>

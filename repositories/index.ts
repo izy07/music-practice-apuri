@@ -6,6 +6,7 @@
 export * from './attendanceRepository';
 export * from './eventRepository';
 export * from './goalRepository';
+export * from './instrumentRepository';
 export * from './membershipRepository';
 export * from './organizationRepository';
 export * from './practiceSessionRepository';

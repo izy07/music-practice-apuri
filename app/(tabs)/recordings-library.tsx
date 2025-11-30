@@ -511,79 +511,85 @@ export default function RecordingsLibraryScreen() {
                 </Text>
               </View>
             ) : (
-              sortedRecordings.map((recording) => 
-                React.createElement(View, {
-                  key: recording.id,
-                  style: [styles.recordingCard, { backgroundColor: currentTheme.surface }]
-                },
-                  React.createElement(View, { style: styles.recordingHeader },
-                    React.createElement(View, { style: styles.recordingInfo },
-                      React.createElement(View, { style: styles.titleContainer },
-                        isVideoUrl(recording.file_path) && 
-                          React.createElement(Video, { 
-                            size: 16, 
-                            color: currentTheme.primary, 
-                            style: styles.mediaIcon 
-                          }),
-                        React.createElement(Text, {
-                          style: [styles.recordingTitle, { color: currentTheme.text }]
-                        }, recording.title || (isVideoUrl(recording.file_path) ? '無題の動画' : '無題の録音'))
-                      ),
-                      React.createElement(View, { style: styles.recordingMeta },
-                        React.createElement(View, { style: styles.metaItem },
-                          React.createElement(Calendar, { size: 14, color: currentTheme.textSecondary }),
-                          React.createElement(Text, {
-                            style: [styles.metaText, { color: currentTheme.textSecondary }]
-                          }, formatDate(recording.recorded_at))
-                        ),
-                        React.createElement(View, { style: styles.metaItem },
-                          React.createElement(Clock, { size: 14, color: currentTheme.textSecondary }),
-                          React.createElement(Text, {
-                            style: [styles.metaText, { color: currentTheme.textSecondary }]
-                          }, formatDuration(recording.duration_seconds))
-                        )
-                      )
-                    ),
+              sortedRecordings.map((recording) => (
+                <View
+                  key={recording.id}
+                  style={[styles.recordingCard, { backgroundColor: currentTheme.surface }]}
+                >
+                  <View style={styles.recordingHeader}>
+                    <View style={styles.recordingInfo}>
+                      <View style={styles.titleContainer}>
+                        {isVideoUrl(recording.file_path) && (
+                          <Video
+                            size={16}
+                            color={currentTheme.primary}
+                            style={styles.mediaIcon}
+                          />
+                        )}
+                        <Text style={[styles.recordingTitle, { color: currentTheme.text }]}>
+                          {recording.title || (isVideoUrl(recording.file_path) ? '無題の動画' : '無題の録音')}
+                        </Text>
+                      </View>
+                      <View style={styles.recordingMeta}>
+                        <View style={styles.metaItem}>
+                          <Calendar size={14} color={currentTheme.textSecondary} />
+                          <Text style={[styles.metaText, { color: currentTheme.textSecondary }]}>
+                            {formatDate(recording.recorded_at)}
+                          </Text>
+                        </View>
+                        <View style={styles.metaItem}>
+                          <Clock size={14} color={currentTheme.textSecondary} />
+                          <Text style={[styles.metaText, { color: currentTheme.textSecondary }]}>
+                            {formatDuration(recording.duration_seconds)}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
                     
-                    React.createElement(View, { style: styles.recordingActions },
-                      React.createElement(TouchableOpacity, {
-                        style: styles.actionButton,
-                        onPress: () => toggleFavorite(recording.id, recording.is_favorite)
-                      },
-                        recording.is_favorite ? 
-                          React.createElement(Star, { size: 20, color: "#FFD700", fill: "#FFD700" }) :
-                          React.createElement(StarOff, { size: 20, color: currentTheme.textSecondary })
-                      ),
+                    <View style={styles.recordingActions}>
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => toggleFavorite(recording.id, recording.is_favorite)}
+                      >
+                        {recording.is_favorite ? (
+                          <Star size={20} color="#FFD700" fill="#FFD700" />
+                        ) : (
+                          <StarOff size={20} color={currentTheme.textSecondary} />
+                        )}
+                      </TouchableOpacity>
                       
-                      React.createElement(TouchableOpacity, {
-                        style: styles.actionButton,
-                        onPress: () => playRecording(recording)
-                      },
-                        playingRecording === recording.id ? 
-                          React.createElement(Pause, { size: 20, color: currentTheme.primary }) :
-                          React.createElement(Play, { size: 20, color: currentTheme.primary })
-                      ),
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => playRecording(recording)}
+                      >
+                        {playingRecording === recording.id ? (
+                          <Pause size={20} color={currentTheme.primary} />
+                        ) : (
+                          <Play size={20} color={currentTheme.primary} />
+                        )}
+                      </TouchableOpacity>
                       
-                      React.createElement(TouchableOpacity, {
-                        style: [styles.actionButton, { backgroundColor: 'rgba(255, 68, 68, 0.1)' }],
-                        onPress: () => {
+                      <TouchableOpacity
+                        style={[styles.actionButton, { backgroundColor: 'rgba(255, 68, 68, 0.1)' }]}
+                        onPress={() => {
                           logger.debug('🗑️ 削除ボタンタッチイベント発生:', recording.id);
                           deleteRecordingItem(recording.id);
-                        },
-                        activeOpacity: 0.7,
-                        hitSlop: { top: 10, bottom: 10, left: 10, right: 10 }
-                      },
-                        React.createElement(Trash2, { size: 20, color: "#FF4444" })
-                      )
-                    )
-                  ),
+                        }}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Trash2 size={20} color="#FF4444" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                   
-                  recording.memo && 
-                    React.createElement(Text, {
-                      style: [styles.recordingMemo, { color: currentTheme.textSecondary }]
-                    }, recording.memo)
-                )
-              )
+                  {recording.memo && (
+                    <Text style={[styles.recordingMemo, { color: currentTheme.textSecondary }]}>
+                      {recording.memo}
+                    </Text>
+                  )}
+                </View>
+              ))
             )}
           </View>
         )}

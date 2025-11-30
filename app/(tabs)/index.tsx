@@ -562,29 +562,29 @@ export default function CalendarScreen() {
         const isSaturday = dayOfWeek === 6;
         
         calendarCells.push(
-          React.createElement(CalendarDayCell, {
-            key: `day-${currentDate.getFullYear()}-${currentDate.getMonth()}-${day}`,
-            day: day,
-            currentDate: currentDate,
-            hasPracticeRecord: hasPracticeRecord,
-            hasBasicPractice: hasBasicPractice,
-            hasRecording: hasRecording,
-            dayEvents: dayEvents,
-            isToday: isToday,
-            isSunday: isSunday,
-            isSaturday: isSaturday,
-            currentTheme: currentTheme,
-            onDatePress: handleDateSelection,
-            onEventPress: handleEventSelection
-          })
+          <CalendarDayCell
+            key={`day-${currentDate.getFullYear()}-${currentDate.getMonth()}-${day}`}
+            day={day}
+            currentDate={currentDate}
+            hasPracticeRecord={hasPracticeRecord}
+            hasBasicPractice={hasBasicPractice}
+            hasRecording={hasRecording}
+            dayEvents={dayEvents}
+            isToday={isToday}
+            isSunday={isSunday}
+            isSaturday={isSaturday}
+            currentTheme={currentTheme}
+            onDatePress={handleDateSelection}
+            onEventPress={handleEventSelection}
+          />
         );
       } else {
         // 空のセル（前月または翌月の日付）
         calendarCells.push(
-          React.createElement(View, {
-            key: `empty-${i}`,
-            style: styles.emptyDay
-          })
+          <View
+            key={`empty-${i}`}
+            style={styles.emptyDay}
+          />
         );
       }
     }
@@ -661,16 +661,16 @@ export default function CalendarScreen() {
 
           {/* Day Headers */}
           <View style={styles.dayHeaders}>
-            {['日', '月', '火', '水', '木', '金', '土'].map((day, index) => 
-              React.createElement(View, {
-                key: `day-header-${index}`,
-                style: styles.dayHeader
-              }, 
-                React.createElement(Text, {
-                  style: styles.dayHeaderText
-                }, day)
-              )
-            )}
+            {['日', '月', '火', '水', '木', '金', '土'].map((day, index) => (
+              <View
+                key={`day-header-${index}`}
+                style={styles.dayHeader}
+              >
+                <Text style={styles.dayHeaderText}>
+                  {day}
+                </Text>
+              </View>
+            ))}
           </View>
 
           {/* Calendar Grid */}

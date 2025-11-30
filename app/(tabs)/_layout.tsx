@@ -57,7 +57,7 @@ const HIDDEN_TABS = [
   'music-dictionary',
   'my-library',
   'recordings-library',
-  'main-settings',
+  // 'main-settings', // 一時的にコメントアウト - キャッシュがクリアされたら再度有効化
   'terms-of-service',
   'privacy-policy',
   'legal-info',

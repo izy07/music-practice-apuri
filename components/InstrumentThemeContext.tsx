@@ -1,27 +1,23 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode, useMemo, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_KEYS, withUser } from '@/lib/storageKeys';
-import { supabase } from '@/lib/supabase';
+import { STORAGE_KEYS } from '@/lib/storageKeys';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { instrumentService, Instrument } from '@/services';
+import { getCurrentUser } from '@/lib/authService';
+import { getUserProfile, updateSelectedInstrument } from '@/repositories/userRepository';
+import { supabase } from '@/lib/supabase';
+import { isOnline } from '@/lib/offlineStorage';
 
-interface Instrument {
-  id: string;
-  name: string;
-  nameEn: string;
-  primary: string;
-  secondary: string;
-  accent: string;
-  background: string;
-  surface: string;
-  text: string;
-  textSecondary: string;
-}
+// Instrument型はservices/instrumentServiceからインポート
 
 interface PracticeSettings {
   colorChangeThreshold: number; // 色変更の基準時間（分）
 }
+
+// 同期状態の型定義
+export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
 interface InstrumentThemeContextType {
   selectedInstrument: string;
@@ -33,250 +29,12 @@ interface InstrumentThemeContextType {
   setCustomTheme: (theme: Instrument) => Promise<void>;
   resetToInstrumentTheme: () => Promise<void>;
   dbInstruments: Instrument[];
+  syncStatus: SyncStatus; // 同期状態
+  lastSyncError: Error | null; // 最後の同期エラー
+  lastSyncTime: Date | null; // 最後の同期成功時刻
 }
 
-const defaultInstruments: Instrument[] = [
-  {
-    id: '550e8400-e29b-41d4-a716-446655440001',
-    name: 'ピアノ',
-    nameEn: 'Piano',
-    primary: '#1A1A1A', // エレガントなダークグレー（黒鍵）
-    secondary: '#FFFFFF', // 純白（白鍵）
-    accent: '#D4AF37', // エレガントなゴールド（アクセント）
-    background: '#F8F6F0', // 上品なアイボリー（ピアノの木目調）
-    surface: '#FFFFFF',
-    text: '#1A1A1A',
-    textSecondary: '#666666',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440002',
-    name: 'ギター',
-    nameEn: 'Guitar',
-    primary: '#654321', // より濃いブラウン（木目）
-    secondary: '#DEB887', // 明るいブラウン
-    accent: '#8B4513', // ダークブラウン
-    background: '#FFF8DC', // コーンフラワーブルー（木の温かみ）
-    surface: '#FFFFFF',
-    text: '#2D1B00',
-    textSecondary: '#8B4513',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440003',
-    name: 'バイオリン',
-    nameEn: 'Violin',
-    primary: '#8B6F47', // バイオリンらしい優雅な茶色（ダークゴールドブラウン）
-    secondary: '#D4C4B0', // 優雅なライトベージュ
-    accent: '#6B4E3D', // ダークブラウン（ニス仕上げの深み）
-    background: '#F5EDE0', // 温かみのあるアイボリー背景
-    surface: '#FFFFFF',
-    text: '#3D2F1F',
-    textSecondary: '#6B4E3D',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440004',
-    name: 'フルート',
-    nameEn: 'Flute',
-    primary: '#C0C0C0', // シルバー（トロンボーンから移行）
-    secondary: '#E6E6FA', // ラベンダー
-    accent: '#A9A9A9', // ダークグレー
-    background: '#F0F8FF', // アリスブルー（金属の冷たさ）
-    surface: '#FFFFFF',
-    text: '#2F4F4F',
-    textSecondary: '#708090',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440005',
-    name: 'トランペット',
-    nameEn: 'Trumpet',
-    primary: '#B8860B', // ダークゴールド（より濃い）
-    secondary: '#DAA520', // ゴールデンロッド
-    accent: '#8B4513', // サドルブラウン
-    background: '#FFE4B5', // より目立つゴールド系背景
-    surface: '#FFFFFF',
-    text: '#8B4513',
-    textSecondary: '#B8860B',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440006',
-    name: '打楽器',
-    nameEn: 'Drums',
-    primary: '#000000', // 純黒
-    secondary: '#696969', // 濃いグレー
-    accent: '#000000', // 純黒
-    background: '#F5F5DC', // ベージュ（ドラムの温かみ）
-    surface: '#FFFFFF',
-    text: '#000000',
-    textSecondary: '#2F2F2F',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440007',
-    name: 'サックス',
-    nameEn: 'Saxophone',
-    primary: '#4B0082', // より濃いインディゴ（サックス本体）
-    secondary: '#9370DB', // ミディアムパープル
-    accent: '#2E0854', // ダークパープル
-    background: '#F8F8FF', // ゴーストホワイト（上品な背景）
-    surface: '#FFFFFF',
-    text: '#4B0082',
-    textSecondary: '#6A5ACD',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440008',
-    name: 'ホルン',
-    nameEn: 'Horn',
-    primary: '#8B4513', // より濃いサドルブラウン（ホルン本体）
-    secondary: '#F4A460', // サンディブラウン
-    accent: '#654321', // ダークブラウン
-    background: '#FFF8DC', // コーンフラワーブルー（金管楽器の温かみ）
-    surface: '#FFFFFF',
-    text: '#8B4513',
-    textSecondary: '#A0522D',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440009',
-    name: 'クラリネット',
-    nameEn: 'Clarinet',
-    primary: '#000000', // 純黒（エボニー）
-    secondary: '#2F2F2F', // 濃いグレー
-    accent: '#1A1A1A', // ダークグレー
-    background: '#E6E6FA', // ラベンダー（上品な背景）
-    surface: '#FFFFFF',
-    text: '#000000',
-    textSecondary: '#333333',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440010',
-    name: 'トロンボーン',
-    nameEn: 'Trombone',
-    primary: '#C0C0C0', // シルバー（トロンボーン本体）
-    secondary: '#E6E6FA', // ラベンダー
-    accent: '#A9A9A9', // ダークグレー
-    background: '#F0F8FF', // アリスブルー（金属の冷たさ）
-    surface: '#FFFFFF',
-    text: '#2F4F4F',
-    textSecondary: '#708090',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440011',
-    name: 'チェロ',
-    nameEn: 'Cello',
-    primary: '#DC143C', // クリムゾン（チェロ本体）
-    secondary: '#FF69B4', // ホットピンク
-    accent: '#8B0000', // ダークレッド
-    background: '#FFE4E1', // ミストローズ（弦楽器の温かみ）
-    surface: '#FFFFFF',
-    text: '#8B0000',
-    textSecondary: '#B22222',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440012',
-    name: 'ファゴット',
-    nameEn: 'Bassoon',
-    primary: '#A0522D', // シエナ（木製）
-    secondary: '#DEB887', // バーリーウッド
-    accent: '#8B4513', // サドルブラウン
-    background: '#FFF8DC', // コーンフラワーブルー（木の温かみ）
-    surface: '#FFFFFF',
-    text: '#8B4513',
-    textSecondary: '#A0522D',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440013',
-    name: 'オーボエ',
-    nameEn: 'Oboe',
-    primary: '#DAA520', // ゴールデンロッド（木製）
-    secondary: '#F0E68C', // カキ
-    accent: '#B8860B', // ダークゴールデンロッド
-    background: '#FFFACD', // レモンチフフォン（木管楽器の温かみ）
-    surface: '#FFFFFF',
-    text: '#B8860B',
-    textSecondary: '#DAA520',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440014',
-    name: 'ハープ',
-    nameEn: 'Harp',
-    primary: '#FF69B4', // ホットピンク（ハープ本体）
-    secondary: '#FFB6C1', // ライトピンク
-    accent: '#C71585', // ミディアムバイオレットレッド
-    background: '#FFF0F5', // ラベンダーブラッシュ（上品な背景）
-    surface: '#FFFFFF',
-    text: '#C71585',
-    textSecondary: '#FF1493',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440015',
-    name: 'コントラバス',
-    nameEn: 'Contrabass',
-    primary: '#2F4F4F', // ダークスレートグレー（重厚感）
-    secondary: '#708090', // スレートグレー
-    accent: '#000000', // 純黒
-    background: '#F5F5F5', // ホワイトスモーク（重厚な背景）
-    surface: '#FFFFFF',
-    text: '#000000',
-    textSecondary: '#2F4F4F',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440017',
-    name: 'その他',
-    nameEn: 'Other',
-    primary: '#4682B4', // スチールブルー
-    secondary: '#87CEEB', // スカイブルー
-    accent: '#2F4F4F', // ダークスレートグレー
-    background: '#E0F6FF', // ライトブルー（ニュートラルな背景）
-    surface: '#FFFFFF',
-    text: '#000080',
-    textSecondary: '#4682B4',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440018',
-    name: 'ヴィオラ',
-    nameEn: 'Viola',
-    primary: '#B22222', // ファイアブリック（ヴィオラ本体）
-    secondary: '#FF7F50', // コーラル
-    accent: '#8B0000', // ダークレッド
-    background: '#FFE4E1', // ミストローズ（弦楽器の温かみ）
-    surface: '#FFFFFF',
-    text: '#8B0000',
-    textSecondary: '#B22222',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440019',
-    name: '琴',
-    nameEn: 'Koto',
-    primary: '#8B4513', // サドルブラウン（木製）
-    secondary: '#DEB887', // バーリーウッド
-    accent: '#654321', // ダークブラウン
-    background: '#FFF8DC', // コーンフラワーブルー（和楽器の温かみ）
-    surface: '#FFFFFF',
-    text: '#2D1B00',
-    textSecondary: '#8B4513',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440020',
-    name: 'シンセサイザー',
-    nameEn: 'Synthesizer',
-    primary: '#4169E1', // ロイヤルブルー
-    secondary: '#87CEEB', // スカイブルー
-    accent: '#1E90FF', // ドッジャーブルー
-    background: '#E0F6FF', // ライトブルー（電子楽器のクールさ）
-    surface: '#FFFFFF',
-    text: '#000080',
-    textSecondary: '#4169E1',
-  },
-  {
-    id: '550e8400-e29b-41d4-a716-446655440021',
-    name: '太鼓',
-    nameEn: 'Taiko',
-    primary: '#DC143C', // クリムゾン（太鼓の皮）
-    secondary: '#FF6347', // トマト
-    accent: '#8B0000', // ダークレッド
-    background: '#FFE4E1', // ミストローズ（和太鼓の温かみ）
-    surface: '#FFFFFF',
-    text: '#8B0000',
-    textSecondary: '#DC143C',
-  },
-];
+// defaultInstrumentsはinstrumentServiceから取得するため、ここでは定義しない
 
 const defaultTheme: Instrument = {
   id: 'default',
@@ -301,16 +59,20 @@ export const useInstrumentTheme = () => {
   const context = useContext(InstrumentThemeContext);
   if (!context) {
     // コンテキストが利用できない場合はデフォルト値を返す
+    const defaultInstruments = instrumentService.getDefaultInstruments();
     const defaultContext: InstrumentThemeContextType = {
       selectedInstrument: '',
       setSelectedInstrument: async () => {},
-      currentTheme: defaultInstruments[0],
+      currentTheme: defaultInstruments[0] || defaultTheme,
       practiceSettings: defaultPracticeSettings,
       updatePracticeSettings: async () => {},
       isCustomTheme: false,
       setCustomTheme: async () => {},
       resetToInstrumentTheme: async () => {},
       dbInstruments: defaultInstruments,
+      syncStatus: 'idle',
+      lastSyncError: null,
+      lastSyncTime: null,
     };
     logger.warn('useInstrumentTheme used outside InstrumentThemeProvider, using default values');
     return defaultContext;
@@ -327,8 +89,15 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
   const [practiceSettings, setPracticeSettingsState] = useState<PracticeSettings>(defaultPracticeSettings);
   const [isCustomTheme, setIsCustomTheme] = useState<boolean>(false);
   const [customTheme, setCustomThemeState] = useState<Instrument | null>(null);
-  const [dbInstruments, setDbInstruments] = useState<Instrument[]>(defaultInstruments);
+  const [dbInstruments, setDbInstruments] = useState<Instrument[]>(instrumentService.getDefaultInstruments());
   const [currentUserId, setCurrentUserId] = useState<string>('');
+  const [isSyncing, setIsSyncing] = useState<boolean>(false); // 競合状態を防ぐためのフラグ
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle'); // 同期状態
+  const [lastSyncError, setLastSyncError] = useState<Error | null>(null); // 最後の同期エラー
+  const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null); // 最後の同期成功時刻
+
+  // デフォルト楽器をメモ化（パフォーマンス最適化）
+  const defaultInstruments = useMemo(() => instrumentService.getDefaultInstruments(), []);
 
   // ユーザー別キーを生成（未ログイン時は従来キー）
   // useCallbackでメモ化して、依存関係を明確にする
@@ -337,49 +106,53 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     return uid ? `${base}:${uid}` : base;
   }, [currentUserId]);
 
-  // 色設定の変更を強制的に反映させる（無限ループを防ぐため削除）
-  // useEffect(() => {
-  //   const forceThemeUpdate = async () => {
-  //     if (selectedInstrument) {
-  //       // 現在選択されている楽器のテーマを強制的に更新
-  //       const currentInstrument = dbInstruments.find(inst => inst.id === selectedInstrument);
-  //       if (currentInstrument) {
-  //         console.log('Force updating theme for:', currentInstrument.name, 'background:', currentInstrument.background);
-  //         // テーマの強制更新をトリガー
-  //         setDbInstruments(prev => [...prev]);
-  //       }
-  //     }
-  //   };
-    
-  //   forceThemeUpdate();
-  // }, [dbInstruments, selectedInstrument]);
-
   // 認証済みかつローカル未設定の場合に、プロフィールから即時同期して初期反映
   useEffect(() => {
     let cancelled = false;
-    let subscription: { data: { subscription: { unsubscribe: () => void } } } | null = null;
 
     const hydrateFromServer = async () => {
-      if (cancelled) return;
+      if (cancelled || isSyncing) return;
       
       try {
-        // ユーザー情報を1回だけ取得
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user || cancelled) return;
+        setIsSyncing(true);
+        setSyncStatus('syncing');
+        setLastSyncError(null);
         
-        // サーバー側の楽器選択を確認
-        const { data: profile, error: profileError } = await supabase
-          .from('user_profiles')
-          .select('selected_instrument_id')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        // オフライン状態を確認（ログのみ、同期は試みる）
+        const online = isOnline();
+        if (!online) {
+          logger.debug('オフライン状態: サーバー同期を試みますが、失敗する可能性があります。');
+        }
         
-        if (cancelled) return;
+        // ユーザー情報を1回だけ取得（サービス層経由）
+        const { user, error: userError } = await getCurrentUser();
+        if (userError || !user || cancelled) {
+          setIsSyncing(false);
+          setSyncStatus('idle');
+          return;
+        }
+        
+        // サーバー側の楽器選択を確認（リポジトリ層経由）
+        const profileResult = await getUserProfile(user.id);
+        if (cancelled) {
+          setIsSyncing(false);
+          return;
+        }
+        
+        const profile = profileResult.data;
+        const profileError = profileResult.error;
+        
+        if (cancelled) {
+          setIsSyncing(false);
+          return;
+        }
         
         if (profileError) {
           ErrorHandler.handle(profileError, 'プロフィール取得（楽器選択同期）', false);
+          const syncError = profileError instanceof Error ? profileError : new Error(String(profileError));
+          setLastSyncError(syncError);
+          setSyncStatus('error');
+          setIsSyncing(false);
           return;
         }
         
@@ -392,6 +165,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
               await AsyncStorage.setItem(getKey(STORAGE_KEYS.selectedInstrument), profile.selected_instrument_id);
             }
           }
+          setIsSyncing(false);
           return;
         }
         
@@ -409,17 +183,27 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
             setSelectedInstrumentState('');
           }
         }
+        setIsSyncing(false);
+        setSyncStatus('success');
+        setLastSyncTime(new Date());
+        setLastSyncError(null);
       } catch (error) {
         if (!cancelled) {
           ErrorHandler.handle(error, 'サーバー同期', false);
+          const syncError = error instanceof Error ? error : new Error(String(error));
+          setLastSyncError(syncError);
+          setSyncStatus('error');
+        } else {
+          setSyncStatus('idle');
         }
+        setIsSyncing(false);
       }
     };
 
     hydrateFromServer();
 
     // 認証状態が変わった時にも再同期（ただし楽器が未選択の場合のみ）
-    const sub = supabase.auth.onAuthStateChange(async (event: string, session: { user?: { id: string } } | null) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event: string, session: { user?: { id: string } } | null) => {
       if (cancelled) return;
       
       if (event === 'SIGNED_OUT') {
@@ -434,6 +218,9 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
           if (!cancelled) {
             setSelectedInstrumentState('');
             setCurrentUserId('');
+            // 楽器データをデフォルトにリセット（データベースアクセスを停止）
+            setDbInstruments(defaultInstruments);
+            logger.debug('ログアウト: 楽器データをデフォルトにリセットしました');
           }
         } catch (error) {
           ErrorHandler.handle(error, 'ログアウト時のストレージクリア', false);
@@ -463,108 +250,52 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         }
       }
     });
-    
-    subscription = sub;
 
     return () => {
       cancelled = true;
-      if (subscription?.data?.subscription) {
-        try {
-          subscription.data.subscription.unsubscribe();
-        } catch (error) {
-          logger.warn('認証状態変更リスナーの解除エラー:', error);
-        }
+      try {
+        subscription.unsubscribe();
+      } catch (error) {
+        logger.warn('認証状態変更リスナーの解除エラー:', error);
       }
     };
-  }, [selectedInstrument, currentUserId, getKey]);
+  }, [selectedInstrument, currentUserId, getKey, isSyncing]);
 
   const loadInstrumentsFromDB = React.useCallback(async () => {
     try {
-      // データベースから楽器データを読み込む（色設定はローカルのdefaultInstrumentsを優先）
-      // 注意: データベースにも色設定があるが、コードの色設定を優先する
-      // color_backgroundカラムが存在しない可能性があるため、基本カラムのみ取得
-      const { data: instruments, error } = await supabase
-        .from('instruments')
-        .select('id, name, name_en, color_primary, color_secondary, color_accent');
+      // 認証状態を確認（サービス層経由）
+      const { user, error: authError } = await getCurrentUser();
       
-      if (error) {
-        // color_backgroundカラムが存在しないエラー（42703）の場合は警告のみ
-        if (error.code === '42703' && error.message?.includes('color_background')) {
-          logger.warn('color_backgroundカラムが存在しません。基本カラムのみで処理を続行します。');
-          // エラーを無視して、ローカルのdefaultInstrumentsを使用
-          setDbInstruments(defaultInstruments);
-          return;
-        }
-        
-        ErrorHandler.handle(error, '楽器データ読み込み', false);
-        // エラーの場合はローカルのdefaultInstrumentsを使用
+      // 認証されていない場合はデフォルト楽器のみを使用（データベースアクセスをスキップ）
+      if (authError || !user) {
+        logger.debug('認証されていないため、デフォルト楽器のみを使用します');
+        // defaultInstrumentsは既にメモ化されているため、再利用
         setDbInstruments(defaultInstruments);
         return;
       }
-
-      if (instruments && instruments.length > 0) {
-        // データベースの楽器名とローカルの色設定をマージ
-        // 重要: ローカルのdefaultInstrumentsの色設定を優先（コードで管理）
-        const mappedInstruments: Instrument[] = instruments.map((dbInst: { 
-          id: string; 
-          name: string; 
-          name_en: string;
-          color_primary?: string;
-          color_secondary?: string;
-          color_accent?: string;
-        }) => {
-          // ローカルのdefaultInstrumentsから同じIDの楽器を探す
-          const localInstrument = defaultInstruments.find(local => local.id === dbInst.id);
-          
-          if (localInstrument) {
-            // ローカルの色設定を使用（最新の色設定をコードで管理）
-            // データベースの色設定は無視される
-            return {
-              id: dbInst.id,
-              name: dbInst.name,
-              nameEn: dbInst.name_en,
-              primary: localInstrument.primary,
-              secondary: localInstrument.secondary,
-              accent: localInstrument.accent,
-              background: localInstrument.background,
-              surface: localInstrument.surface,
-              text: localInstrument.text,
-              textSecondary: localInstrument.textSecondary,
-            };
-          } else {
-            // ローカルにない場合は、データベースの色設定を使用（フォールバック）
-            // color_backgroundカラムが存在しない可能性があるため、デフォルト値を使用
-            return {
-              id: dbInst.id,
-              name: dbInst.name,
-              nameEn: dbInst.name_en,
-              primary: dbInst.color_primary || '#8B4513',
-              secondary: dbInst.color_secondary || '#F8F9FA',
-              accent: dbInst.color_accent || '#8B4513',
-              background: '#FEFEFE', // デフォルト背景色（color_backgroundカラムが存在しない場合）
-              surface: '#FFFFFF',
-              text: '#2D3748',
-              textSecondary: '#718096',
-            };
-          }
-        });
-        
-        setDbInstruments(mappedInstruments);
+      
+      // 認証されている場合のみ、サービス層経由で楽器データを取得（データベースとローカルの色設定をマージ）
+      const result = await instrumentService.getAllInstruments();
+      
+      if (result.success && result.data) {
+        setDbInstruments(result.data);
       } else {
-        // データベースに楽器がない場合はローカルのdefaultInstrumentsを使用
+        // エラーの場合はローカルのdefaultInstrumentsを使用
+        logger.warn('楽器データの取得に失敗しました。デフォルト楽器を使用します。', result.error);
         setDbInstruments(defaultInstruments);
       }
     } catch (error) {
-      console.error('Error loading instruments from DB:', error);
+      logger.error('Error loading instruments from DB:', error);
+      ErrorHandler.handle(error, '楽器データ読み込み', false);
       // エラーの場合はローカルのdefaultInstrumentsを使用
       setDbInstruments(defaultInstruments);
     }
-  }, []);
+  }, [defaultInstruments]);
 
   const loadStoredData = React.useCallback(async () => {
     try {
-      // 現在ユーザー
-      const { data: { user } } = await supabase.auth.getUser();
+      // 現在ユーザー（サービス層経由）
+      const { user, error: userError } = await getCurrentUser();
       const uid = user?.id || '';
       if (uid) setCurrentUserId(uid);
 
@@ -617,7 +348,8 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
           const parsedSettings = JSON.parse(storedSettings);
           setPracticeSettingsState({ ...defaultPracticeSettings, ...parsedSettings });
         } catch (parseError) {
-          console.error('設定のパースエラー:', parseError);
+          logger.error('設定のパースエラー:', parseError);
+          ErrorHandler.handle(parseError, '設定パース', false);
         }
       }
 
@@ -625,7 +357,8 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         try {
           setCustomThemeState(JSON.parse(storedCustomTheme));
         } catch (parseError) {
-          console.error('カスタムテーマのパースエラー:', parseError);
+          logger.error('カスタムテーマのパースエラー:', parseError);
+          ErrorHandler.handle(parseError, 'カスタムテーマパース', false);
         }
       }
 
@@ -633,7 +366,8 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         setIsCustomTheme(storedIsCustomTheme === 'true');
       }
     } catch (error) {
-      console.error('ローカルデータ読み込みエラー:', error);
+      logger.error('ローカルデータ読み込みエラー:', error);
+      ErrorHandler.handle(error, 'ローカルデータ読み込み', false);
     }
   }, [getKey]);
 
@@ -643,22 +377,42 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
 
     const initialize = async () => {
       try {
-        // まずユーザーIDを取得
-        const { data: { user } } = await supabase.auth.getUser();
+        // 初期化開始時は同期状態をリセット
+        setSyncStatus('idle');
+        setLastSyncError(null);
+        
+        // まずユーザーIDを取得（サービス層経由）
+        const { user, error: authError } = await getCurrentUser();
         if (cancelled) return;
         
         if (user) {
           setCurrentUserId(user.id);
         }
         
-        // ユーザーID取得後にデータを読み込む
-        await Promise.all([
-          loadStoredData(),
-          loadInstrumentsFromDB(),
-        ]);
+        // 認証状態を確認してからデータを読み込む
+        // 認証されている場合のみ楽器データを取得（loadInstrumentsFromDB内でもチェックされるが、ここでも確認）
+        if (user) {
+          await Promise.all([
+            loadStoredData(),
+            loadInstrumentsFromDB(),
+          ]);
+          // 初期化完了後、認証済みユーザーの場合はサーバー同期を試みる
+          // hydrateFromServerは別のuseEffectで実行されるため、ここでは状態のみ設定
+        } else {
+          // 認証されていない場合は、ローカルデータのみ読み込み（楽器データはデフォルトを使用）
+          await loadStoredData();
+          // デフォルト楽器を設定（loadInstrumentsFromDBは認証チェックでデフォルトを設定する）
+          await loadInstrumentsFromDB();
+          // 未認証の場合は同期不要
+          setSyncStatus('idle');
+        }
       } catch (error) {
         if (!cancelled) {
-          console.error('初期化エラー:', error);
+          logger.error('初期化エラー:', error);
+          ErrorHandler.handle(error, 'InstrumentThemeContext初期化', false);
+          const initError = error instanceof Error ? error : new Error(String(error));
+          setLastSyncError(initError);
+          setSyncStatus('error');
         }
       }
     };
@@ -671,13 +425,78 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
   }, [loadStoredData, loadInstrumentsFromDB]);
 
   const setSelectedInstrument = React.useCallback(async (instrumentId: string) => {
+    // 同期中の場合は待機（競合状態を防ぐ）
+    if (isSyncing) {
+      logger.debug('サーバー同期中です。少し待ってから再試行してください。');
+      // 短い待機後にリトライ
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (isSyncing) {
+        // まだ同期中の場合は、ローカルのみ更新してサーバー同期は後で行う
+        setSelectedInstrumentState(instrumentId);
+        await AsyncStorage.setItem(getKey(STORAGE_KEYS.selectedInstrument), instrumentId);
+        return;
+      }
+    }
+
     try {
+      // まずローカル状態を更新（オフライン時でも即座に反映）
+      // オフライン対応: ローカル保存は常に成功し、サーバー同期は後で自動的に再試行される
       setSelectedInstrumentState(instrumentId);
       await AsyncStorage.setItem(getKey(STORAGE_KEYS.selectedInstrument), instrumentId);
+      
+      // サーバーにも同期（認証済みの場合のみ）
+      const { user } = await getCurrentUser();
+      if (user) {
+        // オフライン状態を確認（ログのみ、同期は試みる）
+        const online = isOnline();
+        if (!online) {
+          logger.debug('オフライン状態: サーバー同期を試みますが、失敗する可能性があります。後で自動的に再同期されます。');
+        }
+        
+        setSyncStatus('syncing');
+        setLastSyncError(null);
+        
+        let retryCount = 0;
+        const maxRetries = 3;
+        let lastError: Error | null = null;
+
+        while (retryCount < maxRetries) {
+          const result = await updateSelectedInstrument(user.id, instrumentId);
+          if (!result.error) {
+            // 成功
+            setSyncStatus('success');
+            setLastSyncTime(new Date());
+            setLastSyncError(null);
+            break;
+          }
+
+          lastError = result.error instanceof Error ? result.error : new Error(String(result.error));
+          retryCount++;
+
+          if (retryCount < maxRetries) {
+            // 指数バックオフでリトライ
+            const delay = Math.min(1000 * Math.pow(2, retryCount - 1), 5000);
+            logger.debug(`サーバー同期失敗、${delay}ms後にリトライ (${retryCount}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+          }
+        }
+
+        if (lastError && retryCount >= maxRetries) {
+          logger.warn('サーバー同期失敗（ローカル保存は成功）:', lastError);
+          setLastSyncError(lastError);
+          setSyncStatus('error');
+          // オフライン対応: ローカル保存は成功しているため、ユーザーには通知しない
+          // 次回のhydrateFromServerで自動的に再同期される（ネットワーク復旧時）
+        }
+      } else {
+        // 未認証の場合は同期状態をリセット
+        setSyncStatus('idle');
+      }
     } catch (error) {
-      console.error('楽器選択保存エラー:', error);
+      logger.error('楽器選択保存エラー:', error);
+      ErrorHandler.handle(error, '楽器選択保存', false);
     }
-  }, [getKey]);
+  }, [getKey, isSyncing]);
 
   const updatePracticeSettings = React.useCallback(async (newSettings: Partial<PracticeSettings>) => {
     try {
@@ -685,7 +504,8 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       setPracticeSettingsState(updatedSettings);
       await AsyncStorage.setItem(getKey(STORAGE_KEYS.practiceSettings), JSON.stringify(updatedSettings));
     } catch (error) {
-      console.error('練習設定保存エラー:', error);
+      logger.error('練習設定保存エラー:', error);
+      ErrorHandler.handle(error, '練習設定保存', false);
     }
   }, [practiceSettings, getKey]);
 
@@ -698,18 +518,13 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       return defaultTheme;
     }
     
-    // データベースから読み込んだ楽器を優先、フォールバックとしてdefaultInstruments
+    // データベースから読み込んだ楽器を優先、フォールバックとしてデフォルト楽器
+    // defaultInstrumentsは既にメモ化されているため、毎回取得する必要はない
     const instrument = dbInstruments.find(inst => inst.id === selectedInstrument) || 
                        defaultInstruments.find(inst => inst.id === selectedInstrument);
     
-    if (instrument) {
-      // テーマが正常に適用されている
-    } else {
-      // デフォルトテーマを使用
-    }
-    
     return instrument || defaultTheme;
-  }, [isCustomTheme, customTheme, selectedInstrument, dbInstruments]);
+  }, [isCustomTheme, customTheme, selectedInstrument, dbInstruments, defaultInstruments]);
 
   const setCustomTheme = React.useCallback(async (theme: Instrument) => {
     try {
@@ -718,7 +533,8 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       await AsyncStorage.setItem(getKey(STORAGE_KEYS.customTheme), JSON.stringify(theme));
       await AsyncStorage.setItem(getKey(STORAGE_KEYS.isCustomTheme), 'true');
     } catch (error) {
-      console.error('カスタムテーマ保存エラー:', error);
+      logger.error('カスタムテーマ保存エラー:', error);
+      ErrorHandler.handle(error, 'カスタムテーマ保存', false);
     }
   }, [getKey]);
 
@@ -729,22 +545,15 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       await AsyncStorage.removeItem(getKey(STORAGE_KEYS.customTheme));
       await AsyncStorage.setItem(getKey(STORAGE_KEYS.isCustomTheme), 'false');
       
-      // 楽器選択がある場合は、テーマを強制的に更新
-      if (selectedInstrument) {
-        // データベースの楽器情報を更新
-        const updatedInstrument = defaultInstruments.find(inst => inst.id === selectedInstrument);
-        if (updatedInstrument) {
-          setDbInstruments(prev => prev.map(inst => 
-            inst.id === selectedInstrument ? updatedInstrument : inst
-          ));
-        }
-      }
+      // 楽器選択がある場合は、dbInstrumentsから取得（データベースの最新情報を使用）
+      // currentThemeのuseMemoが自動的に更新されるため、特別な更新は不要
     } catch (error) {
-      console.error('Theme reset error:', error);
+      logger.error('Theme reset error:', error);
+      ErrorHandler.handle(error, 'テーマリセット', false);
     }
-  }, [selectedInstrument, getKey]);
+  }, [getKey]);
 
-  const value: InstrumentThemeContextType = {
+  const value = useMemo<InstrumentThemeContextType>(() => ({
     selectedInstrument,
     setSelectedInstrument,
     currentTheme,
@@ -754,7 +563,23 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     setCustomTheme,
     resetToInstrumentTheme,
     dbInstruments,
-  };
+    syncStatus,
+    lastSyncError,
+    lastSyncTime,
+  }), [
+    selectedInstrument,
+    setSelectedInstrument,
+    currentTheme,
+    practiceSettings,
+    updatePracticeSettings,
+    isCustomTheme,
+    setCustomTheme,
+    resetToInstrumentTheme,
+    dbInstruments,
+    syncStatus,
+    lastSyncError,
+    lastSyncTime,
+  ]);
 
   return (
     <InstrumentThemeContext.Provider value={value}>

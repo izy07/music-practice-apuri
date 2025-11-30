@@ -9,6 +9,18 @@ import logger from '@/lib/logger';
 
 const REPOSITORY_CONTEXT = 'userSettingsRepository';
 
+export interface TunerSettings {
+  reference_pitch?: number;
+  temperament?: string;
+  volume?: number;
+  a4Frequency?: number;
+  sensitivity?: number;
+  responseSpeed?: number;
+  smoothing?: number;
+  toleranceRange?: number;
+  referenceToneVolume?: number;
+}
+
 export interface UserSettings {
   user_id: string;
   language?: 'ja' | 'en';
@@ -16,6 +28,7 @@ export interface UserSettings {
   notifications_enabled?: boolean;
   practice_reminder_enabled?: boolean;
   practice_reminder_time?: string;
+  tuner_settings?: TunerSettings | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -36,9 +49,28 @@ export const getUserSettings = async (
         .eq('user_id', userId)
         .maybeSingle();
 
-      // レコードが存在しない場合はnullを返す（エラーではない）
-      if (error && error.code !== 'PGRST116') {
-        throw error;
+      // 406エラー（Not Acceptable）はRLSポリシーの問題または認証状態の問題
+      // レコードが存在しないものとして扱い、デフォルト値を返す
+      if (error) {
+        if (error.code === 'PGRST116' || error.code === 'PGRST205') {
+          // レコードが存在しない場合はnullを返す（エラーではない）
+          logger.debug(`[${REPOSITORY_CONTEXT}] getUserSettings:レコードが存在しません`);
+          return null;
+        } else if (error.status === 406 || error.message?.includes('406') || error.message?.includes('Not Acceptable')) {
+          // 406エラーの場合はRLSポリシーまたは認証状態の問題
+          // レコードが存在しないものとして扱い、デフォルト値を返す
+          logger.warn(`[${REPOSITORY_CONTEXT}] getUserSettings:406エラー - RLSポリシーまたは認証状態の問題。デフォルト値を使用します。`, {
+            userId,
+            error: {
+              code: error.code,
+              message: error.message,
+              status: error.status
+            }
+          });
+          return null;
+        } else {
+          throw error;
+        }
       }
 
       logger.debug(`[${REPOSITORY_CONTEXT}] getUserSettings:success`);
@@ -109,9 +141,28 @@ export const getLanguageSetting = async (
         .eq('user_id', userId)
         .maybeSingle();
 
-      // レコードが存在しない場合は'ja'をデフォルトとして返す
-      if (error && error.code !== 'PGRST116') {
-        throw error;
+      // 406エラー（Not Acceptable）はRLSポリシーの問題または認証状態の問題
+      // レコードが存在しないものとして扱い、デフォルト値'ja'を返す
+      if (error) {
+        if (error.code === 'PGRST116' || error.code === 'PGRST205') {
+          // レコードが存在しない場合は'ja'をデフォルトとして返す
+          logger.debug(`[${REPOSITORY_CONTEXT}] getLanguageSetting:レコードが存在しません。デフォルト値'ja'を返します。`);
+          return 'ja' as 'ja' | 'en';
+        } else if (error.status === 406 || error.message?.includes('406') || error.message?.includes('Not Acceptable')) {
+          // 406エラーの場合はRLSポリシーまたは認証状態の問題
+          // レコードが存在しないものとして扱い、デフォルト値'ja'を返す
+          logger.warn(`[${REPOSITORY_CONTEXT}] getLanguageSetting:406エラー - RLSポリシーまたは認証状態の問題。デフォルト値'ja'を使用します。`, {
+            userId,
+            error: {
+              code: error.code,
+              message: error.message,
+              status: error.status
+            }
+          });
+          return 'ja' as 'ja' | 'en';
+        } else {
+          throw error;
+        }
       }
 
       const language = (data?.language || 'ja') as 'ja' | 'en';

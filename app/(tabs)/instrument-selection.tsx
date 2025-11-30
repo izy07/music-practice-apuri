@@ -183,6 +183,31 @@ export default function InstrumentSelectionScreen() {
             .eq('user_id', user.id)
             .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
           error = updateError;
+
+          // 400エラー（レコードが存在しない）の場合にupsertにフォールバック
+          if (error && (error.code === 'PGRST116' || error.code === 'PGRST205' || (error.status === 400 && error.message?.includes('No rows found')))) {
+            logger.warn('user_profilesレコードが存在しないためupsertを試みます', { error, selectedInstrumentId });
+            
+            const upsertData: any = {
+              user_id: user.id,
+              selected_instrument_id: selectedInstrumentId || null,
+              updated_at: new Date().toISOString()
+            };
+            
+            const { data: upsertDataResult, error: upsertError } = await supabase
+              .from('user_profiles')
+              .upsert(upsertData, {
+                onConflict: 'user_id'
+              })
+              .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
+              .single();
+            error = upsertError;
+            
+            // upsert成功した場合はcurrentProfileを更新
+            if (!error && upsertDataResult) {
+              currentProfile = upsertDataResult;
+            }
+          }
         } else {
           const upsertData: any = {
             user_id: user.id,
@@ -206,8 +231,40 @@ export default function InstrumentSelectionScreen() {
           error = upsertError;
         }
 
-        // 409エラー（外部キー制約違反）の場合は楽器を先に作成してからリトライ
+        // エラー処理：409エラー、外部キー制約違反、その他のエラーを区別して処理
         if (error) {
+          // 409エラー（Conflict）の場合：既にレコードが存在する可能性があるため、updateにフォールバック
+          if (error.code === '23505' || error.status === 409 || (error.message?.includes('duplicate key') || error.message?.includes('already exists'))) {
+            logger.warn('user_profilesレコードが既に存在します。updateにフォールバックします。', { error, selectedInstrumentId });
+            
+            // updateにフォールバック
+            const updateData: any = {
+              selected_instrument_id: selectedInstrumentId || null,
+              updated_at: new Date().toISOString()
+            };
+            
+            const { error: updateError } = await supabase
+              .from('user_profiles')
+              .update(updateData)
+              .eq('user_id', user.id)
+              .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
+            
+            if (updateError) {
+              // updateも失敗した場合は、外部キー制約違反の可能性がある
+              if (updateError.code === '23503' || (updateError.message?.includes('violates foreign key constraint') && updateError.message?.includes('instruments'))) {
+                error = updateError; // 外部キー制約違反として処理を続行
+              } else {
+                error = updateError;
+                retryCount++;
+                continue; // リトライ
+              }
+            } else {
+              // update成功
+              error = null;
+              break;
+            }
+          }
+          
           // 外部キー制約違反（楽器が存在しない）の場合
           if (error.code === '23503' || (error.message?.includes('violates foreign key constraint') && error.message?.includes('instruments'))) {
             logger.warn('楽器がデータベースに存在しません。楽器を作成してから再試行します。', { error, selectedInstrumentId });
@@ -402,35 +459,42 @@ export default function InstrumentSelectionScreen() {
       </View>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.instrumentGrid}>
-          {instruments.map((instrument) => 
-            React.createElement(TouchableOpacity, {
-              key: instrument.id,
-              style: [
-                  styles.instrumentItem,
-                  {
-                    backgroundColor: selectedInstrumentId === instrument.id ? currentTheme.primary : currentTheme.surface,
-                    borderColor: selectedInstrumentId === instrument.id ? currentTheme.primary : currentTheme.secondary,
-                    borderWidth: selectedInstrumentId === instrument.id ? 3 : 2,
-                  }
-                ],
-              onPress: () => handleInstrumentSelection(instrument.id),
-              activeOpacity: 0.7
-            },
-              React.createElement(Text, {
-                style: [styles.instrumentEmoji, { color: selectedInstrumentId === instrument.id ? '#FFFFFF' : currentTheme.text }]
-              }, instrument.emoji),
-              React.createElement(Text, {
-                style: [styles.instrumentName, { color: selectedInstrumentId === instrument.id ? '#FFFFFF' : currentTheme.text }]
-              }, instrument.name),
-              React.createElement(Text, {
-                style: [styles.instrumentNameEn, { color: selectedInstrumentId === instrument.id ? '#FFFFFF' : currentTheme.textSecondary }]
-              }, instrument.nameEn),
-              selectedInstrumentId === instrument.id ? 
-                React.createElement(View, { style: styles.checkmarkContainer },
-                  React.createElement(CheckCircle, { size: 24, color: "#FFFFFF" })
-                ) : null
-            )
-          )}
+          {instruments.map((instrument) => (
+            <TouchableOpacity
+              key={instrument.id}
+              style={[
+                styles.instrumentItem,
+                {
+                  backgroundColor: selectedInstrumentId === instrument.id ? currentTheme.primary : currentTheme.surface,
+                  borderColor: selectedInstrumentId === instrument.id ? currentTheme.primary : currentTheme.secondary,
+                  borderWidth: selectedInstrumentId === instrument.id ? 3 : 2,
+                }
+              ]}
+              onPress={() => handleInstrumentSelection(instrument.id)}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[styles.instrumentEmoji, { color: selectedInstrumentId === instrument.id ? '#FFFFFF' : currentTheme.text }]}
+              >
+                {instrument.emoji}
+              </Text>
+              <Text
+                style={[styles.instrumentName, { color: selectedInstrumentId === instrument.id ? '#FFFFFF' : currentTheme.text }]}
+              >
+                {instrument.name}
+              </Text>
+              <Text
+                style={[styles.instrumentNameEn, { color: selectedInstrumentId === instrument.id ? '#FFFFFF' : currentTheme.textSecondary }]}
+              >
+                {instrument.nameEn}
+              </Text>
+              {selectedInstrumentId === instrument.id && (
+                <View style={styles.checkmarkContainer}>
+                  <CheckCircle size={24} color="#FFFFFF" />
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
         </View>
         {/* その他楽器選択時の楽器名入力欄 */}
         {selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016' && (

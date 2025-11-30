@@ -17,11 +17,8 @@ module.exports = {
     '**/?(*.)+(spec|test).[jt]s?(x)',
   ],
   collectCoverageFrom: [
-    // 重要なユーティリティ関数とリポジトリ、サービス
-    'lib/dateUtils.ts',
-    'lib/authSecurity.ts',
-    'lib/offlineStorage.ts',
-    'lib/database.ts',
+    // すべてのソースファイルをカバレッジ対象に
+    'lib/**/*.{ts,tsx}',
     'repositories/**/*.ts',
     'services/**/*.ts',
     'components/**/*.tsx',
@@ -29,18 +26,19 @@ module.exports = {
     '!**/*.d.ts',
     '!**/node_modules/**',
     '!**/__tests__/**',
+    '!**/coverage/**',
   ],
   // CI環境ではカバレッジ閾値を無効化（GitHub Actionsでは常に無効化）
   ...(isCI ? {} : {
     coverageThreshold: {
-      // グローバルな閾値（重要なファイルの平均） - 40%目標
+      // グローバルな閾値 - 100%目標
       global: {
-        statements: 35,
-        branches: 25,
-        functions: 40,
-        lines: 38,
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
       },
-      // 重要なファイルには高いカバレッジを要求
+      // 重要なファイルには100%のカバレッジを要求
       './lib/dateUtils.ts': {
         statements: 100,
         branches: 100,
@@ -48,22 +46,94 @@ module.exports = {
         lines: 100,
       },
       './lib/authSecurity.ts': {
-        statements: 25,
-        branches: 23,
-        functions: 30,
-        lines: 28,
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
       },
       './lib/offlineStorage.ts': {
-        statements: 34,
-        branches: 22,
-        functions: 39,
-        lines: 32,
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
       },
       './lib/database.ts': {
-        statements: 26,
-        branches: 15,
-        functions: 30,
-        lines: 29,
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+      './lib/authHelpers.ts': {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+      './lib/constants.ts': {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+      './lib/config.ts': {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+      './lib/errorHandler.ts': {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+      './lib/logger.ts': {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+      './lib/storageKeys.ts': {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+      './lib/validation.ts': {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+      './hooks/useIdleTimeout.ts': {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+      './hooks/useFrameworkReady.ts': {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+      './services/instrumentService.ts': {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+      './services/goalService.ts': {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
+      },
+      './repositories/goalRepository.ts': {
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
       },
     },
   }),

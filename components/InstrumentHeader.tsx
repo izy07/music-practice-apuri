@@ -3,9 +3,10 @@ import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert } fr
 import { useRouter } from 'expo-router';
 import { useInstrumentTheme } from './InstrumentThemeContext';
 import { BookOpen, Music, Target, Brain, ScrollText, BarChart3, X, Zap } from 'lucide-react-native';
-import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { getUserProfile } from '@/repositories/userRepository';
+import { getSession } from '@/lib/authService';
 
 export default function InstrumentHeader() {
   const router = useRouter();
@@ -42,9 +43,9 @@ export default function InstrumentHeader() {
       }
       
       try {
-        // 認証状態を確認
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session || !session.user || cancelled) {
+        // 認証状態を確認（サービス層経由）
+        const { session, error: sessionError } = await getSession();
+        if (sessionError || !session || !session.user || cancelled) {
           return;
         }
 
@@ -54,17 +55,13 @@ export default function InstrumentHeader() {
           return;
         }
 
-        const { data: profile, error } = await supabase
-          .from('user_profiles')
-          .select('selected_instrument_id')
-          .eq('user_id', session.user.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        // リポジトリ層経由でユーザープロフィールを取得
+        const profileResult = await getUserProfile(session.user.id);
 
         if (cancelled) return;
 
-        if (profile?.selected_instrument_id && !error) {
+        if (profileResult.success && profileResult.data?.selected_instrument_id) {
+          const profile = profileResult.data;
           // コンテキストに未反映の場合は即時反映
           if (!selectedInstrument) {
             try {

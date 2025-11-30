@@ -1040,4 +1040,48 @@ export const styles = StyleSheet.create({
     minWidth: 80,
     textAlign: 'center',
   },
+  calendarToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 12,
+    gap: 8,
+  },
+  calendarToggleButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    flex: 1,
+  },
+  calendarToggleBtn: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calendarToggleText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  calendarToggleActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 12,
+  },
+  calendarToggleButton: {
+    flex: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  calendarToggleButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });

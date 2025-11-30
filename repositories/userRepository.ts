@@ -17,6 +17,7 @@ export interface UserProfile {
   practice_level?: string;
   selected_instrument_id?: string;
   organization?: string;
+  current_organization?: string;
   nickname?: string;
   bio?: string;
   birthday?: string;
@@ -106,6 +107,31 @@ export const updatePracticeLevel = async (
         })
         .eq('user_id', userId);
 
+      // レコードが存在しない場合はupsertを試みる
+      if (error && (error.code === 'PGRST116' || error.code === 'PGRST205' || (error.status === 400 && error.message?.includes('No rows found')))) {
+        logger.warn(`[${REPOSITORY_CONTEXT}] updatePracticeLevel:レコードが存在しないためupsertを試みます`, { userId, level });
+        
+        const { error: upsertError } = await supabase
+          .from('user_profiles')
+          .upsert(
+            {
+              user_id: userId,
+              practice_level: level,
+              updated_at: new Date().toISOString(),
+              display_name: undefined,
+              total_practice_minutes: 0,
+            },
+            { onConflict: 'user_id' }
+          );
+        
+        if (upsertError) {
+          throw upsertError;
+        }
+        
+        logger.debug(`[${REPOSITORY_CONTEXT}] updatePracticeLevel:upsert成功`);
+        return;
+      }
+
       if (error) {
         throw error;
       }
@@ -187,6 +213,52 @@ export const updateSelectedInstrument = async (
         })
         .eq('user_id', userId);
 
+      // レコードが存在しない場合はupsertを試みる
+      if (error && (error.code === 'PGRST116' || error.code === 'PGRST205' || (error.status === 400 && error.message?.includes('No rows found')))) {
+        logger.warn(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:レコードが存在しないためupsertを試みます`, { userId, instrumentId });
+        
+        const { error: upsertError } = await supabase
+          .from('user_profiles')
+          .upsert(
+            {
+              user_id: userId,
+              selected_instrument_id: instrumentId,
+              updated_at: new Date().toISOString(),
+              display_name: undefined,
+              practice_level: 'beginner',
+              total_practice_minutes: 0,
+            },
+            { onConflict: 'user_id' }
+          );
+        
+        if (upsertError) {
+          // 409エラー（Conflict）の場合：既にレコードが存在する可能性があるため、updateにフォールバック
+          if (upsertError.code === '23505' || upsertError.status === 409 || (upsertError.message?.includes('duplicate key') || upsertError.message?.includes('already exists'))) {
+            logger.warn(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:409エラー - updateにフォールバック`, { userId, instrumentId });
+            
+            const { error: updateError } = await supabase
+              .from('user_profiles')
+              .update({
+                selected_instrument_id: instrumentId,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('user_id', userId);
+            
+            if (updateError) {
+              throw updateError;
+            }
+            
+            logger.debug(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:update成功（409エラーからのフォールバック）`);
+            return;
+          }
+          
+          throw upsertError;
+        }
+        
+        logger.debug(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:upsert成功`);
+        return;
+      }
+
       if (error) {
         throw error;
       }
@@ -266,8 +338,61 @@ export const updateUserProfile = async (
         .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
       
       if (error) {
+        // レコードが存在しない場合（PGRST116またはPGRST205エラー）はupsertを試みる
+        if (error.code === 'PGRST116' || error.code === 'PGRST205' || (error.status === 400 && error.message?.includes('No rows found'))) {
+          logger.warn(`[${REPOSITORY_CONTEXT}] updateUserProfile:レコードが存在しないためupsertを試みます`, { userId, updates });
+          
+          // upsertで作成または更新を試みる
+          const { data: upsertData, error: upsertError } = await supabase
+            .from('user_profiles')
+            .upsert(
+              {
+                user_id: userId,
+                ...updates,
+                updated_at: new Date().toISOString(),
+                // デフォルト値を設定（レコードが存在しない場合）
+                display_name: updates.display_name || undefined,
+                practice_level: updates.practice_level || 'beginner',
+                total_practice_minutes: 0,
+              },
+              { onConflict: 'user_id' }
+            )
+            .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
+            .single();
+          
+          if (upsertError) {
+            // 409エラー（Conflict）の場合：既にレコードが存在する可能性があるため、updateにフォールバック
+            if (upsertError.code === '23505' || upsertError.status === 409 || (upsertError.message?.includes('duplicate key') || upsertError.message?.includes('already exists'))) {
+              logger.warn(`[${REPOSITORY_CONTEXT}] updateUserProfile:409エラー - updateにフォールバック`, { userId, updates });
+              
+              const { data: updateData, error: updateError } = await supabase
+                .from('user_profiles')
+                .update({
+                  ...updates,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('user_id', userId)
+                .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
+              
+              if (updateError) {
+                logger.error(`[${REPOSITORY_CONTEXT}] updateUserProfile:updateも失敗`, updateError);
+                throw updateError;
+              }
+              
+              logger.debug(`[${REPOSITORY_CONTEXT}] updateUserProfile:update成功（409エラーからのフォールバック）`, { data: updateData });
+              return; // 成功した場合はここで終了
+            }
+            
+            logger.error(`[${REPOSITORY_CONTEXT}] updateUserProfile:upsertも失敗`, upsertError);
+            throw upsertError;
+          }
+          
+          logger.debug(`[${REPOSITORY_CONTEXT}] updateUserProfile:upsert成功`, { data: upsertData });
+          return; // 成功した場合はここで終了
+        }
+        
         // 400エラーの場合、詳細な情報をログ出力
-        if (error.status === 400 || error.code === 'PGRST116' || error.code === 'PGRST205') {
+        if (error.status === 400) {
           // エラーの詳細をコンソールに出力（開発時のデバッグ用）
           console.error('❌ user_profiles更新エラー（詳細）:', {
             code: error.code,

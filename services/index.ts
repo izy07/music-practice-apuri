@@ -22,6 +22,9 @@ export { ScheduleService, scheduleService } from './scheduleService';
 export { AttendanceService, attendanceService } from './attendanceService';
 export { TaskService, taskService } from './taskService';
 
+export { InstrumentService, instrumentService } from './instrumentService';
+export type { Instrument } from './instrumentService';
+
 export { safeServiceExecute, ServiceResult, ServiceError } from './baseService';
 export type { ValidationResult, Validator } from './baseService';
 

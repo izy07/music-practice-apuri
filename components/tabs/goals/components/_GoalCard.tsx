@@ -117,24 +117,29 @@ export const GoalCard: React.FC<GoalCardProps> = ({
           </View>
 
           {/* カレンダー表示切り替えと達成ボタン（長期目標のみ） */}
-          <View style={styles.calendarToggleRow}>
-            <View style={styles.calendarToggleButtons}>
-              <TouchableOpacity
-                style={[styles.calendarToggleBtn, { borderColor: currentTheme.secondary, backgroundColor: goal.show_on_calendar ? currentTheme.primary : 'transparent' }]}
-                onPress={() => onSetGoalShowOnCalendar(goal.id, true)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.calendarToggleText, { color: goal.show_on_calendar ? '#FFFFFF' : currentTheme.text }]}>カレンダーに表示</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.calendarToggleBtn, { borderColor: currentTheme.secondary, backgroundColor: !goal.show_on_calendar ? currentTheme.primary : 'transparent' }]}
-                onPress={() => onSetGoalShowOnCalendar(goal.id, false)}
-                activeOpacity={0.7}
-              >
-                <Text style={[styles.calendarToggleText, { color: !goal.show_on_calendar ? '#FFFFFF' : currentTheme.text }]}>表示しない</Text>
-              </TouchableOpacity>
+          {/* 達成済み（progress_percentage === 100 または is_completed === true）の場合はカレンダー表示ボタンを非表示 */}
+          {goal.progress_percentage === 100 || goal.is_completed ? (
+            <View style={styles.calendarToggleRow}>
+              {/* 達成済みの場合は何も表示しない */}
             </View>
-            {goal.progress_percentage !== 100 && (
+          ) : (
+            <View style={styles.calendarToggleRow}>
+              <View style={styles.calendarToggleButtons}>
+                <TouchableOpacity
+                  style={[styles.calendarToggleBtn, { borderColor: currentTheme.secondary, backgroundColor: goal.show_on_calendar ? currentTheme.primary : 'transparent' }]}
+                  onPress={() => onSetGoalShowOnCalendar(goal.id, true)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.calendarToggleText, { color: goal.show_on_calendar ? '#FFFFFF' : currentTheme.text }]}>カレンダーに表示</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.calendarToggleBtn, { borderColor: currentTheme.secondary, backgroundColor: !goal.show_on_calendar ? currentTheme.primary : 'transparent' }]}
+                  onPress={() => onSetGoalShowOnCalendar(goal.id, false)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.calendarToggleText, { color: !goal.show_on_calendar ? '#FFFFFF' : currentTheme.text }]}>表示しない</Text>
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity
                 style={[styles.completeButton, { backgroundColor: currentTheme.primary }]}
                 onPress={() => onCompleteGoal(goal.id)}
@@ -142,8 +147,8 @@ export const GoalCard: React.FC<GoalCardProps> = ({
                 <CheckCircle size={20} color="#FFFFFF" />
                 <Text style={styles.completeButtonText}>達成！</Text>
               </TouchableOpacity>
-            )}
-          </View>
+            </View>
+          )}
         </View>
       )}
       

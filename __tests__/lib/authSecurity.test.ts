@@ -81,3 +81,89 @@ describe('sanitizeInput', () => {
   });
 });
 
+describe('isStrongPassword', () => {
+  it('有効なパスワードをtrueで返す', () => {
+    const { isStrongPassword } = require('@/lib/authSecurity');
+    expect(isStrongPassword('test1234')).toBe(true);
+  });
+
+  it('無効なパスワードをfalseで返す', () => {
+    const { isStrongPassword } = require('@/lib/authSecurity');
+    expect(isStrongPassword('test')).toBe(false);
+  });
+});
+
+describe('getPasswordStrength', () => {
+  it('弱いパスワードを判定する', () => {
+    const { getPasswordStrength } = require('@/lib/authSecurity');
+    expect(getPasswordStrength('test')).toBe('weak');
+    expect(getPasswordStrength('test1')).toBe('weak');
+  });
+
+  it('中程度のパスワードを判定する', () => {
+    const { getPasswordStrength } = require('@/lib/authSecurity');
+    expect(getPasswordStrength('test1234')).toBe('medium');
+    expect(getPasswordStrength('Test1234')).toBe('medium');
+  });
+
+  it('強いパスワードを判定する', () => {
+    const { getPasswordStrength } = require('@/lib/authSecurity');
+    expect(getPasswordStrength('Test1234!@#')).toBe('strong');
+    expect(getPasswordStrength('VeryLongPassword123!')).toBe('strong');
+  });
+});
+
+describe('createRateLimiter', () => {
+  it('新しいキーはブロックされていない', () => {
+    const { createRateLimiter } = require('@/lib/authSecurity');
+    const limiter = createRateLimiter();
+    expect(limiter.isBlocked('new-key')).toBe(false);
+  });
+
+  it('最大試行回数を超えるとブロックされる', () => {
+    const { createRateLimiter } = require('@/lib/authSecurity');
+    const limiter = createRateLimiter();
+    
+    // 最大試行回数（3回）を超える
+    limiter.recordAttempt('test-key');
+    limiter.recordAttempt('test-key');
+    limiter.recordAttempt('test-key');
+    const blocked = limiter.recordAttempt('test-key');
+    
+    expect(blocked).toBe(false);
+    expect(limiter.isBlocked('test-key')).toBe(true);
+  });
+
+  it('残り試行回数を正しく返す', () => {
+    const { createRateLimiter } = require('@/lib/authSecurity');
+    const limiter = createRateLimiter();
+    
+    limiter.recordAttempt('test-key');
+    expect(limiter.getRemainingAttempts('test-key')).toBe(2);
+    
+    limiter.recordAttempt('test-key');
+    expect(limiter.getRemainingAttempts('test-key')).toBe(1);
+  });
+
+  it('ブロック時間の残り時間を返す', () => {
+    const { createRateLimiter } = require('@/lib/authSecurity');
+    const limiter = createRateLimiter();
+    
+    // ブロック状態にする
+    limiter.recordAttempt('test-key');
+    limiter.recordAttempt('test-key');
+    limiter.recordAttempt('test-key');
+    limiter.recordAttempt('test-key');
+    
+    const remaining = limiter.getBlockTimeRemaining('test-key');
+    expect(remaining).toBeGreaterThan(0);
+  });
+
+  it('ブロックされていないキーの残り時間は0', () => {
+    const { createRateLimiter } = require('@/lib/authSecurity');
+    const limiter = createRateLimiter();
+    
+    expect(limiter.getBlockTimeRemaining('new-key')).toBe(0);
+  });
+});
+

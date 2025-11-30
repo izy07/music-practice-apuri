@@ -16,6 +16,7 @@ import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { getUserProfile, upsertUserProfile, updateAvatarUrl, getCurrentUser, deleteBreakPeriod, deletePastOrganization, deleteAward, deletePerformance } from '@/repositories/userRepository';
 import type { UserProfile } from '@/types/models';
+import { supabase } from '@/lib/supabase';
 import PastOrgEditorModal from '@/components/profile-settings/PastOrgEditorModal';
 import AwardEditorModal from '@/components/profile-settings/AwardEditorModal';
 import PerformanceEditorModal from '@/components/profile-settings/PerformanceEditorModal';
@@ -84,8 +85,10 @@ export default function ProfileSettingsScreen() {
 
   // 受賞追加用モーダル
   const [showAwardEditor, setShowAwardEditor] = useState(false);
+  const [draftAward, setDraftAward] = useState('');
   // 演奏経験追加用モーダル
   const [showPerformanceEditor, setShowPerformanceEditor] = useState(false);
+  const [draftPerformance, setDraftPerformance] = useState('');
 
   // getCurrentUser関数を先に定義
   const loadCurrentUser = async () => {
@@ -98,15 +101,25 @@ export default function ProfileSettingsScreen() {
         // ユーザープロフィールを取得
         const profileResult = await getUserProfile(user.id);
         
+        // 新規登録時のニックネームを取得（プロフィール > user_metadata > メールアドレスの順）
+        // プロフィール取得エラー時でも、user_metadataから取得できるようにする
+        const profile = profileResult.data;
+        const resolvedNickname = profile?.display_name?.trim() || 
+                                  user.user_metadata?.display_name?.trim() || 
+                                  user.user_metadata?.name?.trim() || 
+                                  user.email?.split('@')[0] || 
+                                  'ユーザー';
+        
         if (profileResult.error) {
           logger.error('プロフィール取得エラー:', profileResult.error);
+          // エラー時でも、新規登録時のニックネームを表示
+          setDisplayName(resolvedNickname);
+          setNickname(resolvedNickname);
           return;
         }
-        
-        const profile = profileResult.data;
         if (profile) {
-          setDisplayName(profile.display_name || 'ユーザー');
-          setNickname(profile.display_name || 'ユーザー'); // ニックネームもプロフィールから取得
+          setDisplayName(resolvedNickname);
+          setNickname(resolvedNickname); // 新規登録時のニックネームを表示
           setAvatarUrl(profile.avatar_url || null);
           setCurrentAge(profile.current_age ? profile.current_age.toString() : '');
           setMusicStartAge(profile.music_start_age ? profile.music_start_age.toString() : '');
@@ -130,6 +143,10 @@ export default function ProfileSettingsScreen() {
                   ]
             );
           }
+        } else {
+          // プロフィールが存在しない場合でも、新規登録時のニックネームを表示
+          setDisplayName(resolvedNickname);
+          setNickname(resolvedNickname);
         }
       }
     } catch (error) {

@@ -7,12 +7,14 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import { useLanguage } from '@/components/LanguageContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { isAuthenticated, isLoading, signOut } = useAuthAdvanced();
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const { language, setLanguage, t } = useLanguage();
+  const { currentTheme } = useInstrumentTheme();
 
   // getCurrentUser関数を先に定義
   const getCurrentUser = async () => {
@@ -154,19 +156,19 @@ export default function SettingsScreen() {
   ];
 
   return (
-    <SafeAreaView style={styles.container} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme?.background || '#F7FAFC' }]} edges={[]}>
       <InstrumentHeader />
       
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>その他</Text>
+        <Text style={[styles.title, { color: currentTheme?.text || '#2D3748' }]}>その他</Text>
         
 
         
-        <View style={styles.settingsContainer}>
+        <View style={[styles.settingsContainer, { backgroundColor: currentTheme?.surface || '#FFFFFF' }]}>
           {settingsItems.map((item) => (
             <TouchableOpacity
               key={item.id}
-              style={styles.settingItem}
+              style={[styles.settingItem, { borderBottomColor: currentTheme?.secondary || '#E2E8F0' }]}
               onPress={item.onPress}
               activeOpacity={0.6}
               hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
@@ -175,17 +177,17 @@ export default function SettingsScreen() {
                 <item.icon size={24} color={item.color} />
               </View>
               <View style={styles.settingContent}>
-                <Text style={styles.settingTitle}>{item.title}</Text>
-                <Text style={styles.settingSubtitle}>{item.subtitle}</Text>
+                <Text style={[styles.settingTitle, { color: currentTheme?.text || '#2D3748' }]}>{item.title}</Text>
+                <Text style={[styles.settingSubtitle, { color: currentTheme?.textSecondary || '#718096' }]}>{item.subtitle}</Text>
               </View>
-              <ChevronRight size={20} color="#CCCCCC" />
+              <ChevronRight size={20} color={currentTheme?.textSecondary || '#CCCCCC'} />
             </TouchableOpacity>
           ))}
           
 
           
           {/* Account Management Section */}
-          <View style={styles.accountSection}>
+          <View style={[styles.accountSection, { borderTopColor: currentTheme?.secondary || '#E2E8F0' }]}>
             <TouchableOpacity
               style={[styles.settingItem, styles.logoutItem]}
               onPress={handleLogout}
@@ -197,9 +199,9 @@ export default function SettingsScreen() {
               </View>
               <View style={styles.settingContent}>
                 <Text style={[styles.settingTitle, { color: '#FF4444' }]}>ログアウト</Text>
-                <Text style={styles.settingSubtitle}>アカウントからログアウト</Text>
+                <Text style={[styles.settingSubtitle, { color: currentTheme?.textSecondary || '#718096' }]}>アカウントからログアウト</Text>
               </View>
-              <ChevronRight size={20} color="#CCCCCC" />
+              <ChevronRight size={20} color={currentTheme?.textSecondary || '#CCCCCC'} />
             </TouchableOpacity>
           </View>
         </View>
@@ -211,7 +213,6 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
   },
   content: {
     flex: 1,
@@ -220,7 +221,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#333333',
     marginTop: 8,
     marginBottom: 12,
   },
@@ -250,11 +250,8 @@ const styles = StyleSheet.create({
   },
 
   settingsContainer: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     marginBottom: 100,
-    
-    
     elevation: 4,
   },
   settingItem: {
@@ -263,11 +260,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
   },
   accountSection: {
     borderTopWidth: 2,
-    borderTopColor: '#F0F0F0',
     marginTop: 8,
   },
 
@@ -288,12 +283,10 @@ const styles = StyleSheet.create({
   settingTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333333',
     marginBottom: 4,
   },
   settingSubtitle: {
     fontSize: 14,
-    color: '#666666',
   },
 
 

@@ -78,7 +78,7 @@ export default function BeginnerGuideScreen() {
             </View>
             <View style={styles.infoGrid}>
               {(currentGuide as any).faq?.map((qa: any, idx: number) => (
-                <View style={styles.infoItem}>
+                <View key={idx} style={styles.infoItem}>
                   <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>Q. {qa.q}</Text>
                   <Text style={[styles.infoText, { color: currentTheme.text }]}>A. {qa.a}</Text>
                 </View>
@@ -97,11 +97,11 @@ export default function BeginnerGuideScreen() {
               <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>4週間ロードマップ</Text>
             </View>
             <View style={styles.infoGrid}>
-              {(currentGuide as any).roadmap?.weeks?.map((wk: any) => (
-                <View style={styles.infoItem}>
+              {(currentGuide as any).roadmap?.weeks?.map((wk: any, weekIdx: number) => (
+                <View key={weekIdx} style={styles.infoItem}>
                   <Text style={[styles.resourcesTitle, { color: currentTheme.text }]}>{wk.title}</Text>
-                  {wk.items.map((it: string) => (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  {wk.items.map((it: string, itemIdx: number) => (
+                    <View key={itemIdx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                       <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: currentGuide.color }} />
                       <Text style={[styles.infoText, { color: currentTheme.text }]}>{it}</Text>
                     </View>
@@ -281,10 +281,10 @@ export default function BeginnerGuideScreen() {
               </View>
               
               {/* 運指表の画像 */}
-              {currentGuide.fingering.image && (
+              {(currentGuide.fingering as any)?.image && (
                 <View style={styles.fingeringImageContainer}>
                   <Image
-                    source={{ uri: currentGuide.fingering.image }}
+                    source={{ uri: (currentGuide.fingering as any).image }}
                     style={styles.fingeringImage}
                     resizeMode="contain"
                   />
@@ -361,6 +361,7 @@ export default function BeginnerGuideScreen() {
               <Text style={[styles.resourcesTitle, { color: currentTheme.text }]}>解説動画</Text>
               {currentGuide.resources.videos.map((video, index) => (
                 <TouchableOpacity
+                  key={index}
                   style={styles.videoItem}
                   onPress={() => openVideo(video.url)}
                 >
@@ -371,7 +372,7 @@ export default function BeginnerGuideScreen() {
               
               <Text style={[styles.resourcesTitle, { color: currentTheme.text }]}>図解・イラスト</Text>
               {currentGuide.resources.images.map((image, index) => (
-                <View style={styles.imageItem}>
+                <View key={index} style={styles.imageItem}>
                   <ImageIcon size={20} color={currentGuide.color} />
                   <Text style={[styles.imageTitle, { color: currentTheme.text }]}>{image}</Text>
                 </View>
@@ -394,7 +395,7 @@ export default function BeginnerGuideScreen() {
               <Text style={[styles.repertoireTitle, { color: currentTheme.text }]}>初心者向け曲</Text>
               <View style={styles.songList}>
                 {currentGuide.repertoire.beginner.map((song, index) => (
-                  <View style={styles.songItem}>
+                  <View key={index} style={styles.songItem}>
                     <Text style={[styles.songName, { color: currentTheme.text }]}>{song}</Text>
                     <Text style={[styles.songLevel, { color: currentTheme.textSecondary }]}>初級</Text>
                   </View>
@@ -404,7 +405,7 @@ export default function BeginnerGuideScreen() {
               <Text style={[styles.repertoireTitle, { color: currentTheme.text }]}>中級者向け曲</Text>
               <View style={styles.songList}>
                 {currentGuide.repertoire.intermediate.map((song, index) => (
-                  <View style={styles.songItem}>
+                  <View key={index} style={styles.songItem}>
                     <Text style={[styles.songName, { color: currentTheme.text }]}>{song}</Text>
                     <Text style={[styles.songLevel, { color: currentTheme.textSecondary }]}>中級</Text>
                   </View>
@@ -455,6 +456,7 @@ export default function BeginnerGuideScreen() {
             { id: 'roadmap', label: 'ロードマップ', icon: History }
           ].map((item) => (
             <TouchableOpacity
+              key={item.id}
               style={[
                 styles.navItem,
                 activeSection === item.id && { 

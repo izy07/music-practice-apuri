@@ -120,12 +120,12 @@ export const styles = StyleSheet.create({
     color: '#6C757D',
   },
   resourcesContainer: {
-    gap: 24,
+    gap: 12,
   },
   resourcesTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 16,
+    marginBottom: 8,
     color: '#333333',
     paddingBottom: 8,
     borderBottomWidth: 2,
@@ -138,7 +138,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 20,
     backgroundColor: '#F8F9FA',
     borderRadius: 16,
-    marginBottom: 12,
+    marginBottom: 6,
     borderWidth: 1,
     borderColor: '#E9ECEF',
     
@@ -160,7 +160,7 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 20,
     backgroundColor: '#F8F9FA',
     borderRadius: 16,
-    marginBottom: 12,
+    marginBottom: 6,
     borderWidth: 1,
     borderColor: '#E9ECEF',
     

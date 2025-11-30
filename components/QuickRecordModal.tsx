@@ -99,8 +99,8 @@ export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRe
           .update({
             duration_minutes: totalMinutes,
             content: updateContent,
-            instrument_id: currentInstrumentId,
-            updated_at: new Date().toISOString()
+            instrument_id: currentInstrumentId
+            // updated_atはトリガーで自動更新されるため、明示的に更新しない
           })
           .eq('id', existing.id);
         

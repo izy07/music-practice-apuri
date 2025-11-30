@@ -1056,7 +1056,10 @@ export default function GoalsScreen() {
                   )}
 
                   {/* 個人目標（短期・長期）のカレンダー表示切り替えボタン */}
-                  {(goal.goal_type === 'personal_short' || goal.goal_type === 'personal_long') && (
+                  {/* 達成済み（is_completed === true または progress_percentage === 100）の場合はカレンダー表示ボタンを非表示 */}
+                  {(goal.goal_type === 'personal_short' || goal.goal_type === 'personal_long') && 
+                   !goal.is_completed && 
+                   goal.progress_percentage !== 100 && (
                     <View style={styles.calendarToggleActions}>
                       <TouchableOpacity
                         style={[
