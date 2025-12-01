@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { useAuth } from './AuthContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, useSegments } from 'expo-router';
 import { useEffect } from 'react';
 import logger from '@/lib/logger';
@@ -35,6 +35,12 @@ export const AppRouter: React.FC<{ children: React.ReactNode }> = ({ children })
     // 新規登録画面にいる場合は何もしない（認証状態に依存しない）
     if (segments.includes('signup')) {
       logger.debug('新規登録画面 - 認証状態に依存しない');
+      return;
+    }
+
+    // チュートリアル画面にいる場合は新規登録直後の可能性があるため、認証チェックをスキップ
+    if (segments.includes('tutorial')) {
+      logger.debug('チュートリアル画面 - 新規登録直後の可能性があるため認証チェックをスキップ');
       return;
     }
 

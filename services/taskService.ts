@@ -21,25 +21,25 @@ const SERVICE_CONTEXT = 'taskService';
  */
 export class TaskService {
   /**
-   * サブグループのタスク一覧を取得
+   * 組織のタスク一覧を取得
    */
-  async getBySubGroupId(subGroupId: string): Promise<ServiceResult<Task[]>> {
+  async getByOrganizationId(organizationId: string): Promise<ServiceResult<Task[]>> {
     return safeServiceExecute(
       async () => {
-        logger.debug(`[${SERVICE_CONTEXT}] getBySubGroupId:start`, { subGroupId });
+        logger.debug(`[${SERVICE_CONTEXT}] getByOrganizationId:start`, { organizationId });
 
-        const result = await taskRepository.getBySubGroupId(subGroupId);
+        const result = await taskRepository.getByOrganizationId(organizationId);
         if (result.error) {
           throw result.error;
         }
 
-        logger.debug(`[${SERVICE_CONTEXT}] getBySubGroupId:success`, {
+        logger.debug(`[${SERVICE_CONTEXT}] getByOrganizationId:success`, {
           count: result.data?.length || 0,
         });
 
         return result.data || [];
       },
-      `${SERVICE_CONTEXT}.getBySubGroupId`,
+      `${SERVICE_CONTEXT}.getByOrganizationId`,
       'TASK_FETCH_ERROR'
     );
   }
@@ -73,7 +73,6 @@ export class TaskService {
    */
   async createTask(data: {
     organizationId: string;
-    subGroupId: string;
     title: string;
     description?: string;
     assignedTo?: string;
@@ -90,7 +89,6 @@ export class TaskService {
 
         const result = await taskRepository.create({
           organization_id: data.organizationId,
-          sub_group_id: data.subGroupId,
           title: data.title.trim(),
           description: data.description?.trim(),
           assigned_to: data.assignedTo,
@@ -157,7 +155,7 @@ export class TaskService {
    */
   async updateTask(
     id: string,
-    data: Partial<Omit<Task, 'id' | 'created_at' | 'organization_id' | 'sub_group_id'>>
+    data: Partial<Omit<Task, 'id' | 'created_at' | 'organization_id'>>
   ): Promise<ServiceResult<Task>> {
     return safeServiceExecute(
       async () => {

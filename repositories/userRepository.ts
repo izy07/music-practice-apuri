@@ -278,7 +278,7 @@ export const getUserProfileFields = async (
   const fieldArray = Array.isArray(fields) ? fields : [fields];
   const result = await getUserProfile(userId);
   
-  if (!result.success || !result.data) {
+  if (!result.data) {
     return null;
   }
   

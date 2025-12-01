@@ -214,36 +214,57 @@ export class OrganizationService {
             user_id: user.id,
             organization_id: createdOrganization.id,
             role: 'admin',
-            sub_group_id: null,
           });
 
           if (membershipResult.error) {
             // 既にメンバーシップが存在する場合（トリガーが動作した場合など）はエラーを無視
             const errorCode = (membershipResult.error as any).code;
-            if (errorCode !== '23505') {
-              // 一意制約違反以外のエラーはログに記録
-              logger.warn(`[${SERVICE_CONTEXT}] createOrganization:membership creation failed`, {
-                error: membershipResult.error,
-                organizationId: createdOrganization.id,
-              });
-            } else {
+            const errorMessage = (membershipResult.error as any).message || '';
+            
+            if (errorCode === '23505') {
+              // 一意制約違反（既にメンバーシップが存在）
               logger.debug(`[${SERVICE_CONTEXT}] createOrganization:membership already exists`, {
                 organizationId: createdOrganization.id,
               });
+            } else if (errorCode === '42501' || errorMessage.includes('permission denied') || errorMessage.includes('row-level security')) {
+              // RLSポリシーエラー - これは重大な問題なので警告を出す
+              logger.error(`[${SERVICE_CONTEXT}] createOrganization:membership creation failed due to RLS policy`, {
+                error: membershipResult.error,
+                organizationId: createdOrganization.id,
+                userId: user.id,
+                hint: 'RLSポリシーが正しく設定されているか確認してください',
+              });
+            } else {
+              // その他のエラー
+              logger.warn(`[${SERVICE_CONTEXT}] createOrganization:membership creation failed`, {
+                error: membershipResult.error,
+                organizationId: createdOrganization.id,
+                errorCode,
+              });
             }
           } else {
-            logger.debug(`[${SERVICE_CONTEXT}] createOrganization:membership created`, {
+            logger.info(`[${SERVICE_CONTEXT}] createOrganization:membership created successfully`, {
               organizationId: createdOrganization.id,
               userId: user.id,
+              membershipId: membershipResult.data?.id,
             });
           }
-        } catch (membershipError) {
+        } catch (membershipError: any) {
           // メンバーシップ作成の失敗は組織作成を失敗させない
           // ただし、ログには記録する
-          logger.warn(`[${SERVICE_CONTEXT}] createOrganization:membership creation error (non-fatal)`, {
-            error: membershipError,
-            organizationId: createdOrganization.id,
-          });
+          const errorMessage = membershipError?.message || '';
+          if (errorMessage.includes('permission denied') || errorMessage.includes('row-level security')) {
+            logger.error(`[${SERVICE_CONTEXT}] createOrganization:membership creation error - RLS policy issue (non-fatal)`, {
+              error: membershipError,
+              organizationId: createdOrganization.id,
+              hint: 'データベースマイグレーションを実行してください: supabase/migrations/20261201000002_fix_membership_creation_after_subgroup_removal.sql',
+            });
+          } else {
+            logger.warn(`[${SERVICE_CONTEXT}] createOrganization:membership creation error (non-fatal)`, {
+              error: membershipError,
+              organizationId: createdOrganization.id,
+            });
+          }
         }
 
         logger.info(`[${SERVICE_CONTEXT}] createOrganization:success`, {
@@ -384,7 +405,6 @@ export class OrganizationService {
           user_id: user.id,
           organization_id: input.organizationId,
           role: 'member',
-          sub_group_id: null,
         });
 
         if (membershipResult.error) {
@@ -452,7 +472,6 @@ export class OrganizationService {
           user_id: user.id,
           organization_id: organization.id,
           role: 'member',
-          sub_group_id: null,
         });
 
         if (membershipResult.error) {

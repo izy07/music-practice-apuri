@@ -620,7 +620,7 @@ export default function CalendarScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <InstrumentHeader />
       
       <ScrollView style={[styles.content, { backgroundColor: currentTheme.background }]} showsVerticalScrollIndicator={false}>

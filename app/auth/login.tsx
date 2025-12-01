@@ -177,10 +177,10 @@ export default function LoginScreen() {
         }));
 
         // 未登録ユーザーの場合は新規登録画面への誘導
-        if (error?.includes('正しくありません') || error?.includes('not found')) {
+        if (error?.includes('登録されていません') || error?.includes('not found') || error?.includes('user not found')) {
           Alert.alert(
             'アカウントが見つかりません',
-            'このメールアドレスは登録されていません。新規登録を行いますか？',
+            'このユーザーは登録されていません。新規登録を行いますか？',
             [
               { text: 'キャンセル', style: 'cancel' },
               {
@@ -277,7 +277,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={[]}>
+    <SafeAreaView style={styles.container} >
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}

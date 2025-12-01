@@ -1,9 +1,19 @@
-// Jest セットアップファイル
-import '@testing-library/react-native/extend-expect';
+// Jest セットアップファイル（モック設定）
+// setupFilesAfterEnvで実行される
+
+// @testing-library/react-native/extend-expect のインポート
+try {
+  require('@testing-library/react-native/extend-expect');
+} catch (error) {
+  // モジュールが見つからない場合は無視
+  if (error.code !== 'MODULE_NOT_FOUND') {
+    console.warn('Failed to load @testing-library/react-native/extend-expect:', error.message);
+  }
+}
 
 // グローバルモック設定
 // consoleを直接置き換えるのではなく、各メソッドをモック化
-if (typeof global.console !== 'undefined') {
+if (typeof global !== 'undefined' && global.console) {
   global.console.log = jest.fn();
   global.console.debug = jest.fn();
   global.console.info = jest.fn();

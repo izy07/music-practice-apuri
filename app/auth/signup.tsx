@@ -29,6 +29,7 @@ import { COMMON_STYLES, APP_COLORS } from '@/lib/appStyles';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { createShadowStyle } from '@/lib/shadowStyles';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -51,6 +52,7 @@ export default function SignupScreen() {
   logger.debug('SignupScreen component initialized');
   
   const router = useRouter();
+  const { user, isAuthenticated, isInitialized, fetchUserProfile } = useAuthAdvanced();
   
   // 新規登録画面では独立した認証処理を実装（世に出回っているアプリの一般的なパターン）
   const [isLoading, setIsLoading] = useState(false);
@@ -160,8 +162,11 @@ export default function SignupScreen() {
     clearError();
   }, []); // 依存配列を空にして無限ループを完全に停止
 
-  // 新規登録成功時の処理（認証状態の変更を待つ - 無限ループ完全停止）
+  // 新規登録成功時の処理
   const [signupSuccess, setSignupSuccess] = useState(false);
+  
+  // 注意: 新規登録成功後は、handleSignup内で即座にチュートリアル画面に遷移するため、
+  // ここでの自動画面遷移は不要（削除済み）
   
   useEffect(() => {
     if (signupSuccess) {
@@ -255,8 +260,19 @@ export default function SignupScreen() {
   const handleSignup = async () => {
     logger.debug('📝 新規登録処理開始');
     
+    // 新規登録処理開始フラグを最初に設定（_layout.tsxの認証チェックをスキップするため）
+    // バリデーション前に設定することで、ボタンを押した瞬間から認証チェックをスキップ
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem('signup-processing', 'true');
+      logger.debug('✅ 新規登録処理中フラグを設定');
+    }
+    
     if (!validateForm()) {
       logger.debug('❌ フォームバリデーション失敗');
+      // バリデーション失敗時はフラグを削除
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('signup-processing');
+      }
       return;
     }
     
@@ -272,42 +288,96 @@ export default function SignupScreen() {
       logger.debug('📊 新規登録結果:', result);
       
       if (result.success) {
-        logger.debug('✅ 新規登録成功 - 認証状態を確認して画面遷移を実行します');
+        logger.debug('✅ 新規登録成功 - 即座にチュートリアル画面に遷移します');
         setSignupSuccess(true);
         
-        // セッションが確立されるまで待機（最大5秒）
-        let sessionEstablished = false;
-        for (let i = 0; i < 10; i++) {
-          const { data: sessionData } = await supabase.auth.getSession();
-          if (sessionData.session) {
-            logger.debug('✅ セッション確認成功 - 画面遷移を実行します');
-            sessionEstablished = true;
-            break;
-          }
-          
-          if (i < 9) {
-            logger.debug(`⏳ セッション確認中 (試行 ${i + 1}/10)...`);
-            await new Promise(resolve => setTimeout(resolve, 500));
+        // 新規登録直後であることをsessionStorageに記録（_layout.tsxで認証チェックをスキップするため）
+        // signup-processingフラグは保持（認証状態が更新されるまで認証チェックをスキップするため）
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('signup-just-completed', 'true');
+          // signup-processingフラグは保持（認証状態が更新されるまで）
+          logger.debug('✅ 新規登録直後フラグを設定、処理中フラグは保持');
+        }
+        
+        // 即座にチュートリアル画面に遷移（認証状態の更新を待たない）
+        // _layout.tsxで新規登録直後フラグを確認して認証チェックをスキップする
+        try {
+          logger.debug('🔄 チュートリアル画面への遷移を開始');
+          router.replace('/(tabs)/tutorial');
+          logger.debug('✅ チュートリアル画面への遷移完了');
+        } catch (navError) {
+          logger.error('❌ チュートリアル画面への遷移エラー:', navError);
+          // フォールバック: 直接URLを変更
+          if (typeof window !== 'undefined') {
+            const { navigateWithBasePath } = require('@/lib/navigationUtils');
+            navigateWithBasePath('/tutorial');
           }
         }
         
-        if (sessionEstablished) {
-          // セッションが確立されたら、少し待ってから画面遷移を実行
-          // _layout.tsxのcheckUserProgressAndNavigateが実行されるのを待つ
-          setTimeout(() => {
-            logger.debug('🔄 画面遷移を実行します');
-            // プロフィールが作成されるまで少し待つ
-            setTimeout(() => {
-              router.replace('/(tabs)/tutorial');
-            }, 1000);
-          }, 500);
-        } else {
-          logger.warn('⚠️ セッションが確立されていません - 手動で画面遷移を試みます');
-          // セッションが確立されていない場合でも、画面遷移を試みる
-          setTimeout(() => {
-            router.replace('/(tabs)/tutorial');
-          }, 2000);
-        }
+        // バックグラウンドで認証状態を更新（画面遷移をブロックしない）
+        // これにより、_layout.tsxの認証チェックが実行される前に認証状態を更新できる
+        (async () => {
+          try {
+            // セッションを確認
+            const { data: sessionData } = await supabase.auth.getSession();
+            if (sessionData.session?.user) {
+              logger.debug('✅ セッション確認成功 - 認証状態を更新', {
+                userId: sessionData.session.user.id,
+                email: sessionData.session.user.email,
+              });
+              // 認証状態を更新
+              await fetchUserProfile();
+              logger.debug('✅ 認証状態更新完了');
+              
+              // 認証状態が更新されたら、新規登録関連フラグを削除
+              if (typeof window !== 'undefined') {
+                sessionStorage.removeItem('signup-just-completed');
+                sessionStorage.removeItem('signup-processing');
+                logger.debug('✅ 新規登録関連フラグを削除');
+              }
+              
+              // 認証状態が更新されたら、新規登録直後フラグを削除
+              if (typeof window !== 'undefined') {
+                sessionStorage.removeItem('signup-just-completed');
+                logger.debug('✅ 新規登録直後フラグを削除');
+              }
+            } else {
+              // セッションが存在しない場合は、少し待ってから再試行
+              logger.debug('⏳ セッション未確立 - 再試行を待機');
+              setTimeout(async () => {
+                try {
+                  await fetchUserProfile();
+                  logger.debug('✅ 認証状態更新完了（再試行）');
+                  // 認証状態が更新されたら、新規登録関連フラグを削除
+                  if (typeof window !== 'undefined') {
+                    sessionStorage.removeItem('signup-just-completed');
+                    sessionStorage.removeItem('signup-processing');
+                    logger.debug('✅ 新規登録関連フラグを削除（再試行後）');
+                  }
+                } catch (error) {
+                  logger.warn('⚠️ 認証状態の更新に失敗しましたが、続行します:', error);
+                }
+              }, 1000);
+            }
+          } catch (error) {
+            logger.warn('⚠️ 認証状態の更新に失敗しましたが、続行します:', error);
+            // エラーが発生した場合でも、少し待ってから再試行
+            setTimeout(async () => {
+              try {
+                await fetchUserProfile();
+                logger.debug('✅ 認証状態更新完了（エラー後の再試行）');
+                // 認証状態が更新されたら、新規登録関連フラグを削除
+                if (typeof window !== 'undefined') {
+                  sessionStorage.removeItem('signup-just-completed');
+                  sessionStorage.removeItem('signup-processing');
+                  logger.debug('✅ 新規登録関連フラグを削除（エラー後の再試行）');
+                }
+              } catch (retryError) {
+                logger.warn('⚠️ 認証状態の更新に失敗しました（再試行も失敗）:', retryError);
+              }
+            }, 1500);
+          }
+        })();
       } else {
         logger.debug('❌ 新規登録失敗');
         const errorMessage = result.error || '登録に失敗しました。メールが既に登録済みか、入力内容に誤りがあります。';
@@ -354,6 +424,10 @@ export default function SignupScreen() {
     } finally {
       // 確実にisLoadingをfalseにする
       setIsLoading(false);
+      // 新規登録処理フラグをクリア
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('signup-processing');
+      }
     }
   };
 
@@ -384,7 +458,7 @@ export default function SignupScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={[]}>
+    <SafeAreaView style={styles.container} >
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}

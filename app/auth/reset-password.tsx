@@ -212,7 +212,7 @@ export default function ResetPasswordScreen() {
 
   if (!isValidSession) {
     return (
-      <SafeAreaView style={styles.container} edges={[]}>
+      <SafeAreaView style={styles.container} >
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>セッションを確認中...</Text>
         </View>
@@ -221,7 +221,7 @@ export default function ResetPasswordScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={[]}>
+    <SafeAreaView style={styles.container} >
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}

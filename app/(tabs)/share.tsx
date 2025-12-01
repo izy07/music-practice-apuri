@@ -173,7 +173,7 @@ export default function ShareScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <InstrumentHeader />
       
       {/* 全体をスクロール可能にする */}

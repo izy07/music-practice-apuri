@@ -282,7 +282,7 @@ export default function MyLibraryScreen() {
   // 非購読時のゲート表示
   if (!canAccessFeature('my-library', entitlement)) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}> 
+      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} > 
         <InstrumentHeader />
         <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}> 
           <TouchableOpacity onPress={() => router.push('/(tabs)/settings' as any)} style={styles.backButton}>
@@ -309,7 +309,7 @@ export default function MyLibraryScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <InstrumentHeader />
       
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>

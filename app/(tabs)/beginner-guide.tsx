@@ -428,7 +428,7 @@ export default function BeginnerGuideScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={[]}>
+    <SafeAreaView style={styles.container} >
       <InstrumentHeader />
       
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>

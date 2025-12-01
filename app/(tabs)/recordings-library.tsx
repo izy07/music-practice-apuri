@@ -311,7 +311,7 @@ export default function RecordingsLibraryScreen() {
   // エンタイトルメントの読み込み中はローディング画面を表示
   if (entitlementLoading || loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
         <InstrumentHeader />
         <View style={styles.loadingContainer}>
           <Text style={[styles.loadingText, { color: currentTheme.text }]}>
@@ -325,7 +325,7 @@ export default function RecordingsLibraryScreen() {
   // 非購読時のゲート表示（エンタイトルメント読み込み完了後のみ表示）
   if (!entitlementLoading && !loading && !canAccessFeature('recordings', entitlement)) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}> 
+      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} > 
         <InstrumentHeader />
         <View style={styles.emptyContainer}>
           <Music size={64} color={currentTheme.textSecondary} />
@@ -343,7 +343,7 @@ export default function RecordingsLibraryScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <InstrumentHeader />
       
       <ScrollView 

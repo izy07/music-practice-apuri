@@ -14,10 +14,6 @@ import type { ID, Timestamp } from './common';
  */
 export type OrganizationRole = 'admin' | 'leader' | 'member';
 
-/**
- * サブグループのタイプ
- */
-export type SubGroupType = 'part' | 'grade' | 'section';
 
 /**
  * 練習の種類
@@ -85,27 +81,6 @@ export interface Organization {
   is_solo?: boolean;
 }
 
-/**
- * サブグループ
- * 
- * 組織内のパート、学年、セクションなどを表す
- */
-export interface SubGroup {
-  /** サブグループの一意な識別子 */
-  id: ID;
-  
-  /** 所属する組織のID */
-  organization_id: ID;
-  
-  /** サブグループ名 */
-  name: string;
-  
-  /** サブグループのタイプ */
-  group_type: SubGroupType;
-  
-  /** 作成日時 */
-  created_at?: Timestamp;
-}
 
 /**
  * 練習日程
@@ -184,9 +159,6 @@ export interface Task {
   /** 所属する組織のID */
   organization_id: ID;
   
-  /** 所属するサブグループのID */
-  sub_group_id: ID;
-  
   /** タスクのタイトル */
   title: string;
   
@@ -227,9 +199,6 @@ export interface UserGroupMembership {
   /** 所属する組織のID */
   organization_id: ID;
   
-  /** 所属するサブグループのID（nullの場合は組織レベルのメンバーシップ） */
-  sub_group_id?: ID | null;
-  
   /** ユーザーの役割 */
   role: OrganizationRole;
   
@@ -265,19 +234,6 @@ export interface UpdateOrganizationInput {
   description?: string;
 }
 
-/**
- * サブグループ作成時の入力データ
- */
-export interface CreateSubGroupInput {
-  /** サブグループ名 */
-  name: string;
-  
-  /** サブグループのタイプ */
-  groupType: SubGroupType;
-  
-  /** 説明 */
-  description?: string;
-}
 
 /**
  * 組織参加時の入力データ
@@ -324,26 +280,6 @@ export function isOrganizationArray(value: unknown): value is Organization[] {
   return Array.isArray(value) && value.every(isOrganization);
 }
 
-/**
- * 値がSubGroup型かどうかを判定
- */
-export function isSubGroup(value: unknown): value is SubGroup {
-  if (typeof value !== 'object' || value === null) return false;
-  const obj = value as Record<string, unknown>;
-  return (
-    typeof obj.id === 'string' &&
-    typeof obj.organization_id === 'string' &&
-    typeof obj.name === 'string' &&
-    (obj.group_type === 'part' || obj.group_type === 'grade' || obj.group_type === 'section')
-  );
-}
-
-/**
- * 値がSubGroup配列かどうかを判定
- */
-export function isSubGroupArray(value: unknown): value is SubGroup[] {
-  return Array.isArray(value) && value.every(isSubGroup);
-}
 
 /**
  * 値がUserGroupMembership型かどうかを判定

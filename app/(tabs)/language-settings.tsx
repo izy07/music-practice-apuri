@@ -106,7 +106,7 @@ export default function LanguageSettingsScreen() {
   }, []);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: fallbackTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: fallbackTheme.background }]} >
       
       <View style={[styles.header, { 
         borderBottomColor: fallbackTheme.secondary,

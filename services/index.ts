@@ -17,7 +17,6 @@ export { AdminCodeService, adminCodeService } from './adminCodeService';
 
 export { MembershipService, membershipService } from './membershipService';
 
-export { SubGroupService, subGroupService } from './subGroupService';
 export { ScheduleService, scheduleService } from './scheduleService';
 export { AttendanceService, attendanceService } from './attendanceService';
 export { TaskService, taskService } from './taskService';

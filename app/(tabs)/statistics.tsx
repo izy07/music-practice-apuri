@@ -532,7 +532,7 @@ export default function StatisticsScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: Background }]} edges={[]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: Background }]} >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
             <ArrowLeft size={22} color={TextColor} />
@@ -548,7 +548,7 @@ export default function StatisticsScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: Background }]} edges={[]}> 
+    <SafeAreaView style={[styles.container, { backgroundColor: Background }]} > 
         <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft size={22} color={TextColor} />

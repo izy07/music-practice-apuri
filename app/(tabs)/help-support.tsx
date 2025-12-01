@@ -80,7 +80,7 @@ export default function HelpSupportScreen() {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       {/* ヘッダー */}
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>
         <TouchableOpacity

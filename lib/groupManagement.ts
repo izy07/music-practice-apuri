@@ -4,7 +4,6 @@
  * 新しいコードでは以下のサービスを使用してください:
  * - organizationService: 組織管理
  * - adminCodeService: 管理者コード管理
- * - subGroupService: サブグループ管理
  * - scheduleService: 練習日程管理
  * - attendanceService: 出欠管理
  * - taskService: タスク管理
@@ -15,13 +14,11 @@
  * - OrganizationManager.getUserOrganizations() → organizationService.getUserOrganizations()
  * - OrganizationManager.setAdminCode() → adminCodeService.setAdminCode()
  * - OrganizationManager.becomeAdminByCode() → adminCodeService.becomeAdminByCode()
- * - SubGroupManager.getOrganizationSubGroups() → subGroupService.getByOrganizationId()
- * - SubGroupManager.createSubGroup() → subGroupService.createSubGroup()
  * - PracticeScheduleManager.getMonthlySchedules() → scheduleService.getMonthlySchedules()
  * - PracticeScheduleManager.createSchedule() → scheduleService.createSchedule()
  * - AttendanceManager.getAttendanceRecords() → attendanceService.getByScheduleId()
  * - AttendanceManager.registerAttendance() → attendanceService.registerAttendance()
- * - TaskManager.getSubGroupTasks() → taskService.getBySubGroupId()
+ * - TaskManager.getOrganizationTasks() → taskService.getByOrganizationId()
  * - TaskManager.createTask() → taskService.createTask()
  * - TaskManager.updateTaskProgress() → taskService.updateTaskProgress()
  * - TaskManager.deleteTask() → taskService.deleteTask()
@@ -32,7 +29,6 @@
 // 型定義は types/organization.ts から再エクスポート
 export type {
   Organization,
-  SubGroup,
   PracticeSchedule,
   AttendanceRecord,
   Task,
@@ -42,14 +38,12 @@ export type {
 // サービスをインポート
 import { organizationService } from '@/services/organizationService';
 import { adminCodeService } from '@/services/adminCodeService';
-import { subGroupService } from '@/services/subGroupService';
 import { scheduleService } from '@/services/scheduleService';
 import { attendanceService } from '@/services/attendanceService';
 import { taskService } from '@/services/taskService';
 import { membershipService } from '@/services/membershipService';
 import type {
   Organization,
-  SubGroup,
   PracticeSchedule,
   AttendanceRecord,
   Task,
@@ -254,56 +248,6 @@ export const OrganizationManager = {
   },
 };
 
-/**
- * サブグループ管理マネージャー（後方互換性ラッパー）
- * 
- * @deprecated subGroupService を使用してください
- */
-export const SubGroupManager = {
-  /**
-   * 組織のサブグループ一覧を取得
-   */
-  async getOrganizationSubGroups(organizationId: string) {
-    const result = await subGroupService.getByOrganizationId(organizationId);
-    if (!result.success) {
-      return { success: false, error: result.error };
-    }
-    return { success: true, subGroups: result.data || [] };
-  },
-
-  /**
-   * サブグループを作成
-   */
-  async createSubGroup(
-    organizationId: string,
-    name: string,
-    groupType: 'part' | 'grade' | 'section',
-    description?: string
-  ) {
-    const result = await subGroupService.createSubGroup(organizationId, {
-      name,
-      groupType,
-      description,
-    });
-
-    if (!result.success) {
-      return { success: false, error: result.error };
-    }
-
-    return { success: true, subGroup: result.data };
-  },
-
-  /**
-   * サブグループを削除
-   */
-  async deleteSubGroup(subGroupId: string) {
-    const result = await subGroupService.deleteSubGroup(subGroupId);
-    if (!result.success) {
-      return { success: false, error: result.error };
-    }
-    return { success: true };
-  },
-};
 
 /**
  * 練習日程管理マネージャー（後方互換性ラッパー）
@@ -393,10 +337,10 @@ export const AttendanceManager = {
  */
 export const TaskManager = {
   /**
-   * サブグループのタスク一覧を取得
+   * 組織のタスク一覧を取得
    */
-  async getSubGroupTasks(subGroupId: string) {
-    const result = await taskService.getBySubGroupId(subGroupId);
+  async getOrganizationTasks(organizationId: string) {
+    const result = await taskService.getByOrganizationId(organizationId);
     if (!result.success) {
       return { success: false, error: result.error };
     }
@@ -408,7 +352,6 @@ export const TaskManager = {
    */
   async createTask(
     organizationId: string,
-    subGroupId: string,
     title: string,
     description?: string,
     assignedTo?: string,
@@ -417,7 +360,6 @@ export const TaskManager = {
   ) {
     const result = await taskService.createTask({
       organizationId,
-      subGroupId,
       title,
       description,
       assignedTo,

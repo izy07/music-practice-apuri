@@ -289,7 +289,7 @@ export default function InstrumentSelectionScreen() {
               .from('user_profiles')
               .update(updateData)
               .eq('user_id', user.id)
-              .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
+              .select('id, user_id, selected_instrument_id');
             
             if (updateError) {
               // updateも失敗した場合は、外部キー制約違反の可能性がある
@@ -370,7 +370,7 @@ export default function InstrumentSelectionScreen() {
               // 最新のプロフィールを再取得
               const { data: refreshedProfile } = await supabase
                 .from('user_profiles')
-                .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
+                .select('id, user_id, selected_instrument_id')
                 .eq('user_id', user.id)
                 .maybeSingle();
               currentProfile = refreshedProfile;
@@ -384,7 +384,7 @@ export default function InstrumentSelectionScreen() {
               // 最新のプロフィールを再取得
               const { data: refreshedProfile } = await supabase
                 .from('user_profiles')
-                .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
+                .select('id, user_id, selected_instrument_id')
                 .eq('user_id', user.id)
                 .maybeSingle();
               currentProfile = refreshedProfile;
@@ -439,7 +439,7 @@ export default function InstrumentSelectionScreen() {
             updated_at: new Date().toISOString(),
           })
           .eq('user_id', user.id)
-          .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
+          .select('id, user_id, selected_instrument_id');
         
         if (updateTutorialError) {
           // カラムが存在しない場合は無視
@@ -492,7 +492,7 @@ export default function InstrumentSelectionScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <ArrowLeft size={24} color={currentTheme.text} />

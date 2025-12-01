@@ -173,6 +173,32 @@ const presetPalettes: PresetPalette[] = [
     }
   },
   {
+    id: 'warm-grey',
+    name: 'ウォームグレー',
+    colors: {
+      background: '#F5F5F0',
+      surface: '#FFFFFF',
+      primary: '#A89B9B',
+      secondary: '#E8E5E5',
+      accent: '#8A7A7A',
+      text: '#5A4A4A',
+      textSecondary: '#7A6A6A',
+    }
+  },
+  {
+    id: 'muted-pink',
+    name: 'ミュートピンク',
+    colors: {
+      background: '#F8F4F5',
+      surface: '#FFFFFF',
+      primary: '#B89A9A',
+      secondary: '#E8D8DA',
+      accent: '#9A7A7A',
+      text: '#6B5A5A',
+      textSecondary: '#8B7A7A',
+    }
+  },
+  {
     id: 'muted-yellow',
     name: 'ミュートイエロー',
     colors: {
@@ -235,123 +261,6 @@ const presetPalettes: PresetPalette[] = [
       accent: '#FF8F00',
       text: '#5D4037',
       textSecondary: '#8D6E63',
-    }
-  },
-  {
-    id: 'orange-blue',
-    name: 'オレンジ×ブルー',
-    colors: {
-      background: '#FFF3E0',
-      surface: '#FFFFFF',
-      primary: '#FF6F00',
-      secondary: '#E3F2FD',
-      accent: '#1976D2',
-      text: '#E65100',
-      textSecondary: '#1565C0',
-    }
-  },
-  {
-    id: 'peach-mint',
-    name: 'ピーチ×ミント',
-    colors: {
-      background: '#FFF5F0',
-      surface: '#FFFFFF',
-      primary: '#FF8A65',
-      secondary: '#E0F2F1',
-      accent: '#4DB6AC',
-      text: '#BF360C',
-      textSecondary: '#00796B',
-    }
-  },
-  {
-    id: 'lavender-sage',
-    name: 'ラベンダー×セージ',
-    colors: {
-      background: '#F3E5F5',
-      surface: '#FFFFFF',
-      primary: '#BA68C8',
-      secondary: '#E8F5E9',
-      accent: '#66BB6A',
-      text: '#6A1B9A',
-      textSecondary: '#2E7D32',
-    }
-  },
-  {
-    id: 'emerald-gold',
-    name: 'エメラルド×ゴールド',
-    colors: {
-      background: '#E8F5E9',
-      surface: '#FFFFFF',
-      primary: '#26A69A',
-      secondary: '#FFF9C4',
-      accent: '#F9A825',
-      text: '#00695C',
-      textSecondary: '#F57F17',
-    }
-  },
-  {
-    id: 'coral-teal',
-    name: 'コーラル×ティール',
-    colors: {
-      background: '#FFEBEE',
-      surface: '#FFFFFF',
-      primary: '#FF7043',
-      secondary: '#B2DFDB',
-      accent: '#00897B',
-      text: '#C62828',
-      textSecondary: '#00695C',
-    }
-  },
-  {
-    id: 'apricot-sky',
-    name: 'アプリコット×スカイ',
-    colors: {
-      background: '#FFF8E1',
-      surface: '#FFFFFF',
-      primary: '#FFB74D',
-      secondary: '#B3E5FC',
-      accent: '#0288D1',
-      text: '#E65100',
-      textSecondary: '#01579B',
-    }
-  },
-  {
-    id: 'rose-dust',
-    name: 'ローズ×ダスト',
-    colors: {
-      background: '#FCE4EC',
-      surface: '#FFFFFF',
-      primary: '#EC407A',
-      secondary: '#F5F5F5',
-      accent: '#9E9E9E',
-      text: '#880E4F',
-      textSecondary: '#616161',
-    }
-  },
-  {
-    id: 'forest-cream',
-    name: 'フォレスト×クリーム',
-    colors: {
-      background: '#F1F8E9',
-      surface: '#FFFFFF',
-      primary: '#558B2F',
-      secondary: '#FFF9C4',
-      accent: '#827717',
-      text: '#33691E',
-      textSecondary: '#F9A825',
-    }
-  },
-  {
-    id: 'plum-amber',
-    name: 'プラム×アンバー',
-    colors: {
-      background: '#EDE7F6',
-      surface: '#FFFFFF',
-      primary: '#7B1FA2',
-      secondary: '#FFE082',
-      accent: '#FF6F00',
-      text: '#4A148C',
-      textSecondary: '#E65100',
     }
   }
 ];

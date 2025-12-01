@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Modal, Dimensions, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, Dimensions, TextInput } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar, ChevronLeft, ChevronRight, Clock, MapPin } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
@@ -11,6 +12,7 @@ import { organizationRepository } from '@/repositories/organizationRepository';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { createShadowStyle } from '@/lib/shadowStyles';
+import type { PracticeType } from '@/types/organization';
 
 type UnifiedSchedule = PracticeSchedule & {
   organization_id: string;
@@ -47,13 +49,20 @@ export default function CalendarScreen() {
   const [loading, setLoading] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [createForm, setCreateForm] = useState({
+  const [createForm, setCreateForm] = useState<{
+    title: string;
+    description: string;
+    startTime: string;
+    endTime: string;
+    location: string;
+    practiceType: PracticeType;
+  }>({
     title: '',
     description: '',
     startTime: '',
     endTime: '',
     location: '',
-    practiceType: 'ensemble' as 'ensemble' | 'part_practice' | 'event'
+    practiceType: 'ensemble' as PracticeType
   });
 
   useEffect(() => {
@@ -257,7 +266,7 @@ export default function CalendarScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]}>
       <InstrumentHeader />
       
       {/* ヘッダー */}

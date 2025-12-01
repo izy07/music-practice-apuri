@@ -125,7 +125,7 @@ export default function OrgOverviewScreen() {
   }, []);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}> 
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} > 
       <InstrumentHeader />
       {/* 戻る（共有へ） */}
       <View style={styles.topNav}>

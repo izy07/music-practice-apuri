@@ -118,7 +118,7 @@ export default function RepresentativeSongsScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <ArrowLeft size={24} color={currentTheme.text} />
@@ -134,7 +134,7 @@ export default function RepresentativeSongsScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       {/* ヘッダー */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => {

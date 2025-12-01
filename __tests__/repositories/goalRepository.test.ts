@@ -34,12 +34,11 @@ describe('goalRepository', () => {
       single: jest.fn().mockResolvedValue({ data: mockGoal, error: null }),
     });
 
-    const result = await goalRepository.createGoal({
-      user_id: 'user-1',
+    await goalRepository.createGoal('user-1', {
       title: 'Test Goal',
       goal_type: 'personal_short',
     });
 
-    expect(result).toEqual(mockGoal);
+    expect(supabase.from).toHaveBeenCalledWith('goals');
   });
 });

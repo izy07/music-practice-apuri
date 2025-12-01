@@ -75,14 +75,14 @@ export default function PrivacySettingsScreen() {
 
   if (!currentTheme) {
     return (
-      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }} edges={[]}>
+      <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }} >
         <Text>テーマの読み込み中...</Text>
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <InstrumentHeader />
       
       {/* Header */}

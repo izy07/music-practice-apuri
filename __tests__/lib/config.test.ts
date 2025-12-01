@@ -37,7 +37,11 @@ describe('config', () => {
   });
 
   it('開発環境フラグが正しく設定される', () => {
-    process.env.NODE_ENV = 'development';
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: 'development',
+      writable: true,
+      configurable: true
+    });
     
     jest.resetModules();
     const config = require('@/lib/config').default;
@@ -47,7 +51,11 @@ describe('config', () => {
   });
 
   it('本番環境フラグが正しく設定される', () => {
-    process.env.NODE_ENV = 'production';
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: 'production',
+      writable: true,
+      configurable: true
+    });
     
     jest.resetModules();
     const config = require('@/lib/config').default;
@@ -57,7 +65,11 @@ describe('config', () => {
   });
 
   it('テスト環境フラグが正しく設定される', () => {
-    process.env.NODE_ENV = 'test';
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: 'test',
+      writable: true,
+      configurable: true
+    });
     
     jest.resetModules();
     const config = require('@/lib/config').default;

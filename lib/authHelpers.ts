@@ -32,6 +32,8 @@ export function getAuthErrorMessage(error: unknown): string {
       return '新規登録は現在無効になっています';
     case 'email_not_confirmed':
       return 'メールアドレスの確認が必要です';
+    case 'user_not_found':
+      return 'このユーザーは登録されていません';
     case 'invalid_credentials':
     case 'invalid_grant':
       return 'メールアドレスまたはパスワードが正しくありません';
@@ -41,6 +43,10 @@ export function getAuthErrorMessage(error: unknown): string {
       return 'メール送信の上限に達しました。しばらく待ってから再試行してください';
     default:
       // エラーメッセージから日本語メッセージを抽出
+      const lowerMessage = errorMessage.toLowerCase();
+      if (lowerMessage.includes('user not found') || lowerMessage.includes('user does not exist')) {
+        return 'このユーザーは登録されていません';
+      }
       if (errorMessage.includes('User already registered') || errorMessage.includes('already exists')) {
         return 'このメールアドレスは既に登録されています';
       }

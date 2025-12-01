@@ -39,6 +39,17 @@ export const getAllInstruments = async (): Promise<RepositoryResult<InstrumentFr
         .order('name', { ascending: true });
 
       if (error) {
+        // RLSポリシーエラーの詳細ログを追加
+        if (error.code === '42501' || error.message?.includes('permission denied') || error.message?.includes('row-level security')) {
+          logger.warn(`[${REPOSITORY_CONTEXT}] getAllInstruments:RLSポリシーエラー`, {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+          });
+          throw error;
+        }
+        
         // color_backgroundカラムが存在しないエラー（42703）の場合は警告のみ
         if (error.code === '42703' && error.message?.includes('color_background')) {
           logger.warn(`[${REPOSITORY_CONTEXT}] color_backgroundカラムが存在しません。基本カラムのみで処理を続行します。`);
@@ -55,11 +66,25 @@ export const getAllInstruments = async (): Promise<RepositoryResult<InstrumentFr
           return retryData || [];
         }
         
+        // その他のエラーの詳細ログ
+        logger.warn(`[${REPOSITORY_CONTEXT}] getAllInstruments:エラー`, {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+        });
+        
         throw error;
       }
 
-      logger.debug(`[${REPOSITORY_CONTEXT}] getAllInstruments:success`, { count: instruments?.length || 0 });
-      return instruments || [];
+      // instrumentsテーブルが空の場合の処理を改善
+      if (!instruments || instruments.length === 0) {
+        logger.warn(`[${REPOSITORY_CONTEXT}] getAllInstruments:データベースに楽器データが存在しません`);
+        return [];
+      }
+      
+      logger.debug(`[${REPOSITORY_CONTEXT}] getAllInstruments:success`, { count: instruments.length });
+      return instruments;
     },
     `${REPOSITORY_CONTEXT}.getAllInstruments`
   );

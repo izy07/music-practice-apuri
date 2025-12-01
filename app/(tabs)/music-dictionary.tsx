@@ -11,7 +11,7 @@ export default function MusicDictionaryScreen() {
   const { currentTheme } = useInstrumentTheme();
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <InstrumentHeader />
       
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>

@@ -60,7 +60,7 @@ export default function BasicPracticeScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={[]}>
+    <SafeAreaView style={styles.container} >
       <InstrumentHeader />
       
       {/* ヘッダー */}

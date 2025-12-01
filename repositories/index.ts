@@ -11,7 +11,6 @@ export * from './membershipRepository';
 export * from './organizationRepository';
 export * from './practiceSessionRepository';
 export * from './scheduleRepository';
-export * from './subGroupRepository';
 export * from './taskRepository';
 export * from './userRepository';
 export * from './userSettingsRepository';

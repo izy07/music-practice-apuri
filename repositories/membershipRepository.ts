@@ -25,7 +25,6 @@ export const membershipRepository = {
         .from('user_group_memberships')
         .select('*')
         .eq('organization_id', organizationId)
-        .is('sub_group_id', null)
         .order('joined_at', { ascending: false });
 
       if (error) throw error;
@@ -52,7 +51,6 @@ export const membershipRepository = {
         .select('*')
         .eq('user_id', userId)
         .eq('organization_id', organizationId)
-        .is('sub_group_id', null)
         .maybeSingle();
 
       if (error) throw error;
@@ -67,7 +65,6 @@ export const membershipRepository = {
   async create(data: {
     user_id: string;
     organization_id: string;
-    sub_group_id?: string | null;
     role: OrganizationRole;
   }): Promise<RepositoryResult<UserGroupMembership>> {
     return safeExecute(async () => {
@@ -86,7 +83,7 @@ export const membershipRepository = {
             data.organization_id
           );
           if (existing.data) {
-            return existing;
+            return { data: existing.data, error: null };
           }
         }
         throw error;
@@ -151,7 +148,6 @@ export const membershipRepository = {
         .select('id')
         .eq('user_id', userId)
         .eq('organization_id', organizationId)
-        .is('sub_group_id', null)
         .maybeSingle();
 
       if (error) throw error;
@@ -174,7 +170,6 @@ export const membershipRepository = {
         .eq('user_id', userId)
         .eq('organization_id', organizationId)
         .eq('role', 'admin')
-        .is('sub_group_id', null)
         .maybeSingle();
 
       if (error) throw error;

@@ -142,7 +142,7 @@ export default function AppGuideScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <View style={[styles.header, { borderBottomColor: '#E0E0E0' }]}>
         <TouchableOpacity onPress={() => safeGoBack('/(tabs)/settings', true)} style={styles.backButton}>
           <ArrowLeft size={24} color={currentTheme.text} />

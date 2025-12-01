@@ -63,10 +63,7 @@ function RootLayoutContent() {
   // すべてのuseRefを条件分岐の前に配置（Hooksの順序を保持）
   const navigatingRef = useRef(false); // 重複遷移防止
   const lastPathRef = useRef<string | null>(null);
-  
-  // 新規登録画面の場合は認証フックを完全に無効化（Hooksの順序を保持）
-  const authChild = segments.length > 1 ? (segments[1] as string | undefined) : undefined;
-  const isSignupScreen = authChild === 'signup';
+  const signupProcessingRef = useRef(false); // 新規登録処理中フラグ
 
   // React Native Web特有の警告を抑制（開発時のノイズを減らす）
   React.useEffect(() => {
@@ -448,12 +445,6 @@ function RootLayoutContent() {
      * - segments[0] === 'auth': 認証関連画面（/auth/login, /auth/signup, /auth/callback）
      * - authChild: 認証画面の具体的な種類（login, signup, callback）
      */
-    const inAuthGroup = segments[0] === 'auth';
-    const authChild = inAuthGroup && segments.length > 1 ? (segments[1] as string | undefined) : undefined;
-
-    // 認証状態チェック（デバッグ用ログは非表示）
-
-
     // フレームワークが準備できていない、または認証状態を読み込み中は何もしない
     // Web環境では、isReadyを待たずに処理を開始（タイムアウト処理で対応済み）
     if (Platform.OS !== 'web' && (!isReady || isLoading || !isInitialized)) {
@@ -465,6 +456,13 @@ function RootLayoutContent() {
       return;
     }
     
+    // パス解析（早期リターンの後で実行）
+    const inAuthGroup = segments[0] === 'auth';
+    const authChild = inAuthGroup && segments.length > 1 ? (segments[1] as string | undefined) : undefined;
+    const isSignupScreen = authChild === 'signup';
+
+    // 認証状態チェック（デバッグ用ログは非表示）
+    
     // ルートパス（segmentsが空）にいる場合の処理
     const isAtRoot = segments.length === 0;
     
@@ -475,9 +473,54 @@ function RootLayoutContent() {
         return;
       }
       
-      // 新規登録画面の場合は、認証フックを無効化（画面遷移をスキップ）
-      // ただし、認証済みユーザーが新規登録画面にいる場合は遷移を許可
-      if (isSignupScreen) {
+      // 新規登録画面の場合は、認証フックを完全に無効化（画面遷移をスキップ）
+      // 新規登録処理中や成功直後は、認証状態が更新されるまで待つ必要がある
+      // Web環境ではsessionStorageで新規登録処理中かどうかを確認
+      const isSignupProcessing = Platform.OS === 'web' && typeof window !== 'undefined' 
+        ? sessionStorage.getItem('signup-processing') === 'true'
+        : signupProcessingRef.current;
+      
+      if (isSignupScreen || isSignupProcessing) {
+        // 新規登録画面では認証チェックを完全にスキップ
+        // signup.tsxで新規登録成功後に適切な画面に遷移するため、ここでは何もしない
+        logger.debug('新規登録画面または新規登録処理中 - 認証チェックをスキップ', {
+          isSignupScreen,
+          isSignupProcessing,
+        });
+        return;
+      }
+      
+      // チュートリアル画面にいる場合は、新規登録直後の可能性があるため、認証チェックをスキップ
+      // signup.tsxでuser状態が更新されるまで待機しているため、ここでは一時的に許可
+      const isInTutorial = segments[0] === '(tabs)' && segments.length > 1 && segments[1] === 'tutorial';
+      const isSignupJustCompleted = Platform.OS === 'web' && typeof window !== 'undefined' 
+        ? sessionStorage.getItem('signup-just-completed') === 'true'
+        : false;
+      
+      // 新規登録直後フラグがある場合、または新規登録処理中フラグがある場合は認証チェックをスキップ
+      if (isSignupJustCompleted || isSignupProcessing) {
+        if (isInTutorial) {
+          logger.debug('チュートリアル画面 - 新規登録直後または処理中のため認証チェックを完全にスキップ', {
+            isInTutorial,
+            isSignupJustCompleted,
+            isSignupProcessing,
+          });
+          return;
+        } else {
+          // 新規登録直後フラグがあるが、チュートリアル画面にいない場合は、チュートリアル画面に遷移
+          logger.debug('新規登録直後または処理中フラグあり - チュートリアル画面に遷移', {
+            isSignupJustCompleted,
+            isSignupProcessing,
+          });
+          navigateWithDelay('/(tabs)/tutorial', 0);
+          return;
+        }
+      }
+      
+      // チュートリアル画面にいるが、新規登録直後フラグがない場合は通常の認証チェックを実行
+      // （ただし、認証状態が更新されるまでの間は一時的に許可）
+      if (isInTutorial) {
+        logger.debug('チュートリアル画面 - 新規登録直後の可能性があるため認証チェックをスキップ');
         return;
       }
       
@@ -606,7 +649,52 @@ function RootLayoutContent() {
         currentTabScreen
       });
     }
-  }, [isReady, isLoading, isAuthenticated, isInitialized, segments, router, hasInstrumentSelected, needsTutorial, canAccessMainApp, isSignupScreen]);
+  }, [isReady, isLoading, isAuthenticated, isInitialized, segments, router, hasInstrumentSelected, needsTutorial, canAccessMainApp]);
+
+  // 新規登録画面でセッションが確立された場合の処理（別のuseEffectで処理）
+  useEffect(() => {
+    const inAuthGroup = segments[0] === 'auth';
+    const authChild = inAuthGroup && segments.length > 1 ? (segments[1] as string | undefined) : undefined;
+    const isSignupScreen = authChild === 'signup';
+    
+    // 新規登録画面にいる場合のみ実行
+    if (!isSignupScreen || !isReady || isLoading || !isInitialized) {
+      return;
+    }
+
+    // 新規登録画面では、セッションが存在する場合は認証済みとして扱う
+    // これにより、新規登録直後のリダイレクトを防ぐ
+    let mounted = true;
+    
+    const checkSession = async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (mounted && sessionData.session?.user) {
+          logger.debug('新規登録画面でセッション検出 - 認証状態を更新して画面遷移', {
+            userId: sessionData.session.user.id,
+            email: sessionData.session.user.email,
+          });
+          // セッションが存在する場合は、認証状態を更新してから適切な画面に遷移
+          await checkUserProgressAndNavigate();
+        }
+      } catch (error) {
+        // エラーは無視（認証チェックは継続）
+        if (mounted) {
+          logger.debug('新規登録画面でのセッション確認エラー（無視）:', error);
+        }
+      }
+    };
+
+    // 少し遅延してからセッションを確認（新規登録処理が完了するまで待つ）
+    const timer = setTimeout(() => {
+      checkSession();
+    }, 500);
+
+    return () => {
+      mounted = false;
+      clearTimeout(timer);
+    };
+  }, [segments, isReady, isLoading, isInitialized]);
 
   // フレームワーク準備中または認証状態読み込み中はローディング画面を表示
   // Web環境では、isReadyがfalseのままになる可能性があるため、タイムアウトを追加

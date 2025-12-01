@@ -60,7 +60,7 @@ export default function InstrumentHeader() {
 
         if (cancelled) return;
 
-        if (profileResult.success && profileResult.data?.selected_instrument_id) {
+        if (profileResult.data?.selected_instrument_id) {
           const profile = profileResult.data;
           // コンテキストに未反映の場合は即時反映
           if (!selectedInstrument) {

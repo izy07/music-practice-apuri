@@ -50,7 +50,7 @@ export default function RoomScreen() {
         description: '上智大学の管弦楽部の練習部屋です',
         icon_name: 'music',
         color_theme: '#2196F3',
-        is_archived: false,
+        is_active: true,
         created_by: 'user123',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -129,7 +129,7 @@ export default function RoomScreen() {
 
   if (!room) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
         <Text style={[styles.loadingText, { color: currentTheme.textSecondary }]}> 
           読み込み中...
         </Text>
@@ -138,7 +138,7 @@ export default function RoomScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}> 
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} > 
       {/* ヘッダー */}
       <View style={styles.header}> 
         <TouchableOpacity 

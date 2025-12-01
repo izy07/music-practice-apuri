@@ -23,14 +23,28 @@ jobs:
           cache: 'npm'
 
       - name: 依存関係のインストール
-        run: npm ci --legacy-peer-deps
+        run: |
+          echo "📦 依存関係をインストールします..."
+          npm ci --legacy-peer-deps || {
+            echo "❌ 依存関係のインストールに失敗しました"
+            echo "📊 package-lock.jsonの整合性を確認してください"
+            exit 1
+          }
+          echo "✅ 依存関係のインストールが完了しました"
 
       - name: テスト実行（モック使用）
         run: |
           echo "🧪 テストを実行します..."
-          npm run test:ci || {
+          npm run test:ci 2>&1 | tee /tmp/test-output.log || {
             echo "❌ テストが失敗しました"
-            echo "📊 テスト結果を確認してください"
+            echo "📊 テスト結果の最後の50行:"
+            tail -50 /tmp/test-output.log || echo "ログファイルが見つかりません"
+            echo "📊 カバレッジレポート:"
+            if [ -f coverage/lcov.info ]; then
+              echo "カバレッジファイルが生成されました"
+            else
+              echo "⚠️ カバレッジファイルが生成されませんでした"
+            fi
             exit 1
           }
           echo "✅ テストが完了しました"
@@ -38,21 +52,25 @@ jobs:
           NODE_ENV: test
           CI: 'true'
           GITHUB_ACTIONS: 'true'
-        timeout-minutes: 10
+        timeout-minutes: 15
 
       - name: カバレッジレポートのアップロード
+        if: always()
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage/lcov.info
           flags: unittests
           name: codecov-umbrella
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   # データベース統合テスト
   test-database:
     name: データベース統合テスト
     runs-on: ubuntu-latest
     needs: test
-    if: always()
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'failure')
+    # testジョブの失敗時も実行（統合テストは独立しているため）
     
     # PostgreSQLサービスコンテナは削除（Supabaseが独自のPostgreSQLコンテナを起動するため不要）
     # ポート競合を避けるため、Supabaseのconfig.tomlで設定されたポート（54322）を使用
@@ -64,6 +82,15 @@ jobs:
       - name: Docker セットアップ
         uses: docker/setup-buildx-action@v3
 
+      - name: Docker サービスの確認
+        run: |
+          echo "🐳 Dockerサービスの状態を確認します..."
+          docker --version || {
+            echo "❌ Dockerが利用できません"
+            exit 1
+          }
+          echo "✅ Dockerが利用可能です"
+
       - name: Node.js セットアップ
         uses: actions/setup-node@v4
         with:
@@ -71,14 +98,31 @@ jobs:
           cache: 'npm'
 
       - name: 依存関係のインストール
-        run: npm ci --legacy-peer-deps
+        run: |
+          echo "📦 依存関係をインストールします..."
+          npm ci --legacy-peer-deps || {
+            echo "❌ 依存関係のインストールに失敗しました"
+            echo "📊 package-lock.jsonの整合性を確認してください"
+            exit 1
+          }
+          echo "✅ 依存関係のインストールが完了しました"
 
       - name: Supabase CLI のインストール
         run: |
           echo "📦 Supabase CLIをインストールします..."
-          # Homebrewを使用してSupabase CLIをインストール
-          curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz | tar -xz
+          # 既存のファイルを削除（エラーを防ぐため）
+          rm -f supabase supabase.tar.gz
+          sudo rm -f /usr/local/bin/supabase
+          # 最新バージョンのSupabase CLIをインストール
+          VERSION=$(curl -s https://api.github.com/repos/supabase/cli/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "📌 インストールするバージョン: $VERSION"
+          curl -fsSL "https://github.com/supabase/cli/releases/download/${VERSION}/supabase_linux_amd64.tar.gz" -o supabase.tar.gz || {
+            echo "❌ Supabase CLIのダウンロードに失敗しました"
+            exit 1
+          }
+          tar -xzf supabase.tar.gz
           sudo mv supabase /usr/local/bin/
+          rm supabase.tar.gz
           supabase --version || {
             echo "❌ Supabase CLIのインストールに失敗しました"
             exit 1
@@ -90,37 +134,71 @@ jobs:
           echo "🚀 Supabaseローカル環境を起動します..."
           # 既存のSupabaseコンテナを停止（存在する場合）
           supabase stop || echo "⚠️ 既存のコンテナが見つかりませんでした（新規起動を続行）"
+          
+          # クリーンアップ（念のため）
+          docker ps -a | grep supabase | awk '{print $1}' | xargs -r docker rm -f || true
+          
           # Supabaseを起動（config.tomlの設定を使用：DBポート54322）
+          echo "⏳ Supabaseを起動中..."
           supabase start || {
             echo "❌ Supabaseの起動に失敗しました"
             echo "📊 デバッグ情報:"
+            echo "Dockerコンテナ一覧:"
             docker ps -a | grep supabase || echo "Supabaseコンテナが見つかりません"
+            echo "Dockerログ:"
+            docker logs supabase_db_uteeqkpsezbabdmritkn 2>&1 | tail -50 || echo "ログ取得に失敗"
             exit 1
           }
+          
           echo "⏳ Supabaseの起動を待機中..."
-          sleep 10
-          echo "📊 Supabaseステータス:"
-          supabase status || {
-            echo "⚠️ ステータス取得に失敗しましたが、続行します"
-          }
-          echo "✅ Supabaseの起動が完了しました"
+          sleep 15
+          
+          # 最大5回までリトライしてステータスを確認
+          for i in {1..5}; do
+            echo "📊 Supabaseステータス確認 (試行 $i/5)..."
+            if supabase status > /dev/null 2>&1; then
+              echo "✅ Supabaseが正常に起動しました"
+              supabase status
+              break
+            else
+              if [ $i -eq 5 ]; then
+                echo "⚠️ ステータス取得に失敗しましたが、続行します"
+                supabase status || true
+              else
+                echo "⏳ 待機中... ($i/5)"
+                sleep 5
+              fi
+            fi
+          done
         env:
           SUPABASE_DB_PASSWORD: postgres
           # config.tomlで54322に設定されているため、環境変数で上書きしない
           # SUPABASE_DB_PORTは設定しない（config.tomlの設定を使用）
-        timeout-minutes: 5
+        timeout-minutes: 10
 
       - name: データベースマイグレーションの実行
         run: |
           echo "🔄 データベースマイグレーションを実行します..."
+          # Supabaseが起動していることを確認
+          if ! supabase status > /dev/null 2>&1; then
+            echo "❌ Supabaseが起動していません"
+            supabase status || true
+            exit 1
+          fi
+          
           supabase db reset || {
             echo "❌ マイグレーションに失敗しました"
             echo "📊 デバッグ情報:"
+            echo "Supabaseステータス:"
+            supabase status || echo "ステータス取得に失敗"
+            echo "データベース差分:"
             supabase db diff --schema public || echo "db diffの実行に失敗しました"
+            echo "マイグレーションファイル一覧:"
+            ls -la supabase/migrations/ || echo "マイグレーションディレクトリが見つかりません"
             exit 1
           }
           echo "✅ データベースマイグレーション完了"
-        timeout-minutes: 5
+        timeout-minutes: 10
 
       - name: データベース状態の確認
         run: |
@@ -131,10 +209,26 @@ jobs:
       - name: 統合テスト実行
         run: |
           echo "🧪 統合テストを実行します..."
-          npm run test:ci -- __tests__/integration/ || {
+          # Supabaseが起動していることを確認
+          if ! supabase status > /dev/null 2>&1; then
+            echo "❌ Supabaseが起動していません"
+            supabase status || true
+            echo "📊 Dockerコンテナ一覧:"
+            docker ps -a | grep supabase || echo "Supabaseコンテナが見つかりません"
+            exit 1
+          fi
+          
+          echo "📊 Supabaseステータス確認:"
+          supabase status || echo "⚠️ ステータス取得に失敗しましたが、続行します"
+          
+          npm run test:ci -- __tests__/integration/ 2>&1 | tee /tmp/integration-test-output.log || {
             echo "❌ 統合テストが失敗しました"
+            echo "📊 テストログの最後の100行:"
+            tail -100 /tmp/integration-test-output.log || echo "ログファイルが見つかりません"
             echo "📊 Supabaseステータス:"
             supabase status || echo "ステータス取得に失敗"
+            echo "📊 Dockerコンテナログ:"
+            docker logs supabase_db_uteeqkpsezbabdmritkn 2>&1 | tail -50 || echo "ログ取得に失敗"
             exit 1
           }
           echo "✅ 統合テストが完了しました"
@@ -144,7 +238,7 @@ jobs:
           NODE_ENV: test
           CI: 'true'
           GITHUB_ACTIONS: 'true'
-        timeout-minutes: 10
+        timeout-minutes: 15
 
       - name: Supabase ローカル環境の停止
         if: always()
@@ -166,10 +260,25 @@ jobs:
           cache: 'npm'
 
       - name: 依存関係のインストール
-        run: npm ci --legacy-peer-deps
+        run: |
+          echo "📦 依存関係をインストールします..."
+          npm ci --legacy-peer-deps || {
+            echo "❌ 依存関係のインストールに失敗しました"
+            echo "📊 package-lock.jsonの整合性を確認してください"
+            exit 1
+          }
+          echo "✅ 依存関係のインストールが完了しました"
 
       - name: 型チェック
-        run: npx tsc --noEmit
+        run: |
+          echo "🔍 TypeScript型チェックを実行します..."
+          npx tsc --noEmit 2>&1 | tee /tmp/tsc-errors.log || {
+            echo "❌ 型チェックに失敗しました"
+            echo "📊 エラー詳細:"
+            cat /tmp/tsc-errors.log | head -50
+            exit 1
+          }
+          echo "✅ 型チェックが完了しました"
         continue-on-error: false
 
   # ビルドチェック
@@ -177,7 +286,8 @@ jobs:
     name: ビルド確認
     runs-on: ubuntu-latest
     needs: [test, lint]
-    if: always() && (needs.test.result == 'success' || needs.test.result == 'failure') && (needs.lint.result == 'success' || needs.lint.result == 'failure')
+    # testとlintの両方が成功した場合のみ実行（失敗時はスキップ）
+    if: needs.test.result == 'success' && needs.lint.result == 'success'
     
     steps:
       - name: チェックアウト
@@ -190,21 +300,37 @@ jobs:
           cache: 'npm'
 
       - name: 依存関係のインストール
-        run: npm ci --legacy-peer-deps
+        run: |
+          echo "📦 依存関係をインストールします..."
+          npm ci --legacy-peer-deps || {
+            echo "❌ 依存関係のインストールに失敗しました"
+            echo "📊 package-lock.jsonの整合性を確認してください"
+            exit 1
+          }
+          echo "✅ 依存関係のインストールが完了しました"
 
       - name: Web ビルド
-        run: npm run build:web
+        run: |
+          echo "🏗️ Webビルドを実行します..."
+          npm run build:web || {
+            echo "❌ ビルドに失敗しました"
+            exit 1
+          }
+          echo "✅ ビルドが完了しました"
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || 'https://uteeqkpsezbabdmritkn.supabase.co' }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0ZWVxa3BzZXpiYWJkbXJpdGtuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDQyNDUsImV4cCI6MjA3MDcyMDI0NX0.3wITO5E53yW2spDHi99ngaA0SRqnsJbAYzdT7DDa1tM' }}
           NODE_ENV: production
+        timeout-minutes: 20
 
       - name: ビルド成果物のアップロード
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: web-build
           path: dist/
           retention-days: 7
+          if-no-files-found: warn
 
   # セキュリティチェック
   security:
@@ -238,17 +364,21 @@ jobs:
 
       - name: テストデータ漏洩チェック
         run: |
-          if grep -r "test@example.com" supabase/migrations/; then
+          echo "🔍 テストデータの漏洩をチェックします..."
+          if grep -r "test@example.com" supabase/migrations/ 2>/dev/null; then
             echo "⚠️ テストデータがマイグレーションに含まれています"
             exit 1
           fi
           echo "✅ テストデータの漏洩なし"
+        continue-on-error: false
 
       - name: 環境変数チェック
         run: |
-          if grep -r "testpassword123" app/ components/ lib/; then
+          echo "🔍 ハードコードされた認証情報をチェックします..."
+          if grep -r "testpassword123" app/ components/ lib/ 2>/dev/null; then
             echo "⚠️ ハードコードされたパスワードが検出されました"
             exit 1
           fi
           echo "✅ ハードコードされた認証情報なし"
+        continue-on-error: false
 

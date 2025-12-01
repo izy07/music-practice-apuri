@@ -31,20 +31,23 @@ export default function ErrorLimitAlert({ errorCount, isErrorLimitReached, onRes
     );
   };
 
+  const errorColor = '#DC2626';
+  const errorBackground = '#FEE2E2';
+  
   return (
-    <View style={[styles.container, { backgroundColor: currentTheme.error || '#FEE2E2' }]}>
+    <View style={[styles.container, { backgroundColor: errorBackground }]}>
       <View style={styles.iconContainer}>
-        <AlertTriangle size={24} color={currentTheme.errorText || '#DC2626'} />
+        <AlertTriangle size={24} color={errorColor} />
       </View>
       
       <View style={styles.content}>
-        <Text style={[styles.title, { color: currentTheme.errorText || '#DC2626' }]}>
+        <Text style={[styles.title, { color: errorColor }]}>
           🚫 エラー制限に達しました
         </Text>
-        <Text style={[styles.message, { color: currentTheme.errorText || '#DC2626' }]}>
+        <Text style={[styles.message, { color: errorColor }]}>
           エラーが{errorCount}回発生したため、認証処理を停止しています。
         </Text>
-        <Text style={[styles.suggestion, { color: currentTheme.errorText || '#DC2626' }]}>
+        <Text style={[styles.suggestion, { color: errorColor }]}>
           アプリを再起動するか、下のボタンでエラーカウントをリセットしてください。
         </Text>
       </View>

@@ -116,14 +116,70 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       }
       
       // Supabaseから現在のセッションを取得（優先）
-      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      // ネットワークエラー時のリトライロジックを追加
+      let sessionData: any = null;
+      let sessionError: any = null;
+      const maxRetries = 3;
+      let retryCount = 0;
+      
+      while (retryCount < maxRetries) {
+        try {
+          const result = await supabase.auth.getSession();
+          sessionData = result.data;
+          sessionError = result.error;
+          
+          // ネットワークエラーでない場合、または成功した場合はループを抜ける
+          if (!sessionError || (sessionError.message && !sessionError.message.includes('Failed to fetch') && !sessionError.message.includes('NetworkError'))) {
+            break;
+          }
+          
+          // ネットワークエラーの場合、リトライ
+          if (sessionError && (sessionError.message?.includes('Failed to fetch') || sessionError.message?.includes('NetworkError'))) {
+            retryCount++;
+            if (retryCount < maxRetries) {
+              logger.warn(`[useAuthAdvanced] ネットワークエラー - リトライ ${retryCount}/${maxRetries}`, {
+                error: sessionError.message,
+              });
+              // 指数バックオフで待機（1秒、2秒、3秒）
+              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+              continue;
+            }
+          }
+        } catch (error) {
+          // 予期しないエラーの場合
+          if (error instanceof Error && (error.message.includes('Failed to fetch') || error.message.includes('NetworkError'))) {
+            retryCount++;
+            if (retryCount < maxRetries) {
+              logger.warn(`[useAuthAdvanced] ネットワークエラー（例外） - リトライ ${retryCount}/${maxRetries}`, {
+                error: error.message,
+              });
+              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+              continue;
+            }
+          }
+          // ネットワークエラーでない場合はそのままエラーを投げる
+          throw error;
+        }
+      }
       
       if (sessionError) {
+        // ネットワークエラーと認証エラーを区別
+        const isNetworkError = sessionError.message?.includes('Failed to fetch') || sessionError.message?.includes('NetworkError');
+        const errorMessage = isNetworkError 
+          ? 'ネットワーク接続に失敗しました。インターネット接続を確認してください。'
+          : sessionError.message;
+        
+        logger.error(`[useAuthAdvanced] セッション取得エラー`, {
+          isNetworkError,
+          error: sessionError.message,
+          retryCount,
+        });
+        
         updateAuthState({
           isAuthenticated: false,
           isLoading: false,
           isInitialized: true,
-          error: sessionError.message,
+          error: errorMessage,
         });
         return;
       }
@@ -800,6 +856,9 @@ const getAuthErrorMessage = (error: unknown): string => {
   
   // メッセージベースの判定（Supabaseの既定文言）
   const message = errorMessage.toLowerCase();
+  if (message.includes('user not found') || message.includes('user does not exist')) {
+    return 'このユーザーは登録されていません';
+  }
   if (message.includes('invalid login credentials')) {
     return 'メールアドレスまたはパスワードが正しくありません';
   }
@@ -812,6 +871,7 @@ const getAuthErrorMessage = (error: unknown): string => {
 
   switch (errorCode) {
     case 'user_not_found':
+      return 'このユーザーは登録されていません';
     case 'invalid_credentials':
       return 'メールアドレスまたはパスワードが正しくありません';
     case 'user_already_exists':

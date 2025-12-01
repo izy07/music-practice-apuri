@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, TextInput } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CheckSquare, CheckCircle, XCircle, Clock, ArrowLeft, Users } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
@@ -239,7 +240,7 @@ export default function AttendanceScreen() {
     : null;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]}>
       <InstrumentHeader />
       
       {/* ヘッダー */}
@@ -765,7 +766,7 @@ const styles = StyleSheet.create({
   attendanceItemContent: {
     flex: 1,
   },
-  memberName: {
+  memberNameSmall: {
     fontSize: 14,
     fontWeight: '500',
   },

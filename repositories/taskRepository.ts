@@ -17,14 +17,14 @@ import { isTaskArray } from '@/lib/validation';
  */
 export const taskRepository = {
   /**
-   * サブグループのタスク一覧を取得
+   * 組織のタスク一覧を取得
    */
-  async getBySubGroupId(subGroupId: string): Promise<RepositoryResult<Task[]>> {
+  async getByOrganizationId(organizationId: string): Promise<RepositoryResult<Task[]>> {
     return safeExecute(async () => {
       const { data, error } = await supabase
         .from('tasks')
         .select('*')
-        .eq('sub_group_id', subGroupId)
+        .eq('organization_id', organizationId)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -35,7 +35,7 @@ export const taskRepository = {
       }
 
       return safe as Task[];
-    }, 'getBySubGroupId');
+    }, 'getByOrganizationId');
   },
 
   /**
@@ -63,7 +63,6 @@ export const taskRepository = {
    */
   async create(data: {
     organization_id: string;
-    sub_group_id: string;
     title: string;
     description?: string;
     assigned_to?: string;
@@ -122,7 +121,7 @@ export const taskRepository = {
    */
   async update(
     id: string,
-    data: Partial<Omit<Task, 'id' | 'created_at' | 'organization_id' | 'sub_group_id'>>
+    data: Partial<Omit<Task, 'id' | 'created_at' | 'organization_id'>>
   ): Promise<RepositoryResult<Task>> {
     return safeExecute(async () => {
       const updateData: Record<string, unknown> = {

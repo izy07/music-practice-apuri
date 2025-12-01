@@ -22,7 +22,11 @@ describe('logger', () => {
   });
 
   it('開発環境ではdebugログを出力する', () => {
-    process.env.NODE_ENV = 'development';
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: 'development',
+      writable: true,
+      configurable: true
+    });
     delete process.env.LOG_LEVEL;
     
     jest.resetModules();
@@ -34,7 +38,11 @@ describe('logger', () => {
   });
 
   it('本番環境ではdebugログを出力しない', () => {
-    process.env.NODE_ENV = 'production';
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: 'production',
+      writable: true,
+      configurable: true
+    });
     delete process.env.LOG_LEVEL;
     
     jest.resetModules();
@@ -46,7 +54,11 @@ describe('logger', () => {
   });
 
   it('本番環境でもinfoログは出力する', () => {
-    process.env.NODE_ENV = 'production';
+    Object.defineProperty(process.env, 'NODE_ENV', {
+      value: 'production',
+      writable: true,
+      configurable: true
+    });
     delete process.env.LOG_LEVEL;
     
     jest.resetModules();

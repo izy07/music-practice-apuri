@@ -318,7 +318,7 @@ export default function ScoreAutoScrollScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       {/* ヘッダー */}
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>
         <TouchableOpacity onPress={() => router.push('/(tabs)/settings')} style={styles.backButton}>

@@ -120,7 +120,17 @@ export default function PracticeRecordModal({
           // 既存の記録をフォームに設定
           setMinutes(session.duration_minutes.toString());
           if (session.content) {
-            setContent(session.content);
+            // contentから時間詳細（経由情報）を削除して設定
+            const cleanedContent = session.content
+              .replace(/\s*\(累計\d+分\)/g, '')
+              .replace(/\s*累計\d+分/g, '')
+              .replace(/\s*\+\s*[^,]+?\d+分/g, '')
+              .replace(/\s*[^,]+?\d+分/g, '')
+              .replace(/練習記録/g, '')
+              .replace(/^[\s,]+|[\s,]+$/g, '')
+              .replace(/,\s*,/g, ',')
+              .trim();
+            setContent(cleanedContent);
           }
         } else {
           // タイマー記録のみの場合

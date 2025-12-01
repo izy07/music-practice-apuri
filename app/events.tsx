@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { PartyPopper, ArrowLeft, Calendar, Clock, MapPin, ChevronRight } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
@@ -36,7 +37,8 @@ export default function EventsScreen() {
       
       if (isAllOrgsMode) {
         // 全組織のイベントを取得
-        const orgs = await organizationRepository.getUserOrganizations();
+        const orgsResult = await organizationRepository.getUserOrganizations();
+        const orgs = orgsResult.data || [];
         const allEvents: UnifiedEvent[] = [];
         
         await Promise.all(orgs.map(async (org) => {
@@ -113,7 +115,7 @@ export default function EventsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]}>
       <InstrumentHeader />
       
       {/* ヘッダー */}

@@ -156,7 +156,7 @@ export default function SettingsScreen() {
   ];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme?.background || '#F7FAFC' }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme?.background || '#F7FAFC' }]} >
       <InstrumentHeader />
       
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>

@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, TextInput } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CheckSquare, Plus, ArrowLeft, Users, Calendar, Edit3 } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
-import { TaskManager, SubGroupManager, PracticeTask, SubGroup, TaskProgress } from '@/lib/groupManagement';
+import { TaskManager } from '@/lib/groupManagement';
+import type { Task, TaskStatus } from '@/types/organization';
 
 export default function TasksScreen() {
   const router = useRouter();
@@ -14,9 +16,7 @@ export default function TasksScreen() {
   const { t } = useLanguage();
   
   // 状態管理
-  const [subGroups, setSubGroups] = useState<SubGroup[]>([]);
-  const [selectedSubGroup, setSelectedSubGroup] = useState<SubGroup | null>(null);
-  const [tasks, setTasks] = useState<PracticeTask[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createForm, setCreateForm] = useState({
@@ -26,39 +26,17 @@ export default function TasksScreen() {
   });
 
   useEffect(() => {
-    loadSubGroups();
-  }, [orgId]);
-
-  useEffect(() => {
-    if (selectedSubGroup) {
+    if (orgId) {
       loadTasks();
     }
-  }, [selectedSubGroup]);
-
-  const loadSubGroups = async () => {
-    setLoading(true);
-    try {
-      const result = await SubGroupManager.getOrganizationSubGroups(orgId as string);
-      if (result.success && result.subGroups) {
-        setSubGroups(result.subGroups);
-        // 最初のサブグループを選択
-        if (result.subGroups.length > 0) {
-          setSelectedSubGroup(result.subGroups[0]);
-        }
-      }
-    } catch (error) {
-      console.error('サブグループ読み込みエラー:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [orgId]);
 
   const loadTasks = async () => {
-    if (!selectedSubGroup) return;
+    if (!orgId) return;
     
     setLoading(true);
     try {
-      const result = await TaskManager.getSubGroupTasks(selectedSubGroup.id);
+      const result = await TaskManager.getOrganizationTasks(orgId as string);
       if (result.success && result.tasks) {
         setTasks(result.tasks);
       }
@@ -70,7 +48,7 @@ export default function TasksScreen() {
   };
 
   const createTask = async () => {
-    if (!selectedSubGroup || !createForm.title.trim()) {
+    if (!orgId || !createForm.title.trim()) {
       Alert.alert('エラー', 'タイトルを入力してください');
       return;
     }
@@ -79,7 +57,6 @@ export default function TasksScreen() {
     try {
       const result = await TaskManager.createTask(
         orgId as string,
-        selectedSubGroup.id,
         createForm.title.trim(),
         createForm.description.trim() || undefined,
         undefined, // assignedTo
@@ -102,7 +79,7 @@ export default function TasksScreen() {
     }
   };
 
-  const updateTaskProgress = async (taskId: string, status: 'not_started' | 'in_progress' | 'completed') => {
+  const updateTaskProgress = async (taskId: string, status: TaskStatus) => {
     setLoading(true);
     try {
       const result = await TaskManager.updateTaskProgress(taskId, status);
@@ -124,7 +101,7 @@ export default function TasksScreen() {
         return <CheckSquare size={20} color="#4CAF50" />;
       case 'in_progress':
         return <Edit3 size={20} color="#FF9800" />;
-      case 'not_started':
+      case 'pending':
         return <CheckSquare size={20} color="#9E9E9E" />;
       default:
         return <CheckSquare size={20} color="#9E9E9E" />;
@@ -135,7 +112,7 @@ export default function TasksScreen() {
     switch (status) {
       case 'completed': return '完了';
       case 'in_progress': return '進行中';
-      case 'not_started': return '未着手';
+      case 'pending': return '未着手';
       default: return '未着手';
     }
   };
@@ -144,7 +121,7 @@ export default function TasksScreen() {
     switch (status) {
       case 'completed': return '#4CAF50';
       case 'in_progress': return '#FF9800';
-      case 'not_started': return '#9E9E9E';
+      case 'pending': return '#9E9E9E';
       default: return '#9E9E9E';
     }
   };
@@ -154,17 +131,9 @@ export default function TasksScreen() {
     return new Date(dueDate) < new Date();
   };
 
-  const getSubGroupTypeLabel = (type: string) => {
-    switch (type) {
-      case 'part': return 'パート';
-      case 'grade': return '学年';
-      case 'section': return 'セクション';
-      default: return type;
-    }
-  };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <InstrumentHeader />
       
       {/* ヘッダー */}
@@ -180,52 +149,12 @@ export default function TasksScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* サブグループ選択 */}
-      {subGroups.length > 0 && (
-        <View style={styles.subGroupSelector}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            {subGroups.map((subGroup) => (
-              <TouchableOpacity
-                key={subGroup.id}
-                style={[
-                  styles.subGroupButton,
-                  { 
-                    backgroundColor: selectedSubGroup?.id === subGroup.id ? currentTheme.primary : currentTheme.surface,
-                    borderColor: selectedSubGroup?.id === subGroup.id ? currentTheme.primary : currentTheme.secondary
-                  }
-                ]}
-                onPress={() => setSelectedSubGroup(subGroup)}
-              >
-                <Text style={[
-                  styles.subGroupButtonText,
-                  { 
-                    color: selectedSubGroup?.id === subGroup.id ? currentTheme.surface : currentTheme.text
-                  }
-                ]}>
-                  {subGroup.name}
-                </Text>
-                <Text style={[
-                  styles.subGroupTypeText,
-                  { 
-                    color: selectedSubGroup?.id === subGroup.id ? currentTheme.surface : currentTheme.textSecondary
-                  }
-                ]}>
-                  {getSubGroupTypeLabel(subGroup.group_type)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
-
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* タスク一覧 */}
         <View style={styles.section}>
-          {selectedSubGroup && (
-            <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-              {selectedSubGroup.name}の課題
-            </Text>
-          )}
+          <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
+            課題一覧
+          </Text>
           
           {tasks.length === 0 ? (
             <View style={[styles.emptyState, { backgroundColor: currentTheme.surface }]}>
@@ -267,13 +196,13 @@ export default function TasksScreen() {
                   </View>
                   <View style={[
                     styles.statusBadge,
-                    { backgroundColor: getProgressStatusColor('not_started') + '20' }
+                    { backgroundColor: getProgressStatusColor('pending') + '20' }
                   ]}>
                     <Text style={[
                       styles.statusText,
-                      { color: getProgressStatusColor('not_started') }
+                      { color: getProgressStatusColor('pending') }
                     ]}>
-                      {getProgressStatusLabel('not_started')}
+                      {getProgressStatusLabel('pending')}
                     </Text>
                   </View>
                 </View>
@@ -291,10 +220,10 @@ export default function TasksScreen() {
                       styles.progressButton,
                       { 
                         backgroundColor: '#9E9E9E',
-                        opacity: 'not_started' === 'not_started' ? 1 : 0.5
+                        opacity: task.status === 'pending' ? 1 : 0.5
                       }
                     ]}
-                    onPress={() => updateTaskProgress(task.id, 'not_started')}
+                    onPress={() => updateTaskProgress(task.id, 'pending')}
                     disabled={loading}
                   >
                     <CheckSquare size={16} color="#FFFFFF" />
@@ -377,14 +306,6 @@ export default function TasksScreen() {
             </View>
 
             <ScrollView style={styles.modalBody}>
-              {selectedSubGroup && (
-                <View style={styles.selectedSubGroupInfo}>
-                  <Users size={20} color={currentTheme.primary} />
-                  <Text style={[styles.selectedSubGroupText, { color: currentTheme.text }]}>
-                    {selectedSubGroup.name} ({getSubGroupTypeLabel(selectedSubGroup.group_type)})
-                  </Text>
-                </View>
-              )}
 
               <View style={styles.inputContainer}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
@@ -473,26 +394,6 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-  },
-  subGroupSelector: {
-    paddingHorizontal: 20,
-    marginBottom: 16,
-  },
-  subGroupButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  subGroupButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  subGroupTypeText: {
-    fontSize: 12,
-    marginTop: 2,
   },
   content: {
     flex: 1,
@@ -646,19 +547,6 @@ const styles = StyleSheet.create({
   },
   modalBody: {
     padding: 20,
-  },
-  selectedSubGroupInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    backgroundColor: '#f5f5f5',
-    borderRadius: 8,
-    marginBottom: 16,
-    gap: 8,
-  },
-  selectedSubGroupText: {
-    fontSize: 14,
-    fontWeight: '500',
   },
   inputContainer: {
     marginBottom: 16,

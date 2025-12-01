@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert, Modal, TextInput, FlatList, Share, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, TextInput, FlatList, Share, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Settings, Plus, Users, Trash2, Edit3, ArrowLeft, UserPlus, Crown, Shield, Share as ShareIcon, Copy, Key } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import InstrumentHeader from '../components/InstrumentHeader';
@@ -9,8 +10,7 @@ import { safeGoBack } from '@/lib/navigationUtils';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { useOrganization } from '@/hooks/useOrganization';
 import { useAdminCode } from '@/hooks/useAdminCode';
-import { useSubGroup } from '@/hooks/useSubGroup';
-import type { Organization, SubGroup, UserGroupMembership } from '@/types/organization';
+import type { Organization, UserGroupMembership } from '@/types/organization';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 
@@ -39,22 +39,13 @@ export default function OrganizationSettingsScreen() {
     becomeAdminByCode,
   } = useAdminCode();
   
-  const {
-    subGroups,
-    loading: subGroupLoading,
-    loadSubGroups,
-    createSubGroup: createSubGroupHook,
-    deleteSubGroup: deleteSubGroupHook,
-  } = useSubGroup();
-  
   // 状態管理
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [members, setMembers] = useState<UserGroupMembership[]>([]);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'members' | 'subgroups' | 'organization'>('members');
+  const [activeTab, setActiveTab] = useState<'members' | 'organization'>('members');
   
   // モーダル状態
-  const [showCreateSubGroup, setShowCreateSubGroup] = useState(false);
   const [showInviteMember, setShowInviteMember] = useState(false);
   const [showEditOrganization, setShowEditOrganization] = useState(false);
   const [showCredentials, setShowCredentials] = useState(false);
@@ -72,14 +63,8 @@ export default function OrganizationSettingsScreen() {
   });
   
   // フォーム状態
-  const [subGroupForm, setSubGroupForm] = useState({
-    name: '',
-    description: '',
-    groupType: 'part' as 'part' | 'grade' | 'section'
-  });
   const [inviteForm, setInviteForm] = useState({
     email: '',
-    subGroupId: '',
     role: 'member' as 'member' | 'leader' | 'admin'
   });
   const [orgEditForm, setOrgEditForm] = useState({
@@ -106,11 +91,6 @@ export default function OrganizationSettingsScreen() {
         setOrganizationPassword(org.password || '');
       }
 
-      // サブグループ一覧を取得
-      if (orgId) {
-        await loadSubGroups(orgId as string);
-      }
-
       // TODO: メンバー一覧の取得（実装が必要）
       // const membersResult = await MemberManager.getOrganizationMembers(orgId as string);
       // if (membersResult.success && membersResult.members) {
@@ -123,29 +103,6 @@ export default function OrganizationSettingsScreen() {
     }
   };
 
-  const createSubGroup = async () => {
-    if (!subGroupForm.name.trim()) {
-      Alert.alert('エラー', 'サブグループ名を入力してください');
-      return;
-    }
-
-    if (!orgId) {
-      Alert.alert('エラー', '組織IDが取得できません');
-      return;
-    }
-
-    const result = await createSubGroupHook(orgId as string, {
-      name: subGroupForm.name.trim(),
-      groupType: subGroupForm.groupType,
-      description: subGroupForm.description.trim() || undefined,
-    });
-
-    if (result) {
-      Alert.alert('成功', 'サブグループを作成しました！');
-      setShowCreateSubGroup(false);
-      setSubGroupForm({ name: '', description: '', groupType: 'part' });
-    }
-  };
 
   // 共有機能
   const shareCredentials = async () => {
@@ -331,26 +288,6 @@ export default function OrganizationSettingsScreen() {
     );
   };
 
-  const deleteSubGroup = async (subGroupId: string, subGroupName: string) => {
-    Alert.alert(
-      'サブグループを削除',
-      `${subGroupName}を削除しますか？`,
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        {
-          text: '削除',
-          style: 'destructive',
-          onPress: async () => {
-            const success = await deleteSubGroupHook(subGroupId);
-            
-            if (success) {
-              Alert.alert('成功', 'サブグループを削除しました');
-            }
-          }
-        }
-      ]
-    );
-  };
 
   const removeMember = async (memberId: string, memberName: string) => {
     Alert.alert(
@@ -379,8 +316,8 @@ export default function OrganizationSettingsScreen() {
   };
 
   const inviteMember = async () => {
-    if (!inviteForm.email.trim() || !inviteForm.subGroupId) {
-      Alert.alert('エラー', 'メールアドレスとサブグループを選択してください');
+    if (!inviteForm.email.trim()) {
+      Alert.alert('エラー', 'メールアドレスを入力してください');
       return;
     }
 
@@ -389,7 +326,7 @@ export default function OrganizationSettingsScreen() {
       // TODO: メンバー招待機能の実装
       Alert.alert('情報', 'メンバー招待機能は実装中です');
       setShowInviteMember(false);
-      setInviteForm({ email: '', subGroupId: '', role: 'member' });
+      setInviteForm({ email: '', role: 'member' });
     } catch (error) {
       Alert.alert('エラー', 'メンバーの招待に失敗しました');
     } finally {
@@ -414,18 +351,10 @@ export default function OrganizationSettingsScreen() {
     }
   };
 
-  const getSubGroupTypeLabel = (type: string) => {
-    switch (type) {
-      case 'part': return 'パート';
-      case 'grade': return '学年';
-      case 'section': return 'セクション';
-      default: return type;
-    }
-  };
 
   if (loading && !organization) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
         <InstrumentHeader />
         <View style={styles.loadingContainer}>
           <Text style={[styles.loadingText, { color: currentTheme.text }]}>読み込み中...</Text>
@@ -435,7 +364,7 @@ export default function OrganizationSettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <InstrumentHeader />
       
       {/* ヘッダー */}
@@ -464,22 +393,6 @@ export default function OrganizationSettingsScreen() {
             { color: activeTab === 'members' ? currentTheme.surface : currentTheme.text }
           ]}>
             メンバー
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.tabButton,
-            { backgroundColor: activeTab === 'subgroups' ? currentTheme.primary : currentTheme.surface }
-          ]}
-          onPress={() => setActiveTab('subgroups')}
-        >
-          <Settings size={20} color={activeTab === 'subgroups' ? currentTheme.surface : currentTheme.text} />
-          <Text style={[
-            styles.tabButtonText,
-            { color: activeTab === 'subgroups' ? currentTheme.surface : currentTheme.text }
-          ]}>
-            サブグループ
           </Text>
         </TouchableOpacity>
 
@@ -565,73 +478,6 @@ export default function OrganizationSettingsScreen() {
                       <TouchableOpacity 
                         style={styles.actionButton}
                         onPress={() => removeMember(item.user_id, 'メンバー名')}
-                        disabled={loading}
-                      >
-                        <Trash2 size={16} color="#F44336" />
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-                scrollEnabled={false}
-              />
-            )}
-          </View>
-        )}
-
-        {/* サブグループ管理タブ */}
-        {activeTab === 'subgroups' && (
-          <View style={styles.tabContent}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-                サブグループ管理
-              </Text>
-              <TouchableOpacity
-                style={[styles.addButton, { backgroundColor: currentTheme.primary }]}
-                onPress={() => setShowCreateSubGroup(true)}
-              >
-                <Plus size={20} color={currentTheme.surface} />
-                <Text style={[styles.addButtonText, { color: currentTheme.surface }]}>
-                  作成
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {subGroups.length === 0 ? (
-              <View style={[styles.emptyState, { backgroundColor: currentTheme.surface }]}>
-                <Settings size={48} color={currentTheme.textSecondary} />
-                <Text style={[styles.emptyStateText, { color: currentTheme.text }]}>
-                  サブグループが作成されていません
-                </Text>
-                <Text style={[styles.emptyStateSubtext, { color: currentTheme.textSecondary }]}>
-                  パートや学年などのサブグループを作成してください
-                </Text>
-              </View>
-            ) : (
-              <FlatList
-                data={subGroups}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <View style={[styles.subGroupCard, { backgroundColor: currentTheme.surface }]}>
-                    <View style={styles.subGroupInfo}>
-                      <Text style={[styles.subGroupName, { color: currentTheme.text }]}>
-                        {item.name}
-                      </Text>
-                      <Text style={[styles.subGroupType, { color: currentTheme.textSecondary }]}>
-                        {getSubGroupTypeLabel(item.group_type)}
-                      </Text>
-                      {item.description && (
-                        <Text style={[styles.subGroupDescription, { color: currentTheme.textSecondary }]}>
-                          {item.description}
-                        </Text>
-                      )}
-                    </View>
-                    <View style={styles.subGroupActions}>
-                      <TouchableOpacity style={styles.actionButton}>
-                        <Edit3 size={16} color={currentTheme.primary} />
-                      </TouchableOpacity>
-                      <TouchableOpacity 
-                        style={styles.actionButton}
-                        onPress={() => deleteSubGroup(item.id, item.name)}
                         disabled={loading}
                       >
                         <Trash2 size={16} color="#F44336" />
@@ -908,108 +754,6 @@ export default function OrganizationSettingsScreen() {
         )}
       </ScrollView>
 
-      {/* サブグループ作成モーダル */}
-      <Modal
-        visible={showCreateSubGroup}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowCreateSubGroup(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
-                サブグループを作成
-              </Text>
-              <TouchableOpacity onPress={() => setShowCreateSubGroup(false)}>
-                <Text style={[styles.closeButton, { color: currentTheme.text }]}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody}>
-              <View style={styles.inputContainer}>
-                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                  サブグループ名 *
-                </Text>
-                <TextInput
-                  style={[styles.textInput, { 
-                    backgroundColor: currentTheme.background,
-                    color: currentTheme.text,
-                    borderColor: currentTheme.secondary
-                  }]}
-                  value={subGroupForm.name}
-                  onChangeText={(text) => setSubGroupForm(prev => ({ ...prev, name: text }))}
-                  placeholder="例：第1ヴァイオリン"
-                  placeholderTextColor={currentTheme.textSecondary}
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                  種類
-                </Text>
-                <View style={styles.typeButtons}>
-                  {(['part', 'grade', 'section'] as const).map((type) => (
-                    <TouchableOpacity
-                      key={type}
-                      style={[
-                        styles.typeButton,
-                        { 
-                          backgroundColor: subGroupForm.groupType === type ? currentTheme.primary : currentTheme.background,
-                          borderColor: currentTheme.secondary
-                        }
-                      ]}
-                      onPress={() => setSubGroupForm(prev => ({ ...prev, groupType: type }))}
-                    >
-                      <Text style={[
-                        styles.typeButtonText,
-                        { 
-                          color: subGroupForm.groupType === type ? currentTheme.surface : currentTheme.text
-                        }
-                      ]}>
-                        {getSubGroupTypeLabel(type)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                  説明
-                </Text>
-                <TextInput
-                  style={[styles.textArea, { 
-                    backgroundColor: currentTheme.background,
-                    color: currentTheme.text,
-                    borderColor: currentTheme.secondary
-                  }]}
-                  value={subGroupForm.description}
-                  onChangeText={(text) => setSubGroupForm(prev => ({ ...prev, description: text }))}
-                  placeholder="サブグループの説明を入力"
-                  placeholderTextColor={currentTheme.textSecondary}
-                  multiline
-                  numberOfLines={3}
-                />
-              </View>
-
-              <TouchableOpacity
-                style={[styles.modalButton, { 
-                  backgroundColor: currentTheme.primary,
-                  opacity: loading ? 0.6 : 1
-                }]}
-                onPress={createSubGroup}
-                disabled={loading}
-              >
-                <Text style={[styles.modalButtonText, { color: currentTheme.surface }]}>
-                  {loading ? '作成中...' : 'サブグループを作成'}
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
       {/* メンバー招待モーダル */}
       <Modal
         visible={showInviteMember}
@@ -1046,36 +790,6 @@ export default function OrganizationSettingsScreen() {
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                  サブグループ *
-                </Text>
-                <View style={styles.subGroupSelector}>
-                  {subGroups.map((subGroup) => (
-                    <TouchableOpacity
-                      key={subGroup.id}
-                      style={[
-                        styles.subGroupOption,
-                        { 
-                          backgroundColor: inviteForm.subGroupId === subGroup.id ? currentTheme.primary : currentTheme.background,
-                          borderColor: currentTheme.secondary
-                        }
-                      ]}
-                      onPress={() => setInviteForm(prev => ({ ...prev, subGroupId: subGroup.id }))}
-                    >
-                      <Text style={[
-                        styles.subGroupOptionText,
-                        { 
-                          color: inviteForm.subGroupId === subGroup.id ? currentTheme.surface : currentTheme.text
-                        }
-                      ]}>
-                        {subGroup.name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
               </View>
 
               <View style={styles.inputContainer}>
@@ -1223,7 +937,7 @@ export default function OrganizationSettingsScreen() {
             </View>
 
             <ScrollView style={styles.modalBody}>
-              <Text style={[styles.modalDescription, { color: currentTheme.textSecondary }]}>
+              <Text style={[styles.inputLabel, { color: currentTheme.textSecondary, marginBottom: 16 }]}>
                 4桁の数字で管理者コードを設定してください。このコードを入力したユーザーは管理者になります。
               </Text>
 
@@ -1315,7 +1029,7 @@ export default function OrganizationSettingsScreen() {
             </View>
 
             <ScrollView style={styles.modalBody}>
-              <Text style={[styles.modalDescription, { color: currentTheme.textSecondary }]}>
+              <Text style={[styles.inputLabel, { color: currentTheme.textSecondary, marginBottom: 16 }]}>
                 組織作成者から提供された4桁の管理者コードを入力してください。
               </Text>
 
@@ -1779,5 +1493,10 @@ const styles = StyleSheet.create({
   modalButtonText: {
     fontSize: 16,
     fontWeight: '700',
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: '#666666',
+    marginTop: 8,
   },
 });

@@ -237,7 +237,7 @@ export default function TutorialScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={[]}>
+    <SafeAreaView style={styles.container} >
       <SafeView style={styles.header}>
         <View style={styles.headerSpacer} />
         <Text style={styles.title}>チュートリアル</Text>

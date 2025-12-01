@@ -7,7 +7,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ClipboardList } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
@@ -15,12 +16,10 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
 import { useOrganization } from '@/hooks/useOrganization';
 import { taskService } from '@/services/taskService';
-import { subGroupService } from '@/services/subGroupService';
 import type { Task } from '@/types/organization';
 
 interface UnifiedTask extends Task {
   organization_name: string;
-  sub_group_name?: string;
 }
 
 export default function TasksAllOrgsScreen() {
@@ -50,20 +49,14 @@ export default function TasksAllOrgsScreen() {
       for (const org of organizations) {
         try {
           // 組織のサブグループを取得
-          const subGroupsResult = await subGroupService.getByOrganizationId(org.id);
-          if (subGroupsResult.success && subGroupsResult.data) {
-            for (const subGroup of subGroupsResult.data) {
-              // サブグループのタスクを取得
-              const tasksResult = await taskService.getBySubGroupId(subGroup.id);
-              if (tasksResult.success && tasksResult.data) {
-                for (const task of tasksResult.data) {
-                  allTasks.push({
-                    ...task,
-                    organization_name: org.name,
-                    sub_group_name: subGroup.name,
-                  });
-                }
-              }
+          // 組織のタスクを取得
+          const tasksResult = await taskService.getByOrganizationId(org.id);
+          if (tasksResult.success && tasksResult.data) {
+            for (const task of tasksResult.data) {
+              allTasks.push({
+                ...task,
+                organization_name: org.name,
+              });
             }
           }
         } catch (error) {
@@ -111,7 +104,7 @@ export default function TasksAllOrgsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <InstrumentHeader />
       
       {/* ヘッダー */}
@@ -158,7 +151,6 @@ export default function TasksAllOrgsScreen() {
                   </Text>
                   <Text style={[styles.taskOrganization, { color: currentTheme.textSecondary }]}>
                     {task.organization_name}
-                    {task.sub_group_name && ` ・ ${task.sub_group_name}`}
                   </Text>
                 </View>
                 <View
