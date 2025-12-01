@@ -10,6 +10,8 @@ import { ErrorHandler } from '@/lib/errorHandler';
 import { SuccessMessages } from '@/lib/errorMessages';
 import logger from '@/lib/logger';
 import { createShadowStyle } from '@/lib/shadowStyles';
+import { storageManager, emitStorageEvent } from '@/lib/storageManager';
+import { withUser, STORAGE_KEYS } from '@/lib/storageKeys';
 
 interface Instrument {
   id: string;
@@ -127,9 +129,10 @@ export default function InstrumentSelectionScreen() {
     try {
       setLoading(true);
 
+      // 最小限のカラムのみを選択（存在が確実なカラムのみ）
       const { data: existingProfile, error: fetchError } = await supabase
         .from('user_profiles')
-        .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
+        .select('id, user_id, selected_instrument_id')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -177,15 +180,30 @@ export default function InstrumentSelectionScreen() {
           //   updateData.custom_instrument_name = customInstrumentName.trim();
           // }
           
+          // 最小限のカラムのみを選択（存在が確実なカラムのみ）
           const { error: updateError } = await supabase
             .from('user_profiles')
             .update(updateData)
             .eq('user_id', user.id)
-            .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
+            .select('id, user_id, selected_instrument_id');
           error = updateError;
 
-          // 400エラー（レコードが存在しない）の場合にupsertにフォールバック
-          if (error && (error.code === 'PGRST116' || error.code === 'PGRST205' || (error.status === 400 && error.message?.includes('No rows found')))) {
+          // 400エラーの詳細をログに出力
+          if (error && error.status === 400) {
+            logger.error('user_profiles更新エラー（400）:', {
+              error,
+              updateData,
+              userId: user.id,
+              errorMessage: error.message,
+              errorCode: error.code,
+            });
+          }
+
+          // 400エラー（レコードが存在しない、またはカラムが存在しない）の場合にupsertにフォールバック
+          if (error && (error.code === 'PGRST116' || error.code === 'PGRST205' || 
+              (error.status === 400 && (error.message?.includes('No rows found') || 
+                                        error.message?.includes('column') || 
+                                        error.message?.includes('does not exist'))))) {
             logger.warn('user_profilesレコードが存在しないためupsertを試みます', { error, selectedInstrumentId });
             
             const upsertData: any = {
@@ -194,14 +212,26 @@ export default function InstrumentSelectionScreen() {
               updated_at: new Date().toISOString()
             };
             
+            // 最小限のカラムのみを選択（存在が確実なカラムのみ）
             const { data: upsertDataResult, error: upsertError } = await supabase
               .from('user_profiles')
               .upsert(upsertData, {
                 onConflict: 'user_id'
               })
-              .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
+              .select('id, user_id, selected_instrument_id')
               .single();
             error = upsertError;
+            
+            // 400エラーの詳細をログに出力
+            if (error && error.status === 400) {
+              logger.error('user_profiles upsertエラー（400）:', {
+                error,
+                upsertData,
+                userId: user.id,
+                errorMessage: error.message,
+                errorCode: error.code,
+              });
+            }
             
             // upsert成功した場合はcurrentProfileを更新
             if (!error && upsertDataResult) {
@@ -222,13 +252,25 @@ export default function InstrumentSelectionScreen() {
           //   upsertData.custom_instrument_name = customInstrumentName.trim();
           // }
           
+          // 最小限のカラムのみを選択（存在が確実なカラムのみ）
           const { error: upsertError } = await supabase
             .from('user_profiles')
             .upsert(upsertData, {
               onConflict: 'user_id'
             })
-            .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
+            .select('id, user_id, selected_instrument_id');
           error = upsertError;
+          
+          // 400エラーの詳細をログに出力
+          if (error && error.status === 400) {
+            logger.error('user_profiles upsertエラー（400）:', {
+              error,
+              upsertData,
+              userId: user.id,
+              errorMessage: error.message,
+              errorCode: error.code,
+            });
+          }
         }
 
         // エラー処理：409エラー、外部キー制約違反、その他のエラーを区別して処理
@@ -419,16 +461,19 @@ export default function InstrumentSelectionScreen() {
       
       // ストレージイベントを発火して、useAuthSimpleが楽器選択状態を検出できるようにする
       if (typeof window !== 'undefined') {
-        const { storageManager, emitStorageEvent } = await import('@/lib/storageManager');
-        const { withUser } = await import('@/lib/storageKeys');
-        const { STORAGE_KEYS } = await import('@/lib/storageKeys');
-        
-        const userKey = withUser(STORAGE_KEYS.selectedInstrument, user.id);
-        storageManager.set(userKey, selectedInstrumentId);
-        emitStorageEvent(userKey, selectedInstrumentId);
-        
-        // グローバルキャッシュも更新
-        (globalThis as any).__last_selected_instrument_id = selectedInstrumentId;
+        try {
+          const userKey = withUser(STORAGE_KEYS.selectedInstrument, user.id);
+          await storageManager.set(userKey, selectedInstrumentId);
+          emitStorageEvent(userKey, selectedInstrumentId);
+          
+          // グローバルキャッシュも更新
+          (globalThis as any).__last_selected_instrument_id = selectedInstrumentId;
+        } catch (storageError) {
+          // storageManagerのエラーは無視（オフライン環境の可能性）
+          logger.warn('storageManagerの更新に失敗しました（続行）:', storageError);
+          // グローバルキャッシュのみ更新
+          (globalThis as any).__last_selected_instrument_id = selectedInstrumentId;
+        }
       }
       
       // 少し待ってから認証状態の更新を待つ

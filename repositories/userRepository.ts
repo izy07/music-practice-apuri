@@ -38,9 +38,10 @@ export const getUserProfile = async (
     async () => {
       logger.debug(`[${REPOSITORY_CONTEXT}] getUserProfile:start`, { userId });
       
+      // 最小限のカラムのみを選択（存在が確実なカラムのみ）
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
+        .select('id, user_id, display_name, selected_instrument_id')
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -74,7 +75,7 @@ export const upsertUserProfile = async (
           },
           { onConflict: 'user_id' }
         )
-        .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
+        .select('id, user_id, display_name, selected_instrument_id')
         .single();
 
       if (error) {
@@ -217,6 +218,7 @@ export const updateSelectedInstrument = async (
       if (error && (error.code === 'PGRST116' || error.code === 'PGRST205' || (error.status === 400 && error.message?.includes('No rows found')))) {
         logger.warn(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:レコードが存在しないためupsertを試みます`, { userId, instrumentId });
         
+        // 最小限のカラムのみを使用（存在が確実なカラムのみ）
         const { error: upsertError } = await supabase
           .from('user_profiles')
           .upsert(
@@ -224,9 +226,6 @@ export const updateSelectedInstrument = async (
               user_id: userId,
               selected_instrument_id: instrumentId,
               updated_at: new Date().toISOString(),
-              display_name: undefined,
-              practice_level: 'beginner',
-              total_practice_minutes: 0,
             },
             { onConflict: 'user_id' }
           );
@@ -335,7 +334,7 @@ export const updateUserProfile = async (
           updated_at: new Date().toISOString(),
         })
         .eq('user_id', userId)
-        .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
+        .select('id, user_id, display_name, selected_instrument_id');
       
       if (error) {
         // レコードが存在しない場合（PGRST116またはPGRST205エラー）はupsertを試みる
@@ -350,14 +349,12 @@ export const updateUserProfile = async (
                 user_id: userId,
                 ...updates,
                 updated_at: new Date().toISOString(),
-                // デフォルト値を設定（レコードが存在しない場合）
+                // 最小限のカラムのみを使用（存在が確実なカラムのみ）
                 display_name: updates.display_name || undefined,
-                practice_level: updates.practice_level || 'beginner',
-                total_practice_minutes: 0,
               },
               { onConflict: 'user_id' }
             )
-            .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
+            .select('id, user_id, display_name, selected_instrument_id')
             .single();
           
           if (upsertError) {
@@ -372,7 +369,7 @@ export const updateUserProfile = async (
                   updated_at: new Date().toISOString(),
                 })
                 .eq('user_id', userId)
-                .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
+                .select('id, user_id, display_name, selected_instrument_id');
               
               if (updateError) {
                 logger.error(`[${REPOSITORY_CONTEXT}] updateUserProfile:updateも失敗`, updateError);
@@ -449,7 +446,7 @@ export const updateUserProfile = async (
                   updated_at: new Date().toISOString(),
                 })
                 .eq('user_id', userId)
-                .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at');
+                .select('id, user_id, display_name, selected_instrument_id');
               
               if (retryError) {
                 logger.error(`[${REPOSITORY_CONTEXT}] updateUserProfile:再試行も失敗`, retryError);

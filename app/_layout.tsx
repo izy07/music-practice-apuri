@@ -403,13 +403,28 @@ function RootLayoutContent() {
       const onboardingCompleted = (profile as any)?.onboarding_completed ?? false;
       
       if (onboardingCompleted) {
-        navigateWithDelay('/(tabs)/');
+        logger.debug('✅ オンボーディング完了 - メイン画面に遷移');
+        // 即座に遷移を実行（遅延なし）
+        try {
+          router.replace('/(tabs)/' as any);
+        } catch (error) {
+          logger.error('❌ メイン画面への遷移エラー:', error);
+          navigateWithDelay('/(tabs)/', 100);
+        }
       } else if (profile?.selected_instrument_id) {
         // 楽器が選択されている場合はメイン画面に遷移
         // tutorial_completedは楽器選択時に更新されるため、ここではチェックしない
-        navigateWithDelay('/(tabs)/');
+        logger.debug('✅ 楽器選択済み - メイン画面に遷移');
+        // 即座に遷移を実行（遅延なし）
+        try {
+          router.replace('/(tabs)/' as any);
+        } catch (error) {
+          logger.error('❌ メイン画面への遷移エラー:', error);
+          navigateWithDelay('/(tabs)/', 100);
+        }
       } else {
         // 楽器が選択されていない場合は楽器選択画面に遷移
+        logger.debug('🎓 楽器未選択 - 楽器選択画面に遷移');
         navigateWithDelay('/(tabs)/instrument-selection');
       }
     } catch (error) {
@@ -528,6 +543,11 @@ function RootLayoutContent() {
      * - 認証状態の更新タイミングの問題を回避
      */
     if (isAuthenticated && inAuthGroup && (authChild === 'login' || authChild === 'signup' || authChild === 'callback')) {
+      logger.debug('✅ 認証成功検出 - 画面遷移を実行します', {
+        authChild,
+        hasInstrument: hasInstrumentSelected(),
+        canAccessMain: canAccessMainApp(),
+      });
       // 即座に画面遷移を実行（遅延を削除）
       checkUserProgressAndNavigate();
       return;
