@@ -374,22 +374,44 @@ export default function CalendarScreen() {
             // contentから時間詳細を削除（時間詳細は表示しない）
             const cleanContent = content || '練習記録';
             
+            // updated_atカラムが存在しない可能性があるため、payloadから除外
+            const updatePayload: { duration_minutes: number; content: string; updated_at?: string } = {
+              duration_minutes: totalMinutes, // 既存時間 + 新規時間
+              content: cleanContent, // 時間詳細を含めない
+            };
+
             const { error } = await supabase
               .from('practice_sessions')
-              .update({
-                duration_minutes: totalMinutes, // 既存時間 + 新規時間
-                content: cleanContent, // 時間詳細を含めない
-                updated_at: new Date().toISOString()
-              })
+              .update(updatePayload)
               .eq('id', existing.id);
 
             if (error) {
-              if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
+              // updated_atカラムが存在しないエラーの場合は、payloadから除外して再試行
+              if (error.code === 'PGRST204' && error.message?.includes('updated_at')) {
+                logger.warn('updated_at column not found, retrying without it');
+                const { error: retryError } = await supabase
+                  .from('practice_sessions')
+                  .update({
+                    duration_minutes: totalMinutes,
+                    content: cleanContent,
+                  })
+                  .eq('id', existing.id);
+                
+                if (retryError) {
+                  if (retryError.code === 'PGRST205' || retryError.code === 'PGRST116' || retryError.message?.includes('Could not find the table')) {
+                    // テーブルが存在しない場合
+                    Alert.alert('準備中', '練習記録機能は準備中です');
+                    return;
+                  }
+                  throw retryError;
+                }
+              } else if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
                 // テーブルが存在しない場合
                 Alert.alert('準備中', '練習記録機能は準備中です');
                 return;
+              } else {
+                throw error;
               }
-              throw error;
             }
             
             logger.info(`練習時間を加算: ${existing.duration_minutes}分 + ${minutes}分 = ${totalMinutes}分`);

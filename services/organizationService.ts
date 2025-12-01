@@ -205,13 +205,54 @@ export class OrganizationService {
           throw new Error('組織の作成に失敗しました');
         }
 
+        const createdOrganization = result.data;
+
+        // 組織作成者をadminとしてメンバーシップに追加
+        // データベースのトリガーが動作しない場合に備えて、アプリケーション側でも明示的に作成
+        try {
+          const membershipResult = await membershipRepository.create({
+            user_id: user.id,
+            organization_id: createdOrganization.id,
+            role: 'admin',
+            sub_group_id: null,
+          });
+
+          if (membershipResult.error) {
+            // 既にメンバーシップが存在する場合（トリガーが動作した場合など）はエラーを無視
+            const errorCode = (membershipResult.error as any).code;
+            if (errorCode !== '23505') {
+              // 一意制約違反以外のエラーはログに記録
+              logger.warn(`[${SERVICE_CONTEXT}] createOrganization:membership creation failed`, {
+                error: membershipResult.error,
+                organizationId: createdOrganization.id,
+              });
+            } else {
+              logger.debug(`[${SERVICE_CONTEXT}] createOrganization:membership already exists`, {
+                organizationId: createdOrganization.id,
+              });
+            }
+          } else {
+            logger.debug(`[${SERVICE_CONTEXT}] createOrganization:membership created`, {
+              organizationId: createdOrganization.id,
+              userId: user.id,
+            });
+          }
+        } catch (membershipError) {
+          // メンバーシップ作成の失敗は組織作成を失敗させない
+          // ただし、ログには記録する
+          logger.warn(`[${SERVICE_CONTEXT}] createOrganization:membership creation error (non-fatal)`, {
+            error: membershipError,
+            organizationId: createdOrganization.id,
+          });
+        }
+
         logger.info(`[${SERVICE_CONTEXT}] createOrganization:success`, {
-          organizationId: result.data.id,
+          organizationId: createdOrganization.id,
           isSolo: input.isSolo,
         });
 
         return {
-          organization: result.data,
+          organization: createdOrganization,
           password: password || '',
           inviteCode: inviteCode,
         };

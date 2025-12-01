@@ -320,7 +320,7 @@ export default function InstrumentHeader() {
               >
                 <Music size={24} color="#4CAF50" />
                 <Text style={[styles.toolText, { color: currentTheme.text }]}>
-                  音符ゲーム
+                  音符ゲーム(未実装)
                 </Text>
               </TouchableOpacity>
               
@@ -333,7 +333,7 @@ export default function InstrumentHeader() {
               >
                 <BookOpen size={24} color="#2196F3" />
                 <Text style={[styles.toolText, { color: currentTheme.text }]}>
-                  音楽用語辞典
+                  音楽用語辞典(未実装)
                 </Text>
               </TouchableOpacity>
               
@@ -347,7 +347,7 @@ export default function InstrumentHeader() {
               >
                 <Brain size={24} color="#9C27B0" />
                 <Text style={[styles.toolText, { color: currentTheme.text }]}>
-                  AI自動譜読み機能
+                  AI自動譜読み機能(未実装)
                 </Text>
               </TouchableOpacity>
               
@@ -360,7 +360,7 @@ export default function InstrumentHeader() {
               >
                 <ScrollText size={24} color="#FF9800" />
                 <Text style={[styles.toolText, { color: currentTheme.text }]}>
-                  譜面自動スクロール機能
+                  譜面自動スクロール機能(未実装)
                 </Text>
               </TouchableOpacity>
               

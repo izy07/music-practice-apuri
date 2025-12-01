@@ -24,25 +24,75 @@ jobs:
       - name: チェックアウト
         uses: actions/checkout@v4
 
+      - name: 環境変数の確認
+        run: |
+          echo "🔍 環境変数を確認します..."
+          echo "EXPO_PUBLIC_WEB_BASE: ${{ env.EXPO_PUBLIC_WEB_BASE || '未設定' }}"
+          echo "GITHUB_PAGES_BASE: ${{ env.GITHUB_PAGES_BASE || '未設定' }}"
+          echo "NODE_ENV: ${{ env.NODE_ENV || '未設定' }}"
+
       - name: Node.js セットアップ
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
+      - name: Node.jsバージョン確認
+        run: |
+          echo "📌 Node.jsバージョン:"
+          node --version
+          echo "📌 npmバージョン:"
+          npm --version
+
       - name: 依存関係のインストール
-        run: npm ci --legacy-peer-deps
+        run: |
+          echo "📦 依存関係をインストールします..."
+          npm ci --legacy-peer-deps || {
+            echo "❌ 依存関係のインストールに失敗しました"
+            echo "package-lock.jsonの状態を確認します..."
+            ls -la package-lock.json || echo "package-lock.jsonが見つかりません"
+            exit 1
+          }
+          echo "✅ 依存関係のインストールが完了しました"
+
+      - name: ビルドスクリプトの確認
+        run: |
+          echo "🔍 ビルドスクリプトを確認します..."
+          if [ -f package.json ]; then
+            echo "✅ package.jsonが存在します"
+            cat package.json | grep -A 2 '"build:web:github"' || echo "⚠️  build:web:githubスクリプトが見つかりません"
+          else
+            echo "❌ package.jsonが見つかりません"
+            exit 1
+          fi
+          
+          echo "🔍 必要なスクリプトファイルを確認します..."
+          [ -f scripts/create-robust-404.js ] && echo "✅ scripts/create-robust-404.js が存在します" || echo "❌ scripts/create-robust-404.js が見つかりません"
+          [ -f scripts/fix-github-pages-paths.js ] && echo "✅ scripts/fix-github-pages-paths.js が存在します" || echo "❌ scripts/fix-github-pages-paths.js が見つかりません"
 
       - name: Webビルド（GitHub Pages用）
         run: |
           echo "🔧 ビルドを開始します..."
+          echo "環境変数を確認:"
+          echo "  EXPO_PUBLIC_WEB_BASE: $EXPO_PUBLIC_WEB_BASE"
+          echo "  GITHUB_PAGES_BASE: $GITHUB_PAGES_BASE"
+          echo "  NODE_ENV: $NODE_ENV"
+          
           npm run build:web:github || {
             echo "❌ ビルドが失敗しました"
+            echo "📁 現在のディレクトリ:"
+            pwd
             echo "📁 distディレクトリの内容:"
-            ls -la dist/ || echo "distディレクトリが存在しません"
+            ls -la dist/ 2>&1 || echo "distディレクトリが存在しません"
+            echo "📁 scriptsディレクトリの内容:"
+            ls -la scripts/ 2>&1 || echo "scriptsディレクトリが存在しません"
+            echo "📋 npm run build:web:github の詳細エラー:"
             exit 1
           }
+          
           echo "✅ ビルドが完了しました"
+          echo "📁 ビルド後のdistディレクトリの内容:"
+          ls -la dist/ || echo "⚠️  distディレクトリが存在しません"
         env:
           EXPO_PUBLIC_WEB_BASE: /music-practice-apuri
           GITHUB_PAGES_BASE: /music-practice-apuri
@@ -52,23 +102,66 @@ jobs:
 
       - name: ビルド成果物の確認
         run: |
+          echo "📁 distディレクトリの詳細確認:"
+          if [ ! -d dist ]; then
+            echo "❌ distディレクトリが存在しません"
+            echo "📁 現在のディレクトリの内容:"
+            ls -la
+            exit 1
+          fi
+          
           echo "📁 distディレクトリの内容:"
-          ls -la dist/ || echo "❌ distディレクトリが存在しません"
+          ls -la dist/
+          echo ""
+          echo "📁 distディレクトリのサイズ:"
+          du -sh dist/ || echo "サイズ取得に失敗"
           echo ""
           echo "📄 主要ファイルの確認:"
-          [ -f dist/index.html ] && echo "✅ index.html が存在します" || echo "❌ index.html が見つかりません"
-          [ -f dist/404.html ] && echo "✅ 404.html が存在します" || echo "⚠️  404.html が見つかりません"
-          [ -f dist/.nojekyll ] && echo "✅ .nojekyll が存在します" || echo "⚠️  .nojekyll が見つかりません"
+          [ -f dist/index.html ] && echo "✅ index.html が存在します ($(wc -c < dist/index.html) bytes)" || {
+            echo "❌ index.html が見つかりません"
+            exit 1
+          }
+          [ -f dist/404.html ] && echo "✅ 404.html が存在します ($(wc -c < dist/404.html) bytes)" || echo "⚠️  404.html が見つかりません（後で作成されます）"
+          [ -f dist/.nojekyll ] && echo "✅ .nojekyll が存在します" || echo "⚠️  .nojekyll が見つかりません（後で作成されます）"
           [ -f dist/metadata.json ] && echo "✅ metadata.json が存在します" || echo "⚠️  metadata.json が見つかりません"
+          
+          echo ""
+          echo "📁 _expoディレクトリの確認:"
+          [ -d dist/_expo ] && echo "✅ dist/_expo が存在します" || echo "⚠️  dist/_expo が見つかりません"
+          [ -d dist/assets ] && echo "✅ dist/assets が存在します" || echo "⚠️  dist/assets が見つかりません"
 
       - name: 404.htmlの作成（SPAルーティング用）
         run: |
           echo "🔧 404.htmlを作成します..."
-          if [ -f dist/index.html ]; then
-            node scripts/create-robust-404.js
-            echo "✅ 404.htmlを作成しました"
-          else
+          
+          if [ ! -f dist/index.html ]; then
             echo "❌ index.htmlが見つからないため、404.htmlを作成できません"
+            echo "📁 distディレクトリの内容:"
+            ls -la dist/ 2>&1 || echo "distディレクトリが存在しません"
+            exit 1
+          fi
+          
+          if [ ! -f scripts/create-robust-404.js ]; then
+            echo "❌ scripts/create-robust-404.jsが見つかりません"
+            echo "📁 scriptsディレクトリの内容:"
+            ls -la scripts/ 2>&1 || echo "scriptsディレクトリが存在しません"
+            exit 1
+          fi
+          
+          echo "環境変数を確認:"
+          echo "  GITHUB_PAGES_BASE: $GITHUB_PAGES_BASE"
+          echo "  EXPO_PUBLIC_WEB_BASE: $EXPO_PUBLIC_WEB_BASE"
+          
+          node scripts/create-robust-404.js || {
+            echo "❌ 404.htmlの作成に失敗しました"
+            echo "スクリプトの実行エラーを確認してください"
+            exit 1
+          }
+          
+          if [ -f dist/404.html ]; then
+            echo "✅ 404.htmlを作成しました ($(wc -c < dist/404.html) bytes)"
+          else
+            echo "❌ 404.htmlの作成に失敗しました（ファイルが存在しません）"
             exit 1
           fi
         env:
@@ -77,13 +170,49 @@ jobs:
 
       - name: .nojekyllファイルの作成
         run: |
+          echo "🔧 .nojekyllファイルを作成します..."
+          if [ ! -d dist ]; then
+            echo "❌ distディレクトリが存在しません"
+            exit 1
+          fi
           echo "" > dist/.nojekyll
-          echo "✅ .nojekyllファイルを作成しました"
+          if [ -f dist/.nojekyll ]; then
+            echo "✅ .nojekyllファイルを作成しました"
+          else
+            echo "❌ .nojekyllファイルの作成に失敗しました"
+            exit 1
+          fi
+
+      - name: 最終確認
+        run: |
+          echo "🔍 デプロイ前の最終確認:"
+          echo "📁 distディレクトリの内容:"
+          ls -la dist/
+          echo ""
+          echo "📄 必須ファイルの確認:"
+          [ -f dist/index.html ] && echo "✅ index.html" || {
+            echo "❌ index.html が見つかりません"
+            exit 1
+          }
+          [ -f dist/404.html ] && echo "✅ 404.html" || {
+            echo "❌ 404.html が見つかりません"
+            exit 1
+          }
+          [ -f dist/.nojekyll ] && echo "✅ .nojekyll" || {
+            echo "❌ .nojekyll が見つかりません"
+            exit 1
+          }
+          echo ""
+          echo "📊 ディレクトリサイズ:"
+          du -sh dist/ || echo "サイズ取得に失敗"
+          echo ""
+          echo "✅ すべての必須ファイルが揃っています"
 
       - name: ビルド成果物のアップロード
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./dist
+        continue-on-error: false
 
   deploy:
     environment:
@@ -92,7 +221,23 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
+      - name: デプロイ前の確認
+        run: |
+          echo "🔍 デプロイ前の確認:"
+          echo "GitHub Pages環境: github-pages"
+          echo "デプロイ元ジョブ: build"
+          
       - name: GitHub Pagesへのデプロイ
         id: deployment
         uses: actions/deploy-pages@v4
+        continue-on-error: false
+        
+      - name: デプロイ結果の確認
+        run: |
+          echo "✅ デプロイが完了しました"
+          echo "📌 デプロイURL: ${{ steps.deployment.outputs.page_url }}"
+          if [ -z "${{ steps.deployment.outputs.page_url }}" ]; then
+            echo "⚠️  デプロイURLが取得できませんでした"
+            echo "GitHub Pagesの設定を確認してください"
+          fi
 

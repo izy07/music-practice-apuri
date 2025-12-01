@@ -7,18 +7,55 @@
 const fs = require('fs');
 const path = require('path');
 
-const BASE_PATH = process.env.GITHUB_PAGES_BASE || process.env.EXPO_PUBLIC_WEB_BASE || '/music-practice-apuri';
-const DIST_DIR = path.join(__dirname, '..', 'dist');
-const indexPath = path.join(DIST_DIR, 'index.html');
-const html404Path = path.join(DIST_DIR, '404.html');
+try {
+  const BASE_PATH = process.env.GITHUB_PAGES_BASE || process.env.EXPO_PUBLIC_WEB_BASE || '/music-practice-apuri';
+  const DIST_DIR = path.join(__dirname, '..', 'dist');
+  const indexPath = path.join(DIST_DIR, 'index.html');
+  const html404Path = path.join(DIST_DIR, '404.html');
 
-if (!fs.existsSync(indexPath)) {
-  console.error('❌ index.htmlが見つかりません');
-  process.exit(1);
-}
+  console.log('🔧 404.html作成スクリプトを開始します...');
+  console.log(`   ベースパス: ${BASE_PATH}`);
+  console.log(`   出力ディレクトリ: ${DIST_DIR}`);
+  console.log(`   index.html: ${indexPath}`);
+  console.log(`   404.html: ${html404Path}`);
 
-// index.htmlを読み込む
-let content = fs.readFileSync(indexPath, 'utf8');
+  // distディレクトリの存在確認
+  if (!fs.existsSync(DIST_DIR)) {
+    console.error(`❌ distディレクトリが存在しません: ${DIST_DIR}`);
+    console.error(`   現在のディレクトリ: ${process.cwd()}`);
+    console.error(`   スクリプトの場所: ${__dirname}`);
+    process.exit(1);
+  }
+
+  // index.htmlの存在確認
+  if (!fs.existsSync(indexPath)) {
+    console.error(`❌ index.htmlが見つかりません: ${indexPath}`);
+    console.error(`📁 distディレクトリの内容:`);
+    try {
+      const files = fs.readdirSync(DIST_DIR);
+      files.forEach(file => {
+        console.error(`   - ${file}`);
+      });
+    } catch (err) {
+      console.error(`   ディレクトリの読み込みに失敗: ${err.message}`);
+    }
+    process.exit(1);
+  }
+
+  // index.htmlを読み込む
+  let content;
+  try {
+    content = fs.readFileSync(indexPath, 'utf8');
+    console.log(`✅ index.htmlを読み込みました ($(wc -c < "${indexPath}") bytes)`);
+  } catch (err) {
+    console.error(`❌ index.htmlの読み込みに失敗しました: ${err.message}`);
+    process.exit(1);
+  }
+
+  if (!content || content.trim().length === 0) {
+    console.error('❌ index.htmlの内容が空です');
+    process.exit(1);
+  }
 
 // 404.html用の完全なリダイレクトスクリプト（即座に実行）
 const redirectScript = `
@@ -134,16 +171,45 @@ const redirectScript = `
 </script>
 `;
 
-// </head>の前にスクリプトを挿入
-if (content.includes('</head>')) {
-  content = content.replace('</head>', redirectScript + '</head>');
-} else if (content.includes('<head>')) {
-  content = content.replace('<head>', '<head>' + redirectScript);
-} else {
-  content = redirectScript + content;
-}
+  // </head>の前にスクリプトを挿入
+  let updatedContent;
+  if (content.includes('</head>')) {
+    updatedContent = content.replace('</head>', redirectScript + '</head>');
+  } else if (content.includes('<head>')) {
+    updatedContent = content.replace('<head>', '<head>' + redirectScript);
+  } else {
+    updatedContent = redirectScript + content;
+  }
 
-// 404.htmlとして保存
-fs.writeFileSync(html404Path, content, 'utf8');
-console.log(`✅ ${html404Path} を作成しました`);
+  if (!updatedContent || updatedContent.trim().length === 0) {
+    console.error('❌ 404.htmlのコンテンツ生成に失敗しました');
+    process.exit(1);
+  }
+
+  // 404.htmlとして保存
+  try {
+    fs.writeFileSync(html404Path, updatedContent, 'utf8');
+    const stats = fs.statSync(html404Path);
+    console.log(`✅ 404.htmlを作成しました (${stats.size} bytes)`);
+    console.log(`   ファイルパス: ${html404Path}`);
+  } catch (err) {
+    console.error(`❌ 404.htmlの書き込みに失敗しました: ${err.message}`);
+    console.error(`   ファイルパス: ${html404Path}`);
+    console.error(`   エラー詳細: ${err.stack}`);
+    process.exit(1);
+  }
+
+  // 作成されたファイルの確認
+  if (!fs.existsSync(html404Path)) {
+    console.error('❌ 404.htmlが作成されていません');
+    process.exit(1);
+  }
+
+  console.log('✅ 404.html作成スクリプトが正常に完了しました');
+} catch (error) {
+  console.error('❌ 予期しないエラーが発生しました:');
+  console.error(`   エラーメッセージ: ${error.message}`);
+  console.error(`   エラースタック: ${error.stack}`);
+  process.exit(1);
+}
 

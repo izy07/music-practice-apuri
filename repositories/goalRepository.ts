@@ -229,7 +229,7 @@ export const goalRepository = {
           } catch {}
           
           // instrument_idカラムを含めずに再試行
-          const fallbackSelect = isShowOnCalendarSupported 
+          const fallbackSelect = isSupported 
             ? `${baseSelectWithoutInstrument}, show_on_calendar` 
             : baseSelectWithoutInstrument;
           
@@ -467,7 +467,7 @@ export const goalRepository = {
           } catch {}
           
           // instrument_idカラムを含めずに再試行
-          const fallbackSelect = isShowOnCalendarSupported 
+          const fallbackSelect = isSupported 
             ? `${baseSelectWithoutInstrument}, show_on_calendar` 
             : baseSelectWithoutInstrument;
           

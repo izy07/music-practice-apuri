@@ -492,24 +492,22 @@ function RootLayoutContent() {
 
     // 認証済みユーザーの場合：楽器選択状態に基づいて遷移
     // ルートパスにいる場合は、適切な画面に遷移
+    // ログイン直後はauthState.userが更新される前でも、checkUserProgressAndNavigate()でプロフィールから直接判定できる
     if (isAtRoot) {
-      // 認証済みユーザーがルートパスにいる場合、適切な画面に遷移
-      if (!hasInstrumentSelected()) {
-        // 楽器未選択の場合はチュートリアル画面へ
-        navigateWithDelay('/(tabs)/tutorial');
-        return;
-      } else if (needsTutorial()) {
-        // チュートリアル未完了の場合はチュートリアル画面へ
-        navigateWithDelay('/(tabs)/tutorial');
-        return;
-      } else {
-        // それ以外の場合はメイン画面（カレンダー）へ
-        navigateWithDelay('/(tabs)');
-        return;
-      }
+      // 認証済みユーザーがルートパスにいる場合、checkUserProgressAndNavigate()で処理
+      // これにより、authState.userが更新される前でも正しい画面に遷移できる
+      checkUserProgressAndNavigate();
+      return;
     }
     if (isAuthenticated) {
       // 認証画面にいる場合は適切な画面に遷移
+      // ただし、ログイン直後はcheckUserProgressAndNavigate()が実行されるため、ここではスキップ
+      if (inAuthGroup && (authChild === 'login' || authChild === 'signup' || authChild === 'callback')) {
+        // checkUserProgressAndNavigate()で処理されるため、ここでは何もしない
+        return;
+      }
+      
+      // その他の認証画面（reset-passwordなど）の場合
       if (inAuthGroup) {
         if (canAccessMainApp()) {
           navigateWithDelay('/(tabs)/');
@@ -541,6 +539,7 @@ function RootLayoutContent() {
      * 【認証成功後の強制遷移】認証が成功した場合の強制画面遷移
      * - 認証成功後、認証画面にいる場合は強制的に適切な画面に遷移
      * - 認証状態の更新タイミングの問題を回避
+     * - checkUserProgressAndNavigate()でプロフィールから直接楽器IDを取得するため、こちらを優先
      */
     if (isAuthenticated && inAuthGroup && (authChild === 'login' || authChild === 'signup' || authChild === 'callback')) {
       logger.debug('✅ 認証成功検出 - 画面遷移を実行します', {
@@ -548,7 +547,8 @@ function RootLayoutContent() {
         hasInstrument: hasInstrumentSelected(),
         canAccessMain: canAccessMainApp(),
       });
-      // 即座に画面遷移を実行（遅延を削除）
+      // 即座に画面遷移を実行（checkUserProgressAndNavigate()でプロフィールから直接判定）
+      // これにより、authState.userが更新される前でも正しい画面に遷移できる
       checkUserProgressAndNavigate();
       return;
     }
