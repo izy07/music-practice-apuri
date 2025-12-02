@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { navigateWithBasePath } from '@/lib/navigationUtils';
 
 export default function AuthCallback() {
   const router = useRouter();
@@ -84,8 +85,7 @@ export default function AuthCallback() {
                         logger.error('❌ チュートリアル画面への遷移エラー:', error);
                         ErrorHandler.handle(error, 'チュートリアル画面への遷移', false);
                         // フォールバック: 直接URLを変更
-                        const { navigateWithBasePath } = require('@/lib/navigationUtils');
-                        navigateWithBasePath('/tutorial');
+                        navigateWithBasePath('/(tabs)/tutorial');
                       }
                     }, 500);
                   } else {

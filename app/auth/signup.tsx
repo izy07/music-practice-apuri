@@ -30,6 +30,7 @@ import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import { navigateWithBasePath } from '@/lib/navigationUtils';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -309,8 +310,7 @@ export default function SignupScreen() {
           logger.error('❌ チュートリアル画面への遷移エラー:', navError);
           // フォールバック: 直接URLを変更
           if (typeof window !== 'undefined') {
-            const { navigateWithBasePath } = require('@/lib/navigationUtils');
-            navigateWithBasePath('/tutorial');
+            navigateWithBasePath('/(tabs)/tutorial');
           }
         }
         

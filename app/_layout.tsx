@@ -15,6 +15,7 @@ import { RoutePath } from '@/types/common'; // ルートパス型
 import { TIMEOUT } from '@/lib/constants'; // タイムアウト定数
 import logger from '@/lib/logger'; // ロガー
 import { ErrorHandler } from '@/lib/errorHandler'; // エラーハンドラー
+import { getBasePath } from '@/lib/navigationUtils'; // ベースパス取得関数
 
 // Web環境ではexpo-status-barをインポートしない
 type StatusBarComponent = React.ComponentType<{ style: 'dark' | 'light' | 'auto' }>;
@@ -159,7 +160,6 @@ function RootLayoutContent() {
   React.useEffect(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined' && isReady) {
       // 環境変数からベースパスを取得（getBasePath関数を使用）
-      const { getBasePath } = require('@/lib/navigationUtils');
       const basePath = getBasePath();
       const currentPath = window.location.pathname;
       

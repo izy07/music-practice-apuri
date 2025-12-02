@@ -2,6 +2,7 @@ import { Link, Stack, useRouter, useSegments } from 'expo-router';
 import { StyleSheet, Text, View, TouchableOpacity, Platform } from 'react-native';
 import { useEffect } from 'react';
 import logger from '@/lib/logger';
+import { getBasePath } from '@/lib/navigationUtils';
 
 export default function NotFoundScreen() {
   const router = useRouter();
@@ -10,7 +11,7 @@ export default function NotFoundScreen() {
   // GitHub Pagesのベースパスを考慮したリダイレクト処理
   useEffect(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const basePath = '/music-practice-apuri';
+      const basePath = getBasePath();
       const currentPath = window.location.pathname;
       const pathWithoutBase = currentPath.startsWith(basePath) 
         ? currentPath.replace(basePath, '') || '/' 
@@ -77,19 +78,8 @@ export default function NotFoundScreen() {
   }, [router, segments]);
   
   const handleGoHome = () => {
-    // Web環境では、ベースパスを考慮してルートに遷移
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      const basePath = '/music-practice-apuri';
-      const currentPath = window.location.pathname;
-      const pathWithoutBase = currentPath.startsWith(basePath) 
-        ? currentPath.replace(basePath, '') || '/' 
-        : currentPath;
-      
-      // ルートパスに遷移（認証フローで適切な画面にリダイレクトされる）
-      router.replace('/' as any);
-    } else {
-      router.replace('/' as any);
-    }
+    // ルートパスに遷移（認証フローで適切な画面にリダイレクトされる）
+    router.replace('/' as any);
   };
   
   return (
