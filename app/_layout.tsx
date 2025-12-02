@@ -15,7 +15,7 @@ import { RoutePath } from '@/types/common'; // ルートパス型
 import { TIMEOUT } from '@/lib/constants'; // タイムアウト定数
 import logger from '@/lib/logger'; // ロガー
 import { ErrorHandler } from '@/lib/errorHandler'; // エラーハンドラー
-import { getBasePath } from '@/lib/navigationUtils'; // ベースパス取得関数
+import { getBasePath, navigateWithBasePath } from '@/lib/navigationUtils'; // ベースパス取得関数とナビゲーション関数
 
 // Web環境ではexpo-status-barをインポートしない
 type StatusBarComponent = React.ComponentType<{ style: 'dark' | 'light' | 'auto' }>;
@@ -266,8 +266,7 @@ function RootLayoutContent() {
         // フォールバック: 直接URLを変更（特にチュートリアル画面の場合）
         if (typeof window !== 'undefined' && typeof path === 'string' && path.includes('tutorial')) {
           logger.debug('フォールバック: window.location を使用');
-          const { navigateWithBasePath } = require('@/lib/navigationUtils');
-          navigateWithBasePath('/tutorial');
+          navigateWithBasePath('/(tabs)/tutorial');
         }
       }
     }, delay);
