@@ -158,7 +158,9 @@ function RootLayoutContent() {
   // GitHub Pages用: 404.htmlからリダイレクトされた際に元のパスを復元
   React.useEffect(() => {
     if (Platform.OS === 'web' && typeof window !== 'undefined' && isReady) {
-      const basePath = '/music-practice-apuri';
+      // 環境変数からベースパスを取得（getBasePath関数を使用）
+      const { getBasePath } = require('@/lib/navigationUtils');
+      const basePath = getBasePath();
       const currentPath = window.location.pathname;
       
       // ベースパスを除去した実際のパスを取得
