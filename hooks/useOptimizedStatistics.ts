@@ -390,12 +390,20 @@ export const useOptimizedStatistics = (
     return streak;
   };
 
+  // fetchStatisticsDataをrefで保持（依存関係の連鎖を断ち切る）
+  const fetchStatisticsDataRef = useRef(fetchStatisticsData);
+  
+  useEffect(() => {
+    fetchStatisticsDataRef.current = fetchStatisticsData;
+  }, [fetchStatisticsData]);
+
   // レイジーローディング: 画面が表示された時のみデータ取得
   useEffect(() => {
     if (isVisible && !hasLoaded) {
-      fetchStatisticsData();
+      fetchStatisticsDataRef.current();
     }
-  }, [isVisible, hasLoaded, fetchStatisticsData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVisible, hasLoaded]); // fetchStatisticsDataを依存配列から削除
 
   // デバウンス付きリフレッシュ
   const refreshData = useCallback((forceRefresh = false) => {
@@ -404,13 +412,21 @@ export const useOptimizedStatistics = (
     }
     
     debounceTimer.current = setTimeout(() => {
-      fetchStatisticsData(forceRefresh);
+      fetchStatisticsDataRef.current(forceRefresh);
     }, 300); // 300msデバウンス
-  }, [fetchStatisticsData]);
+  }, []); // fetchStatisticsDataを依存配列から削除
+
+  // スクロール用のsetTimeoutをクリーンアップするためのref
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // 仮想化用のスクロールハンドラー
   const handleScroll = useCallback((event: any) => {
     if (isScrolling) return;
+    
+    // 既存のタイマーをクリア
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
     
     setIsScrolling(true);
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
@@ -422,7 +438,7 @@ export const useOptimizedStatistics = (
     
     setVisibleRange({ start, end });
     
-    setTimeout(() => setIsScrolling(false), 100);
+    scrollTimeoutRef.current = setTimeout(() => setIsScrolling(false), 100);
   }, [isScrolling]);
 
   // クリーンアップ
@@ -430,6 +446,9 @@ export const useOptimizedStatistics = (
     return () => {
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
+      }
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
       }
     };
   }, []);

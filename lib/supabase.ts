@@ -119,6 +119,38 @@ const getSupabaseClient = () => {
       };
     }
     
+    // カスタムfetch関数：ネットワークエラーを適切にハンドリング
+    const customFetch = async (url: string, options?: RequestInit): Promise<Response> => {
+      try {
+        const response = await fetch(url, options);
+        
+        // RPC関数の404エラーは、フォールバック方法で処理されるため、コンソールに表示しない
+        // （開発環境でもログのみに記録）
+        if (response.status === 404 && __DEV__) {
+          const urlObj = new URL(url);
+          if (urlObj.pathname.includes('/rpc/check_column_exists')) {
+            // RPC関数が存在しない場合の404エラーは、フォールバック方法で処理されるため無視
+            // エラーレスポンスをそのまま返す（呼び出し側で処理される）
+          }
+        }
+        
+        return response;
+      } catch (error: any) {
+        // ネットワークエラーの場合、エラーを再スローせずに適切に処理
+        if (
+          error?.message?.includes('Failed to fetch') ||
+          error?.message?.includes('ERR_INTERNET_DISCONNECTED') ||
+          error?.message?.includes('internet disconnected') ||
+          error?.message?.includes('NetworkError')
+        ) {
+          // ネットワークエラーは、オフライン時の正常な動作として扱う
+          // エラーを再スローせずに、適切なエラーレスポンスを返す
+          throw new Error('NETWORK_ERROR');
+        }
+        throw error;
+      }
+    };
+
     supabaseInstance = createClient(finalUrl, finalKey, {
       auth: {
         autoRefreshToken: true,
@@ -138,6 +170,8 @@ const getSupabaseClient = () => {
           // PostgREST 406回避: 明示的にJSONを要求
           'Accept': 'application/json',
         },
+        // カスタムfetch関数を使用（ネットワークエラーを適切に処理）
+        fetch: customFetch,
       },
       // すべての高度な機能を無効化
       realtime: {
@@ -349,6 +383,18 @@ export type Database = {
           language: 'ja' | 'en';
           theme: 'light' | 'dark' | 'auto';
           notifications_enabled: boolean;
+          notification_settings: {
+            practice_reminders?: boolean;
+            goal_reminders?: boolean;
+            daily_practice?: boolean;
+            weekly_summary?: boolean;
+            achievement_notifications?: boolean;
+            sound_notifications?: boolean;
+            vibration_notifications?: boolean;
+            quiet_hours_enabled?: boolean;
+            quiet_hours_start?: string;
+            quiet_hours_end?: string;
+          } | null;
           metronome_settings: {
             bpm: number;
             time_signature: string;
@@ -370,6 +416,18 @@ export type Database = {
           language?: 'ja' | 'en';
           theme?: 'light' | 'dark' | 'auto';
           notifications_enabled?: boolean;
+          notification_settings?: {
+            practice_reminders?: boolean;
+            goal_reminders?: boolean;
+            daily_practice?: boolean;
+            weekly_summary?: boolean;
+            achievement_notifications?: boolean;
+            sound_notifications?: boolean;
+            vibration_notifications?: boolean;
+            quiet_hours_enabled?: boolean;
+            quiet_hours_start?: string;
+            quiet_hours_end?: string;
+          } | null;
           metronome_settings?: {
             bpm: number;
             time_signature: string;
@@ -391,6 +449,18 @@ export type Database = {
           language?: 'ja' | 'en';
           theme?: 'light' | 'dark' | 'auto';
           notifications_enabled?: boolean;
+          notification_settings?: {
+            practice_reminders?: boolean;
+            goal_reminders?: boolean;
+            daily_practice?: boolean;
+            weekly_summary?: boolean;
+            achievement_notifications?: boolean;
+            sound_notifications?: boolean;
+            vibration_notifications?: boolean;
+            quiet_hours_enabled?: boolean;
+            quiet_hours_start?: string;
+            quiet_hours_end?: string;
+          } | null;
           metronome_settings?: {
             bpm: number;
             time_signature: string;

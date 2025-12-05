@@ -75,7 +75,11 @@ export default function BasicPracticeScreen() {
       </View>
 
       {/* メインコンテンツ - 全体をスクロール可能にする */}
-      <ScrollView style={styles.mainContent} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.mainContent} 
+        contentContainerStyle={{ paddingTop: 20 }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* レベル選択 */}
         <LevelSelector
           levels={levels}

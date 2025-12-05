@@ -206,16 +206,21 @@ export const updateSelectedInstrument = async (
         }
       }
       
-      const { error } = await supabase
+      // まずレコードの存在確認
+      const { data: existingProfile, error: checkError } = await supabase
         .from('user_profiles')
-        .update({
-          selected_instrument_id: instrumentId,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('user_id', userId);
-
+        .select('id, user_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      
+      if (checkError && checkError.code !== 'PGRST116') {
+        // PGRST116（レコードが存在しない）以外のエラーの場合
+        logger.error(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:checkError`, checkError);
+        throw checkError;
+      }
+      
       // レコードが存在しない場合はupsertを試みる
-      if (error && (error.code === 'PGRST116' || error.code === 'PGRST205' || (error.status === 400 && error.message?.includes('No rows found')))) {
+      if (!existingProfile) {
         logger.warn(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:レコードが存在しないためupsertを試みます`, { userId, instrumentId });
         
         // 最小限のカラムのみを使用（存在が確実なカラムのみ）
@@ -257,9 +262,30 @@ export const updateSelectedInstrument = async (
         logger.debug(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:upsert成功`);
         return;
       }
+      
+      // レコードが存在する場合はupdateを実行
+      const { error: updateError } = await supabase
+        .from('user_profiles')
+        .update({
+          selected_instrument_id: instrumentId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId);
 
-      if (error) {
-        throw error;
+      if (updateError) {
+        // エラーの詳細情報を取得
+        const errorDetails = {
+          status: updateError.status || updateError.code,
+          message: updateError.message,
+          code: updateError.code,
+          details: (updateError as any).details,
+          hint: (updateError as any).hint,
+          userId,
+          instrumentId,
+        };
+        
+        logger.error(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:updateError`, errorDetails);
+        throw updateError;
       }
 
       logger.debug(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:success`);
@@ -337,23 +363,73 @@ export const updateUserProfile = async (
         .select('id, user_id, display_name, selected_instrument_id');
       
       if (error) {
-        // レコードが存在しない場合（PGRST116またはPGRST205エラー）はupsertを試みる
-        if (error.code === 'PGRST116' || error.code === 'PGRST205' || (error.status === 400 && error.message?.includes('No rows found'))) {
-          logger.warn(`[${REPOSITORY_CONTEXT}] updateUserProfile:レコードが存在しないためupsertを試みます`, { userId, updates });
+        // レコードが存在しない場合（PGRST116、PGRST205、または400エラー）はupsertを試みる
+        const isRecordNotFound = error.code === 'PGRST116' || 
+                                  error.code === 'PGRST205' || 
+                                  (error.status === 400 && (
+                                    error.message?.includes('No rows found') ||
+                                    error.message?.includes('does not exist') ||
+                                    error.message?.includes('not found')
+                                  ));
+        
+        if (isRecordNotFound) {
+          logger.warn(`[${REPOSITORY_CONTEXT}] updateUserProfile:レコードが存在しないためupsertを試みます`, { userId, updates, errorCode: error.code, errorStatus: error.status });
           
-          // upsertで作成または更新を試みる
-          const { data: upsertData, error: upsertError } = await supabase
+          // まず、レコードが本当に存在しないか確認
+          const { data: existingProfile, error: checkError } = await supabase
             .from('user_profiles')
-            .upsert(
-              {
-                user_id: userId,
+            .select('id, user_id')
+            .eq('user_id', userId)
+            .maybeSingle();
+          
+          // レコードが存在する場合は、updateを再試行
+          if (existingProfile && !checkError) {
+            logger.debug(`[${REPOSITORY_CONTEXT}] updateUserProfile:レコードは存在します - updateを再試行`, { userId });
+            const { data: retryData, error: retryError } = await supabase
+              .from('user_profiles')
+              .update({
                 ...updates,
                 updated_at: new Date().toISOString(),
-                // 最小限のカラムのみを使用（存在が確実なカラムのみ）
-                display_name: updates.display_name || undefined,
-              },
-              { onConflict: 'user_id' }
-            )
+              })
+              .eq('user_id', userId)
+              .select('id, user_id, display_name, selected_instrument_id');
+            
+            if (retryError) {
+              logger.error(`[${REPOSITORY_CONTEXT}] updateUserProfile:再試行も失敗`, retryError);
+              throw retryError;
+            }
+            
+            logger.debug(`[${REPOSITORY_CONTEXT}] updateUserProfile:再試行成功`, { data: retryData });
+            return; // 成功した場合はここで終了
+          }
+          
+          // レコードが存在しない場合はupsertで作成
+          logger.debug(`[${REPOSITORY_CONTEXT}] updateUserProfile:レコードが存在しないためupsertで作成します`, { userId });
+          
+          // 最小限のカラムのみを使用（存在が確実なカラムのみ）
+          const upsertData: any = {
+            user_id: userId,
+            updated_at: new Date().toISOString(),
+          };
+          
+          // display_nameが指定されている場合は含める
+          if (updates.display_name) {
+            upsertData.display_name = updates.display_name;
+          }
+          
+          // selected_instrument_idが指定されている場合は含める（ただし、外部キー制約違反を避けるため、存在確認済みの場合のみ）
+          if (updates.selected_instrument_id !== undefined) {
+            upsertData.selected_instrument_id = updates.selected_instrument_id;
+          }
+          
+          // その他の更新フィールドを追加（存在が確実なカラムのみ）
+          if (updates.practice_level) {
+            upsertData.practice_level = updates.practice_level;
+          }
+          
+          const { data: upsertResult, error: upsertError } = await supabase
+            .from('user_profiles')
+            .upsert(upsertData, { onConflict: 'user_id' })
             .select('id, user_id, display_name, selected_instrument_id')
             .single();
           
@@ -384,7 +460,7 @@ export const updateUserProfile = async (
             throw upsertError;
           }
           
-          logger.debug(`[${REPOSITORY_CONTEXT}] updateUserProfile:upsert成功`, { data: upsertData });
+          logger.debug(`[${REPOSITORY_CONTEXT}] updateUserProfile:upsert成功`, { data: upsertResult });
           return; // 成功した場合はここで終了
         }
         

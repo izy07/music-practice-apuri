@@ -8,7 +8,6 @@
 
 import type {
   CreateOrganizationInput,
-  CreateSubGroupInput,
   JoinOrganizationInput,
   SetAdminCodeInput,
   UpdateOrganizationInput,
@@ -20,14 +19,6 @@ import { validateCodeFormat } from '@/lib/security/codeGenerator';
  * 組織名の最小・最大長
  */
 const ORGANIZATION_NAME_LIMITS = {
-  min: 1,
-  max: 100,
-} as const;
-
-/**
- * サブグループ名の最小・最大長
- */
-const SUBGROUP_NAME_LIMITS = {
   min: 1,
   max: 100,
 } as const;
@@ -109,52 +100,6 @@ export function validateUpdateOrganization(
         errors.push(`組織名は${ORGANIZATION_NAME_LIMITS.max}文字以下である必要があります`);
       }
     }
-  }
-
-  // 説明のバリデーション
-  if (input.description !== undefined) {
-    if (typeof input.description !== 'string') {
-      errors.push('説明は文字列である必要があります');
-    } else if (input.description.length > DESCRIPTION_MAX_LENGTH) {
-      errors.push(`説明は${DESCRIPTION_MAX_LENGTH}文字以下である必要があります`);
-    }
-  }
-
-  return {
-    isValid: errors.length === 0,
-    errors,
-  };
-}
-
-/**
- * サブグループ作成時の入力データをバリデーション
- * 
- * @param input - バリデーションする入力データ
- * @returns バリデーション結果
- */
-export function validateCreateSubGroup(
-  input: CreateSubGroupInput
-): ValidationResult {
-  const errors: string[] = [];
-
-  // サブグループ名のバリデーション
-  if (!input.name || typeof input.name !== 'string') {
-    errors.push('サブグループ名は必須です');
-  } else {
-    const trimmedName = input.name.trim();
-    if (trimmedName.length < SUBGROUP_NAME_LIMITS.min) {
-      errors.push(`サブグループ名は${SUBGROUP_NAME_LIMITS.min}文字以上である必要があります`);
-    }
-    if (trimmedName.length > SUBGROUP_NAME_LIMITS.max) {
-      errors.push(`サブグループ名は${SUBGROUP_NAME_LIMITS.max}文字以下である必要があります`);
-    }
-  }
-
-  // グループタイプのバリデーション
-  if (!input.groupType) {
-    errors.push('グループタイプは必須です');
-  } else if (!['part', 'grade', 'section'].includes(input.groupType)) {
-    errors.push('グループタイプは part, grade, section のいずれかである必要があります');
   }
 
   // 説明のバリデーション
@@ -274,13 +219,4 @@ export function normalizeOrganizationName(name: string): string {
   return name.trim();
 }
 
-/**
- * サブグループ名を正規化（前後の空白を削除）
- * 
- * @param name - 正規化するサブグループ名
- * @returns 正規化されたサブグループ名
- */
-export function normalizeSubGroupName(name: string): string {
-  return name.trim();
-}
 

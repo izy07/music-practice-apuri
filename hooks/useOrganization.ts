@@ -92,20 +92,23 @@ export function useOrganization(): UseOrganizationReturn {
    */
   const loadOrganizations = useCallback(async () => {
     setLoading(true);
-    setError(null);
+    // エラーはクリアするが、組織データは既存の値を保持（読み込み中に消えないように）
 
     try {
       const result = await organizationService.getUserOrganizations();
       
       if (result.success && result.data) {
         setOrganizations(result.data);
+        setError(null);
       } else {
+        // エラー時は既存の組織データを保持（空配列にリセットしない）
         setError(result.error || '組織の取得に失敗しました');
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '組織の取得に失敗しました';
       setError(errorMessage);
       ErrorHandler.handle(err, '組織読み込み', false);
+      // エラー時は既存の組織データを保持（空配列にリセットしない）
     } finally {
       setLoading(false);
     }

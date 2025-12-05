@@ -151,7 +151,7 @@ export default function EventsScreen() {
 
         {/* イベント一覧 */}
         {loading ? (
-          <View style={styles.loadingContainer}>
+          <View style={[styles.loadingContainer, { backgroundColor: currentTheme.background }]}>
             <ActivityIndicator color={currentTheme.primary} />
           </View>
         ) : events.length === 0 ? (

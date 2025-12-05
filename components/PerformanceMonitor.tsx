@@ -1,5 +1,5 @@
 // パフォーマンステスト用のコンポーネント
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { statisticsCache } from '@/hooks/useOptimizedStatistics';
@@ -25,14 +25,23 @@ export const PerformanceMonitor: React.FC<{
     cacheHitRate: 0,
     cacheSize: 0,
   });
+  
+  // setTimeoutのIDを保持するためのref
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const measurePerformance = () => {
+    // 既存のタイマーをクリア
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    
     const startTime = performance.now();
     
     // データ取得時間の測定
     const dataFetchStart = performance.now();
     // 実際のデータ取得処理をシミュレート
-    setTimeout(() => {
+    timeoutRef.current = setTimeout(() => {
       const dataFetchEnd = performance.now();
       const dataFetchTime = dataFetchEnd - dataFetchStart;
       
@@ -65,11 +74,20 @@ export const PerformanceMonitor: React.FC<{
       
       setMetrics(newMetrics);
       onMetricsUpdate(newMetrics);
+      timeoutRef.current = null;
     }, 100);
   };
 
   useEffect(() => {
     measurePerformance();
+    
+    // クリーンアップ: コンポーネントがアンマウントされる前にタイマーをクリア
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+      }
+    };
   }, []);
 
   return (

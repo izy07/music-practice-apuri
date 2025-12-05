@@ -92,28 +92,21 @@ export default function OrgOverviewScreen() {
           setSchedules(allSchedules);
           setAttendanceNow(attendables);
 
-          // 課題（各組織のサブグループ経由で集約・最大20件）
+          // 課題（組織レベルで集約・最大20件）
           const unifiedTasks: UnifiedTask[] = [];
           for (const org of uniqueOrgs) {
-            // サブグループ横断の仕様は維持（簡略化：サブグループは省略し、組織直下を想定）
             try {
-              const { data: subGroups } = await supabase
-                .from('sub_groups')
-                .select('id')
-                .eq('organization_id', (org as any).id);
-              for (const g of (subGroups || [])) {
-                const tasksResult = await taskRepository.getBySubGroupId(g.id);
-                const tasks = tasksResult.error ? [] : (tasksResult.data || []);
-                (tasks as any[]).forEach(task => {
-                    unifiedTasks.push({
-                      id: task.id,
-                      organization_id: org.id,
-                      organization_name: (org as any).name,
-                      title: task.title,
-                      status: task.status,
-                    });
+              const tasksResult = await taskRepository.getByOrganizationId(org.id);
+              const tasks = tasksResult.error ? [] : (tasksResult.data || []);
+              (tasks as any[]).forEach(task => {
+                unifiedTasks.push({
+                  id: task.id,
+                  organization_id: org.id,
+                  organization_name: (org as any).name,
+                  title: task.title,
+                  status: task.status,
                 });
-              }
+              });
             } catch {}
           }
           setTasks(unifiedTasks.slice(0, 20));

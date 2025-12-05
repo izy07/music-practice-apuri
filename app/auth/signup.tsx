@@ -67,7 +67,6 @@ export default function SignupScreen() {
     
     try {
       // Supabaseで直接新規登録処理（ニックネームをuser_metadataに含める）
-      // プロフィール作成はデータベーストリガーまたはonAuthStateChangeで処理
       const { data, error } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
@@ -101,15 +100,73 @@ export default function SignupScreen() {
         return { success: false, error: errorMessage };
       }
       
+      if (!data.user) {
+        logger.error('❌ ユーザー情報が取得できません');
+        const errorMessage = 'ユーザー情報の取得に失敗しました。もう一度お試しください。';
+        setError(errorMessage);
+        setIsLoading(false);
+        return { success: false, error: errorMessage };
+      }
+      
       logger.debug('✅ 新規登録成功:', { 
-        userId: data.user?.id, 
+        userId: data.user.id, 
         hasSession: !!data.session,
-        email: data.user?.email 
+        email: data.user.email 
       });
+      
+      // user_profilesレコードが存在することを確認し、存在しない場合は作成する
+      // データベーストリガーが実行される前に確認するため、少し待ってから確認
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // user_profilesレコードの存在確認
+      const { data: existingProfile, error: profileCheckError } = await supabase
+        .from('user_profiles')
+        .select('id, user_id')
+        .eq('user_id', data.user.id)
+        .maybeSingle();
+      
+      if (profileCheckError && profileCheckError.code !== 'PGRST116') {
+        // PGRST116（レコードが存在しない）以外のエラーの場合
+        logger.error('❌ user_profiles確認エラー:', profileCheckError);
+        const errorMessage = 'プロフィールの確認に失敗しました。もう一度お試しください。';
+        setError(errorMessage);
+        setIsLoading(false);
+        return { success: false, error: errorMessage };
+      }
+      
+      // プロフィールが存在しない場合は作成する
+      if (!existingProfile) {
+        logger.debug('⏳ user_profilesレコードが存在しないため作成します');
+        const displayName = formData.name.trim() || data.user.email?.split('@')[0] || 'ユーザー';
+        
+        // upsertを使用して確実に作成（既に存在する場合は更新）
+        const { data: newProfile, error: createError } = await supabase
+          .from('user_profiles')
+          .upsert(
+            {
+              user_id: data.user.id,
+              display_name: displayName,
+            },
+            { onConflict: 'user_id' }
+          )
+          .select('id, user_id, display_name')
+          .single();
+        
+        if (createError) {
+          logger.error('❌ user_profiles作成エラー:', createError);
+          const errorMessage = 'プロフィールの作成に失敗しました。もう一度お試しください。';
+          setError(errorMessage);
+          setIsLoading(false);
+          return { success: false, error: errorMessage };
+        }
+        
+        logger.debug('✅ user_profilesレコード作成成功:', { profileId: newProfile?.id });
+      } else {
+        logger.debug('✅ user_profilesレコードは既に存在します:', { profileId: existingProfile.id });
+      }
       
       // セッションが確立されている場合は成功
       // セッションがない場合は、onAuthStateChangeで検出されるまで待つ
-      // プロフィール作成はデータベーストリガーまたはonAuthStateChangeで処理
       if (data.session) {
         logger.debug('✅ セッション確立済み - onAuthStateChangeで処理されます');
         setIsLoading(false);
@@ -414,6 +471,10 @@ export default function SignupScreen() {
               ]
             );
           }, 100);
+        } else {
+          // その他のエラーの場合は新規登録画面に留まる（既に新規登録画面にいるため、何もしない）
+          // エラーメッセージは既に表示されている
+          logger.debug('⚠️ 新規登録失敗 - 新規登録画面に留まります');
         }
       }
     } catch (error) {

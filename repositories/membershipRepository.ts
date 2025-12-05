@@ -68,6 +68,17 @@ export const membershipRepository = {
     role: OrganizationRole;
   }): Promise<RepositoryResult<UserGroupMembership>> {
     return safeExecute(async () => {
+      // まず既存のメンバーシップを確認（重複チェック）
+      const existing = await this.getByUserAndOrganization(
+        data.user_id,
+        data.organization_id
+      );
+      
+      if (existing.data) {
+        // 既にメンバーシップが存在する場合は、それを返す
+        return { data: existing.data, error: null };
+      }
+      
       const { data: result, error } = await supabase
         .from('user_group_memberships')
         .insert(data)
@@ -78,14 +89,26 @@ export const membershipRepository = {
         // 既にメンバーの場合はエラーを無視（一意制約違反）
         if (error.code === '23505') {
           // 既存のメンバーシップを取得
-          const existing = await this.getByUserAndOrganization(
+          const existingAfterError = await this.getByUserAndOrganization(
             data.user_id,
             data.organization_id
           );
-          if (existing.data) {
-            return { data: existing.data, error: null };
+          if (existingAfterError.data) {
+            return { data: existingAfterError.data, error: null };
           }
         }
+        
+        // 403エラー（RLSポリシーエラー）の場合は、詳細なエラーメッセージを返す
+        if (error.code === '42501' || error.status === 403) {
+          const detailedError = new Error(
+            `メンバーシップの作成が拒否されました。RLSポリシーを確認してください。エラーコード: ${error.code || error.status}`
+          ) as any;
+          detailedError.code = error.code;
+          detailedError.status = error.status;
+          detailedError.message = error.message;
+          throw detailedError;
+        }
+        
         throw error;
       }
 
@@ -180,4 +203,6 @@ export const membershipRepository = {
 };
 
 export default membershipRepository;
+
+
 

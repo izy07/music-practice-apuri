@@ -143,7 +143,7 @@ export default function AppGuideScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
-      <View style={[styles.header, { borderBottomColor: '#E0E0E0' }]}>
+      <View style={[styles.header, { borderBottomColor: currentTheme.secondary, backgroundColor: currentTheme.surface }]}>
         <TouchableOpacity onPress={() => safeGoBack('/(tabs)/settings', true)} style={styles.backButton}>
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
@@ -158,7 +158,7 @@ export default function AppGuideScreen() {
           const isExpanded = expandedSections.has(section.id);
           
           return (
-            <View key={section.id} style={[styles.sectionCard, { backgroundColor: currentTheme.background, borderColor: '#E0E0E0' }]}>
+            <View key={section.id} style={[styles.sectionCard, { backgroundColor: currentTheme.surface, borderColor: currentTheme.secondary }]}>
               {/* セクションヘッダー */}
               <TouchableOpacity
                 style={styles.sectionHeader}
@@ -190,7 +190,7 @@ export default function AppGuideScreen() {
                 <View style={styles.expandedContent}>
                   <View style={styles.contentList}>
                     {section.content.map((item, index) => (
-                      <View key={index} style={[styles.contentItem, { backgroundColor: '#F8F9FA' }]}>
+                      <View key={index} style={[styles.contentItem, { backgroundColor: currentTheme.background }]}>
                         <Text style={[styles.contentText, { color: currentTheme.text }]}>
                           {item}
                         </Text>

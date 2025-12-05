@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Linking, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,6 +6,7 @@ import { Plus, Target, Calendar, CircleCheck as CheckCircle, Edit3, Trash2, Chec
 import { useRouter } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { supabase } from '@/lib/supabase';
 import { COMMON_STYLES } from '@/lib/styles';
 import logger from '@/lib/logger';
@@ -52,6 +53,7 @@ interface Event {
 export default function GoalsScreen() {
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const router = useRouter();
+  const { isAuthenticated, user } = useAuthAdvanced();
   
   // 目標関連の状態
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -76,12 +78,25 @@ export default function GoalsScreen() {
   // 削除処理用のloading state
   const [isDeleting, setIsDeleting] = useState(false);
   
-  // ユーザープロフィール
-  const [userProfile, setUserProfile] = useState<UserProfile>({});
+  // ユーザープロフィール（初期値はuseAuthAdvancedから取得）
+  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
+    // 初期状態でuseAuthAdvancedからニックネームを取得
+    const initialNickname = user?.name && String(user.name).trim().length > 0
+      ? String(user.name).trim()
+      : 'ユーザー';
+    return {
+      nickname: initialNickname,
+      organization: undefined
+    };
+  });
   
   // リクエスト重複防止用のref
   const loadingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  
+  // デバウンス処理用のref
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastLoadTimeRef = useRef<number>(0);
   
   // データ読み込み関数を先に定義（useEffectで使用するため）
   const loadGoals = useCallback(async () => {
@@ -115,29 +130,11 @@ export default function GoalsScreen() {
 
       if (result.data) {
         const filtered = result.data.filter((g: GoalFromDB) => g.is_completed !== true);
-        // show_on_calendarのデフォルト値を設定（既存の値があればそれを使用）
-        // localStorageに保存された状態もマージ
-        const goalsWithDefaults = filtered.map((g: GoalFromDB) => {
-          let showOnCalendar = g.show_on_calendar ?? false;
-          
-          // localStorageから保存された状態を取得
-          try {
-            if (typeof window !== 'undefined') {
-              const savedState = window.localStorage.getItem(`goal_show_calendar_${g.id}`);
-              if (savedState !== null) {
-                showOnCalendar = savedState === 'true';
-              }
-            }
-          } catch (e) {
-            // localStorageへのアクセスエラーは無視
-          }
-          
-          return {
-            ...g,
-            show_on_calendar: showOnCalendar,
-          };
+        // 既存のデータを保持しながら更新（読み込み中でも既存データを表示）
+        setGoals(prevGoals => {
+          // 新しいデータがある場合は更新、ない場合は既存データを保持
+          return filtered.length > 0 ? filtered : prevGoals;
         });
-        setGoals(goalsWithDefaults);
       }
     } catch (error) {
       // Error loading goals
@@ -169,7 +166,11 @@ export default function GoalsScreen() {
       }
 
       if (result.data) {
-        setCompletedGoals(result.data);
+        // 既存のデータを保持しながら更新（読み込み中でも既存データを表示）
+        setCompletedGoals(prevCompleted => {
+          // 新しいデータがある場合は更新、ない場合は既存データを保持
+          return result.data.length > 0 ? result.data : prevCompleted;
+        });
       }
     } catch (error) {
       // Error loading completed goals
@@ -185,19 +186,35 @@ export default function GoalsScreen() {
       return;
     }
     
+    // 認証状態を確認
+    if (!isAuthenticated || !user) {
+      logger.debug('認証されていないため、プロフィール読み込みをスキップ');
+      setUserProfile({
+        nickname: 'ユーザー',
+        organization: undefined
+      });
+      return;
+    }
+    
     try {
-      logger.debug('ユーザープロフィール読み込み開始');
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        logger.debug('認証ユーザーが見つかりません');
-        setUserProfile({
-          nickname: 'ユーザー',
-          organization: undefined
-        });
-        return;
+      logger.debug('ユーザープロフィール読み込み開始', { userId: user.id });
+      
+      // まずuser_metadataからニックネームを取得（新規登録時に保存された値）
+      let nickname = 'ユーザー';
+      if (user.name && String(user.name).trim().length > 0) {
+        nickname = String(user.name).trim();
+        logger.debug('useAuthAdvancedからニックネーム取得:', nickname);
+      } else {
+        // useAuthAdvancedから取得できない場合は、直接Supabaseから取得
+        const { data: { user: authUser } } = await supabase.auth.getUser();
+        if (authUser?.user_metadata) {
+          const metadataName = authUser.user_metadata.name || authUser.user_metadata.display_name;
+          if (metadataName && String(metadataName).trim().length > 0) {
+            nickname = String(metadataName).trim();
+            logger.debug('user_metadataからニックネーム取得:', nickname);
+          }
+        }
       }
-
-      logger.debug('認証ユーザー:', user.id);
       
       const profileResult = await getUserProfile(user.id);
 
@@ -205,9 +222,9 @@ export default function GoalsScreen() {
 
       if (profileResult.error) {
         ErrorHandler.handle(profileResult.error, 'プロフィール取得', false);
-        // エラーが発生してもデフォルト値を使用
+        // エラーが発生してもuser_metadataの値を使用
         setUserProfile({
-          nickname: 'ユーザー',
+          nickname: nickname,
           organization: undefined
         });
         return;
@@ -215,45 +232,129 @@ export default function GoalsScreen() {
 
       const profile = profileResult.data;
       if (profile) {
+        // user_profilesテーブルのdisplay_nameを優先、なければuser_metadataの値を使用
         const resolvedNickname = (profile.display_name && String(profile.display_name).trim().length > 0)
           ? profile.display_name
-          : 'ユーザー';
+          : nickname;
         logger.debug('ニックネーム設定:', resolvedNickname);
         setUserProfile({
           nickname: resolvedNickname,
           organization: profile.organization || undefined
         });
       } else {
-        logger.debug('プロフィールが見つかりません');
+        logger.debug('プロフィールが見つかりません、user_metadataの値を使用');
         setUserProfile({
-          nickname: 'ユーザー',
+          nickname: nickname,
           organization: undefined
         });
       }
     } catch (error) {
       if (error instanceof Error && error.name !== 'AbortError') {
         ErrorHandler.handle(error, 'プロフィール読み込み', false);
-        // エラーが発生してもデフォルト値を使用
+        // エラーが発生してもuser_metadataの値を使用
+        let nickname = 'ユーザー';
+        if (user?.name && String(user.name).trim().length > 0) {
+          nickname = String(user.name).trim();
+        } else {
+          try {
+            const { data: { user: authUser } } = await supabase.auth.getUser();
+            if (authUser?.user_metadata) {
+              const metadataName = authUser.user_metadata.name || authUser.user_metadata.display_name;
+              if (metadataName && String(metadataName).trim().length > 0) {
+                nickname = String(metadataName).trim();
+              }
+            }
+          } catch (e) {
+            // エラーは無視
+          }
+        }
         setUserProfile({
-          nickname: 'ユーザー',
+          nickname: nickname,
           organization: undefined
         });
       }
     }
-  }, []);
+  }, [isAuthenticated, user]);
+
+  // localStorageアクセスのメモ化（パフォーマンス最適化）
+  const goalsWithDefaults = useMemo(() => {
+    return goals.map((g: GoalFromDB) => {
+      let showOnCalendar = g.show_on_calendar ?? false;
+      
+      // localStorageから保存された状態を取得（メモ化済み）
+      try {
+        if (typeof window !== 'undefined') {
+          const savedState = window.localStorage.getItem(`goal_show_calendar_${g.id}`);
+          if (savedState !== null) {
+            showOnCalendar = savedState === 'true';
+          }
+        }
+      } catch (e) {
+        // localStorageへのアクセスエラーは無視
+      }
+      
+      return {
+        ...g,
+        show_on_calendar: showOnCalendar,
+      };
+    });
+  }, [goals]);
+
+  // 認証状態が更新されたら即座にニックネームを設定
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      const nickname = user.name && String(user.name).trim().length > 0
+        ? String(user.name).trim()
+        : 'ユーザー';
+      setUserProfile(prev => ({
+        ...prev,
+        nickname: prev.nickname === 'ユーザー' || !prev.nickname ? nickname : prev.nickname
+      }));
+    }
+  }, [isAuthenticated, user]);
 
   // useEffectとuseFocusEffectを関数定義の後に配置
+  // selectedInstrumentが変更された時のみデータを読み込む（デバウンス処理付き）
   useEffect(() => {
-    loadGoals();
-    loadCompletedGoals();
-    loadUserProfile();
-  }, [selectedInstrument, loadGoals, loadCompletedGoals, loadUserProfile]);
-  
-  // 楽器変更イベントをリッスン
-  useEffect(() => {
-    const handleInstrumentChange = () => {
+    // 認証状態が更新されるまで待つ
+    if (!isAuthenticated || !user) {
+      return;
+    }
+    
+    // 既存のタイマーをクリア
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    
+    // 300ms後に実行（デバウンス処理）
+    debounceTimerRef.current = setTimeout(() => {
       loadGoals();
       loadCompletedGoals();
+      loadUserProfile();
+      lastLoadTimeRef.current = Date.now();
+    }, 300);
+    
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedInstrument, isAuthenticated, user]); // selectedInstrument、認証状態に依存
+  
+  // 楽器変更イベントをリッスン（refを使用して最新の関数を参照）
+  const loadGoalsRef = useRef(loadGoals);
+  const loadCompletedGoalsRef = useRef(loadCompletedGoals);
+  
+  useEffect(() => {
+    loadGoalsRef.current = loadGoals;
+    loadCompletedGoalsRef.current = loadCompletedGoals;
+  }, [loadGoals, loadCompletedGoals]);
+
+  useEffect(() => {
+    const handleInstrumentChange = () => {
+      loadGoalsRef.current();
+      loadCompletedGoalsRef.current();
     };
 
     if (typeof window !== 'undefined') {
@@ -263,16 +364,38 @@ export default function GoalsScreen() {
         window.removeEventListener('instrumentChanged', handleInstrumentChange);
       };
     }
-  }, [loadGoals, loadCompletedGoals]);
+  }, []); // イベントリスナーは一度だけ設定
 
-  // 画面にフォーカスが当たった時にデータを再読み込み
+  // 画面にフォーカスが当たった時にデータを再読み込み（refを使用）
+  const loadGoalsFocusRef = useRef(loadGoals);
+  const loadCompletedGoalsFocusRef = useRef(loadCompletedGoals);
+  const loadUserProfileFocusRef = useRef(loadUserProfile);
+
+  useEffect(() => {
+    loadGoalsFocusRef.current = loadGoals;
+    loadCompletedGoalsFocusRef.current = loadCompletedGoals;
+    loadUserProfileFocusRef.current = loadUserProfile;
+  }, [loadGoals, loadCompletedGoals, loadUserProfile]);
+
   useFocusEffect(
     React.useCallback(() => {
+      // 認証状態を確認
+      if (!isAuthenticated || !user) {
+        return;
+      }
+      
+      const now = Date.now();
+      // 最後の実行から500ms経過していない場合はスキップ（重複実行防止）
+      if (now - lastLoadTimeRef.current < 500) {
+        return;
+      }
+      
       // 画面に戻ってきた時に必ず最新データを取得
-      loadGoals(); // 目標リストを再読み込み
-      loadCompletedGoals(); // 完了済み目標も再読み込み
-      loadUserProfile(); // プロフィールも再読み込み
-    }, [loadGoals, loadCompletedGoals, loadUserProfile]) // 依存配列にメモ化された関数を追加
+      loadGoalsFocusRef.current();
+      loadCompletedGoalsFocusRef.current();
+      loadUserProfileFocusRef.current();
+      lastLoadTimeRef.current = now;
+    }, [isAuthenticated, user]) // 認証状態に依存
   );
 
   // カレンダー関連の関数
@@ -441,94 +564,85 @@ export default function GoalsScreen() {
 
       const newValue = !currentValue;
       
-      // show_on_calendarカラムのサポート状況をチェック
-      // まず、localStorageのフラグを確認（以前にエラーがあった場合）
-      let shouldSkipDatabaseUpdate = false;
-      try {
-        if (typeof window !== 'undefined') {
-          const flag = window.localStorage.getItem('disable_show_on_calendar');
-          if (flag === '1') {
-            // フラグが設定されている場合でも、実際にデータベースを試してみる
-            // カラムが追加された可能性があるため、フラグをクリアして試す
-            window.localStorage.removeItem('disable_show_on_calendar');
-          }
-        }
-      } catch {}
-
-      const result = await goalService.updateShowOnCalendar(goalId, user.id, newValue);
-
-      // エラーが発生した場合でも、show_on_calendarカラムが存在しない場合はローカル状態を更新
-      if (!result.success || result.error) {
-        // show_on_calendarカラムが存在しない場合のエラーを検出
-        const errorMessage = result.error || '';
-        const errorCode = (result as any)?.code || '';
-        
-        const isShowOnCalendarError = 
-          errorCode === 'PGRST204' || // カラムが見つからない
-          errorCode === '42703' || // 未定義のカラム
-          (typeof errorMessage === 'string' && (
-            errorMessage.toLowerCase().includes('show_on_calendar') ||
-            errorMessage.toLowerCase().includes('column') ||
-            errorMessage.toLowerCase().includes('does not exist') ||
-            errorMessage.toLowerCase().includes('could not find') ||
-            errorMessage.toLowerCase().includes('schema cache')
-          ));
-
-        if (isShowOnCalendarError) {
-          logger.warn('show_on_calendarカラムが存在しません。フラグを設定してローカル状態のみ更新します。');
-          logger.debug('エラー詳細:', { code: errorCode, message: errorMessage });
-          
-          // フラグを設定（次回以降はリクエストを送らない）
-          try {
-            if (typeof window !== 'undefined') {
-              window.localStorage.setItem('disable_show_on_calendar', '1');
-              // この目標の状態をlocalStorageに保存
-              window.localStorage.setItem(`goal_show_calendar_${goalId}`, String(newValue));
-              if (newValue) {
-                window.localStorage.setItem('calendar_goal_id', goalId);
-              } else {
-                window.localStorage.removeItem('calendar_goal_id');
-              }
-            }
-          } catch (e) {
-            logger.error('localStorageへの書き込みエラー:', e);
-          }
-
-          // ローカル状態のみ更新（エラーを無視してUIを更新）
-          setGoals(prevGoals =>
-            prevGoals.map(goal =>
-              goal.id === goalId ? { ...goal, show_on_calendar: newValue } : goal
-            )
-          );
-          return;
-        }
-
-        // その他のエラー（show_on_calendarカラム以外の問題）
-        logger.error('カレンダー表示設定の更新エラー:', result.error);
-        Alert.alert('エラー', `カレンダー表示設定の更新に失敗しました: ${errorMessage || '不明なエラー'}`);
-        return;
-      }
-
-      // 成功時はローカル状態を更新
-      // localStorageにも保存（次回の読み込み時に使用）
-      try {
-        if (typeof window !== 'undefined') {
-          window.localStorage.setItem(`goal_show_calendar_${goalId}`, String(newValue));
-          if (newValue) {
-            window.localStorage.setItem('calendar_goal_id', goalId);
-          } else {
-            window.localStorage.removeItem('calendar_goal_id');
-          }
-        }
-      } catch (e) {
-        logger.error('localStorageへの書き込みエラー:', e);
-      }
+      // 現在の目標情報を取得（イベントに含めるため）
+      const currentGoal = goals.find(g => g.id === goalId);
+      const goalInfo = currentGoal ? {
+        id: goalId,
+        title: currentGoal.title,
+        target_date: currentGoal.target_date,
+        show_on_calendar: newValue
+      } : null;
       
+      // 楽観的更新: UIを即座に更新（パフォーマンス向上）
       setGoals(prevGoals =>
         prevGoals.map(goal =>
           goal.id === goalId ? { ...goal, show_on_calendar: newValue } : goal
         )
       );
+      
+      // カレンダー画面に即座に反映（データベース更新を待たない）
+      if (typeof window !== 'undefined' && goalInfo) {
+        if (newValue && goalInfo) {
+          // 表示する場合: 目標情報をイベントに含める
+          window.dispatchEvent(new CustomEvent('calendarGoalUpdated', {
+            detail: {
+              goal: {
+                title: goalInfo.title,
+                target_date: goalInfo.target_date
+              },
+              show: true
+            }
+          }));
+        } else {
+          // 非表示にする場合: nullを送信
+          window.dispatchEvent(new CustomEvent('calendarGoalUpdated', {
+            detail: {
+              goal: null,
+              show: false
+            }
+          }));
+        }
+      }
+      
+      // データベース更新は非同期で実行（エラーが発生してもUIは既に更新済み）
+      goalService.updateShowOnCalendar(goalId, user.id, newValue).then((result) => {
+        // エラーが発生した場合のみ、UIを元に戻す
+        if (!result.success || result.error) {
+          // show_on_calendarカラムが存在しない場合のエラーは無視（localStorageに保存済み）
+          const errorMessage = result.error || '';
+          const errorCode = (result as any)?.code || '';
+          
+          const isShowOnCalendarError = 
+            errorCode === 'PGRST204' || 
+            errorCode === '42703' || 
+            (typeof errorMessage === 'string' && (
+              errorMessage.toLowerCase().includes('show_on_calendar') ||
+              errorMessage.toLowerCase().includes('column') ||
+              errorMessage.toLowerCase().includes('does not exist') ||
+              errorMessage.toLowerCase().includes('could not find') ||
+              errorMessage.toLowerCase().includes('schema cache')
+            ));
+
+          if (!isShowOnCalendarError) {
+            // カラムエラー以外のエラーの場合のみ、UIを元に戻す
+            setGoals(prevGoals =>
+              prevGoals.map(goal =>
+                goal.id === goalId ? { ...goal, show_on_calendar: currentValue } : goal
+              )
+            );
+            Alert.alert('エラー', `カレンダー表示設定の更新に失敗しました: ${errorMessage || '不明なエラー'}`);
+          }
+        }
+      }).catch((error) => {
+        // 予期しないエラーの場合のみ、UIを元に戻す
+        logger.error('カレンダー表示設定の更新エラー:', error);
+        setGoals(prevGoals =>
+          prevGoals.map(goal =>
+            goal.id === goalId ? { ...goal, show_on_calendar: currentValue } : goal
+          )
+        );
+        Alert.alert('エラー', 'カレンダー表示設定の更新に失敗しました');
+      });
     } catch (error) {
       logger.error('カレンダー表示設定の更新エラー:', error);
       Alert.alert('エラー', 'カレンダー表示設定の更新に失敗しました');
@@ -676,7 +790,7 @@ export default function GoalsScreen() {
         </Text>
       </View>
       
-      {goals.length === 0 ? (
+      {goalsWithDefaults.length === 0 ? (
         <View style={styles.emptyState}>
           <Text style={[styles.emptyStateText, { color: currentTheme.textSecondary }]}>
             個人目標が設定されていません
@@ -691,7 +805,7 @@ export default function GoalsScreen() {
         </View>
       ) : (
         <View style={styles.goalsList}>
-          {goals.map((goal) => (
+          {goalsWithDefaults.map((goal) => (
             <View key={goal.id} style={[styles.goalCard, { borderColor: '#E0E0E0' }]}>
               <View style={styles.goalHeader}>
                 <Text style={[styles.goalTitle, { color: currentTheme.text }]}>
@@ -931,9 +1045,15 @@ export default function GoalsScreen() {
       >
         <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}> 
           <Text style={[styles.title, { color: currentTheme.text }]}>
-            {(userProfile?.nickname && userProfile.nickname.trim().length > 0) 
-              ? `${userProfile.nickname}の目標` 
-              : 'ユーザーの目標'}
+            {(() => {
+              // 優先順位: userProfile.nickname > user.name > 'ユーザー'
+              const nickname = userProfile?.nickname && userProfile.nickname.trim().length > 0
+                ? userProfile.nickname.trim()
+                : (user?.name && String(user.name).trim().length > 0
+                  ? String(user.name).trim()
+                  : 'ユーザー');
+              return `${nickname}の目標`;
+            })()}
           </Text>
         </View>
 
@@ -942,7 +1062,15 @@ export default function GoalsScreen() {
           <View style={styles.sectionHeader}>
             <Target size={24} color={currentTheme.primary} />
             <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-              {userProfile.nickname ? `${userProfile.nickname}の目標！` : '個人目標'}
+              {(() => {
+                // 優先順位: userProfile.nickname > user.name > '個人目標'
+                const nickname = userProfile?.nickname && userProfile.nickname.trim().length > 0
+                  ? userProfile.nickname.trim()
+                  : (user?.name && String(user.name).trim().length > 0
+                    ? String(user.name).trim()
+                    : null);
+                return nickname ? `${nickname}の目標！` : '個人目標';
+              })()}
             </Text>
           </View>
           
@@ -985,9 +1113,9 @@ export default function GoalsScreen() {
 
         {/* 設定した目標セクション */}
         <View style={[styles.section, { backgroundColor: 'transparent', marginTop: 16 }]}>
-          {goals.length > 0 && (
+          {goalsWithDefaults.length > 0 && (
             <View style={styles.goalsList}>
-              {goals.map((goal) => (
+              {goalsWithDefaults.map((goal) => (
                 <View key={goal.id} style={[styles.goalCard, { backgroundColor: '#FFFFFF', borderColor: currentTheme.secondary + '33' }]}>
                   <View style={styles.goalHeader}>
                     <View style={[styles.goalTypeBadge, { backgroundColor: getGoalTypeColor(goal.goal_type) }]}>

@@ -74,3 +74,4 @@ CREATE POLICY "組織の作成者はメンバーシップを管理可能"
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_group_memberships TO anon, authenticated;
 
+

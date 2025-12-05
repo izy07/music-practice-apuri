@@ -147,19 +147,6 @@ const presetPalettes: PresetPalette[] = [
     }
   },
   {
-    id: 'navy',
-    name: 'ネイビー',
-    colors: {
-      background: '#F0F2F5',
-      surface: '#FFFFFF',
-      primary: '#4A5A7A',
-      secondary: '#D4DCE8',
-      accent: '#3A4A6A',
-      text: '#2A3A5A',
-      textSecondary: '#5A6A8A',
-    }
-  },
-  {
     id: 'turquoise',
     name: 'ターコイズ',
     colors: {
@@ -516,13 +503,84 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
         <View style={styles.customSection}>
           <Text style={[styles.customTitle, { color: currentTheme?.text || '#2D3748' }]}>カスタムカラー設定</Text>
           
-          <ColorPicker label="背景色" color={customColors.background} colorType="background" currentTheme={currentTheme} onColorChange={() => {}} />
-          <ColorPicker label="表面色" color={customColors.surface} colorType="surface" currentTheme={currentTheme} onColorChange={() => {}} />
-          <ColorPicker label="プライマリ色" color={customColors.primary} colorType="primary" currentTheme={currentTheme} onColorChange={() => {}} />
-          <ColorPicker label="セカンダリ色" color={customColors.secondary} colorType="secondary" currentTheme={currentTheme} onColorChange={() => {}} />
-          <ColorPicker label="アクセント色" color={customColors.accent} colorType="accent" currentTheme={currentTheme} onColorChange={() => {}} />
-          <ColorPicker label="テキスト色" color={customColors.text} colorType="text" currentTheme={currentTheme} onColorChange={() => {}} />
-          <ColorPicker label="サブテキスト色" color={customColors.textSecondary} colorType="textSecondary" currentTheme={currentTheme} onColorChange={() => {}} />
+          <ColorPicker 
+            label="背景色" 
+            color={customColors.background} 
+            colorType="background" 
+            currentTheme={currentTheme} 
+            onColorChange={(color) => {
+              const updatedColors = { ...customColors, background: color };
+              setCustomColors(updatedColors);
+              // 即座に反映
+              setCustomTheme(updatedColors);
+            }} 
+          />
+          <ColorPicker 
+            label="表面色" 
+            color={customColors.surface} 
+            colorType="surface" 
+            currentTheme={currentTheme} 
+            onColorChange={(color) => {
+              const updatedColors = { ...customColors, surface: color };
+              setCustomColors(updatedColors);
+              setCustomTheme(updatedColors);
+            }} 
+          />
+          <ColorPicker 
+            label="プライマリ色" 
+            color={customColors.primary} 
+            colorType="primary" 
+            currentTheme={currentTheme} 
+            onColorChange={(color) => {
+              const updatedColors = { ...customColors, primary: color };
+              setCustomColors(updatedColors);
+              setCustomTheme(updatedColors);
+            }} 
+          />
+          <ColorPicker 
+            label="セカンダリ色" 
+            color={customColors.secondary} 
+            colorType="secondary" 
+            currentTheme={currentTheme} 
+            onColorChange={(color) => {
+              const updatedColors = { ...customColors, secondary: color };
+              setCustomColors(updatedColors);
+              setCustomTheme(updatedColors);
+            }} 
+          />
+          <ColorPicker 
+            label="アクセント色" 
+            color={customColors.accent} 
+            colorType="accent" 
+            currentTheme={currentTheme} 
+            onColorChange={(color) => {
+              const updatedColors = { ...customColors, accent: color };
+              setCustomColors(updatedColors);
+              setCustomTheme(updatedColors);
+            }} 
+          />
+          <ColorPicker 
+            label="テキスト色" 
+            color={customColors.text} 
+            colorType="text" 
+            currentTheme={currentTheme} 
+            onColorChange={(color) => {
+              const updatedColors = { ...customColors, text: color };
+              setCustomColors(updatedColors);
+              setCustomTheme(updatedColors);
+            }} 
+          />
+          <ColorPicker 
+            label="サブテキスト色" 
+            color={customColors.textSecondary} 
+            colorType="textSecondary" 
+            currentTheme={currentTheme} 
+            onColorChange={(color) => {
+              const updatedColors = { ...customColors, textSecondary: color };
+              setCustomColors(updatedColors);
+              setCustomTheme(updatedColors);
+            }} 
+          />
           
           <View style={styles.customActions}>
             <TouchableOpacity

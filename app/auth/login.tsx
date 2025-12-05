@@ -27,6 +27,7 @@ import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { getBasePath } from '@/lib/navigationUtils';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -68,6 +69,7 @@ export default function LoginScreen() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [showPassword, setShowPassword] = useState(false);
   const [uiError, setUiError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false); // ログイン処理中のローカル状態
   
   // アニメーション状態
   const [fadeAnim] = useState(new Animated.Value(0));
@@ -82,13 +84,43 @@ export default function LoginScreen() {
     canAccessMain: canAccessMainApp(),
   });
 
-  // 認証状態に応じた自動遷移
+  // 認証状態に応じた自動遷移（ログイン成功後の画面遷移）
   useEffect(() => {
-    if (isAuthenticated && !isLoading) {
-      logger.debug('ログイン成功 - 認証状態検出（遷移はRootLayoutに委譲）');
-      // 画面遷移は`app/_layout.tsx`側の集中ロジックに任せる
+    // ログイン画面にいる間は、認証状態が更新されたら適切な画面に遷移
+    if (isAuthenticated && !isLoading && isLoggingIn) {
+      logger.debug('ログイン成功 - 認証状態検出、画面遷移を実行', {
+        isAuthenticated,
+        isLoading,
+        isLoggingIn,
+        hasInstrument: hasInstrumentSelected(),
+        needsTutorial: needsTutorial(),
+        canAccessMain: canAccessMainApp()
+      });
+      
+      // ログイン処理完了
+      setIsLoggingIn(false);
+      
+      // ログイン直後フラグをクリア（画面遷移を実行するため）
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('login-just-completed');
+      }
+      
+      // 一般的なアプリと同様に、すぐに画面遷移を実行（遅延なし）
+      logger.debug('認証状態更新完了 - 画面遷移を実行');
+      
+      // 適切な画面に遷移
+      if (canAccessMainApp()) {
+        logger.debug('メイン画面に遷移');
+        router.replace('/(tabs)/');
+      } else if (needsTutorial()) {
+        logger.debug('チュートリアル画面に遷移');
+        router.replace('/(tabs)/tutorial');
+      } else {
+        logger.debug('楽器選択画面に遷移');
+        router.replace('/(tabs)/instrument-selection');
+      }
     }
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated, isLoading, isLoggingIn, hasInstrumentSelected, needsTutorial, canAccessMainApp, router]);
 
   // アニメーション開始
   useEffect(() => {
@@ -135,12 +167,9 @@ export default function LoginScreen() {
       errors.email = '有効なメールアドレスを入力してください';
     }
     
+    // ログイン時はパスワードの形式チェックを緩和（既存アカウントのパスワードを考慮）
     if (!formData.password) {
       errors.password = 'パスワードを入力してください';
-    } else if (formData.password.length < 8) {
-      errors.password = 'パスワードは8文字以上で入力してください';
-    } else if (!/(?=.*[a-z])(?=.*\d)/.test(formData.password)) {
-      errors.password = 'パスワードは小文字・数字を含む必要があります';
     }
     
     setFormErrors(errors);
@@ -151,23 +180,82 @@ export default function LoginScreen() {
   const handleLogin = async () => {
     logger.debug('ログイン処理開始');
     
+    // エラーをクリア
+    setUiError(null);
+    setFormErrors({});
+    clearError();
+    
     if (!validateForm()) {
-      logger.debug('フォームバリデーション失敗');
+      logger.debug('フォームバリデーション失敗', formErrors);
+      // バリデーションエラーを明確に表示
+      const validationErrors = Object.values(formErrors);
+      if (validationErrors.length > 0) {
+        Alert.alert('入力エラー', validationErrors.join('\n'));
+      }
       return;
     }
     
+    // ログイン処理開始
+    setIsLoggingIn(true);
+    
     logger.debug('フォームバリデーション成功');
-    logger.debug('ログインデータ:', { email: formData.email });
+    logger.debug('ログインデータ:', { email: formData.email, passwordLength: formData.password.length });
     
     try {
+      logger.debug('signIn関数を呼び出し中...', { email: formData.email });
       const success = await signIn(formData);
-      logger.debug('ログイン結果:', success);
+      
+      // エラー状態を確認（非同期処理の完了を待つ）
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      logger.debug('ログイン結果確認:', { 
+        success, 
+        isAuthenticated, 
+        isLoading,
+        error: error || 'なし' 
+      });
       
       if (success) {
-        logger.debug('ログイン成功 - 自動遷移を待機中');
+        logger.debug('ログイン成功 - 認証状態の更新を待機中');
         setUiError(null);
+        setFormErrors({});
+        
+        // ログイン直後フラグを設定（_layout.tsxで認証チェックをスキップするため）
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('login-just-completed', 'true');
+          logger.debug('ログイン直後フラグを設定');
+        }
+        
+        // 認証状態が更新されるまで待つ（最大2秒、一般的なアプリと同様の速度）
+        let retryCount = 0;
+        const maxRetries = 20; // 2秒間待機（100ms × 20回）
+        while (retryCount < maxRetries && !isAuthenticated && !isLoading) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+          retryCount++;
+        }
+        
+        if (isAuthenticated) {
+          logger.debug('ログイン成功 - 認証状態確認済み', {
+            isAuthenticated,
+            isLoading,
+            retryCount
+          });
+          // 画面遷移はRootLayoutのuseEffectで処理される
+          // 認証状態が更新されたら自動的に適切な画面に遷移する
+        } else {
+          // 認証状態が更新されない場合でも、成功として扱う
+          // RootLayoutのuseEffectで認証状態が更新されたら自動的に遷移する
+          // 警告は出さない（認証状態の更新は非同期で行われるため）
+          logger.debug('ログイン成功 - 認証状態の更新を待機中（非同期処理）', { 
+            success, 
+            isAuthenticated, 
+            isLoading,
+            retryCount
+          });
+        }
       } else {
-        logger.debug('ログイン失敗');
+        setIsLoggingIn(false);
+        logger.debug('ログイン失敗', { success, isAuthenticated, error });
         const fallbackMsg = error || 'メールアドレスまたはパスワードが正しくありません';
         setUiError(fallbackMsg);
         // Webでも確実に視認できるようフィールドエラーも表示
@@ -176,11 +264,24 @@ export default function LoginScreen() {
           password: fallbackMsg,
         }));
 
+        // エラーメッセージをアラートでも表示
+        Alert.alert(
+          'ログイン失敗',
+          fallbackMsg,
+          [{ text: 'OK' }]
+        );
+
         // 未登録ユーザーの場合は新規登録画面への誘導
-        if (error?.includes('登録されていません') || error?.includes('not found') || error?.includes('user not found')) {
+        const errorLower = (error || '').toLowerCase();
+        if (errorLower.includes('登録されていません') || 
+            errorLower.includes('not found') || 
+            errorLower.includes('user not found') || 
+            errorLower.includes('invalid login credentials') ||
+            errorLower.includes('invalid credentials') ||
+            errorLower.includes('email not confirmed')) {
           Alert.alert(
-            'アカウントが見つかりません',
-            'このユーザーは登録されていません。新規登録を行いますか？',
+            'ログインできません',
+            'メールアドレスまたはパスワードが正しくない可能性があります。\n\n新規登録を行いますか？',
             [
               { text: 'キャンセル', style: 'cancel' },
               {
@@ -195,8 +296,12 @@ export default function LoginScreen() {
         }
       }
     } catch (error) {
+      setIsLoggingIn(false);
+      logger.error('ログイン処理で例外が発生:', error);
       ErrorHandler.handle(error, 'ログイン処理', true);
-      Alert.alert('エラー', 'ログインに失敗しました。もう一度お試しください。');
+      const errorMessage = error instanceof Error ? error.message : 'ログインに失敗しました。もう一度お試しください。';
+      setUiError(errorMessage);
+      Alert.alert('エラー', errorMessage);
     }
   };
 
@@ -226,7 +331,7 @@ export default function LoginScreen() {
       logger.debug('パスワードリセットメール送信開始:', email);
       
       const redirectTo = Platform.OS === 'web'
-        ? `${window.location.origin}/auth/callback`
+        ? `${window.location.origin}${getBasePath()}/auth/callback`
         : 'exp+bolt-expo-nativewind://auth/callback';
         
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { 
@@ -334,7 +439,7 @@ export default function LoginScreen() {
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
-                    editable={!isLoading}
+                    editable={!isLoading && !isLoggingIn}
                     selectionColor={colors.primary}
                     nativeID="login-email-input"
                     accessibilityLabel="メールアドレス"
@@ -361,7 +466,7 @@ export default function LoginScreen() {
                     secureTextEntry={!showPassword}
                     autoCapitalize="none"
                     autoCorrect={false}
-                    editable={!isLoading}
+                    editable={!isLoading && !isLoggingIn}
                     selectionColor={colors.primary}
                     nativeID="login-password-input"
                     accessibilityLabel="パスワード"
@@ -369,7 +474,7 @@ export default function LoginScreen() {
                   <TouchableOpacity
                     style={styles.passwordToggle}
                     onPress={() => setShowPassword(!showPassword)}
-                    disabled={isLoading}
+                    disabled={isLoading || isLoggingIn}
                   >
                   <Text style={styles.passwordToggleText}>
                     {showPassword ? '👀' : '🔒'}
@@ -385,13 +490,13 @@ export default function LoginScreen() {
               <TouchableOpacity
                 style={[
                   styles.loginButton,
-                  isLoading && styles.loginButtonDisabled,
+                  (isLoading || isLoggingIn) && styles.loginButtonDisabled,
                 ]}
                 onPress={handleLogin}
-                disabled={isLoading}
+                disabled={isLoading || isLoggingIn}
               >
                 <Text style={styles.loginButtonText}>
-                  {isLoading ? 'ログイン中...' : 'ログイン'}
+                  {(isLoading || isLoggingIn) ? 'ログイン中...' : 'ログイン'}
                 </Text>
                 <Text style={styles.loginButtonIcon}>→</Text>
               </TouchableOpacity>

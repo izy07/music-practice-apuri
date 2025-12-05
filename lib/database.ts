@@ -9,18 +9,45 @@ type TutorialProgress = Database['public']['Tables']['tutorial_progress']['Row']
 // ユーザー設定の保存・取得
 export const saveUserSettings = async (userId: string, settings: Partial<UserSettings>) => {
   try {
-    const { data, error } = await supabase
+    // まず既存のレコードを確認
+    const { data: existing } = await supabase
       .from('user_settings')
-      .upsert({
-        user_id: userId,
-        ...settings,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' })
-      .select()
-      .single();
+      .select('user_id')
+      .eq('user_id', userId)
+      .maybeSingle();
 
-    if (error) throw error;
-    return { data, error: null };
+    let result;
+    if (existing) {
+      // 既存レコードがある場合は更新
+      const { data, error } = await supabase
+        .from('user_settings')
+        .update({
+          ...settings,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      result = { data, error: null };
+    } else {
+      // レコードがない場合は挿入
+      const { data, error } = await supabase
+        .from('user_settings')
+        .insert({
+          user_id: userId,
+          ...settings,
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      result = { data, error: null };
+    }
+
+    return result;
   } catch (error) {
     ErrorHandler.handle(error, 'ユーザー設定保存', false);
     return { data: null, error };
@@ -46,18 +73,45 @@ export const getUserSettings = async (userId: string) => {
 // 言語設定の保存・取得
 export const saveLanguageSetting = async (userId: string, language: 'ja' | 'en') => {
   try {
-    const { data, error } = await supabase
+    // まず既存のレコードを確認
+    const { data: existing } = await supabase
       .from('user_settings')
-      .upsert({
-        user_id: userId,
-        language,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' })
-      .select()
-      .single();
+      .select('user_id')
+      .eq('user_id', userId)
+      .maybeSingle();
 
-    if (error) throw error;
-    return { data, error: null };
+    let result;
+    if (existing) {
+      // 既存レコードがある場合は更新
+      const { data, error } = await supabase
+        .from('user_settings')
+        .update({
+          language,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', userId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      result = { data, error: null };
+    } else {
+      // レコードがない場合は挿入
+      const { data, error } = await supabase
+        .from('user_settings')
+        .insert({
+          user_id: userId,
+          language,
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      result = { data, error: null };
+    }
+
+    return result;
   } catch (error) {
     ErrorHandler.handle(error, '言語設定保存', false);
     return { data: null, error };

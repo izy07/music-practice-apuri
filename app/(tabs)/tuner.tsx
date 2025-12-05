@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Music, Zap, Play, Pause } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { useLanguage } from '@/components/LanguageContext';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
@@ -207,6 +208,7 @@ const convertNoteName = (noteString: string, mode: 'en' | 'ja'): string => {
 
 export default function TunerScreen() {
   const { currentTheme, selectedInstrument: contextSelectedInstrument } = useInstrumentTheme();
+  const { t } = useLanguage();
   const [mode, setMode] = useState<'tuner' | 'metronome'>('tuner');
   
   // チューナーUI表示用の状態（機能は削除済み、UIのみ表示）
@@ -289,7 +291,7 @@ export default function TunerScreen() {
 
   // チューナー機能は削除済み（UIのみ表示）
   const startListening = () => {
-    Alert.alert('機能停止', 'チューナー機能は現在利用できません。');
+    Alert.alert(t('featureUnavailable'), t('tunerUnavailable'));
   };
 
   const stopListening = () => {
@@ -302,7 +304,7 @@ export default function TunerScreen() {
     try {
       // Webプラットフォームでない場合は警告
       if (Platform.OS !== 'web') {
-        Alert.alert('未対応', '開放弦の音はWebでのみ再生できます。');
+        Alert.alert(t('notSupported'), t('openStringWebOnly'));
         return;
       }
 
@@ -420,7 +422,7 @@ export default function TunerScreen() {
               styles.modeButtonText,
               { color: mode === 'tuner' ? currentTheme.surface : currentTheme.primary }
             ]}>
-              チューナー
+              {t('tunerTitle')}
             </Text>
           </TouchableOpacity>
           
@@ -436,7 +438,7 @@ export default function TunerScreen() {
               styles.modeButtonText,
               { color: mode === 'metronome' ? currentTheme.surface : currentTheme.primary }
             ]}>
-              メトロノーム
+              {t('metronome')}
             </Text>
           </TouchableOpacity>
         </View>

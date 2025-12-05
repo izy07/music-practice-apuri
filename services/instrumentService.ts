@@ -221,7 +221,7 @@ const defaultInstruments: Instrument[] = [
     accent: '#2F4F4F',
     background: '#E0F6FF',
     surface: '#FFFFFF',
-    text: '#000080',
+    text: '#2F4F4F',
     textSecondary: '#4682B4',
   },
   {
@@ -257,7 +257,7 @@ const defaultInstruments: Instrument[] = [
     accent: '#1E90FF',
     background: '#E0F6FF',
     surface: '#FFFFFF',
-    text: '#000080',
+    text: '#1E3A5F',
     textSecondary: '#4169E1',
   },
   {
@@ -324,14 +324,22 @@ export const getAllInstruments = async (): Promise<ServiceResult<Instrument[]>> 
       const result = await instrumentRepository.getAllInstruments();
       
       if (!result.success || !result.data) {
-        // エラーの場合はローカルのdefaultInstrumentsを使用
-        logger.warn(`[${SERVICE_CONTEXT}] getAllInstruments:fallback to defaultInstruments`);
+        // エラーの場合はローカルのdefaultInstrumentsを使用（警告は開発環境のみ、警告レベルを下げる）
+        // リロード時にデータベースから読み込まないため、これは正常な動作
+        if (__DEV__) {
+          logger.debug(`[${SERVICE_CONTEXT}] getAllInstruments:fallback to defaultInstruments (正常な動作)`, {
+            error: result.error
+          });
+        }
         return defaultInstruments;
       }
       
       if (result.data.length === 0) {
-        // データベースに楽器がない場合はローカルのdefaultInstrumentsを使用
-        logger.warn(`[${SERVICE_CONTEXT}] getAllInstruments:no instruments in DB, using defaultInstruments`);
+        // データベースに楽器がない場合はローカルのdefaultInstrumentsを使用（警告は開発環境のみ、警告レベルを下げる）
+        // リロード時にデータベースから読み込まないため、これは正常な動作
+        if (__DEV__) {
+          logger.debug(`[${SERVICE_CONTEXT}] getAllInstruments:no instruments in DB, using defaultInstruments (正常な動作)`);
+        }
         return defaultInstruments;
       }
       

@@ -94,3 +94,4 @@ bash scripts/execute_migration_now.sh
 3. **イベント機能が動作するか確認**
 4. **プロフィール更新が動作するか確認**
 
+

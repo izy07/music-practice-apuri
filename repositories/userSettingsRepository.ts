@@ -91,21 +91,46 @@ export const saveUserSettings = async (
     async () => {
       logger.debug(`[${REPOSITORY_CONTEXT}] saveUserSettings:start`, { userId, settings });
       
-      const { data, error } = await supabase
+      // まず既存のレコードを確認
+      const { data: existing } = await supabase
         .from('user_settings')
-        .upsert(
-          {
+        .select('user_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      let data;
+      if (existing) {
+        // 既存レコードがある場合は更新
+        const { data: updateData, error: updateError } = await supabase
+          .from('user_settings')
+          .update({
+            ...settings,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', userId)
+          .select()
+          .single();
+
+        if (updateError) {
+          throw updateError;
+        }
+        data = updateData;
+      } else {
+        // レコードがない場合は挿入
+        const { data: insertData, error: insertError } = await supabase
+          .from('user_settings')
+          .insert({
             user_id: userId,
             ...settings,
             updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' }
-        )
-        .select()
-        .single();
+          })
+          .select()
+          .single();
 
-      if (error) {
-        throw error;
+        if (insertError) {
+          throw insertError;
+        }
+        data = insertData;
       }
 
       logger.debug(`[${REPOSITORY_CONTEXT}] saveUserSettings:success`);

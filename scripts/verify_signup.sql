@@ -58,3 +58,4 @@ WHERE up.id IS NULL
   AND au.created_at >= NOW() - INTERVAL '24 hours'
 ORDER BY au.created_at DESC;
 
+

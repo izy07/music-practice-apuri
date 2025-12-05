@@ -212,8 +212,8 @@ export default function ResetPasswordScreen() {
 
   if (!isValidSession) {
     return (
-      <SafeAreaView style={styles.container} >
-        <View style={styles.loadingContainer}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]} >
+        <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
           <Text style={styles.loadingText}>セッションを確認中...</Text>
         </View>
       </SafeAreaView>

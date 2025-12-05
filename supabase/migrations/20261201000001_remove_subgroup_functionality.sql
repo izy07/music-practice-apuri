@@ -152,3 +152,4 @@ BEGIN
   RAISE NOTICE '   - practice_schedules.target_sub_group_idカラムを削除';
 END $$;
 
+

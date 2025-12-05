@@ -105,8 +105,9 @@ const initialUIState: UIState = {
 
 export default function CalendarScreen() {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuthAdvanced();
+  const { isAuthenticated, isLoading, isInitialized } = useAuthAdvanced();
   const { currentTheme, practiceSettings, selectedInstrument } = useInstrumentTheme();
+  const { Platform } = require('react-native');
   
   // 日付管理
   const [currentDate, setCurrentDate] = useState(() => {
@@ -199,12 +200,39 @@ export default function CalendarScreen() {
   }, [currentDate]);
 
   // Load practice/events/recordings for current month and total
+  // loadAllDataをrefで保持して、関数の再作成による無限ループを防止
+  const loadAllDataRef = useRef(loadAllData);
+  
+  // デバウンス処理用のref
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLoadTimeRef = useRef<number>(0);
+  
+  useEffect(() => {
+    loadAllDataRef.current = loadAllData;
+  }, [loadAllData]);
+
   useEffect(() => {
     if (isLoading || !isAuthenticated) {
       return;
     }
-    loadAllData();
-  }, [currentDate, isLoading, isAuthenticated, loadAllData]);
+    
+    // 既存のタイマーをクリア
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    
+    // 即座に実行（デバウンス処理を削除してパフォーマンス向上）
+    // 月が変わった時は即座にデータを読み込む（古いデータが表示されないように）
+    loadAllDataRef.current();
+    lastLoadTimeRef.current = Date.now();
+    
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDate, isLoading, isAuthenticated]); // loadAllDataを依存配列から削除
 
   // 画面に戻ってきたときに最新化（録音保存後の復帰など）
   useFocusEffect(
@@ -212,15 +240,44 @@ export default function CalendarScreen() {
       if (isLoading || !isAuthenticated) {
         return;
       }
-      loadAllData();
-    }, [isLoading, isAuthenticated, loadAllData])
+      
+      const now = Date.now();
+      // 最後の実行から200ms経過していない場合はスキップ（重複実行防止・遅延を完全に無くす）
+      if (now - lastLoadTimeRef.current < 200) {
+        return;
+      }
+      
+      loadAllDataRef.current();
+      lastLoadTimeRef.current = now;
+    }, [isLoading, isAuthenticated]) // loadAllDataを依存配列から削除
   );
 
-  // タイマーからの練習記録更新通知をリッスン
+  // タイマーからの練習記録更新通知をリッスン（refを使用して最新の関数を参照）
+  const loadPracticeDataRef = useRef(loadPracticeData);
+  const loadTotalPracticeTimeRef = useRef(loadTotalPracticeTime);
+  const loadRecordingsDataRef = useRef(loadRecordingsData);
+  const loadShortTermGoalRef = useRef(loadShortTermGoal);
+  // setTimeoutのIDを保持するためのref
+  const updateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    loadPracticeDataRef.current = loadPracticeData;
+    loadTotalPracticeTimeRef.current = loadTotalPracticeTime;
+    loadRecordingsDataRef.current = loadRecordingsData;
+    loadShortTermGoalRef.current = loadShortTermGoal;
+  }, [loadPracticeData, loadTotalPracticeTime, loadRecordingsData, loadShortTermGoal]);
+
   useEffect(() => {
     const handlePracticeRecordUpdate = async (event: Event & { detail?: { action?: string; source?: string } }) => {
       const detail = (event as CustomEvent).detail;
       logger.debug('練習記録更新通知を受信:', detail);
+      
+      // 既存のタイマーをクリア
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+        updateTimeoutRef.current = null;
+      }
+      
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
@@ -230,23 +287,24 @@ export default function CalendarScreen() {
           // タイマーからの通知の場合は少し待機してから更新（データベースの反映を待つ）
           const delay = source === 'timer' ? 1000 : 0;
           
-          setTimeout(async () => {
+          updateTimeoutRef.current = setTimeout(async () => {
             // 録音保存の場合は録音データも更新
             if (action === 'recording_saved') {
               await Promise.all([
-                loadPracticeData(user),
-                loadTotalPracticeTime(user),
-                loadRecordingsData(user)
+                loadPracticeDataRef.current(user),
+                loadTotalPracticeTimeRef.current(user),
+                loadRecordingsDataRef.current(user)
               ]);
               logger.info('✅ 録音保存後のカレンダーデータを更新しました');
             } else {
               // 通常の練習記録更新（タイマー含む）
               await Promise.all([
-                loadPracticeData(user),
-                loadTotalPracticeTime(user)
+                loadPracticeDataRef.current(user),
+                loadTotalPracticeTimeRef.current(user)
               ]);
               logger.info('✅ カレンダーデータを更新しました（ソース:', source || 'unknown', '）');
             }
+            updateTimeoutRef.current = null;
           }, delay);
         }
       } catch (error) {
@@ -263,9 +321,9 @@ export default function CalendarScreen() {
         if (user) {
           // 楽器変更時はすべてのデータを再取得
           await Promise.all([
-            loadPracticeData(user),
-            loadTotalPracticeTime(user),
-            loadRecordingsData(user)
+            loadPracticeDataRef.current(user),
+            loadTotalPracticeTimeRef.current(user),
+            loadRecordingsDataRef.current(user)
           ]);
           logger.info('✅ 楽器変更後のカレンダーデータを更新しました');
         }
@@ -275,18 +333,51 @@ export default function CalendarScreen() {
       }
     };
 
+    // カレンダー表示目標の更新イベントをリッスン
+    const handleCalendarGoalUpdate = async (event: Event & { detail?: { goal?: { title: string; target_date?: string } | null; show: boolean } }) => {
+      const detail = (event as CustomEvent).detail;
+      logger.debug('カレンダー表示目標の更新通知を受信', detail);
+      
+      // 即座にUIを更新（データベースからの再取得を待たない）
+      if (detail?.goal) {
+        // 表示する場合: 目標情報を即座に設定
+        loadShortTermGoalRef.current().then(() => {
+          // バックグラウンドでデータベースから再取得して確実に同期
+          logger.info('✅ カレンダー表示目標を即座に更新しました（バックグラウンドで同期中）');
+        }).catch((error) => {
+          ErrorHandler.handle(error, 'カレンダー表示目標の更新', false);
+          logger.error('❌ カレンダー表示目標の更新エラー:', error);
+        });
+      } else {
+        // 非表示にする場合: 即座にnullに設定
+        loadShortTermGoalRef.current().then(() => {
+          logger.info('✅ カレンダー表示目標を非表示にしました');
+        }).catch((error) => {
+          ErrorHandler.handle(error, 'カレンダー表示目標の更新', false);
+          logger.error('❌ カレンダー表示目標の更新エラー:', error);
+        });
+      }
+    };
+
     // カスタムイベントリスナーを追加
     if (typeof window !== 'undefined') {
       window.addEventListener('practiceRecordUpdated', handlePracticeRecordUpdate);
       window.addEventListener('instrumentChanged', handleInstrumentChange);
+      window.addEventListener('calendarGoalUpdated', handleCalendarGoalUpdate);
       
       // クリーンアップ
       return () => {
+        // setTimeoutをクリア
+        if (updateTimeoutRef.current) {
+          clearTimeout(updateTimeoutRef.current);
+          updateTimeoutRef.current = null;
+        }
         window.removeEventListener('practiceRecordUpdated', handlePracticeRecordUpdate);
         window.removeEventListener('instrumentChanged', handleInstrumentChange);
+        window.removeEventListener('calendarGoalUpdated', handleCalendarGoalUpdate);
       };
     }
-  }, [loadPracticeData, loadTotalPracticeTime, loadRecordingsData]);
+  }, []); // 依存配列を空にして、refで最新の関数を参照
 
   // 楽器ID取得の共通関数（savePracticeRecordで使用）
   // コンテキストから取得（DBアクセス不要）
@@ -614,10 +705,7 @@ export default function CalendarScreen() {
     return calendarCells;
   }, [currentDate, practiceData, recordingsData, events, getDaysInMonth, getFirstDayOfMonth, todayInfo, currentTheme, handleDateSelection, handleEventSelection]);
 
-  // 認証中または認証されていない場合は何も表示しない
-  if (isLoading || !isAuthenticated) {
-    return null;
-  }
+  // 認証チェックはレイアウトレベルで実行されるため、ここでは不要
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
@@ -770,37 +858,40 @@ export default function CalendarScreen() {
         visible={uiState.showPracticeRecord}
         onClose={() => setShowPracticeRecord(false)}
         selectedDate={uiState.selectedDate}
-        onSave={async (minutes, content, audioUrl, videoUrl) => {
-          try {
-            // 実際に保存処理を実行
-            await savePracticeRecord(minutes, content, audioUrl, uiState.selectedDate || undefined, videoUrl);
-            
-            // カレンダー画面に更新を通知
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
-                detail: { action: 'saved', date: uiState.selectedDate }
-              }));
-            }
-            
-            // 保存成功の通知（アラートは表示せず、ログのみ）
-            logger.info('✅ 練習記録の保存が完了しました');
-            
-            // カレンダーデータを再読み込み（savePracticeRecord内でも読み込んでいるが、念のため）
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-              await Promise.all([
-                loadPracticeData(user),
-                loadTotalPracticeTime(user),
-                loadRecordingsData(user)
-              ]);
-            }
-            
-            logger.info('🔄 カレンダーデータの再読み込み完了');
-          } catch (error) {
-            ErrorHandler.handle(error, 'カレンダー更新', true);
-            logger.error('カレンダー更新エラー:', error);
-            Alert.alert('エラー', '練習記録の保存に失敗しました');
+        onSave={(minutes, content, audioUrl, videoUrl) => {
+          // カレンダー画面に更新を通知（即座に発火してUIを更新）
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
+              detail: { action: 'saved', date: uiState.selectedDate }
+            }));
           }
+          
+          // 保存処理をバックグラウンドで実行（完了を待たない）
+          (async () => {
+            try {
+              // 保存処理を実行
+              await savePracticeRecord(minutes, content, audioUrl, uiState.selectedDate || undefined, videoUrl);
+              
+              // 保存成功の通知（アラートは表示せず、ログのみ）
+              logger.info('✅ 練習記録の保存が完了しました');
+              
+              // カレンダーデータを再読み込み（バックグラウンドで実行）
+              const { data: { user } } = await supabase.auth.getUser();
+              if (user) {
+                await Promise.all([
+                  loadPracticeData(user),
+                  loadTotalPracticeTime(user),
+                  loadRecordingsData(user)
+                ]);
+                logger.info('✅ カレンダーデータを更新しました（ソース: unknown ）');
+                logger.info('🔄 カレンダーデータの再読み込み完了');
+              }
+            } catch (error) {
+              ErrorHandler.handle(error, 'カレンダー更新', false);
+              logger.error('カレンダー更新エラー:', error);
+              // エラーはバックグラウンドで処理（ユーザーには既に画面が戻っている）
+            }
+          })();
         }}
         onRecordingSaved={async () => {
           // 録音保存後にデータを再読み込み
@@ -1056,9 +1147,10 @@ const styles = StyleSheet.create({
     marginHorizontal: getScaledSpacing(4), // 左右のマージンも追加
   },
   summaryText: {
-    fontSize: 13,
-    textAlign: 'center',
+    fontSize: 13, // 14 → 13にさらに小さく
+    textAlign: 'center', // 中央に表示
     color: '#666666',
+    fontWeight: '500', // 少し太くして読みやすく
   },
   summaryTitle: {
     fontSize: 16,
@@ -1080,7 +1172,8 @@ const styles = StyleSheet.create({
   },
   highlightText: {
     color: '#8B4513',
-    fontWeight: '600',
+    fontWeight: '700', // 600 → 700に太く
+    fontSize: 14, // 18 → 14に小さく（テキストと同じサイズ）
   },
 
   fab: {

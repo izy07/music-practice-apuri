@@ -42,6 +42,31 @@ export function handleError(error: AppError, context?: string): void {
 export class ErrorHandler {
   private static errorCount = 0;
   private static readonly MAX_ERRORS = ERROR.MAX_DISPLAY_COUNT;
+  private static networkErrorCount = 0;
+  private static readonly MAX_NETWORK_ERRORS = 3; // ネットワークエラーは3回まで表示
+  private static lastNetworkErrorTime = 0;
+  private static readonly NETWORK_ERROR_THROTTLE_MS = 5000; // 5秒間は同じネットワークエラーを表示しない
+  
+  /**
+   * ネットワークエラーかどうかを判定
+   */
+  private static isNetworkError(error: AppError): boolean {
+    const message = (error instanceof Error 
+      ? error.message 
+      : typeof error === 'object' && error !== null && 'message' in error
+      ? String(error.message)
+      : String(error || '')
+    ).toLowerCase();
+    
+    return (
+      message.includes('failed to fetch') ||
+      message.includes('networkerror') ||
+      message.includes('network error') ||
+      message.includes('err_internet_disconnected') ||
+      message.includes('internet disconnected') ||
+      message.includes('network request failed')
+    );
+  }
   
   /**
    * エラーを処理し、必要に応じてユーザーに表示
@@ -50,6 +75,42 @@ export class ErrorHandler {
    * @param showToUser - ユーザーにエラーを表示するかどうか
    */
   static handle(error: AppError, context: string = '', showToUser: boolean = true): void {
+    const isNetwork = this.isNetworkError(error);
+    const now = Date.now();
+    
+    // ネットワークエラーの場合、スロットリング処理
+    if (isNetwork) {
+      // 5秒以内に同じネットワークエラーが発生した場合はログのみ（表示しない）
+      if (now - this.lastNetworkErrorTime < this.NETWORK_ERROR_THROTTLE_MS) {
+        // ログも抑制（開発環境でのみ表示）
+        if (__DEV__) {
+          logger.debug(`[ErrorHandler] ネットワークエラー（スロットリング）: ${context}`);
+        }
+        return;
+      }
+      
+      this.networkErrorCount++;
+      this.lastNetworkErrorTime = now;
+      
+      // ネットワークエラーは3回まで表示
+      if (this.networkErrorCount > this.MAX_NETWORK_ERRORS) {
+        // ログも抑制（開発環境でのみ表示）
+        if (__DEV__) {
+          logger.debug(`[ErrorHandler] ネットワークエラー（表示上限）: ${context}`);
+        }
+        return;
+      }
+      
+      // ネットワークエラーはログのみ（開発環境でのみ）
+      if (__DEV__) {
+        logger.debug(`[ErrorHandler] ネットワークエラー: ${context}`, error);
+      }
+      
+      // ネットワークエラーはユーザーに表示しない（オフライン時は正常な動作）
+      return;
+    }
+    
+    // ネットワークエラー以外のエラーは通常通り処理
     logger.error(`[ErrorHandler] ${context || 'Unknown context'}`, error);
     
     this.errorCount++;

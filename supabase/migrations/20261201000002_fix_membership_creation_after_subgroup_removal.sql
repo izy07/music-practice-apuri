@@ -97,3 +97,4 @@ BEGIN
   RAISE NOTICE '   - RLSポリシーを更新（sub_group_idを参照しない）';
 END $$;
 
+

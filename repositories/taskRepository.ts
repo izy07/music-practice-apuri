@@ -9,8 +9,9 @@
 import { supabase } from '@/lib/supabase';
 import type { Task, TaskStatus } from '@/types/organization';
 import type { RepositoryResult } from '@/lib/database/interfaces';
-import { safeExecute } from '@/lib/database/baseRepository';
+import { safeExecute, isSupabaseTableNotFoundError } from '@/lib/database/baseRepository';
 import { isTaskArray } from '@/lib/validation';
+import logger from '@/lib/logger';
 
 /**
  * タスクリポジトリ
@@ -27,7 +28,14 @@ export const taskRepository = {
         .eq('organization_id', organizationId)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      // 404エラー（テーブル不存在）の場合は空配列を返す
+      if (error) {
+        if (isSupabaseTableNotFoundError(error)) {
+          logger.info('tasksテーブルが存在しないか、アクセス権限がありません。空配列を返します。');
+          return [];
+        }
+        throw error;
+      }
 
       const safe = data || [];
       if (!isTaskArray(safe)) {

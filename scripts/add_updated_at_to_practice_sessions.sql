@@ -57,3 +57,4 @@ WHERE table_schema = 'public'
 AND table_name = 'practice_sessions' 
 AND column_name = 'updated_at';
 
+

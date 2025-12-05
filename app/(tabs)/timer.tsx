@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useReducer, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ScrollView, Alert, Switch, Vibration, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Play, Pause, Square, RotateCcw, Plus, Minus, Timer as TimerIcon, Clock, Volume2 } from 'lucide-react-native';
+import { Play, Pause, Square, RotateCcw, Plus, Minus, Timer as TimerIcon, Clock } from 'lucide-react-native';
 import { Svg, Circle } from 'react-native-svg';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { useLanguage } from '@/components/LanguageContext';
 import { useTimer } from '@/hooks/useTimer';
 import { formatLocalDate } from '@/lib/dateUtils';
 import { COMMON_STYLES } from '@/lib/appStyles';
@@ -35,8 +36,17 @@ function AnimatedCircularProgress({
   const [animatedProgress, setAnimatedProgress] = useState(0);
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
+  
+  // requestAnimationFrameのIDを保持するためのref
+  const animationFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
+    // 前のアニメーションをキャンセル
+    if (animationFrameRef.current !== null) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    
     // スムーズなアニメーション効果を実現するため、requestAnimationFrameを使用
     const animateProgress = () => {
       const startProgress = animatedProgress;
@@ -55,15 +65,25 @@ function AnimatedCircularProgress({
         setAnimatedProgress(currentProgress);
         
         if (progressRatio < 1) {
-          requestAnimationFrame(animate);
+          animationFrameRef.current = requestAnimationFrame(animate);
+        } else {
+          animationFrameRef.current = null;
         }
       };
       
-      requestAnimationFrame(animate);
+      animationFrameRef.current = requestAnimationFrame(animate);
     };
 
     animateProgress();
-  }, [progress]);
+    
+    // クリーンアップ: コンポーネントがアンマウントされるか、progressが変わる前にアニメーションを停止
+    return () => {
+      if (animationFrameRef.current !== null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [progress, animatedProgress]);
 
   const strokeDashoffset = animatedProgress * circumference;
 
@@ -230,17 +250,13 @@ interface SettingsState {
   autoSave: boolean;
   soundOn: boolean;
   soundType: 'beep' | 'chime' | 'bell';
-  volume: number;
-  vibrateOn: boolean;
 }
 
 // 設定のアクション型定義
 type SettingsAction =
   | { type: 'SET_AUTO_SAVE'; payload: boolean }
   | { type: 'SET_SOUND_ON'; payload: boolean }
-  | { type: 'SET_SOUND_TYPE'; payload: 'beep' | 'chime' | 'bell' }
-  | { type: 'SET_VOLUME'; payload: number }
-  | { type: 'SET_VIBRATE_ON'; payload: boolean };
+  | { type: 'SET_SOUND_TYPE'; payload: 'beep' | 'chime' | 'bell' };
 
 // 設定のリデューサー
 const settingsReducer = (state: SettingsState, action: SettingsAction): SettingsState => {
@@ -251,10 +267,6 @@ const settingsReducer = (state: SettingsState, action: SettingsAction): Settings
       return { ...state, soundOn: action.payload };
     case 'SET_SOUND_TYPE':
       return { ...state, soundType: action.payload };
-    case 'SET_VOLUME':
-      return { ...state, volume: Math.max(0, Math.min(1, action.payload)) };
-    case 'SET_VIBRATE_ON':
-      return { ...state, vibrateOn: action.payload };
     default:
       return state;
   }
@@ -263,6 +275,7 @@ const settingsReducer = (state: SettingsState, action: SettingsAction): Settings
 export default function TimerScreen() {
   const { isAuthenticated, isLoading, user } = useAuthAdvanced();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
+  const { t } = useLanguage();
   const [mode, setMode] = useState<'timer' | 'stopwatch'>('timer');
   
   // カスタム時間の状態（useReducerで集約）
@@ -282,9 +295,11 @@ export default function TimerScreen() {
     autoSave: false,
     soundOn: true,
     soundType: 'beep',
-    volume: 0.7,
-    vibrateOn: true,
   });
+  
+  // 固定値: 音量とバイブレーション（UIから削除された設定）
+  const VOLUME = 0.7;
+  const VIBRATE_ON = true;
   
   // 設定のヘルパー関数
   const setAutoSave = useCallback((value: boolean) => {
@@ -295,12 +310,6 @@ export default function TimerScreen() {
   }, []);
   const setSoundType = useCallback((value: 'beep' | 'chime' | 'bell') => {
     dispatchSettings({ type: 'SET_SOUND_TYPE', payload: value });
-  }, []);
-  const setVolume = useCallback((value: number) => {
-    dispatchSettings({ type: 'SET_VOLUME', payload: value });
-  }, []);
-  const setVibrateOn = useCallback((value: boolean) => {
-    dispatchSettings({ type: 'SET_VIBRATE_ON', payload: value });
   }, []);
   
   // カスタム時間のヘルパー関数
@@ -327,7 +336,7 @@ export default function TimerScreen() {
     setTimerPreset: originalSetTimerPreset,
   } = useTimer(() => {
     // タイマー完了時の処理
-    logger.debug('タイマー完了コールバック実行', { soundOn: settings.soundOn, vibrateOn: settings.vibrateOn });
+    logger.debug('タイマー完了コールバック実行', { soundOn: settings.soundOn, vibrateOn: VIBRATE_ON });
     
     // サウンド再生（既存の動作している関数を使用）
     if (settings.soundOn) {
@@ -348,8 +357,8 @@ export default function TimerScreen() {
       logger.debug('サウンド通知は無効');
     }
     
-    // バイブレーション
-    if (settings.vibrateOn) {
+    // バイブレーション（固定値）
+    if (VIBRATE_ON) {
       try { 
         Vibration.vibrate([0, 250, 120, 250]); 
         logger.debug('バイブレーション実行');
@@ -656,7 +665,7 @@ export default function TimerScreen() {
       oscillator.frequency.setValueAtTime(600, audioContext.currentTime + 0.1);
       oscillator.frequency.setValueAtTime(800, audioContext.currentTime + 0.2);
       
-      gainNode.gain.setValueAtTime(Math.max(0.05, settings.volume), audioContext.currentTime);
+      gainNode.gain.setValueAtTime(Math.max(0.05, VOLUME), audioContext.currentTime);
       gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
       
       oscillator.start(audioContext.currentTime);
@@ -706,7 +715,7 @@ export default function TimerScreen() {
     osc.type = 'square';
     osc.frequency.value = 880;
     gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(Math.max(0.05, settings.volume), ctx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.05, VOLUME), ctx.currentTime + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
     osc.connect(gain);
     gain.connect(ctx.destination);
@@ -721,7 +730,7 @@ export default function TimerScreen() {
       o.type = 'sine';
       o.frequency.value = freq;
       g.gain.setValueAtTime(0.0001, ctx.currentTime + start);
-      g.gain.exponentialRampToValueAtTime(Math.max(0.04, settings.volume * 0.8), ctx.currentTime + start + 0.02);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.04, VOLUME * 0.8), ctx.currentTime + start + 0.02);
       g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
       o.connect(g); g.connect(ctx.destination);
       o.start(ctx.currentTime + start);
@@ -743,7 +752,7 @@ export default function TimerScreen() {
       const start = 0;
       const dur = 0.8 - idx * 0.15;
       g.gain.setValueAtTime(0.0001, ctx.currentTime + start);
-      g.gain.exponentialRampToValueAtTime(Math.max(0.03, settings.volume * (1 - idx * 0.3)), ctx.currentTime + start + 0.02);
+      g.gain.exponentialRampToValueAtTime(Math.max(0.03, VOLUME * (1 - idx * 0.3)), ctx.currentTime + start + 0.02);
       g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
       o.connect(g); g.connect(ctx.destination);
       o.start(ctx.currentTime + start);
@@ -803,7 +812,7 @@ export default function TimerScreen() {
   // タイマー完了時のサウンド再生
   const playTimerCompleteSound = useCallback(() => {
     try {
-      logger.debug('タイマー完了サウンド再生開始', { soundOn: settings.soundOn, soundType: settings.soundType, volume: settings.volume });
+      logger.debug('タイマー完了サウンド再生開始', { soundOn: settings.soundOn, soundType: settings.soundType, volume: VOLUME });
       
       if (!settings.soundOn) {
         logger.debug('サウンドがOFFのため再生をスキップ');
@@ -851,7 +860,7 @@ export default function TimerScreen() {
       logger.debug('タイマー完了サウンドエラー:', error);
       playSimpleNotification();
     }
-  }, [settings.soundOn, settings.soundType, settings.volume]);
+  }, [settings.soundOn, settings.soundType]);
 
   // タイマー完了時のサウンド再生（内部実装）
   const playTimerCompleteSoundInternal = useCallback((ctx: AudioContext) => {
@@ -863,7 +872,7 @@ export default function TimerScreen() {
       }
       
       const currentTime = ctx.currentTime;
-      const volume = Math.max(0.1, settings.volume * 0.8); // 音量を少し上げて確実に聞こえるように
+      const volume = Math.max(0.1, VOLUME * 0.8); // 音量を少し上げて確実に聞こえるように
       
       logger.debug('サウンド再生開始', { soundType: settings.soundType, volume });
       
@@ -942,7 +951,7 @@ export default function TimerScreen() {
       logger.debug('タイマー完了サウンド内部エラー:', error);
       playSimpleNotification();
     }
-  }, [settings.soundType, settings.volume]);
+  }, [settings.soundType]);
 
   // カレンダー更新の通知を送信
   const notifyCalendarUpdate = () => {
@@ -1002,7 +1011,7 @@ export default function TimerScreen() {
     setTimerPreset(totalSeconds);
     timerPresetRef.current = totalSeconds; // 設定時間を保存
     // 即座にタイマーに反映
-    Alert.alert('設定完了', `${minutes}分に設定しました`);
+      Alert.alert(t('settingsCompleted'), t('timerSetTo').replace('{time}', `${minutes}${t('minutes')}`));
   };
 
   const adjustCustomTime = (type: 'minutes' | 'seconds', delta: number) => {
@@ -1033,9 +1042,10 @@ export default function TimerScreen() {
           logger.debug('Timer seconds after apply:', timerSeconds);
         }, 100);
       }
-      Alert.alert('設定完了', `${customTime.hours > 0 ? customTime.hours + '時間' : ''}${customTime.minutes}分${customTime.seconds > 0 ? customTime.seconds + '秒' : ''}に設定しました`);
-    } else {
-      Alert.alert('エラー', '有効な時間を設定してください');
+      const timeStr = `${customTime.hours > 0 ? customTime.hours + t('hours') : ''}${customTime.minutes}${t('minutes')}${customTime.seconds > 0 ? customTime.seconds + t('seconds') : ''}`;
+      Alert.alert(t('settingsCompleted'), t('timerSetTo').replace('{time}', timeStr));
+      } else {
+      Alert.alert(t('error'), t('pleaseSetValidTime'));
     }
   };
 
@@ -1131,7 +1141,7 @@ export default function TimerScreen() {
               styles.modeButtonText, 
               { color: mode === 'timer' ? currentTheme.surface : currentTheme.primary }
             ]}>
-              タイマー
+              {t('timerMode')}
             </Text>
           </TouchableOpacity>
           
@@ -1147,7 +1157,7 @@ export default function TimerScreen() {
               styles.modeButtonText, 
               { color: mode === 'stopwatch' ? currentTheme.surface : currentTheme.primary }
             ]}>
-              ストップウォッチ
+              {t('stopwatchMode')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1212,7 +1222,7 @@ export default function TimerScreen() {
                         setTimerPreset(totalSeconds);
                         setTimeout(() => startTimer(), 100);
                       } else {
-                        Alert.alert('エラー', 'タイマー時間を設定してください');
+                        Alert.alert(t('error'), t('pleaseSetTimerTime') || 'タイマー時間を設定してください');
                       }
                     } else if (isTimerRunning) {
                       pauseTimer();
@@ -1234,7 +1244,7 @@ export default function TimerScreen() {
           {/* Timer completion indicator */}
           {mode === 'timer' && timerSeconds === 0 && !isTimerRunning && timerPresetRef.current > 0 && (
             <View style={[styles.completedIndicator, { backgroundColor: currentTheme.primary }]}>
-              <Text style={[styles.completedText, { color: currentTheme.surface }]}>完了！</Text>
+              <Text style={[styles.completedText, { color: currentTheme.surface }]}>{t('practiceCompleted')}</Text>
             </View>
           )}
         </View>
@@ -1246,7 +1256,7 @@ export default function TimerScreen() {
             <View style={[styles.customTimeContainer, { backgroundColor: currentTheme.surface }]}>
               <View style={styles.wheelsRow}>
                 <View style={styles.wheelBlock}>
-                  <Text style={[styles.wheelLabel, { color: currentTheme.textSecondary }]}>時間</Text>
+                  <Text style={[styles.wheelLabel, { color: currentTheme.textSecondary }]}>{t('hours') || '時間'}</Text>
                   <WheelPicker
                     value={customTime.hours}
                     onChange={(value) => {
@@ -1261,7 +1271,7 @@ export default function TimerScreen() {
                 </View>
                 <Text style={[styles.wheelColon, { color: currentTheme.textSecondary }]}>:</Text>
                 <View style={styles.wheelBlock}>
-                  <Text style={[styles.wheelLabel, { color: currentTheme.textSecondary }]}>分</Text>
+                  <Text style={[styles.wheelLabel, { color: currentTheme.textSecondary }]}>{t('minutes') || '分'}</Text>
                   <WheelPicker
                     value={customTime.minutes}
                     onChange={(value) => {
@@ -1276,7 +1286,7 @@ export default function TimerScreen() {
                 </View>
                 <Text style={[styles.wheelColon, { color: currentTheme.textSecondary }]}>:</Text>
                 <View style={styles.wheelBlock}>
-                  <Text style={[styles.wheelLabel, { color: currentTheme.textSecondary }]}>秒</Text>
+                  <Text style={[styles.wheelLabel, { color: currentTheme.textSecondary }]}>{t('seconds') || '秒'}</Text>
                   <WheelPicker
                     value={customTime.seconds}
                     onChange={(value) => {
@@ -1291,20 +1301,20 @@ export default function TimerScreen() {
                 </View>
               </View>
               <TouchableOpacity style={[styles.applyButton, { backgroundColor: currentTheme.primary, marginTop: 4 }]} onPress={applyCustomTime}>
-                <Text style={[styles.applyButtonText, { color: currentTheme.surface }]}>適用</Text>
+                <Text style={[styles.applyButtonText, { color: currentTheme.surface }]}>{t('apply') || '適用'}</Text>
               </TouchableOpacity>
             </View>
 
             {/* 設定オプション */}
             <View style={[styles.settingsContainer, { backgroundColor: currentTheme.surface }]}>
-              <Text style={[styles.settingsTitle, { color: currentTheme.text }]}>設定</Text>
+              <Text style={[styles.settingsTitle, { color: currentTheme.text }]}>{t('settings')}</Text>
               
               {/* 自動記録設定 */}
               <View style={styles.settingRow}>
                 <View style={styles.settingLeft}>
-                  <Text style={[styles.settingLabel, { color: currentTheme.text }]}>次回から自動で記録</Text>
+                  <Text style={[styles.settingLabel, { color: currentTheme.text }]}>{t('autoRecord') || '次回から自動で記録'}</Text>
                   <Text style={[styles.settingDescription, { color: currentTheme.textSecondary }]}>
-                    タイマー完了時に自動で練習記録を保存
+                    {t('autoRecordDescription') || 'タイマー完了時に自動で練習記録を保存'}
                   </Text>
                 </View>
                   <Switch
@@ -1328,9 +1338,9 @@ export default function TimerScreen() {
               {/* サウンド設定 */}
               <View style={styles.settingRow}>
                 <View style={styles.settingLeft}>
-                  <Text style={[styles.settingLabel, { color: currentTheme.text }]}>完了時にサウンド</Text>
+                  <Text style={[styles.settingLabel, { color: currentTheme.text }]}>{t('soundOnCompletion') || '完了時にサウンド'}</Text>
                   <Text style={[styles.settingDescription, { color: currentTheme.textSecondary }]}>
-                    タイマー完了時に通知音を再生
+                    {t('soundOnCompletionDescription') || 'タイマー完了時に通知音を再生'}
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>

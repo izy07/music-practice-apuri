@@ -28,3 +28,4 @@ SELECT id, name, name_en, color_primary, color_secondary, color_accent
 FROM public.instruments 
 WHERE id = '550e8400-e29b-41d4-a716-446655440009';
 
+

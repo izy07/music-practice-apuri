@@ -540,7 +540,7 @@ export default function StatisticsScreen() {
           <Text style={[styles.headerTitle, { color: TextColor }]}>統計・分析</Text>
           <View style={{ width: 44 }} />
         </View>
-        <View style={styles.loadingContainer}>
+        <View style={[styles.loadingContainer, { backgroundColor: currentTheme.background }]}>
           <Text style={[styles.loadingText, { color: TextColor }]}>データを読み込み中...</Text>
         </View>
       </SafeAreaView>

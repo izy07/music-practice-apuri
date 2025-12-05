@@ -43,7 +43,10 @@ export class ScheduleService {
           year,
           month
         );
+        
+        // リポジトリ層で404エラーは既に処理されているが、念のため他のエラーをチェック
         if (result.error) {
+          // リポジトリ層で404エラーは既に処理されているため、ここに来るエラーは他のエラー
           throw result.error;
         }
 

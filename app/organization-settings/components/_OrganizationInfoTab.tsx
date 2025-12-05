@@ -11,11 +11,10 @@ import { View, Text, StyleSheet, TouchableOpacity, Share, Platform, Alert } from
 import { Edit3, Trash2, Key, Crown, Share as ShareIcon, Copy } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import type { Organization } from '@/types/organization';
-import type { SubGroup, UserGroupMembership } from '@/types/organization';
+import type { UserGroupMembership } from '@/types/organization';
 
 interface OrganizationInfoTabProps {
   organization: Organization | null;
-  subGroups: SubGroup[];
   members: UserGroupMembership[];
   organizationPassword: string;
   isSharing: boolean;
@@ -34,7 +33,6 @@ interface OrganizationInfoTabProps {
  */
 export function OrganizationInfoTab({
   organization,
-  subGroups,
   members,
   organizationPassword,
   isSharing,
@@ -75,14 +73,6 @@ export function OrganizationInfoTab({
             {organization?.description || '説明なし'}
           </Text>
           <View style={styles.organizationStats}>
-            <View style={styles.statItem}>
-              <Text style={[styles.statNumber, { color: currentTheme.primary }]}>
-                {subGroups.length}
-              </Text>
-              <Text style={[styles.statLabel, { color: currentTheme.textSecondary }]}>
-                サブグループ
-              </Text>
-            </View>
             <View style={styles.statItem}>
               <Text style={[styles.statNumber, { color: currentTheme.primary }]}>
                 {members.length}

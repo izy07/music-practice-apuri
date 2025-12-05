@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Dimensions, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Play, ExternalLink } from 'lucide-react-native';
+import { ArrowLeft, ExternalLink } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { supabase } from '@/lib/supabase';
 import { createShadowStyle } from '@/lib/shadowStyles';
+import { instrumentGuides } from '@/data/instrumentGuides';
 
 const { width } = Dimensions.get('window');
 
@@ -42,10 +43,6 @@ export default function RepresentativeSongsScreen() {
   const [songs, setSongs] = useState<RepresentativeSong[]>([]);
   const [instrument, setInstrument] = useState<Instrument | null>(null);
   const [loading, setLoading] = useState(true);
-  const [playingSongId, setPlayingSongId] = useState<string | null>(null);
-  const [showVideoModal, setShowVideoModal] = useState(false);
-  const [selectedVideoUrl, setSelectedVideoUrl] = useState<string>('');
-  const [selectedSongDescription, setSelectedSongDescription] = useState<string>('');
 
   useEffect(() => {
     if (instrumentId) {
@@ -85,34 +82,162 @@ export default function RepresentativeSongsScreen() {
             songsError.message?.includes('does not exist')) {
           // 開発環境でのみ警告を表示
           if (__DEV__) {
-            console.warn('representative_songsテーブルが存在しません。空のリストを表示します。', songsError);
+            console.warn('representative_songsテーブルが存在しません。フォールバックデータを使用します。', songsError);
           }
-          setSongs([]);
-          return;
+        } else {
+          console.error('代表曲取得エラー:', songsError);
         }
-        console.error('代表曲取得エラー:', songsError);
-        Alert.alert('エラー', '代表曲の取得に失敗しました');
+      }
+      
+      // データベースから代表曲が取得できた場合はそれを使用
+      if (songsData && songsData.length > 0) {
+        setSongs(songsData);
         return;
       }
       
-      setSongs(songsData || []);
+      // データベースに代表曲がない場合、instrumentGuides.tsからフォールバックデータを取得
+      const fallbackSongs = getFallbackSongs(instrumentData?.name_en || '');
+      if (fallbackSongs.length > 0) {
+        setSongs(fallbackSongs);
+        return;
+      }
+      
+      // フォールバックデータもない場合は空配列
+      setSongs([]);
     } catch (error) {
       console.error('データ読み込みエラー:', error);
-      Alert.alert('エラー', 'データの読み込みに失敗しました');
+      // エラー時もフォールバックデータを試す
+      const fallbackSongs = getFallbackSongs(instrument?.name_en || '');
+      if (fallbackSongs.length > 0) {
+        setSongs(fallbackSongs);
+      } else {
+        Alert.alert('エラー', 'データの読み込みに失敗しました');
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePlaySong = async (song: RepresentativeSong) => {
+  // instrumentGuides.tsから代表曲データを取得するフォールバック関数
+  const getFallbackSongs = (nameEn: string): RepresentativeSong[] => {
+    if (!nameEn) return [];
+    
+    // nameEnを小文字に変換してinstrumentGuidesのキーと一致させる
+    const guideKey = nameEn.toLowerCase();
+    const guide = instrumentGuides[guideKey as keyof typeof instrumentGuides];
+    
+    if (!guide || !guide.repertoire) return [];
+    
+    const songs: RepresentativeSong[] = [];
+    let displayOrder = 1;
+    
+    // 初心者向け曲を追加
+    if (guide.repertoire.beginner && Array.isArray(guide.repertoire.beginner)) {
+      guide.repertoire.beginner.forEach((title: string) => {
+        songs.push({
+          id: `fallback-${guideKey}-beginner-${displayOrder}`,
+          instrument_id: instrumentId || '',
+          title: title,
+          composer: '伝統曲',
+          era: undefined,
+          genre: undefined,
+          difficulty_level: 1,
+          youtube_url: undefined,
+          spotify_url: undefined,
+          description_ja: undefined,
+          description_en: undefined,
+          is_popular: false,
+          display_order: displayOrder++,
+          famous_performer: undefined,
+          famous_video_url: undefined,
+          famous_note: undefined,
+        });
+      });
+    }
+    
+    // 中級者向け曲を追加
+    if (guide.repertoire.intermediate && Array.isArray(guide.repertoire.intermediate)) {
+      guide.repertoire.intermediate.forEach((title: string) => {
+        songs.push({
+          id: `fallback-${guideKey}-intermediate-${displayOrder}`,
+          instrument_id: instrumentId || '',
+          title: title,
+          composer: '伝統曲',
+          era: undefined,
+          genre: undefined,
+          difficulty_level: 3,
+          youtube_url: undefined,
+          spotify_url: undefined,
+          description_ja: undefined,
+          description_en: undefined,
+          is_popular: true,
+          display_order: displayOrder++,
+          famous_performer: undefined,
+          famous_video_url: undefined,
+          famous_note: undefined,
+        });
+      });
+    }
+    
+    // 上級者向け曲を追加
+    if (guide.repertoire.advanced && Array.isArray(guide.repertoire.advanced)) {
+      guide.repertoire.advanced.forEach((title: string) => {
+        songs.push({
+          id: `fallback-${guideKey}-advanced-${displayOrder}`,
+          instrument_id: instrumentId || '',
+          title: title,
+          composer: '伝統曲',
+          era: undefined,
+          genre: undefined,
+          difficulty_level: 5,
+          youtube_url: undefined,
+          spotify_url: undefined,
+          description_ja: undefined,
+          description_en: undefined,
+          is_popular: true,
+          display_order: displayOrder++,
+          famous_performer: undefined,
+          famous_video_url: undefined,
+          famous_note: undefined,
+        });
+      });
+    }
+    
+    return songs;
+  };
+
+  const handleSongPress = async (song: RepresentativeSong) => {
     if (!song.youtube_url) {
-      Alert.alert('エラー', 'この曲の再生URLが設定されていません');
       return;
     }
     
-    setSelectedVideoUrl(song.youtube_url);
-    setSelectedSongDescription(song.description_ja || '');
-    setShowVideoModal(true);
+    Alert.alert(
+      'YouTubeに移動',
+      `${song.title}のYouTubeリンクに飛びます。URLに飛びますか？`,
+      [
+        {
+          text: 'キャンセル',
+          style: 'cancel',
+        },
+        {
+          text: '開く',
+          onPress: async () => {
+            try {
+              const url = song.youtube_url;
+              const supported = await Linking.canOpenURL(url);
+              if (supported) {
+                await Linking.openURL(url);
+              } else {
+                Alert.alert('エラー', 'このURLを開くことができません');
+              }
+            } catch (error) {
+              console.error('URLを開く際にエラーが発生しました:', error);
+              Alert.alert('エラー', 'URLを開くことができませんでした');
+            }
+          },
+        },
+      ]
+    );
   };
 
 
@@ -126,7 +251,7 @@ export default function RepresentativeSongsScreen() {
           <Text style={[styles.headerTitle, { color: currentTheme.text }]}>代表曲</Text>
           <View style={{ width: 24 }} />
         </View>
-        <View style={styles.loadingContainer}>
+        <View style={[styles.loadingContainer, { backgroundColor: currentTheme.background }]}>
           <Text style={[styles.loadingText, { color: currentTheme.text }]}>読み込み中...</Text>
         </View>
       </SafeAreaView>
@@ -173,93 +298,33 @@ export default function RepresentativeSongsScreen() {
             </View>
           ) : (
             songs.map((song) => (
-              <View key={song.id} style={[styles.songCard, { backgroundColor: currentTheme.surface }]} {...({} as any)}>
+              <TouchableOpacity
+                key={song.id}
+                style={[styles.songCard, { backgroundColor: currentTheme.surface }]}
+                onPress={() => handleSongPress(song)}
+                activeOpacity={song.youtube_url ? 0.7 : 1}
+                disabled={!song.youtube_url}
+              >
                 <View style={styles.songHeader}>
                   <View style={styles.songTitleContainer}>
                     <Text style={[styles.songTitle, { color: currentTheme.text }]}>
                       {song.title}{song.famous_performer ? ` / ${song.famous_performer}` : ''}{song.famous_note ? `（${song.famous_note}）` : ''}
                     </Text>
                   </View>
-                  <TouchableOpacity
-                    style={[styles.playButton, { backgroundColor: currentTheme.primary }]}
-                    onPress={() => handlePlaySong(song)}
-                    activeOpacity={0.7}
-                  >
-                    <Play size={20} color="#FFFFFF" />
-                  </TouchableOpacity>
+                  {song.youtube_url && (
+                    <ExternalLink size={20} color={currentTheme.primary} />
+                  )}
                 </View>
                 
                 <Text style={[styles.composer, { color: currentTheme.textSecondary }]}>
                   作曲者: {song.composer}{song.era ? ` | 時代: ${song.era}` : ''}
                 </Text>
-                
-                {song.genre && (
-                  <View style={styles.songDetails}>
-                    <Text style={[styles.detail, { color: currentTheme.textSecondary }]}>ジャンル: {song.genre}</Text>
-                  </View>
-                )}
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </View>
       </ScrollView>
 
-      {/* YouTube再生モーダル */}
-      <Modal
-        visible={showVideoModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowVideoModal(false)}
-      >
-        <View style={styles.videoModalOverlay}>
-          <View style={[styles.videoModalContent, { backgroundColor: currentTheme.surface }]}>
-            <View style={styles.videoModalHeader}>
-              <Text style={[styles.videoModalTitle, { color: currentTheme.text }]}>
-                YouTubeで再生
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowVideoModal(false)}
-                style={styles.closeButton}
-              >
-                <Text style={[styles.closeButtonText, { color: currentTheme.text }]}>×</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.videoModalBody}>
-              <Text style={[styles.videoModalText, { color: currentTheme.text }]}>
-                {selectedSongDescription && `${selectedSongDescription} `}この曲をYouTubeで再生しますか？
-              </Text>
-              
-              <View style={styles.videoModalButtons}>
-                <TouchableOpacity
-                  style={[styles.videoModalButton, { backgroundColor: currentTheme.secondary }]}
-                  onPress={() => setShowVideoModal(false)}
-                >
-                  <Text style={[styles.videoModalButtonText, { color: currentTheme.text }]}>
-                    キャンセル
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[styles.videoModalButton, { backgroundColor: currentTheme.primary }]}
-                  onPress={() => {
-                    // YouTube URLを開く
-                    if (selectedVideoUrl) {
-                      window.open(selectedVideoUrl, '_blank');
-                    }
-                    setShowVideoModal(false);
-                  }}
-                >
-                  <ExternalLink size={16} color="#FFFFFF" />
-                  <Text style={[styles.videoModalButtonText, { color: '#FFFFFF' }]}>
-                    YouTubeで開く
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -358,80 +423,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flex: 1,
   },
-  playButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   composer: {
     fontSize: 12,
     fontWeight: '500',
     marginBottom: 4,
-  },
-  songDetails: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 0,
-  },
-  detail: {
-    fontSize: 12,
-  },
-  videoModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  videoModalContent: {
-    width: width * 0.9,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  videoModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E5E5',
-  },
-  videoModalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  closeButtonText: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  videoModalBody: {
-    padding: 20,
-  },
-  videoModalText: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 24,
-  },
-  videoModalButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  videoModalButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 8,
-  },
-  videoModalButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
 });

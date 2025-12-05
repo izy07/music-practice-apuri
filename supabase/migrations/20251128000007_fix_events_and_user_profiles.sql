@@ -183,3 +183,4 @@ BEGIN
   RAISE NOTICE '✅ すべてのRLSポリシーと権限が設定されました';
 END $$;
 
+

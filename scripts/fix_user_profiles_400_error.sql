@@ -57,3 +57,4 @@ BEGIN
   RAISE NOTICE '✅ 権限を再付与しました';
 END $$;
 
+

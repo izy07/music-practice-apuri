@@ -55,3 +55,4 @@ CREATE POLICY events_delete_own ON public.events FOR DELETE USING (auth.uid() = 
 GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.events TO anon, authenticated;
 
+

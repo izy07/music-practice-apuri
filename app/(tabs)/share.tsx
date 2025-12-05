@@ -70,12 +70,12 @@ export default function ShareScreen() {
   // 組織作成
   const handleCreateOrganization = async () => {
     if (!isAuthenticated || !user) {
-      Alert.alert('エラー', 'ログインが必要です');
+      Alert.alert(t('error'), t('loginRequired') || 'Login required');
       return;
     }
     
     if (!createForm.name.trim()) {
-      Alert.alert('エラー', '組織名を入力してください');
+      Alert.alert(t('error'), t('pleaseEnterOrganizationName'));
       return;
     }
 
@@ -106,27 +106,27 @@ export default function ShareScreen() {
   // 組織検索
   const handleSearchOrganizations = async () => {
     if (!joinForm.searchName.trim()) {
-      Alert.alert('エラー', '組織名を入力してください');
+      Alert.alert(t('error'), t('pleaseEnterOrganizationName'));
       return;
     }
 
     const foundOrgs = await searchOrgs(joinForm.searchName.trim());
     
     if (foundOrgs.length === 0) {
-      Alert.alert('検索結果', '該当する組織が見つかりませんでした');
+      Alert.alert(t('searchResult'), t('noOrganizationsFound'));
     } else if (foundOrgs.length === 1) {
       setJoinForm(prev => ({ ...prev, selectedOrg: foundOrgs[0] }));
     } else {
       // 複数の組織が見つかった場合の選択処理
       const orgNames = foundOrgs.map(org => org.name);
-      Alert.alert('複数の組織が見つかりました', orgNames.join('\n'));
+      Alert.alert(t('multipleOrganizationsFound'), orgNames.join('\n'));
     }
   };
 
   // 組織参加
   const handleJoinOrganization = async () => {
     if (!joinForm.selectedOrg || !joinForm.password.trim()) {
-      Alert.alert('エラー', '組織とパスワードを入力してください');
+      Alert.alert(t('error'), t('pleaseEnterOrganizationAndPassword'));
       return;
     }
 
@@ -136,7 +136,7 @@ export default function ShareScreen() {
     });
 
     if (organization) {
-      Alert.alert('成功', '組織に参加しました！');
+      Alert.alert(t('success'), t('joinedOrganization'));
       setShowJoinOrg(false);
       setJoinForm({ searchName: '', selectedOrg: null, password: '' });
     }
@@ -150,13 +150,13 @@ export default function ShareScreen() {
   // リンク送信機能
   const sharePassword = async (password: string) => {
     try {
-      const message = `音楽団体への参加パスワード: ${password}\n\nこのパスワードを使って組織に参加してください。`;
+      const message = `${t('organizationJoinPassword')}: ${password}\n\n${t('sharePasswordMessage')}`;
       await Share.share({
         message: message,
-        title: '参加パスワードの共有',
+        title: t('share'),
       });
     } catch (error) {
-      ErrorHandler.handle(error, 'パスワード共有', false);
+      ErrorHandler.handle(error, t('share'), false);
     }
   };
 
@@ -164,11 +164,11 @@ export default function ShareScreen() {
     try {
       await Share.share({
         message: text,
-        title: `${type}をコピー`,
+        title: `${type} ${t('copy')}`,
       });
-      Alert.alert('コピー完了', `${type}がクリップボードにコピーされました`);
+      Alert.alert(t('copyCompleted'), `${type}${t('copiedToClipboard')}`);
     } catch (error) {
-      ErrorHandler.handle(error, 'コピー', false);
+      ErrorHandler.handle(error, t('copy'), false);
     }
   };
 
@@ -184,10 +184,10 @@ export default function ShareScreen() {
             <Users size={32} color={currentTheme.primary} />
           </View>
           <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
-            音楽団体管理
+            {t('organizationManagement')}
           </Text>
           <Text style={[styles.headerSubtitle, { color: currentTheme.textSecondary }]}>
-            練習日程・出欠席・課題を効率的に管理
+            {t('organizationManagementSubtitle')}
           </Text>
         </View>
 
@@ -199,7 +199,7 @@ export default function ShareScreen() {
           >
             <Plus size={20} color={currentTheme.surface} />
             <Text style={[styles.actionButtonText, { color: currentTheme.surface }]}>
-              新しい組織を作成
+              {t('createNewOrganization')}
             </Text>
           </TouchableOpacity>
           
@@ -209,7 +209,7 @@ export default function ShareScreen() {
           >
             <Users size={20} color={currentTheme.primary} />
             <Text style={[styles.actionButtonText, { color: currentTheme.primary }]}>
-              組織に参加
+              {t('joinOrganization')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -217,7 +217,7 @@ export default function ShareScreen() {
         {/* 組織一覧 */}
         <View style={styles.content}>
           <View style={styles.organizationsContainer}>
-            <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>参加中の組織</Text>
+            <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>{t('participatingOrganizations')}</Text>
             
             {/* 全組織カード */}
             <TouchableOpacity
@@ -232,23 +232,23 @@ export default function ShareScreen() {
                 <Users size={20} color={currentTheme.primary} />
               </View>
               <View style={styles.overviewTextBox}>
-                <Text style={[styles.overviewTitle, { color: currentTheme.text }]}>全組織</Text>
-                <Text style={[styles.overviewSubtitle, { color: currentTheme.textSecondary }]}>参加中の全組織の練習日程・出欠登録・課題を表示</Text>
+                <Text style={[styles.overviewTitle, { color: currentTheme.text }]}>{t('allOrganizations')}</Text>
+                <Text style={[styles.overviewSubtitle, { color: currentTheme.textSecondary }]}>{t('allOrganizationsSubtitle')}</Text>
               </View>
               <View style={styles.overviewAction}>
-                <Text style={[styles.overviewActionText, { color: currentTheme.primary }]}>開く</Text>
+                <Text style={[styles.overviewActionText, { color: currentTheme.primary }]}>{t('open')}</Text>
               </View>
             </TouchableOpacity>
             
             {/* 個別組織一覧 */}
-            <Text style={[styles.sectionTitle, { color: currentTheme.text, marginTop: 24, marginBottom: 12, fontSize: 16 }]}>個別組織</Text>
+            <Text style={[styles.sectionTitle, { color: currentTheme.text, marginTop: 24, marginBottom: 12, fontSize: 16 }]}>{t('individualOrganizations')}</Text>
             {loading ? (
-              <Text style={[styles.loadingText, { color: currentTheme.textSecondary }]}>読み込み中...</Text>
+              <Text style={[styles.loadingText, { color: currentTheme.textSecondary }]}>{t('loading')}</Text>
             ) : organizations.length === 0 ? (
               <View style={[styles.emptyState, { backgroundColor: currentTheme.surface }]}> 
                 <Users size={40} color={currentTheme.textSecondary} />
-                <Text style={[styles.emptyStateTitle, { color: currentTheme.text }]}>まだ組織に参加していません</Text>
-                <Text style={[styles.emptyStateText, { color: currentTheme.textSecondary }]}>新しい組織を作成するか、既存の組織に招待を受けてください</Text>
+                <Text style={[styles.emptyStateTitle, { color: currentTheme.text }]}>{t('noOrganizationsYet')}</Text>
+                <Text style={[styles.emptyStateText, { color: currentTheme.textSecondary }]}>{t('noOrganizationsYetSubtitle')}</Text>
               </View>
             ) : (
               // 重複を除去
@@ -267,10 +267,10 @@ export default function ShareScreen() {
                       {org.name}
                     </Text>
                     <Text style={[styles.orgDescription, { color: currentTheme.textSecondary }]}>
-                      {org.description || '説明なし'}
+                      {org.description || t('noDescription')}
                     </Text>
                     <Text style={[styles.orgDate, { color: currentTheme.primary }]}>
-                      {`作成日: ${org.created_at ? new Date(org.created_at).toLocaleDateString('ja-JP') : '不明'}`}
+                      {`${t('createdDate')}: ${org.created_at ? new Date(org.created_at).toLocaleDateString(t('language') === 'en' ? 'en-US' : 'ja-JP') : t('unknown')}`}
                     </Text>
                   </View>
                   <View style={styles.orgArrow}>
@@ -285,17 +285,17 @@ export default function ShareScreen() {
         {/* 機能説明 */}
         <View style={styles.featuresContainer}>
           <Text style={[styles.featuresTitle, { color: currentTheme.text }]}>
-            主な機能
+            {t('mainFeatures')}
           </Text>
           
           <View style={[styles.featureCard, { backgroundColor: currentTheme.surface }]}>
             <Calendar size={24} color={currentTheme.primary} />
             <View style={styles.featureContent}>
               <Text style={[styles.featureTitle, { color: currentTheme.text }]}>
-                練習日程管理
+                {t('practiceScheduleManagement')}
               </Text>
               <Text style={[styles.featureDescription, { color: currentTheme.textSecondary }]}>
-                月間カレンダーで練習日を管理し、合奏・パート練・イベントを色分け表示
+                {t('practiceScheduleManagementDesc')}
               </Text>
             </View>
           </View>
@@ -304,10 +304,10 @@ export default function ShareScreen() {
             <CheckSquare size={24} color={currentTheme.primary} />
             <View style={styles.featureContent}>
               <Text style={[styles.featureTitle, { color: currentTheme.text }]}>
-                出欠席管理
+                {t('attendanceManagement')}
               </Text>
               <Text style={[styles.featureDescription, { color: currentTheme.textSecondary }]}> 
-                練習日の5日前から当日まで出欠を登録。メンバーも集計結果を確認可能
+                {t('attendanceManagementDesc')}
               </Text>
             </View>
           </View>
@@ -316,10 +316,10 @@ export default function ShareScreen() {
             <Settings size={24} color={currentTheme.primary} />
             <View style={styles.featureContent}>
               <Text style={[styles.featureTitle, { color: currentTheme.text }]}>
-                課題管理
+                {t('taskManagement')}
               </Text>
               <Text style={[styles.featureDescription, { color: currentTheme.textSecondary }]}>
-                パートリーダーが練習課題を登録し、メンバーの進捗を把握
+                {t('taskManagementDesc')}
               </Text>
             </View>
           </View>
@@ -337,7 +337,7 @@ export default function ShareScreen() {
           <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
-                新しい組織を作成
+                {t('createNewOrganization')}
               </Text>
               <TouchableOpacity onPress={() => setShowCreateOrg(false)}>
                 <Text style={[styles.closeButton, { color: currentTheme.text }]}>✕</Text>
@@ -347,7 +347,7 @@ export default function ShareScreen() {
             <ScrollView style={styles.modalBody}>
               <View style={styles.inputContainer}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                  組織名 *
+                  {t('organizationName')} *
                 </Text>
                 <TextInput
                   style={[styles.textInput, { 
@@ -357,7 +357,7 @@ export default function ShareScreen() {
                   }]}
                   value={createForm.name}
                   onChangeText={(text) => setCreateForm(prev => ({ ...prev, name: text }))}
-                  placeholder="例：上智大学管弦楽部"
+                  placeholder={t('organizationNamePlaceholder')}
                   placeholderTextColor={currentTheme.textSecondary}
                 />
               </View>
@@ -372,24 +372,24 @@ export default function ShareScreen() {
                     thumbColor={currentTheme.surface}
                   />
                   <Text style={[styles.checkboxLabel, { color: currentTheme.text }]}>
-                    ソロモードで作成する
+                    {t('createInSoloMode')}
                   </Text>
                 </View>
                 {!createForm.isSolo && (
                   <Text style={[styles.inputHelper, { color: currentTheme.textSecondary, marginTop: 8 }]}>
-                    ※ 参加パスワードは自動生成されます。組織作成後に表示されます。
+                    {t('passwordAutoGenerated')}
                   </Text>
                 )}
                 {createForm.isSolo && (
                   <Text style={[styles.inputHelper, { color: currentTheme.textSecondary, marginTop: 8 }]}>
-                    ※ ソロモードでは、パスワードや招待コードは不要です。個人で管理する組織を作成します。
+                    {t('soloModeNote')}
                   </Text>
                 )}
               </View>
 
               <View style={styles.inputContainer}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                  説明
+                  {t('description')}
                 </Text>
                 <TextInput
                   style={[styles.textArea, { 
@@ -399,7 +399,7 @@ export default function ShareScreen() {
                   }]}
                   value={createForm.description}
                   onChangeText={(text) => setCreateForm(prev => ({ ...prev, description: text }))}
-                  placeholder="組織の説明を入力"
+                  placeholder={t('descriptionPlaceholder')}
                   placeholderTextColor={currentTheme.textSecondary}
                   multiline
                   numberOfLines={3}
@@ -415,7 +415,7 @@ export default function ShareScreen() {
                 disabled={loading}
               >
                 <Text style={[styles.modalButtonText, { color: currentTheme.surface }]}>
-                  {loading ? '作成中...' : '組織を作成'}
+                  {loading ? t('creating') : t('createOrganization')}
                 </Text>
               </TouchableOpacity>
             </ScrollView>
@@ -434,7 +434,7 @@ export default function ShareScreen() {
           <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
-                組織に参加
+                {t('joinOrganization')}
               </Text>
               <TouchableOpacity onPress={() => setShowJoinOrg(false)}>
                 <Text style={[styles.closeButton, { color: currentTheme.text }]}>✕</Text>
@@ -445,7 +445,7 @@ export default function ShareScreen() {
               {/* 組織検索 */}
               <View style={styles.inputContainer}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                  組織名で検索 *
+                  {t('searchOrganizationByName')} *
                 </Text>
                 <View style={styles.searchContainer}>
                   <TextInput
@@ -457,7 +457,7 @@ export default function ShareScreen() {
                     }]}
                     value={joinForm.searchName}
                     onChangeText={(text) => setJoinForm(prev => ({ ...prev, searchName: text }))}
-                    placeholder="例：上智大学管弦楽部"
+                    placeholder={t('organizationNamePlaceholder')}
                     placeholderTextColor={currentTheme.textSecondary}
                   />
                   <TouchableOpacity
@@ -466,7 +466,7 @@ export default function ShareScreen() {
                     disabled={loading}
                   >
                     <Text style={[styles.searchButtonText, { color: currentTheme.surface }]}>
-                      検索
+                      {t('search')}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -475,7 +475,7 @@ export default function ShareScreen() {
               {joinForm.selectedOrg && (
                 <View style={styles.inputContainer}>
                   <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                    選択された組織
+                    {t('selectedOrganization')}
                   </Text>
                   <View style={[styles.selectedOrgCard, { backgroundColor: currentTheme.background }]}>
                     <Text style={[styles.selectedOrgName, { color: currentTheme.text }]}>
@@ -492,7 +492,7 @@ export default function ShareScreen() {
 
               <View style={styles.inputContainer}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                  参加パスワード *
+                  {t('organizationPassword')} *
                 </Text>
                 <TextInput
                   style={[styles.textInput, { 
@@ -502,7 +502,7 @@ export default function ShareScreen() {
                   }]}
                   value={joinForm.password}
                   onChangeText={(text) => setJoinForm(prev => ({ ...prev, password: text }))}
-                  placeholder="8桁の数字"
+                  placeholder={t('language') === 'en' ? '8-digit number' : '8桁の数字'}
                   placeholderTextColor={currentTheme.textSecondary}
                   keyboardType="numeric"
                   maxLength={8}
@@ -518,7 +518,7 @@ export default function ShareScreen() {
                 disabled={loading || !joinForm.selectedOrg || !joinForm.password.trim()}
               >
                 <Text style={[styles.actionButtonText, { color: currentTheme.surface }]}>
-                  {loading ? '参加中...' : '組織に参加'}
+                  {loading ? t('joining') : t('join')}
                 </Text>
               </TouchableOpacity>
             </ScrollView>
@@ -537,13 +537,13 @@ export default function ShareScreen() {
           <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
             <View style={styles.successHeader}>
               <Text style={[styles.successTitle, { color: currentTheme.primary }]}>
-                🎉 組織作成完了！
+                {t('organizationCreated')}
               </Text>
             </View>
             
             <ScrollView style={styles.successContent}>
               <Text style={[styles.successMessage, { color: currentTheme.text }]}>
-                組織「{createdOrgInfo?.name}」が正常に作成されました。
+                {t('organizationCreatedDesc').replace('{name}', createdOrgInfo?.name || '')}
               </Text>
               
               {/* ソロモードでない場合のみパスワードと招待コードを表示 */}
@@ -551,7 +551,7 @@ export default function ShareScreen() {
                 <>
               <View style={[styles.infoCard, { backgroundColor: currentTheme.background }]}>
                 <Text style={[styles.infoTitle, { color: currentTheme.text }]}>
-                  参加パスワード
+                  {t('organizationPassword')}
                 </Text>
                 <View style={[styles.infoValueContainer, { backgroundColor: currentTheme.secondary }]}>
                   <Text style={[styles.infoValue, { color: currentTheme.primary }]}>
@@ -565,16 +565,16 @@ export default function ShareScreen() {
                   >
                     <ShareIcon size={16} color={currentTheme.surface} />
                     <Text style={[styles.shareButtonText, { color: currentTheme.surface }]}>
-                      共有
+                      {t('share')}
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.shareButton, { backgroundColor: currentTheme.secondary, borderColor: currentTheme.primary, borderWidth: 1 }]}
-                    onPress={() => copyToClipboard(createdOrgInfo?.password || '', 'パスワード')}
+                    onPress={() => copyToClipboard(createdOrgInfo?.password || '', t('organizationPassword'))}
                   >
                     <Copy size={16} color={currentTheme.primary} />
                     <Text style={[styles.shareButtonText, { color: currentTheme.primary }]}>
-                      コピー
+                      {t('copy')}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -582,7 +582,7 @@ export default function ShareScreen() {
               
               <View style={[styles.noteCard, { backgroundColor: currentTheme.secondary }]}>
                 <Text style={[styles.noteText, { color: currentTheme.textSecondary }]}>
-                  💡 このパスワードをメンバーに共有してください。メンバーはこのパスワードを使って組織に参加できます。
+                  {t('sharePassword')}
                 </Text>
               </View>
                 </>
@@ -591,7 +591,7 @@ export default function ShareScreen() {
               {createdOrgInfo?.isSolo && (
                 <View style={[styles.noteCard, { backgroundColor: currentTheme.secondary }]}>
                   <Text style={[styles.noteText, { color: currentTheme.textSecondary }]}>
-                    🎵 ソロモードで作成されました。個人で練習を管理できます。
+                    {t('soloModeCreated')}
                   </Text>
                 </View>
               )}
@@ -603,7 +603,7 @@ export default function ShareScreen() {
                 onPress={() => setShowSuccessModal(false)}
               >
                 <Text style={[styles.successButtonText, { color: currentTheme.surface }]}>
-                  完了
+                  {t('done')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -622,7 +622,7 @@ export default function ShareScreen() {
           <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
-                全組織メニュー
+                {t('allOrganizationsMenu')}
               </Text>
               <TouchableOpacity
                 onPress={() => setShowAllOrgsMenu(false)}
@@ -649,8 +649,8 @@ export default function ShareScreen() {
                   <Calendar size={24} color={currentTheme.primary} />
                 </View>
                 <View style={styles.menuTextContainer}>
-                  <Text style={[styles.menuTitle, { color: currentTheme.text }]}>練習日程</Text>
-                  <Text style={[styles.menuSubtitle, { color: currentTheme.textSecondary }]}>参加中の全組織の練習日程をカレンダーで表示</Text>
+                  <Text style={[styles.menuTitle, { color: currentTheme.text }]}>{t('practiceSchedule')}</Text>
+                  <Text style={[styles.menuSubtitle, { color: currentTheme.textSecondary }]}>{t('allOrganizationsCalendarDesc')}</Text>
                 </View>
               </TouchableOpacity>
 
@@ -670,8 +670,8 @@ export default function ShareScreen() {
                   <CheckSquare size={24} color={currentTheme.secondary} />
                 </View>
                 <View style={styles.menuTextContainer}>
-                  <Text style={[styles.menuTitle, { color: currentTheme.text }]}>全組織の出欠登録</Text>
-                  <Text style={[styles.menuSubtitle, { color: currentTheme.textSecondary }]}>参加中の全組織の出欠登録可能な日程を一覧表示</Text>
+                  <Text style={[styles.menuTitle, { color: currentTheme.text }]}>{t('allOrganizationsAttendance')}</Text>
+                  <Text style={[styles.menuSubtitle, { color: currentTheme.textSecondary }]}>{t('allOrganizationsAttendanceDesc')}</Text>
                 </View>
               </TouchableOpacity>
 
@@ -691,8 +691,8 @@ export default function ShareScreen() {
                   <ClipboardList size={24} color={currentTheme.primary} />
                 </View>
                 <View style={styles.menuTextContainer}>
-                  <Text style={[styles.menuTitle, { color: currentTheme.text }]}>全組織の課題一覧</Text>
-                  <Text style={[styles.menuSubtitle, { color: currentTheme.textSecondary }]}>参加中の全組織の課題を一覧表示</Text>
+                  <Text style={[styles.menuTitle, { color: currentTheme.text }]}>{t('allOrganizationsTasks')}</Text>
+                  <Text style={[styles.menuSubtitle, { color: currentTheme.textSecondary }]}>{t('allOrganizationsTasksDesc')}</Text>
                 </View>
               </TouchableOpacity>
             </View>

@@ -77,6 +77,7 @@ export default function TabLayout() {
   const { currentTheme } = useInstrumentTheme();
   const segments = useSegments();
   const { isAuthenticated, isLoading } = useAuthAdvanced();
+  const { Platform } = require('react-native');
 
   // 特定の画面ではタブバーを非表示
   const shouldHideTabBar = segments.some(
@@ -84,13 +85,9 @@ export default function TabLayout() {
   );
 
   // 認証チェック
-  if (isLoading || !isAuthenticated) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color={currentTheme.primary} />
-      </View>
-    );
-  }
+  // 読み込み中でもコンテンツを表示（リロード時も現在の画面を維持）
+  // 未認証で読み込み完了した場合のみ、認証画面に遷移（app/_layout.tsxで処理される）
+  // 読み込み中は常にコンテンツを表示
 
   return (
     <Tabs

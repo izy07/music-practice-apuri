@@ -229,7 +229,8 @@ export default function EventModal({
           {...(Platform.OS === 'web' ? { 
             role: 'dialog',
             'aria-modal': true,
-            'aria-labelledby': 'event-modal-title'
+            'aria-labelledby': 'event-modal-title',
+            'data-modal-content': true
           } : {})}
         >
           <SafeAreaView>

@@ -131,13 +131,13 @@ export default function LegalInfoScreen() {
               2. プレミアム機能（楽譜共有、高度な分析機能、無制限クラウドストレージ等）については、以下の料金体系に従います。
             </Text>
             <Text style={[styles.bulletPoint, { color: currentTheme.textSecondary }]}>
-              • 月額プラン: 980円（税込）
+              • 月額プラン: 380円（税込）
             </Text>
             <Text style={[styles.bulletPoint, { color: currentTheme.textSecondary }]}>
-              • 年額プラン: 9,800円（税込、月額プランより約17%割引）
+              • 年額プラン: 3,800円（税込、月額プランより約17%割引）
             </Text>
             <Text style={[styles.bulletPoint, { color: currentTheme.textSecondary }]}>
-              • 学生プラン: 月額490円（税込、学生証の提示が必要）
+              • 学生プラン: 月額190円（税込、学生証の提示が必要）
             </Text>
             <Text style={[styles.articleText, { color: currentTheme.textSecondary }]}>
               3. 料金の支払いは、App Store、Google Play Storeを通じて行うものとし、各ストアの利用規約が適用されます。

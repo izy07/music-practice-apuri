@@ -49,7 +49,7 @@ export default function PricingPlansScreen() {
         <View style={[styles.hero, { backgroundColor: currentTheme.surface }]}>
           <Crown size={28} color={currentTheme.primary} />
           <Text style={[styles.heroTitle, { color: currentTheme.text }]}>あなたの練習を、もっと効率的に</Text>
-          <Text style={[styles.heroSubtitle, { color: currentTheme.textSecondary }]}>最初の21日間は無料体験。以降は月額¥380 または年額¥4,000。</Text>
+          <Text style={[styles.heroSubtitle, { color: currentTheme.textSecondary }]}>最初の21日間は無料体験。以降は月額¥380 または年額¥3,800。</Text>
         </View>
 
         {/* プラン比較 */}
@@ -118,7 +118,7 @@ export default function PricingPlansScreen() {
         <View style={[styles.planCard, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary, marginTop: 12 }]}> 
           <Text style={[styles.planName, { color: currentTheme.text }]}>Premium 年額</Text>
           <Text style={[styles.price, { color: currentTheme.primary }]}> 
-            ¥4,000<span style={{ fontSize: 12 }}>/年</span>
+            ¥3,800<span style={{ fontSize: 12 }}>/年</span>
           </Text>
           <View style={styles.featureList}>
             {['月額よりお得', '機能は月額と同じ'].map((f) => (

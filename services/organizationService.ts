@@ -207,64 +207,39 @@ export class OrganizationService {
 
         const createdOrganization = result.data;
 
-        // 組織作成者をadminとしてメンバーシップに追加
-        // データベースのトリガーが動作しない場合に備えて、アプリケーション側でも明示的に作成
+        // メンバーシップはデータベーストリガー（SECURITY DEFINER）によって自動的に作成される
+        // アプリケーション側からの明示的な作成は不要（RLSポリシーエラーを回避するため）
+        // トリガーが正しく動作していることを確認するため、少し待機してからメンバーシップの存在を確認
         try {
-          const membershipResult = await membershipRepository.create({
-            user_id: user.id,
-            organization_id: createdOrganization.id,
-            role: 'admin',
-          });
-
-          if (membershipResult.error) {
-            // 既にメンバーシップが存在する場合（トリガーが動作した場合など）はエラーを無視
-            const errorCode = (membershipResult.error as any).code;
-            const errorMessage = (membershipResult.error as any).message || '';
-            
-            if (errorCode === '23505') {
-              // 一意制約違反（既にメンバーシップが存在）
-              logger.debug(`[${SERVICE_CONTEXT}] createOrganization:membership already exists`, {
-                organizationId: createdOrganization.id,
-              });
-            } else if (errorCode === '42501' || errorMessage.includes('permission denied') || errorMessage.includes('row-level security')) {
-              // RLSポリシーエラー - これは重大な問題なので警告を出す
-              logger.error(`[${SERVICE_CONTEXT}] createOrganization:membership creation failed due to RLS policy`, {
-                error: membershipResult.error,
-                organizationId: createdOrganization.id,
-                userId: user.id,
-                hint: 'RLSポリシーが正しく設定されているか確認してください',
-              });
-            } else {
-              // その他のエラー
-              logger.warn(`[${SERVICE_CONTEXT}] createOrganization:membership creation failed`, {
-                error: membershipResult.error,
-                organizationId: createdOrganization.id,
-                errorCode,
-              });
-            }
-          } else {
-            logger.info(`[${SERVICE_CONTEXT}] createOrganization:membership created successfully`, {
+          // トリガーが動作するまで少し待機（非同期処理のため）
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // メンバーシップが正しく作成されたか確認（オプション、エラーは無視）
+          const membershipCheck = await membershipRepository.getByUserAndOrganization(
+            user.id,
+            createdOrganization.id
+          );
+          
+          if (membershipCheck.data) {
+            logger.info(`[${SERVICE_CONTEXT}] createOrganization:membership confirmed (created by trigger)`, {
               organizationId: createdOrganization.id,
               userId: user.id,
-              membershipId: membershipResult.data?.id,
-            });
-          }
-        } catch (membershipError: any) {
-          // メンバーシップ作成の失敗は組織作成を失敗させない
-          // ただし、ログには記録する
-          const errorMessage = membershipError?.message || '';
-          if (errorMessage.includes('permission denied') || errorMessage.includes('row-level security')) {
-            logger.error(`[${SERVICE_CONTEXT}] createOrganization:membership creation error - RLS policy issue (non-fatal)`, {
-              error: membershipError,
-              organizationId: createdOrganization.id,
-              hint: 'データベースマイグレーションを実行してください: supabase/migrations/20261201000002_fix_membership_creation_after_subgroup_removal.sql',
+              membershipId: membershipCheck.data.id,
             });
           } else {
-            logger.warn(`[${SERVICE_CONTEXT}] createOrganization:membership creation error (non-fatal)`, {
-              error: membershipError,
+            // メンバーシップが存在しない場合は警告（ただし、組織作成は成功とする）
+            logger.warn(`[${SERVICE_CONTEXT}] createOrganization:membership not found after creation (may be created by trigger later)`, {
               organizationId: createdOrganization.id,
+              userId: user.id,
+              hint: 'データベーストリガーが正しく動作しているか確認してください',
             });
           }
+        } catch (checkError: any) {
+          // メンバーシップ確認の失敗は組織作成を失敗させない
+          logger.debug(`[${SERVICE_CONTEXT}] createOrganization:membership check failed (non-fatal)`, {
+            error: checkError,
+            organizationId: createdOrganization.id,
+          });
         }
 
         logger.info(`[${SERVICE_CONTEXT}] createOrganization:success`, {

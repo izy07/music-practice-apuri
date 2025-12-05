@@ -45,13 +45,23 @@ export function normalizeError(error: unknown, context: string): RepositoryError
   }
 
   if (error instanceof Error) {
-    // AppErrorから変換
-    const code = (error as { code?: string }).code || 'UNKNOWN_ERROR';
-    return new RepositoryError(
+    // Supabaseエラーのstatusやcodeを保持
+    const errorObj = error as any;
+    const code = errorObj?.code || (error as { code?: string }).code || 'UNKNOWN_ERROR';
+    const status = errorObj?.status || errorObj?.statusCode;
+    
+    const repositoryError = new RepositoryError(
       error.message,
       code,
       error
     );
+    
+    // statusプロパティを保持（404エラーの判定に使用）
+    if (status !== undefined) {
+      (repositoryError as any).status = status;
+    }
+    
+    return repositoryError;
   }
 
   return new RepositoryError(

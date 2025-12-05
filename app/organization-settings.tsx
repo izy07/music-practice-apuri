@@ -97,7 +97,7 @@ export default function OrganizationSettingsScreen() {
       //   setMembers(membersResult.members);
       // }
     } catch (error) {
-      ErrorHandler.handle(error, '組織データ読み込み', false);
+      ErrorHandler.handle(error, t('loading'), false);
     } finally {
       setLoading(false);
     }
@@ -110,11 +110,11 @@ export default function OrganizationSettingsScreen() {
     
     setIsSharing(true);
     try {
-      const message = `音楽団体「${organization?.name}」への参加情報\n\n参加パスワード: ${organizationPassword}\n\nこのパスワードを使って組織に参加してください。`;
+      const message = `${t('organizationJoinInfo').replace('{name}', organization?.name || '')}\n\n${t('organizationJoinInfoMessage').replace('{password}', organizationPassword)}`;
       
       const result = await Share.share({
         message: message,
-        title: '参加情報の共有',
+        title: t('shareCredentialsTitle'),
       });
       
       // 共有が成功した場合のみログ出力
@@ -131,12 +131,12 @@ export default function OrganizationSettingsScreen() {
       // 重複実行エラーの場合
       if (error.name === 'InvalidStateError' || error.message?.includes('earlier share')) {
         logger.debug('前回の共有がまだ完了していません');
-        Alert.alert('エラー', '前回の共有がまだ完了していません。しばらく待ってから再試行してください。');
+        Alert.alert(t('error'), t('previousShareNotCompleted'));
         return;
       }
       
-      ErrorHandler.handle(error, '認証情報共有', true);
-      Alert.alert('エラー', '共有に失敗しました。もう一度お試しください。');
+      ErrorHandler.handle(error, t('shareCredentials'), true);
+      Alert.alert(t('error'), t('shareFailed'));
     } finally {
       setIsSharing(false);
     }
@@ -145,27 +145,27 @@ export default function OrganizationSettingsScreen() {
   // 管理者コードを設定（組織作成者用）
   const handleSetAdminCode = async () => {
     if (!adminCodeForm.code.trim() || !adminCodeForm.confirmCode.trim()) {
-      Alert.alert('エラー', '管理者コードを入力してください');
+      Alert.alert(t('error'), t('pleaseEnterAdminCode'));
       return;
     }
 
     if (adminCodeForm.code !== adminCodeForm.confirmCode) {
-      Alert.alert('エラー', '管理者コードが一致しません');
+      Alert.alert(t('error'), t('adminCodeMismatch'));
       return;
     }
 
     if (!/^\d{4}$/.test(adminCodeForm.code)) {
-      Alert.alert('エラー', '管理者コードは4桁の数字である必要があります');
+      Alert.alert(t('error'), t('adminCodeMustBe4Digits'));
       return;
     }
 
     if (!orgId) {
-      Alert.alert('エラー', '組織IDが取得できません');
+      Alert.alert(t('error'), t('organizationIdNotFound'));
       return;
     }
 
     if (!orgId) {
-      Alert.alert('エラー', '組織IDが取得できません');
+      Alert.alert(t('error'), t('organizationIdNotFound'));
       return;
     }
 
@@ -184,22 +184,22 @@ export default function OrganizationSettingsScreen() {
   // 管理者コードで管理者になる（一般ユーザー用）
   const handleEnterAdminCode = async () => {
     if (!adminCodeForm.code.trim()) {
-      Alert.alert('エラー', '管理者コードを入力してください');
+      Alert.alert(t('error'), t('pleaseEnterAdminCode'));
       return;
     }
 
     if (!/^\d{4}$/.test(adminCodeForm.code)) {
-      Alert.alert('エラー', '管理者コードは4桁の数字である必要があります');
+      Alert.alert(t('error'), t('adminCodeMustBe4Digits'));
       return;
     }
 
     if (!orgId) {
-      Alert.alert('エラー', '組織IDが取得できません');
+      Alert.alert(t('error'), t('organizationIdNotFound'));
       return;
     }
 
     if (!orgId) {
-      Alert.alert('エラー', '組織IDが取得できません');
+      Alert.alert(t('error'), t('organizationIdNotFound'));
       return;
     }
 
@@ -226,14 +226,14 @@ export default function OrganizationSettingsScreen() {
         // モバイル版ではShare APIを使用
         await Share.share({
           message: credentials,
-          title: '認証情報をコピー'
+          title: t('copyCredentials')
         });
       }
       
-      Alert.alert('コピー完了', '認証情報がクリップボードにコピーされました');
+      Alert.alert(t('copyCompleted'), t('credentialsCopied'));
     } catch (error: any) {
-      ErrorHandler.handle(error, 'コピー', true);
-      Alert.alert('エラー', 'コピーに失敗しました。もう一度お試しください。');
+      ErrorHandler.handle(error, t('copy'), true);
+      Alert.alert(t('error'), t('copyFailed'));
     } finally {
       setIsSharing(false);
     }
@@ -241,12 +241,12 @@ export default function OrganizationSettingsScreen() {
 
   const updateOrganization = async () => {
     if (!orgEditForm.name.trim()) {
-      Alert.alert('エラー', '組織名を入力してください');
+      Alert.alert(t('error'), t('pleaseEnterOrganizationName'));
       return;
     }
 
     if (!orgId) {
-      Alert.alert('エラー', '組織IDが取得できません');
+      Alert.alert(t('error'), t('organizationIdNotFound'));
       return;
     }
 
@@ -263,16 +263,16 @@ export default function OrganizationSettingsScreen() {
 
   const deleteOrganization = async () => {
     Alert.alert(
-      '組織を削除',
-      'この操作は取り消せません。本当に組織を削除しますか？',
+      t('deleteOrganization'),
+      t('deleteOrganizationConfirm'),
       [
-        { text: 'キャンセル', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: '削除',
+          text: t('delete'),
           style: 'destructive',
           onPress: async () => {
             if (!orgId) {
-              Alert.alert('エラー', '組織IDが取得できません');
+              Alert.alert(t('error'), t('organizationIdNotFound'));
               return;
             }
 
@@ -291,12 +291,12 @@ export default function OrganizationSettingsScreen() {
 
   const removeMember = async (memberId: string, memberName: string) => {
     Alert.alert(
-      'メンバーを削除',
-      `${memberName}を組織から削除しますか？`,
+      t('removeMember'),
+      t('removeMemberConfirm').replace('{name}', memberName),
       [
-        { text: 'キャンセル', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: '削除',
+          text: t('delete'),
           style: 'destructive',
           onPress: async () => {
             // memberIdはmembershipIdとして扱う
@@ -304,10 +304,10 @@ export default function OrganizationSettingsScreen() {
             const result = await membershipService.removeMember(memberId);
             
             if (result.success) {
-              Alert.alert('成功', 'メンバーを削除しました');
+              Alert.alert(t('success'), t('memberRemoved'));
               await loadOrganizationData();
             } else {
-              Alert.alert('エラー', result.error || 'メンバーの削除に失敗しました');
+              Alert.alert(t('error'), result.error || t('memberRemoveFailed'));
             }
           }
         }
@@ -317,18 +317,18 @@ export default function OrganizationSettingsScreen() {
 
   const inviteMember = async () => {
     if (!inviteForm.email.trim()) {
-      Alert.alert('エラー', 'メールアドレスを入力してください');
+      Alert.alert(t('error'), t('pleaseEnterEmail'));
       return;
     }
 
     setLoading(true);
     try {
       // TODO: メンバー招待機能の実装
-      Alert.alert('情報', 'メンバー招待機能は実装中です');
+      Alert.alert(t('info'), t('memberInviteInProgress'));
       setShowInviteMember(false);
       setInviteForm({ email: '', role: 'member' });
     } catch (error) {
-      Alert.alert('エラー', 'メンバーの招待に失敗しました');
+      Alert.alert(t('error'), t('memberInviteFailed'));
     } finally {
       setLoading(false);
     }
@@ -344,9 +344,9 @@ export default function OrganizationSettingsScreen() {
 
   const getRoleLabel = (role: string) => {
     switch (role) {
-      case 'admin': return '管理者';
-      case 'leader': return 'リーダー';
-      case 'member': return 'メンバー';
+      case 'admin': return t('admin');
+      case 'leader': return t('leader');
+      case 'member': return t('member');
       default: return role;
     }
   };
@@ -356,8 +356,8 @@ export default function OrganizationSettingsScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
         <InstrumentHeader />
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: currentTheme.text }]}>読み込み中...</Text>
+        <View style={[styles.loadingContainer, { backgroundColor: currentTheme.background }]}>
+          <Text style={[styles.loadingText, { color: currentTheme.text }]}>{t('loading')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -373,7 +373,7 @@ export default function OrganizationSettingsScreen() {
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
-          組織設定
+          {t('organizationSettings')}
         </Text>
         <View style={{ width: 24 }} />
       </View>
@@ -392,7 +392,7 @@ export default function OrganizationSettingsScreen() {
             styles.tabButtonText,
             { color: activeTab === 'members' ? currentTheme.surface : currentTheme.text }
           ]}>
-            メンバー
+            {t('members')}
           </Text>
         </TouchableOpacity>
 
@@ -408,7 +408,7 @@ export default function OrganizationSettingsScreen() {
             styles.tabButtonText,
             { color: activeTab === 'organization' ? currentTheme.surface : currentTheme.text }
           ]}>
-            組織情報
+            {t('organizationInfo')}
           </Text>
         </TouchableOpacity>
       </View>
@@ -423,7 +423,7 @@ export default function OrganizationSettingsScreen() {
           <View style={styles.tabContent}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-                メンバー管理
+                {t('memberManagement')}
               </Text>
               <TouchableOpacity
                 style={[styles.addButton, { backgroundColor: currentTheme.primary }]}
@@ -431,7 +431,7 @@ export default function OrganizationSettingsScreen() {
               >
                 <UserPlus size={20} color={currentTheme.surface} />
                 <Text style={[styles.addButtonText, { color: currentTheme.surface }]}>
-                  招待
+                  {t('invite')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -440,10 +440,10 @@ export default function OrganizationSettingsScreen() {
               <View style={[styles.emptyState, { backgroundColor: currentTheme.surface }]}>
                 <Users size={48} color={currentTheme.textSecondary} />
                 <Text style={[styles.emptyStateText, { color: currentTheme.text }]}>
-                  メンバーが登録されていません
+                  {t('noMembersRegistered')}
                 </Text>
                 <Text style={[styles.emptyStateSubtext, { color: currentTheme.textSecondary }]}>
-                  新しいメンバーを招待してください
+                  {t('inviteNewMember')}
                 </Text>
               </View>
             ) : (
@@ -455,7 +455,7 @@ export default function OrganizationSettingsScreen() {
                     <View style={styles.memberInfo}>
                       <View style={styles.memberHeader}>
                         <Text style={[styles.memberName, { color: currentTheme.text }]}>
-                          メンバー名 {/* 実際の実装ではプロフィール情報を取得 */}
+                          {t('memberName')} {/* 実際の実装ではプロフィール情報を取得 */}
                         </Text>
                         <View style={styles.memberRole}>
                           {getRoleIcon(item.role)}
@@ -465,10 +465,10 @@ export default function OrganizationSettingsScreen() {
                         </View>
                       </View>
                       <Text style={[styles.memberEmail, { color: currentTheme.textSecondary }]}>
-                        メールアドレス
+                        {t('emailAddress')}
                       </Text>
                       <Text style={[styles.joinDate, { color: currentTheme.textSecondary }]}>
-                        参加日: {new Date(item.joined_at).toLocaleDateString('ja-JP')}
+                        {t('joinDate')}: {new Date(item.joined_at).toLocaleDateString(t('language') === 'en' ? 'en-US' : 'ja-JP')}
                       </Text>
                     </View>
                     <View style={styles.memberActions}>
@@ -477,7 +477,7 @@ export default function OrganizationSettingsScreen() {
                       </TouchableOpacity>
                       <TouchableOpacity 
                         style={styles.actionButton}
-                        onPress={() => removeMember(item.user_id, 'メンバー名')}
+                        onPress={() => removeMember(item.user_id, t('memberName'))}
                         disabled={loading}
                       >
                         <Trash2 size={16} color="#F44336" />
@@ -518,14 +518,6 @@ export default function OrganizationSettingsScreen() {
                   {organization?.description || '説明なし'}
                 </Text>
                 <View style={styles.organizationStats}>
-                  <View style={styles.statItem}>
-                    <Text style={[styles.statNumber, { color: currentTheme.primary }]}>
-                      {subGroups.length}
-                    </Text>
-                    <Text style={[styles.statLabel, { color: currentTheme.textSecondary }]}>
-                      サブグループ
-                    </Text>
-                  </View>
                   <View style={styles.statItem}>
                     <Text style={[styles.statNumber, { color: currentTheme.primary }]}>
                       {members.length}
@@ -1224,34 +1216,6 @@ const styles = StyleSheet.create({
   actionButton: {
     padding: 8,
   },
-  subGroupCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    elevation: 2,
-  },
-  subGroupInfo: {
-    flex: 1,
-  },
-  subGroupName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  subGroupType: {
-    fontSize: 12,
-    marginBottom: 4,
-  },
-  subGroupDescription: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  subGroupActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
   organizationCard: {
     padding: 20,
     borderRadius: 12,
@@ -1447,20 +1411,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   typeButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  subGroupSelector: {
-    gap: 8,
-  },
-  subGroupOption: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-  },
-  subGroupOptionText: {
     fontSize: 14,
     fontWeight: '500',
   },

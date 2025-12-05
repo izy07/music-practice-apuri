@@ -487,34 +487,26 @@ export default function PracticeRecordModal({
       return;
     }
     
-    try {
-      // タイマー時間を加算した合計時間を計算
-      const totalMinutes = minutesNumber + timerMinutes;
-      
-      // 保存処理を実行（完了を待つ）
-      await onSave?.(minutesNumber, content?.trim() || undefined, audioUrl || undefined, videoUrl || undefined);
-      
-      // コールバックを呼び出す
-      onRecordingSaved?.();
-      
-      // 保存後、モーダルを閉じてカレンダー画面に戻る
-      onClose();
-      
-      // カレンダー画面に遷移（念のため）
-      setTimeout(() => {
-        try {
-          console.log('🔄 練習記録保存後、カレンダー画面に遷移開始');
-          router.replace('/(tabs)/' as any);
-          console.log('✅ 練習記録保存後、カレンダー画面遷移完了');
-        } catch (error) {
-          console.error('❌ 練習記録保存後、画面遷移エラー:', error);
-        }
-      }, 100);
-    } catch (error) {
-      console.error('❌ 保存処理エラー:', error);
-      // エラーが発生してもモーダルは閉じる
-      onClose();
-    }
+    // 即座にモーダルを閉じてカレンダー画面に戻る（UX向上）
+    onClose();
+    
+    // 保存処理をバックグラウンドで実行（完了を待たない）
+    (async () => {
+      try {
+        // タイマー時間を加算した合計時間を計算
+        const totalMinutes = minutesNumber + timerMinutes;
+        
+        // 保存処理を実行（バックグラウンドで実行）
+        await onSave?.(minutesNumber, content?.trim() || undefined, audioUrl || undefined, videoUrl || undefined);
+        
+        // コールバックを呼び出す
+        onRecordingSaved?.();
+      } catch (error) {
+        console.error('❌ 保存処理エラー:', error);
+        // エラーはバックグラウンドで処理（ユーザーには既に画面が戻っている）
+        ErrorHandler.handle(error, '練習記録保存', false);
+      }
+    })();
   };
 
   const handleDeleteRecord = () => {

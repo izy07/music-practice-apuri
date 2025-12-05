@@ -4,7 +4,7 @@
  * - 個人情報保護管理者の連絡先
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
   ScrollView,
   Alert,
   Linking,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Mail, Shield, FileText, Trash2 } from 'lucide-react-native';
@@ -21,10 +22,15 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { safeGoBack } from '@/lib/navigationUtils';
 import { createShadowStyle } from '@/lib/shadowStyles';
+import { supabase } from '@/lib/supabase';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import logger from '@/lib/logger';
 
 export default function PrivacySettingsScreen() {
   const router = useRouter();
   const { currentTheme } = useInstrumentTheme();
+  const { signOut } = useAuthAdvanced();
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const goBack = () => {
     safeGoBack('/(tabs)/settings', true); // 強制的にsettings画面に戻る
@@ -55,21 +61,133 @@ export default function PrivacySettingsScreen() {
   };
 
   const handleDeleteAccount = () => {
+    logger.info('[PrivacySettings] アカウント削除ボタンが押されました');
+    
+    // Web環境ではconfirmを使用
+    if (typeof window !== 'undefined' && window.confirm) {
+      const firstConfirm = window.confirm(
+        'アカウントを削除すると、すべてのデータが永久に削除されます。\n\nこの操作は取り消せません。本当に削除しますか？'
+      );
+      
+      if (!firstConfirm) {
+        logger.info('[PrivacySettings] 1回目の確認でキャンセルされました');
+        return;
+      }
+      
+      const secondConfirm = window.confirm(
+        '最終確認\n\nアカウントを削除すると、以下のデータがすべて永久に削除されます：\n\n• プロフィール情報\n• 練習記録\n• 目標設定\n• 録音データ\n• その他すべてのデータ\n\nこの操作は取り消せません。本当に削除しますか？'
+      );
+      
+      if (!secondConfirm) {
+        logger.info('[PrivacySettings] 2回目の確認でキャンセルされました');
+        return;
+      }
+      
+      logger.info('[PrivacySettings] 2回の確認が完了、削除処理を開始');
+      performAccountDeletion();
+      return;
+    }
+    
+    // ネイティブ環境ではAlertを使用
+    // 1回目の確認
     Alert.alert(
-      'アカウント削除',
-      'アカウントを削除すると、すべてのデータが永久に削除されます。この操作は取り消せません。\n\n続行しますか？',
+      'アカウント削除の確認',
+      'アカウントを削除すると、すべてのデータが永久に削除されます。\n\nこの操作は取り消せません。本当に削除しますか？',
       [
-        { text: 'キャンセル', style: 'cancel' },
+        { 
+          text: 'キャンセル', 
+          style: 'cancel',
+          onPress: () => {
+            logger.info('[PrivacySettings] 1回目の確認でキャンセルされました');
+          }
+        },
         { 
           text: '削除する', 
           style: 'destructive',
           onPress: () => {
-            // アカウント削除の処理は問い合わせ先に誘導
-            handleContactPrivacyManager();
+            logger.info('[PrivacySettings] 1回目の確認で削除が選択されました');
+            // 2回目の確認
+            Alert.alert(
+              '最終確認',
+              'アカウントを削除すると、以下のデータがすべて永久に削除されます：\n\n• プロフィール情報\n• 練習記録\n• 目標設定\n• 録音データ\n• その他すべてのデータ\n\nこの操作は取り消せません。本当に削除しますか？',
+              [
+                { 
+                  text: 'キャンセル', 
+                  style: 'cancel',
+                  onPress: () => {
+                    logger.info('[PrivacySettings] 2回目の確認でキャンセルされました');
+                  }
+                },
+                { 
+                  text: 'はい、削除します', 
+                  style: 'destructive',
+                  onPress: () => {
+                    logger.info('[PrivacySettings] 2回目の確認で削除が選択されました、削除処理を開始');
+                    performAccountDeletion();
+                  }
+                }
+              ]
+            );
           }
         }
       ]
     );
+  };
+
+  const performAccountDeletion = async () => {
+    if (isDeleting) return;
+    
+    setIsDeleting(true);
+    
+    try {
+      logger.info('[PrivacySettings] アカウント削除処理を開始');
+      
+      // データベース関数を呼び出してユーザーデータを削除
+      const { error: deleteError } = await supabase.rpc('delete_user_account');
+      
+      if (deleteError) {
+        logger.error('[PrivacySettings] アカウント削除エラー:', deleteError);
+        Alert.alert(
+          'エラー',
+          'アカウント削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。',
+          [
+            { text: 'OK', onPress: () => handleContactPrivacyManager() }
+          ]
+        );
+        setIsDeleting(false);
+        return;
+      }
+      
+      logger.info('[PrivacySettings] ユーザーデータの削除が完了');
+      
+      // ログアウト処理
+      await signOut();
+      
+      // 成功メッセージを表示（ログアウト後は表示されない可能性があるため、先に表示）
+      Alert.alert(
+        'アカウント削除完了',
+        'アカウントとすべてのデータが削除されました。\n\nご利用ありがとうございました。',
+        [
+          { 
+            text: 'OK', 
+            onPress: () => {
+              // ログアウト後は自動的に認証画面に遷移する
+            }
+          }
+        ]
+      );
+      
+    } catch (error: any) {
+      logger.error('[PrivacySettings] アカウント削除例外:', error);
+      Alert.alert(
+        'エラー',
+        'アカウント削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。',
+        [
+          { text: 'OK', onPress: () => handleContactPrivacyManager() }
+        ]
+      );
+      setIsDeleting(false);
+    }
   };
 
 
@@ -102,6 +220,7 @@ export default function PrivacySettingsScreen() {
         style={styles.content} 
         contentContainerStyle={styles.contentContainer}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* 法的情報 */}
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
@@ -155,11 +274,32 @@ export default function PrivacySettingsScreen() {
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>データの管理</Text>
           
           <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: '#F44336' }]}
-            onPress={handleDeleteAccount}
+            style={[
+              styles.actionButton, 
+              { 
+                backgroundColor: isDeleting ? '#999999' : '#F44336',
+                opacity: isDeleting ? 0.6 : 1
+              }
+            ]}
+            onPress={() => {
+              logger.info('[PrivacySettings] アカウント削除ボタンがタップされました');
+              handleDeleteAccount();
+            }}
+            disabled={isDeleting}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
-            <Trash2 size={16} color="#FFFFFF" />
-            <Text style={styles.actionButtonText}>アカウントを削除</Text>
+            {isDeleting ? (
+              <>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+                <Text style={styles.actionButtonText}>削除中...</Text>
+              </>
+            ) : (
+              <>
+                <Trash2 size={16} color="#FFFFFF" />
+                <Text style={styles.actionButtonText}>アカウントを削除</Text>
+              </>
+            )}
           </TouchableOpacity>
           
           <Text style={[styles.sectionDescription, { color: currentTheme.textSecondary, marginTop: 12 }]}>
@@ -230,6 +370,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     gap: 8,
+    minHeight: 44, // タッチしやすい最小サイズ
   },
   actionButtonText: {
     color: '#FFFFFF',

@@ -19,7 +19,7 @@ export default function FeedbackScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <InstrumentHeader />
-      <View style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { backgroundColor: currentTheme.background }]}>
         <ActivityIndicator size="large" color={currentTheme.primary} />
       </View>
     </SafeAreaView>

@@ -72,8 +72,8 @@ export const styles = StyleSheet.create({
   },
   section: {
     borderRadius: 20,
-    padding: 24,
-    marginBottom: 20,
+    padding: 16,
+    marginBottom: 12,
     backgroundColor: '#FFFFFF',
     
     
@@ -85,8 +85,8 @@ export const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
-    paddingBottom: 16,
+    marginBottom: 12,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#F0F0F0',
   },
@@ -97,10 +97,10 @@ export const styles = StyleSheet.create({
     color: '#333333',
   },
   infoGrid: {
-    gap: 20,
+    gap: 8,
   },
   infoItem: {
-    padding: 20,
+    padding: 12,
     backgroundColor: '#F8F9FA',
     borderRadius: 16,
     borderWidth: 1,
@@ -109,7 +109,7 @@ export const styles = StyleSheet.create({
   infoLabel: {
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 12,
+    marginBottom: 6,
     color: '#495057',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -120,25 +120,25 @@ export const styles = StyleSheet.create({
     color: '#6C757D',
   },
   resourcesContainer: {
-    gap: 12,
+    gap: 6,
   },
   resourcesTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 8,
+    marginBottom: 6,
     color: '#333333',
-    paddingBottom: 8,
+    paddingBottom: 6,
     borderBottomWidth: 2,
     borderBottomColor: '#E9ECEF',
   },
   videoItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     backgroundColor: '#F8F9FA',
     borderRadius: 16,
-    marginBottom: 6,
+    marginBottom: 4,
     borderWidth: 1,
     borderColor: '#E9ECEF',
     
@@ -156,11 +156,11 @@ export const styles = StyleSheet.create({
   imageItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     backgroundColor: '#F8F9FA',
     borderRadius: 16,
-    marginBottom: 6,
+    marginBottom: 4,
     borderWidth: 1,
     borderColor: '#E9ECEF',
     
@@ -176,27 +176,27 @@ export const styles = StyleSheet.create({
     color: '#495057',
   },
   repertoireContainer: {
-    gap: 24,
+    gap: 12,
   },
   repertoireTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 16,
+    marginBottom: 8,
     color: '#333333',
-    paddingBottom: 8,
+    paddingBottom: 6,
     borderBottomWidth: 2,
     borderBottomColor: '#E9ECEF',
   },
   songList: {
-    gap: 12,
-    marginBottom: 20,
+    gap: 6,
+    marginBottom: 12,
   },
   songItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     backgroundColor: '#F8F9FA',
     borderRadius: 16,
     borderWidth: 1,
@@ -223,7 +223,7 @@ export const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   tipsBox: {
-    padding: 20,
+    padding: 12,
     borderRadius: 16,
     backgroundColor: '#E8F5E8',
     borderWidth: 1,
@@ -236,7 +236,7 @@ export const styles = StyleSheet.create({
   tipsTitle: {
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 12,
+    marginBottom: 6,
     color: '#2E7D32',
   },
   tipsText: {
@@ -271,15 +271,15 @@ export const styles = StyleSheet.create({
   infoSubLabel: {
     fontSize: 14,
     fontWeight: '600',
-    marginTop: 16,
-    marginBottom: 8,
+    marginTop: 8,
+    marginBottom: 4,
     color: '#495057',
     textTransform: 'uppercase',
     letterSpacing: 0.3,
   },
   fingeringImageContainer: {
-    marginTop: 20,
-    padding: 20,
+    marginTop: 12,
+    padding: 12,
     backgroundColor: '#F8F9FA',
     borderRadius: 16,
     borderWidth: 1,

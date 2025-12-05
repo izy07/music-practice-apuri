@@ -188,15 +188,25 @@ export default function InstrumentSelectionScreen() {
             .select('id, user_id, selected_instrument_id');
           error = updateError;
 
-          // 400エラーの詳細をログに出力
-          if (error && error.status === 400) {
-            logger.error('user_profiles更新エラー（400）:', {
-              error,
+          // 400エラーの詳細をログに出力（エラーハンドリングを改善）
+          if (error) {
+            // エラーの詳細情報を取得
+            const errorDetails = {
+              status: error.status || error.code,
+              message: error.message,
+              code: error.code,
+              details: (error as any).details,
+              hint: (error as any).hint,
               updateData,
               userId: user.id,
-              errorMessage: error.message,
-              errorCode: error.code,
-            });
+            };
+            
+            // 400エラーの場合は詳細ログを出力
+            if (error.status === 400 || error.code === 'PGRST116' || error.code === 'PGRST205') {
+              logger.warn('user_profiles更新エラー（400）:', errorDetails);
+            } else {
+              logger.error('user_profiles更新エラー:', errorDetails);
+            }
           }
 
           // 400エラー（レコードが存在しない、またはカラムが存在しない）の場合にupsertにフォールバック
@@ -429,8 +439,9 @@ export default function InstrumentSelectionScreen() {
         : `${instrumentName}が選択されました！`;
       
       // 楽器選択後、チュートリアル完了状態を更新（チュートリアル画面に戻らないようにする）
-      // カラムが存在しない場合はエラーを無視
+      // upsertを使用して確実に更新（レコードが存在しない場合でも作成される）
       try {
+        // まずupdateを試みる
         const { error: updateTutorialError } = await supabase
           .from('user_profiles')
           .update({
@@ -445,6 +456,30 @@ export default function InstrumentSelectionScreen() {
           // カラムが存在しない場合は無視
           if (updateTutorialError.code === '42703' || updateTutorialError.message?.includes('column') || updateTutorialError.message?.includes('does not exist')) {
             logger.debug('tutorial_completedカラムが存在しないため、スキップします。');
+          } else if (updateTutorialError.code === 'PGRST116' || updateTutorialError.code === 'PGRST205') {
+            // レコードが存在しない場合はupsertを試みる
+            logger.debug('レコードが存在しないため、upsertを試みます。');
+            const { error: upsertError } = await supabase
+              .from('user_profiles')
+              .upsert({
+                user_id: user.id,
+                selected_instrument_id: selectedInstrumentId,
+                tutorial_completed: true,
+                tutorial_completed_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              }, { onConflict: 'user_id' })
+              .select('id, user_id, selected_instrument_id');
+            
+            if (upsertError) {
+              // カラムが存在しない場合は無視
+              if (upsertError.code === '42703' || upsertError.message?.includes('column') || upsertError.message?.includes('does not exist')) {
+                logger.debug('tutorial_completedカラムが存在しないため、スキップします。');
+              } else {
+                logger.warn('チュートリアル完了状態のupsertに失敗しましたが、続行します。', { upsertError });
+              }
+            } else {
+              logger.debug('✅ チュートリアル完了状態をupsertで更新しました');
+            }
           } else {
             logger.warn('チュートリアル完了状態の更新に失敗しましたが、続行します。', { updateTutorialError });
           }
@@ -454,10 +489,6 @@ export default function InstrumentSelectionScreen() {
       } catch (tutorialErr) {
         logger.warn('チュートリアル完了状態の更新中にエラーが発生しましたが、続行します。', { tutorialErr });
       }
-      
-      // 認証状態を強制的に更新（楽器選択状態を反映）
-      // fetchUserProfileを呼び出して認証状態を更新
-      await fetchUserProfile();
       
       // ストレージイベントを発火して、useAuthSimpleが楽器選択状態を検出できるようにする
       if (typeof window !== 'undefined') {
@@ -476,8 +507,17 @@ export default function InstrumentSelectionScreen() {
         }
       }
       
-      // 少し待ってから認証状態の更新を待つ
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // 認証状態を強制的に更新（楽器選択状態を反映）
+      // fetchUserProfileを呼び出して認証状態を更新
+      logger.debug('認証状態を更新中...');
+      const updatedUser = await fetchUserProfile();
+      logger.debug('認証状態更新完了:', { 
+        hasInstrument: !!updatedUser?.selected_instrument_id,
+        tutorialCompleted: updatedUser?.tutorial_completed 
+      });
+      
+      // 認証状態の更新を確実に反映するため、少し待つ
+      await new Promise(resolve => setTimeout(resolve, 800));
       
       // 遷移直前にloadingをfalseにする（メッセージ表示を防ぐため）
       setLoading(false);

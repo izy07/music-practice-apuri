@@ -12,13 +12,30 @@ let supportsInstrumentId = true; // instrument_idカラムの存在をキャッ�
 let supportsIsCompleted = true; // is_completedカラムの存在をキャッシュ
 
 // show_on_calendarカラムの存在を確認する関数
+// パフォーマンス最適化: localStorageを先に確認して、不要なDBクエリを避ける
 const checkShowOnCalendarSupport = async (): Promise<boolean> => {
+  // 既にチェック済みの場合は即座に返す
   if (supportsShowOnCalendar !== null) {
     return supportsShowOnCalendar;
   }
 
+  // まずlocalStorageのフラグを確認（エラーを避けるため、同期処理）
+  if (typeof window !== 'undefined') {
+    try {
+      const flag = window.localStorage.getItem('disable_show_on_calendar');
+      if (flag === '1') {
+        supportsShowOnCalendar = false;
+        return false;
+      }
+      // フラグが'0'または存在しない場合は、カラムが存在する可能性がある
+      // ただし、一度もチェックしていない場合は、実際にチェックする必要がある
+    } catch (e) {
+      // localStorageへのアクセスエラーは無視
+    }
+  }
+
+  // 初回チェック時のみデータベースにクエリを送信
   try {
-    // 実際にデータベースにクエリを送信してカラムの存在を確認
     const { error } = await supabase
       .from('goals')
       .select('show_on_calendar')
@@ -28,24 +45,47 @@ const checkShowOnCalendarSupport = async (): Promise<boolean> => {
       const isColumnError = 
         error.code === 'PGRST204' || 
         error.code === '42703' || 
+        error.code === 'PGRST116' ||
+        error.status === 400 ||
         error.message?.includes('show_on_calendar') ||
         error.message?.includes('Could not find') ||
-        error.message?.includes('schema cache');
+        error.message?.includes('schema cache') ||
+        error.message?.includes('does not exist');
       
       if (isColumnError) {
+        // カラムが存在しない場合は、フラグを設定して以降のチェックをスキップ
         supportsShowOnCalendar = false;
         if (typeof window !== 'undefined') {
-          window.localStorage.setItem('disable_show_on_calendar', '1');
+          try {
+            window.localStorage.setItem('disable_show_on_calendar', '1');
+          } catch (e) {
+            // localStorageへの書き込みエラーは無視
+          }
         }
         return false;
       }
+      
+      // カラムエラー以外のエラー（テーブルが存在しないなど）も無視
+      supportsShowOnCalendar = false;
+      if (typeof window !== 'undefined') {
+        try {
+          window.localStorage.setItem('disable_show_on_calendar', '1');
+        } catch (e) {
+          // localStorageへの書き込みエラーは無視
+        }
+      }
+      return false;
     }
 
     // エラーがない場合はカラムが存在する
     supportsShowOnCalendar = true;
     // フラグをクリア（カラムが存在する場合）
     if (typeof window !== 'undefined') {
-      window.localStorage.removeItem('disable_show_on_calendar');
+      try {
+        window.localStorage.removeItem('disable_show_on_calendar');
+      } catch (e) {
+        // localStorageへのアクセスエラーは無視
+      }
     }
     return true;
   } catch (error) {
@@ -54,6 +94,9 @@ const checkShowOnCalendarSupport = async (): Promise<boolean> => {
       if (typeof window !== 'undefined') {
         const flag = window.localStorage.getItem('disable_show_on_calendar');
         supportsShowOnCalendar = flag !== '1';
+        if (flag === '1') {
+          return false;
+        }
       } else {
         supportsShowOnCalendar = true; // デフォルトはtrue
       }
@@ -904,13 +947,30 @@ export const goalRepository = {
 
   /**
    * 目標のカレンダー表示を更新
+   * パフォーマンス最適化: localStorageを先に確認して、不要なDBクエリを避ける
    */
   async updateShowOnCalendar(goalId: string, show: boolean, userId: string): Promise<void> {
-    // カラムの存在を確認（初回のみ）
-    const isSupported = await checkShowOnCalendarSupport();
+    // まずlocalStorageのフラグを確認（同期処理で高速化）
+    let isSupported = supportsShowOnCalendar;
+    if (isSupported === null && typeof window !== 'undefined') {
+      try {
+        const flag = window.localStorage.getItem('disable_show_on_calendar');
+        if (flag === '1') {
+          isSupported = false;
+          supportsShowOnCalendar = false;
+        }
+      } catch (e) {
+        // localStorageへのアクセスエラーは無視
+      }
+    }
+    
+    // フラグが設定されていない場合のみ、データベースをチェック
+    if (isSupported === null) {
+      isSupported = await checkShowOnCalendarSupport();
+    }
     
     if (!isSupported) {
-      // カラム未対応の場合はlocalStorageに保存
+      // カラム未対応の場合はlocalStorageに保存（即座に完了）
       try {
         if (typeof window !== 'undefined') {
           if (show) {
@@ -922,9 +982,14 @@ export const goalRepository = {
           window.localStorage.setItem(`goal_show_calendar_${goalId}`, String(show));
         }
       } catch {}
+      // イベントを発火してUIを更新
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
+      }
       return;
     }
 
+    // カラムが存在する場合はデータベースを更新
     const { error } = await supabase
       .from('goals')
       .update({ show_on_calendar: show })
@@ -936,6 +1001,7 @@ export const goalRepository = {
       const isShowOnCalendarError = 
         error.code === 'PGRST204' || 
         error.code === '42703' || 
+        error.status === 400 ||
         error.message?.includes('show_on_calendar') ||
         error.message?.includes('column') ||
         error.message?.includes('Could not find') ||
@@ -957,6 +1023,10 @@ export const goalRepository = {
           }
         } catch {}
         // エラーをthrowしない（ローカル状態のみ更新）
+        // イベントを発火してUIを更新
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
+        }
         return;
       }
       
@@ -976,6 +1046,7 @@ export const goalRepository = {
       }
     } catch {}
 
+    // イベントを発火してUIを更新
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
     }

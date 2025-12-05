@@ -37,7 +37,16 @@ const config: ExpoConfig = {
     'expo-dev-client',
     'expo-asset',
     'expo-audio',
-    'expo-web-browser'
+    'expo-web-browser',
+    [
+      'expo-notifications',
+      {
+        icon: './assets/images/icon.png',
+        color: '#1976D2',
+        sounds: [],
+        mode: 'production',
+      },
+    ],
   ],
   experiments: {
     typedRoutes: true,

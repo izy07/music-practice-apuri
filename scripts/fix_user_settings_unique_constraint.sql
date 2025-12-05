@@ -52,3 +52,4 @@ WHERE n.nspname = 'public'
   AND t.relname = 'user_settings'
   AND c.contype IN ('u', 'p');
 
+

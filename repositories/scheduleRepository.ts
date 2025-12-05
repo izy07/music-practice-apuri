@@ -9,7 +9,8 @@
 import { supabase } from '@/lib/supabase';
 import type { PracticeSchedule } from '@/types/organization';
 import type { RepositoryResult } from '@/lib/database/interfaces';
-import { safeExecute } from '@/lib/database/baseRepository';
+import { safeExecute, isSupabaseTableNotFoundError } from '@/lib/database/baseRepository';
+import logger from '@/lib/logger';
 
 /**
  * 練習日程リポジトリ
@@ -35,7 +36,14 @@ export const scheduleRepository = {
         .lte('practice_date', endDate)
         .order('practice_date', { ascending: true });
 
-      if (error) throw error;
+      // 404エラー（テーブル不存在）の場合は空配列を返す
+      if (error) {
+        if (isSupabaseTableNotFoundError(error)) {
+          logger.info('practice_schedulesテーブルが存在しないか、アクセス権限がありません。空配列を返します。');
+          return [];
+        }
+        throw error;
+      }
 
       return (data || []) as PracticeSchedule[];
     }, 'getMonthlySchedules');

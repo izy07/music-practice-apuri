@@ -186,3 +186,4 @@ BEGIN
   RAISE NOTICE '✅ すべてのマイグレーションが完了しました';
 END $$;
 
+

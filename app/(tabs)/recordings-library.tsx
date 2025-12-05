@@ -8,9 +8,10 @@ import {
   Alert,
   Dimensions,
   RefreshControl,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Play, Pause, Trash2, Star, StarOff, Calendar, Clock, Music, ArrowLeft, Video } from 'lucide-react-native';
+import { Play, Pause, Trash2, Star, StarOff, Calendar, Clock, Music, ArrowLeft, Video, Search, X } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
@@ -48,6 +49,7 @@ export default function RecordingsLibraryScreen() {
   const [playingRecording, setPlayingRecording] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -90,7 +92,11 @@ export default function RecordingsLibraryScreen() {
         } else {
           logger.debug('録音データ取得成功:', data?.length || 0, '件');
           logger.debug('録音データ詳細:', data);
-          setRecordings(data);
+          // 既存のデータを保持しながら更新（読み込み中でも既存データを表示）
+          setRecordings(prevRecordings => {
+            // 新しいデータがある場合は更新、ない場合は既存データを保持
+            return data && data.length > 0 ? data : prevRecordings;
+          });
         }
       } else {
         logger.debug('ユーザー情報なし');
@@ -246,37 +252,50 @@ export default function RecordingsLibraryScreen() {
 
   // 時間フィルターに基づいて録音をフィルタリング
   const getFilteredRecordings = (filter: TimeFilter = timeFilter) => {
-    if (filter === 'all') {
-      return recordings;
+    let filtered = recordings;
+
+    // 時間フィルター適用
+    if (filter !== 'all') {
+      const now = new Date();
+      let filterDate: Date;
+
+      switch (filter) {
+        case '1week':
+          filterDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case '1month':
+          filterDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+          break;
+        case '3months':
+          filterDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+          break;
+        case '6months':
+          filterDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+          break;
+        case '1year':
+          filterDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+          break;
+        default:
+          filterDate = new Date(0);
+      }
+
+      filtered = filtered.filter(recording => {
+        const recordedDate = new Date(recording.recorded_at);
+        return recordedDate >= filterDate;
+      });
     }
 
-    const now = new Date();
-    let filterDate: Date;
-
-    switch (filter) {
-      case '1week':
-        filterDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case '1month':
-        filterDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
-        break;
-      case '3months':
-        filterDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
-        break;
-      case '6months':
-        filterDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
-        break;
-      case '1year':
-        filterDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-        break;
-      default:
-        return recordings;
+    // 検索クエリ適用
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(recording => {
+        const title = (recording.title || '').toLowerCase();
+        const memo = (recording.memo || '').toLowerCase();
+        return title.includes(query) || memo.includes(query);
+      });
     }
 
-    return recordings.filter(recording => {
-      const recordedDate = new Date(recording.recorded_at);
-      return recordedDate >= filterDate;
-    });
+    return filtered;
   };
 
   // 指定された期間の最初の録音にスクロール
@@ -313,7 +332,7 @@ export default function RecordingsLibraryScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
         <InstrumentHeader />
-        <View style={styles.loadingContainer}>
+        <View style={[styles.loadingContainer, { backgroundColor: currentTheme.background }]}>
           <Text style={[styles.loadingText, { color: currentTheme.text }]}>
             録音データを読み込み中...
           </Text>
@@ -370,12 +389,34 @@ export default function RecordingsLibraryScreen() {
                 録音ライブラリ
               </Text>
               <Text style={[styles.subtitle, { color: currentTheme.textSecondary }]}>
-                {timeFilter === 'all' ? recordings.length : sortedRecordings.length}件の録音
-                {timeFilter !== 'all' && ` (全${recordings.length}件)`}
+                {sortedRecordings.length}件の録音
+                {(timeFilter !== 'all' || searchQuery.trim()) && ` (全${recordings.length}件)`}
               </Text>
             </View>
           </View>
         </View>
+
+        {/* 検索バー */}
+        {recordings.length > 0 && (
+          <View style={[styles.searchContainer, { backgroundColor: currentTheme.surface }]}>
+            <Search size={20} color={currentTheme.textSecondary} />
+            <TextInput
+              style={[styles.searchInput, { color: currentTheme.text }]}
+              placeholder="タイトルやメモで検索..."
+              placeholderTextColor={currentTheme.textSecondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.trim() && (
+              <TouchableOpacity
+                onPress={() => setSearchQuery('')}
+                style={styles.clearButton}
+              >
+                <X size={18} color={currentTheme.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* 聴き比べモード：時間フィルター */}
         {recordings.length > 0 && (
@@ -601,7 +642,7 @@ export default function RecordingsLibraryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    // backgroundColorは各SafeAreaViewでテーマ色を指定
   },
   content: {
     flex: 1,
@@ -786,6 +827,23 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     borderTopWidth: 1,
     borderTopColor: '#E5E5E5',
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginBottom: 16,
+    borderRadius: 12,
+    gap: 12,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    paddingVertical: 8,
+  },
+  clearButton: {
+    padding: 4,
   },
 });
 

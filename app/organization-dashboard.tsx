@@ -6,7 +6,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
-import { OrganizationManager, SubGroupManager, PracticeScheduleManager, Organization, SubGroup } from '@/lib/groupManagement';
+import { OrganizationManager, PracticeScheduleManager, Organization } from '@/lib/groupManagement';
 
 export default function OrganizationDashboard() {
   const router = useRouter();
@@ -16,7 +16,6 @@ export default function OrganizationDashboard() {
   
   // 状態管理
   const [organization, setOrganization] = useState<Organization | null>(null);
-  const [subGroups, setSubGroups] = useState<SubGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [monthlySchedules, setMonthlySchedules] = useState<any[]>([]);
@@ -40,11 +39,6 @@ export default function OrganizationDashboard() {
         }
       }
 
-      // サブグループ一覧を取得
-      const subGroupsResult = await SubGroupManager.getOrganizationSubGroups(orgId as string);
-      if (subGroupsResult.success && subGroupsResult.subGroups) {
-        setSubGroups(subGroupsResult.subGroups);
-      }
     } catch (error) {
       console.error('組織データ読み込みエラー:', error);
     } finally {
@@ -67,12 +61,12 @@ export default function OrganizationDashboard() {
 
   const getPracticeTypeLabel = (type: string) => {
     switch (type) {
-      case 'ensemble': return '合奏';
-      case 'part_practice': return 'パート練';
-      case 'individual_practice': return '個人練';
-      case 'rehearsal': return 'リハーサル';
-      case 'lesson': return 'レッスン';
-      case 'event': return 'イベント';
+      case 'ensemble': return t('ensemble');
+      case 'part_practice': return t('partPractice');
+      case 'individual_practice': return t('individualPractice');
+      case 'rehearsal': return t('rehearsal');
+      case 'lesson': return t('lesson');
+      case 'event': return t('event');
       default: return type;
     }
   };
@@ -109,8 +103,8 @@ export default function OrganizationDashboard() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
         <InstrumentHeader />
-        <View style={styles.loadingContainer}>
-          <Text style={[styles.loadingText, { color: currentTheme.text }]}>読み込み中...</Text>
+        <View style={[styles.loadingContainer, { backgroundColor: currentTheme.background }]}>
+          <Text style={[styles.loadingText, { color: currentTheme.text }]}>{t('loading')}</Text>
         </View>
       </SafeAreaView>
     );
@@ -130,38 +124,13 @@ export default function OrganizationDashboard() {
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
-            {organization?.name || '組織'}
+            {organization?.name || t('organization')}
           </Text>
           <Text style={[styles.headerSubtitle, { color: currentTheme.textSecondary }]}>
-            {organization?.description || '音楽団体管理'}
+            {organization?.description || t('organizationManagement')}
           </Text>
         </View>
       </View>
-
-      {/* サブグループ情報 */}
-      {subGroups.length > 0 && (
-        <View style={styles.subGroupsSection}>
-          <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            サブグループ
-          </Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.subGroupsScroll}>
-            {subGroups.map((subGroup) => 
-              React.createElement(View, {
-                key: subGroup.id,
-                style: [styles.subGroupCard, { backgroundColor: currentTheme.surface }]
-              },
-                React.createElement(Text, {
-                  style: [styles.subGroupName, { color: currentTheme.text }]
-                }, subGroup.name),
-                React.createElement(Text, {
-                  style: [styles.subGroupType, { color: currentTheme.textSecondary }]
-                }, subGroup.group_type === 'part' ? 'パート' : 
-                   subGroup.group_type === 'grade' ? '学年' : 'セクション')
-              )
-            )}
-          </ScrollView>
-        </View>
-      )}
 
       {/* メイン機能 */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -175,14 +144,14 @@ export default function OrganizationDashboard() {
               <Calendar size={32} color={currentTheme.primary} />
             </View>
             <Text style={[styles.functionTitle, { color: currentTheme.text }]}>
-              練習日程
+              {t('practiceSchedule')}
             </Text>
             <Text style={[styles.functionDescription, { color: currentTheme.textSecondary }]}>
-              月間カレンダーで練習日を管理
+              {t('practiceScheduleDesc')}
             </Text>
             {monthlySchedules.length > 0 && (
               <Text style={[styles.functionCount, { color: currentTheme.primary }]}>
-                {monthlySchedules.length}件の予定
+                {t('scheduleCount').replace('{count}', monthlySchedules.length.toString())}
               </Text>
             )}
           </TouchableOpacity>
@@ -197,10 +166,10 @@ export default function OrganizationDashboard() {
                 <CheckSquare size={32} color={currentTheme.primary} />
               </View>
               <Text style={[styles.functionTitle, { color: currentTheme.text }]}>
-                出欠席管理
+                {t('attendanceManagement')}
               </Text>
               <Text style={[styles.functionDescription, { color: currentTheme.textSecondary }]}>
-                出席・欠席・遅刻を管理
+                {t('attendanceManagementDesc')}
               </Text>
             </TouchableOpacity>
           )}
@@ -214,10 +183,10 @@ export default function OrganizationDashboard() {
               <Users size={32} color={currentTheme.primary} />
             </View>
             <Text style={[styles.functionTitle, { color: currentTheme.text }]}>
-              課題管理
+              {t('taskManagement')}
             </Text>
             <Text style={[styles.functionDescription, { color: currentTheme.textSecondary }]}>
-              練習課題と進捗を管理
+              {t('taskManagementDesc')}
             </Text>
           </TouchableOpacity>
 
@@ -230,10 +199,10 @@ export default function OrganizationDashboard() {
               <Settings size={32} color={currentTheme.primary} />
             </View>
             <Text style={[styles.functionTitle, { color: currentTheme.text }]}>
-              組織設定
+              {t('organizationSettings')}
             </Text>
             <Text style={[styles.functionDescription, { color: currentTheme.textSecondary }]}>
-              メンバー・権限の管理
+              {t('organizationSettingsDesc')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -242,7 +211,7 @@ export default function OrganizationDashboard() {
         {monthlySchedules.length > 0 && (
           <View style={styles.scheduleSummary}>
             <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-              今月の予定
+              {t('thisMonthSchedules')}
             </Text>
             {monthlySchedules.slice(0, 3).map((schedule) => 
               React.createElement(View, {
@@ -264,7 +233,7 @@ export default function OrganizationDashboard() {
                   }, schedule.title),
                   React.createElement(Text, {
                     style: [styles.scheduleDate, { color: currentTheme.textSecondary }]
-                  }, new Date(schedule.practice_date).toLocaleDateString('ja-JP', { 
+                  }, new Date(schedule.practice_date).toLocaleDateString(t('language') === 'en' ? 'en-US' : 'ja-JP', { 
                     month: 'short', 
                     day: 'numeric',
                     hour: schedule.start_time ? 'numeric' : undefined,
@@ -275,7 +244,7 @@ export default function OrganizationDashboard() {
             )}
             {monthlySchedules.length > 3 && (
               <Text style={[styles.moreSchedules, { color: currentTheme.primary }]}>
-                他{monthlySchedules.length - 3}件の予定があります
+                {t('moreSchedules').replace('{count}', (monthlySchedules.length - 3).toString())}
               </Text>
             )}
           </View>
@@ -320,32 +289,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 20,
   },
-  subGroupsSection: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
     marginBottom: 12,
-  },
-  subGroupsScroll: {
-    flexDirection: 'row',
-  },
-  subGroupCard: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginRight: 12,
-    elevation: 2,
-  },
-  subGroupName: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  subGroupType: {
-    fontSize: 12,
   },
   content: {
     flex: 1,

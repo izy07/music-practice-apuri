@@ -696,3 +696,4 @@ const result = await goalRepository.getGoals(userId);
 **レビュー実施日**: 2025年1月  
 **次回レビュー予定**: 3ヶ月後（改善項目の進捗確認）
 
+

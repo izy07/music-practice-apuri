@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { User, Palette, Globe, Bell, ChartBar as BarChart3, BookOpen, MessageSquare, Shield, FileText, LogOut, ChevronRight, Library, Zap, Crown, Heart, Share2, Star, GraduationCap } from 'lucide-react-native';
 import InstrumentHeader from '@/components/InstrumentHeader';
@@ -11,7 +11,7 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { isAuthenticated, isLoading, signOut } = useAuthAdvanced();
+  const { isAuthenticated, isLoading, isInitialized, signOut } = useAuthAdvanced();
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const { language, setLanguage, t } = useLanguage();
   const { currentTheme } = useInstrumentTheme();
@@ -27,46 +27,52 @@ export default function SettingsScreen() {
   };
 
   React.useEffect(() => {
-    if (isLoading) return;
-    if (!isAuthenticated) return;
-    getCurrentUser();
+    // Web環境では、isLoadingを無視してユーザー情報を取得
+    if (Platform.OS === 'web') {
+      // Web環境では、isAuthenticatedがtrueの場合のみユーザー情報を取得
+      if (isAuthenticated) {
+        getCurrentUser();
+      }
+    } else {
+      // ネイティブ環境では、isLoadingとisAuthenticatedをチェック
+      if (isLoading) return;
+      if (!isAuthenticated) return;
+      getCurrentUser();
+    }
   }, [isLoading, isAuthenticated]);
 
-  // 認証中または認証されていない場合は何も表示しない
-  if (isLoading || !isAuthenticated) {
-    return null;
-  }
+  // 認証チェックはレイアウトレベルで実行されるため、ここでは不要
 
   const handleLogout = async () => {
     try {
       // ログアウト確認
       if (typeof window !== 'undefined') {
-        if (!confirm('ログアウトしますか？')) {
+        if (!confirm(t('logoutMessage'))) {
           return;
         }
         try {
           await signOut();
         } catch (error) {
-          Alert.alert('エラー', 'ログアウトに失敗しました');
+          Alert.alert(t('error'), t('logoutFailed'));
         }
       } else {
         Alert.alert(
-          'ログアウト確認',
-          'ログアウトしますか？',
+          t('logoutConfirm'),
+          t('logoutMessage'),
           [
-            { text: 'キャンセル', style: 'cancel' },
-            { text: 'ログアウト', style: 'destructive', onPress: async () => {
+            { text: t('cancel'), style: 'cancel' },
+            { text: t('logoutTitle'), style: 'destructive', onPress: async () => {
               try {
                 await signOut();
               } catch (error) {
-                Alert.alert('エラー', 'ログアウトに失敗しました');
+                Alert.alert(t('error'), t('logoutFailed'));
               }
             }}
           ]
         );
       }
     } catch (error) {
-      Alert.alert('エラー', 'ログアウト処理中にエラーが発生しました');
+      Alert.alert(t('error'), t('logoutError'));
     }
   };
 
@@ -83,72 +89,72 @@ export default function SettingsScreen() {
     // },
     {
       id: 'profile',
-      title: 'プロフィール設定',
-      subtitle: '個人情報・楽器設定',
+      title: t('profileSettings'),
+      subtitle: t('profileSettingsSubtitle'),
       icon: User,
       color: '#4CAF50',
       onPress: () => router.push('/(tabs)/profile-settings' as any)
     },
     {
       id: 'my-library',
-      title: 'マイライブラリ',
-      subtitle: '楽曲を整理する',
+      title: t('myLibrary'),
+      subtitle: t('myLibrarySubtitle'),
       icon: Library,
       color: '#9C27B0',
       onPress: () => router.push('/(tabs)/my-library' as any)
     },
     {
       id: 'recordings-library',
-      title: '録音ライブラリ',
-      subtitle: '演奏履歴を時系列で確認',
+      title: t('recordingsLibrary'),
+      subtitle: t('recordingsLibrarySubtitle'),
       icon: BookOpen,
       color: '#607D8B',
       onPress: () => router.push('/(tabs)/recordings-library' as any)
     },
     {
       id: 'main-settings',
-      title: '主要機能',
-      subtitle: 'チューナー・楽器選択・演奏レベル・外観設定',
+      title: t('mainFeatures'),
+      subtitle: t('mainFeaturesSubtitle'),
       icon: Zap,
       color: '#FF6B35',
       onPress: () => router.push('/(tabs)/main-settings' as any)
     },
     {
       id: 'tutorial',
-      title: 'チュートリアル',
-      subtitle: 'アプリの使い方を学ぶ',
+      title: t('tutorial'),
+      subtitle: t('tutorialSubtitle'),
       icon: GraduationCap,
       color: '#9C27B0',
       onPress: () => router.push('/(tabs)/app-guide' as any)
     },
     {
       id: 'notifications',
-      title: '通知設定',
-      subtitle: '練習リマインダー・通知方法',
+      title: t('notificationSettings'),
+      subtitle: t('notificationSettingsSubtitle'),
       icon: Bell,
       color: '#FF9800',
       onPress: () => router.push('/(tabs)/notification-settings' as any)
     },
     {
       id: 'language',
-      title: '言語設定',
-      subtitle: '日本語・English',
+      title: t('languageSettings'),
+      subtitle: t('languageSettingsSubtitle'),
       icon: Globe,
       color: '#2196F3',
       onPress: () => router.push('/(tabs)/language-settings' as any)
     },
     {
       id: 'privacy',
-      title: 'プライバシー・法的情報',
-      subtitle: 'データ・セキュリティ・利用規約・プライバシーポリシー',
+      title: t('privacySettings'),
+      subtitle: t('privacySettingsSubtitle'),
       icon: Shield,
       color: '#FF5722',
       onPress: () => router.push('/(tabs)/privacy-settings' as any)
     },
     {
       id: 'support',
-      title: 'フィードバック',
-      subtitle: 'アプリをシェア・レビュー・ランキング',
+      title: t('feedbackTitle'),
+      subtitle: t('feedbackSubtitle'),
       icon: Heart,
       color: '#E91E63',
       onPress: () => router.push('/(tabs)/support' as any)
@@ -160,7 +166,7 @@ export default function SettingsScreen() {
       <InstrumentHeader />
       
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={[styles.title, { color: currentTheme?.text || '#2D3748' }]}>その他</Text>
+        <Text style={[styles.title, { color: currentTheme?.text || '#2D3748' }]}>{t('other')}</Text>
         
 
         
@@ -198,8 +204,8 @@ export default function SettingsScreen() {
                 <LogOut size={24} color="#FF4444" />
               </View>
               <View style={styles.settingContent}>
-                <Text style={[styles.settingTitle, { color: '#FF4444' }]}>ログアウト</Text>
-                <Text style={[styles.settingSubtitle, { color: currentTheme?.textSecondary || '#718096' }]}>アカウントからログアウト</Text>
+                <Text style={[styles.settingTitle, { color: '#FF4444' }]}>{t('logoutTitle')}</Text>
+                <Text style={[styles.settingSubtitle, { color: currentTheme?.textSecondary || '#718096' }]}>{t('logoutSubtitle')}</Text>
               </View>
               <ChevronRight size={20} color={currentTheme?.textSecondary || '#CCCCCC'} />
             </TouchableOpacity>

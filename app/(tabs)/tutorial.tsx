@@ -5,6 +5,8 @@ import {
   TouchableOpacity,
   ScrollView,
   StyleSheet,
+  Platform,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import SafeView from '@/components/SafeView';
@@ -14,6 +16,7 @@ import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { navigateWithBasePath } from '@/lib/navigationUtils';
+import NotificationService from '@/lib/notificationService';
 
 /**
  * 【チュートリアル画面】新規ユーザー向けのアプリ使い方ガイド
@@ -26,6 +29,7 @@ export default function TutorialScreen() {
   const [currentStep, setCurrentStep] = useState(0); // 現在のチュートリアルステップ
   const [isNavigating, setIsNavigating] = useState(false); // ナビゲーション中フラグ
   const [notificationEnabled, setNotificationEnabled] = useState(false); // 通知設定
+  const [isRequestingPermission, setIsRequestingPermission] = useState(false); // 権限リクエスト中フラグ
 
   /**
    * 【マウント確認】チュートリアル画面の表示確認
@@ -36,7 +40,129 @@ export default function TutorialScreen() {
     
     // ローディング状態をリセット
     setIsNavigating(false);
+    
+    // 既存の通知設定を読み込み
+    loadNotificationSettings();
   }, []);
+
+  /**
+   * 既存の通知設定を読み込み
+   * エラーが発生しても静かに処理（カラムが存在しない場合など）
+   */
+  const loadNotificationSettings = async () => {
+    try {
+      const notificationService = NotificationService.getInstance();
+      const settings = await notificationService.loadSettings();
+      
+      if (settings) {
+        setNotificationEnabled(settings.practice_reminders || false);
+      }
+    } catch (error) {
+      // エラーを完全に無視（カラムが存在しない場合などは正常な動作）
+      // ログも出力しない（開発環境でも）
+    }
+  };
+
+  /**
+   * 通知設定をトグル
+   */
+  const handleNotificationToggle = async () => {
+    if (isRequestingPermission) return;
+    
+    setIsRequestingPermission(true);
+    
+    try {
+      const notificationService = NotificationService.getInstance();
+      
+      // Web環境での通知権限リクエスト
+      if (Platform.OS === 'web') {
+        if (!('Notification' in window)) {
+          Alert.alert('通知がサポートされていません', 'このブラウザでは通知機能を利用できません');
+          setIsRequestingPermission(false);
+          return;
+        }
+
+        // 通知権限をリクエスト
+        const permission = await notificationService.requestPermission();
+        
+        if (permission === 'granted') {
+          // 通知設定を有効化して保存
+          const newEnabled = !notificationEnabled;
+          setNotificationEnabled(newEnabled);
+          
+          // 通知設定を保存
+          const settings = await notificationService.loadSettings();
+          if (settings) {
+            const updatedSettings = {
+              ...settings,
+              practice_reminders: newEnabled,
+              daily_practice: newEnabled,
+            };
+            await notificationService.saveSettings(updatedSettings);
+            logger.debug('✅ 通知設定を保存しました', updatedSettings);
+            
+            // テスト通知を送信
+            if (newEnabled) {
+              await notificationService.sendPracticeReminder();
+            }
+          }
+        } else if (permission === 'denied') {
+          Alert.alert(
+            '通知が拒否されました',
+            'ブラウザの設定から通知を許可してください。\n\n設定方法:\n1. ブラウザの設定を開く\n2. サイトの設定 > 通知\n3. このサイトの通知を許可する'
+          );
+        } else {
+          Alert.alert('通知が許可されていません', 'ブラウザの設定で通知を許可してください');
+        }
+      } else {
+        // ネイティブアプリ（iOS/Android）での通知権限リクエスト
+        const permission = await notificationService.requestPermission();
+        
+        if (permission === 'granted') {
+          // 通知設定を有効化して保存
+          const newEnabled = !notificationEnabled;
+          setNotificationEnabled(newEnabled);
+          
+          // 通知設定を保存
+          const settings = await notificationService.loadSettings();
+          if (settings) {
+            const updatedSettings = {
+              ...settings,
+              practice_reminders: newEnabled,
+              daily_practice: newEnabled,
+            };
+            await notificationService.saveSettings(updatedSettings);
+            logger.debug('✅ 通知設定を保存しました', updatedSettings);
+          }
+          
+          // プッシュトークンをサーバーに登録
+          if (newEnabled) {
+            const registered = await notificationService.registerPushToken();
+            if (registered) {
+              logger.debug('✅ プッシュトークンを登録しました');
+              // テスト通知を送信
+              await notificationService.sendPracticeReminder();
+            } else {
+              logger.warn('⚠️ プッシュトークンの登録に失敗しました');
+            }
+          }
+        } else if (permission === 'denied') {
+          Alert.alert(
+            '通知が拒否されました',
+            '通知を受け取るには、端末の設定から通知を許可してください。\n\n設定方法:\niOS: 設定 > 通知 > 音楽練習アプリ\nAndroid: 設定 > アプリ > 音楽練習アプリ > 通知'
+          );
+        } else {
+          Alert.alert('通知が許可されていません', '通知を受け取るには、端末の設定から通知を許可してください');
+        }
+      }
+    } catch (error) {
+      logger.error('❌ 通知設定の更新エラー:', error);
+      ErrorHandler.handle(error, '通知設定の更新', false);
+      Alert.alert('エラー', '通知設定の更新に失敗しました');
+    } finally {
+      setIsRequestingPermission(false);
+    }
+  };
 
   const tutorialSteps = [
     {
@@ -275,21 +401,27 @@ export default function TutorialScreen() {
               <TouchableOpacity
                 style={[
                   styles.notificationToggle,
-                  notificationEnabled && styles.notificationToggleActive
+                  notificationEnabled && styles.notificationToggleActive,
+                  isRequestingPermission && styles.notificationToggleDisabled
                 ]}
-                onPress={() => setNotificationEnabled(!notificationEnabled)}
+                onPress={handleNotificationToggle}
+                disabled={isRequestingPermission}
               >
                 <View style={[
                   styles.notificationToggleKnob,
                   notificationEnabled && styles.notificationToggleKnobActive
                 ]} />
               </TouchableOpacity>
-              <Text style={styles.notificationToggleLabel}>通知をオンにする</Text>
+              <Text style={styles.notificationToggleLabel}>
+                {isRequestingPermission ? '設定中...' : '通知をオンにする'}
+              </Text>
             </View>
             <Text style={styles.notificationDescription}>
-              {notificationEnabled 
-                ? '✅ 練習リマインダーや目標達成通知を受け取れます' 
-                : '通知をオンにすると練習の継続に役立ちます'
+              {isRequestingPermission
+                ? '通知の設定を確認しています...'
+                : notificationEnabled 
+                  ? '✅ 練習リマインダーや目標達成通知を受け取れます' 
+                  : '通知をオンにすると練習の継続に役立ちます'
               }
             </Text>
           </View>
@@ -498,6 +630,9 @@ const styles = StyleSheet.create({
   },
   notificationToggleActive: {
     backgroundColor: '#1976D2',
+  },
+  notificationToggleDisabled: {
+    opacity: 0.6,
   },
   notificationToggleKnob: {
     width: 24,

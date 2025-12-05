@@ -1,6 +1,18 @@
+import { Platform } from 'react-native';
 import { supabase } from './supabase';
 import logger from './logger';
 import { ErrorHandler } from './errorHandler';
+import { checkNotificationSettingsColumnExists, getMissingColumnErrorMessage } from './databaseSchemaChecker';
+
+// expo-notificationsはWeb環境では使用しない
+let Notifications: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    Notifications = require('expo-notifications');
+  } catch (error) {
+    logger.warn('expo-notifications not available:', error);
+  }
+}
 
 export interface NotificationSettings {
   practice_reminders: boolean;
@@ -32,24 +44,71 @@ export class NotificationService {
   async loadSettings(): Promise<NotificationSettings | null> {
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return null;
-
-      const { data, error } = await supabase
-        .from('user_settings')
-        .select('notification_settings')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error) {
-        ErrorHandler.handle(error, '通知設定読み込み', false);
-        return null;
+      if (!user) {
+        this.settings = this.getDefaultSettings();
+        return this.settings;
       }
 
-      this.settings = data?.notification_settings || this.getDefaultSettings();
-      return this.settings;
+      // カラムの存在をチェック
+      const columnExists = await checkNotificationSettingsColumnExists();
+      if (!columnExists) {
+        // カラムが存在しない場合、明確なエラーメッセージを表示
+        const errorMessage = getMissingColumnErrorMessage();
+        logger.error('notification_settingsカラムが存在しません。マイグレーションを実行してください。', {
+          message: errorMessage
+        });
+        ErrorHandler.handle(
+          new Error('notification_settingsカラムがデータベースに存在しません。マイグレーションを実行してください。'),
+          'データベーススキーマエラー',
+          true // ユーザーに表示
+        );
+        // デフォルト設定を返す（アプリは動作し続ける）
+        this.settings = this.getDefaultSettings();
+        return this.settings;
+      }
+
+      // カラムが存在する場合、通常通り読み込み
+      try {
+        const { data, error } = await supabase
+          .from('user_settings')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        // エラーが発生した場合（レコードが存在しない等）
+        if (error) {
+          // レコードが存在しない場合は正常（デフォルト設定を使用）
+          if (error.code === 'PGRST116' || error.code === 'PGRST205') {
+            this.settings = this.getDefaultSettings();
+            return this.settings;
+          }
+          
+          // その他のエラーもデフォルト設定を返す
+          logger.warn('通知設定の読み込みに失敗しました。デフォルト設定を使用します。', {
+            errorCode: error.code,
+            errorStatus: error.status,
+            errorMessage: error.message
+          });
+          this.settings = this.getDefaultSettings();
+          return this.settings;
+        }
+
+        // データが存在する場合は使用、存在しない場合はデフォルト設定
+        if (data && 'notification_settings' in data && data.notification_settings) {
+          this.settings = { ...this.getDefaultSettings(), ...data.notification_settings };
+        } else {
+          this.settings = this.getDefaultSettings();
+        }
+        return this.settings;
+      } catch (queryError: any) {
+        logger.error('通知設定の読み込み中にエラーが発生しました。デフォルト設定を使用します。', queryError);
+        this.settings = this.getDefaultSettings();
+        return this.settings;
+      }
     } catch (error) {
-      ErrorHandler.handle(error, '通知設定読み込み', false);
-      return null;
+      logger.error('通知設定の読み込み中に予期しないエラーが発生しました。デフォルト設定を使用します。', error);
+      this.settings = this.getDefaultSettings();
+      return this.settings;
     }
   }
 
@@ -59,21 +118,45 @@ export class NotificationService {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return false;
 
-      const { error } = await supabase
-        .from('user_settings')
-        .upsert({
-          user_id: user.id,
-          notification_settings: settings,
-          updated_at: new Date().toISOString(),
+      // カラムの存在をチェック
+      const columnExists = await checkNotificationSettingsColumnExists();
+      if (!columnExists) {
+        // カラムが存在しない場合、明確なエラーメッセージを表示
+        const errorMessage = getMissingColumnErrorMessage();
+        logger.error('notification_settingsカラムが存在しません。マイグレーションを実行してください。', {
+          message: errorMessage
         });
-
-      if (error) {
-        ErrorHandler.handle(error, '通知設定保存', false);
-        return false;
+        ErrorHandler.handle(
+          new Error('notification_settingsカラムがデータベースに存在しません。マイグレーションを実行してください。'),
+          'データベーススキーマエラー',
+          true // ユーザーに表示
+        );
+        // メモリ上には設定を保存（次回起動時まで有効）
+        this.settings = settings;
+        return false; // 保存は失敗したが、メモリ上には保存済み
       }
 
-      this.settings = settings;
-      return true;
+      // カラムが存在する場合、通常通り保存
+      try {
+        const { error } = await supabase
+          .from('user_settings')
+          .upsert({
+            user_id: user.id,
+            notification_settings: settings,
+            updated_at: new Date().toISOString(),
+          });
+
+        if (error) {
+          ErrorHandler.handle(error, '通知設定保存', false);
+          return false;
+        }
+
+        this.settings = settings;
+        return true;
+      } catch (queryError: any) {
+        ErrorHandler.handle(queryError, '通知設定保存', false);
+        return false;
+      }
     } catch (error) {
       ErrorHandler.handle(error, '通知設定保存', false);
       return false;
@@ -103,6 +186,27 @@ export class NotificationService {
       if (this.settings?.quiet_hours_enabled && this.isInQuietHours()) {
         logger.debug('Notification suppressed during quiet hours');
         return false;
+      }
+
+      // ネイティブアプリ（iOS/Android）での通知
+      if (Platform.OS !== 'web' && Notifications) {
+        try {
+          await Notifications.scheduleNotificationAsync({
+            content: {
+              title,
+              body,
+              sound: this.settings?.sound_notifications !== false,
+              data: options?.data || {},
+            },
+            trigger: null, // 即座に送信
+          });
+          logger.debug('✅ ネイティブ通知を送信しました');
+          return true;
+        } catch (error) {
+          logger.error('❌ ネイティブ通知の送信エラー:', error);
+          ErrorHandler.handle(error, 'ネイティブ通知送信', false);
+          return false;
+        }
       }
 
       // Web環境での通知
@@ -237,11 +341,37 @@ export class NotificationService {
   }
 
   // 通知権限をリクエスト
-  async requestPermission(): Promise<NotificationPermission> {
+  async requestPermission(): Promise<'granted' | 'denied' | 'default'> {
+    // ネイティブアプリ（iOS/Android）での通知権限リクエスト
+    if (Platform.OS !== 'web' && Notifications) {
+      try {
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+        
+        if (existingStatus !== 'granted') {
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+        }
+        
+        if (finalStatus !== 'granted') {
+          logger.warn('通知権限が拒否されました');
+          return 'denied';
+        }
+        
+        logger.debug('✅ 通知権限が許可されました');
+        return 'granted';
+      } catch (error) {
+        logger.error('❌ 通知権限のリクエストエラー:', error);
+        ErrorHandler.handle(error, '通知権限要求', false);
+        return 'denied';
+      }
+    }
+
+    // Web環境での通知権限リクエスト
     if (typeof window !== 'undefined' && 'Notification' in window) {
       try {
         const permission = await Notification.requestPermission();
-        return permission;
+        return permission as 'granted' | 'denied' | 'default';
       } catch (error) {
         ErrorHandler.handle(error, '通知権限要求', false);
         return 'denied';
@@ -251,11 +381,106 @@ export class NotificationService {
   }
 
   // 通知権限の状態を取得
-  getPermissionStatus(): NotificationPermission | 'unsupported' {
+  async getPermissionStatus(): Promise<'granted' | 'denied' | 'default' | 'unsupported'> {
+    // ネイティブアプリ（iOS/Android）での通知権限状態取得
+    if (Platform.OS !== 'web' && Notifications) {
+      try {
+        const { status } = await Notifications.getPermissionsAsync();
+        return status as 'granted' | 'denied' | 'default';
+      } catch (error) {
+        logger.error('通知権限状態の取得エラー:', error);
+        return 'denied';
+      }
+    }
+
+    // Web環境での通知権限状態取得
     if (typeof window !== 'undefined' && 'Notification' in window) {
-      return Notification.permission;
+      return Notification.permission as 'granted' | 'denied' | 'default';
     }
     return 'unsupported';
+  }
+
+  // プッシュトークンを取得（ネイティブアプリのみ）
+  async getPushToken(): Promise<string | null> {
+    if (Platform.OS === 'web') {
+      logger.debug('Web環境ではプッシュトークンは取得できません');
+      return null;
+    }
+
+    if (!Notifications) {
+      logger.warn('expo-notificationsが利用できません');
+      return null;
+    }
+
+    try {
+      // 通知権限を確認
+      const { status } = await Notifications.getPermissionsAsync();
+      if (status !== 'granted') {
+        logger.warn('通知権限が許可されていません');
+        return null;
+      }
+
+      // プッシュトークンを取得
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID,
+      });
+
+      logger.debug('✅ プッシュトークンを取得しました:', tokenData.data);
+      return tokenData.data;
+    } catch (error) {
+      logger.error('❌ プッシュトークンの取得エラー:', error);
+      ErrorHandler.handle(error, 'プッシュトークン取得', false);
+      return null;
+    }
+  }
+
+  // プッシュトークンをサーバーに登録
+  async registerPushToken(): Promise<boolean> {
+    if (Platform.OS === 'web') {
+      logger.debug('Web環境ではプッシュトークンの登録は不要です');
+      return false;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        logger.warn('ユーザーが認証されていません');
+        return false;
+      }
+
+      const token = await this.getPushToken();
+      if (!token) {
+        logger.warn('プッシュトークンが取得できませんでした');
+        return false;
+      }
+
+      // Supabaseにプッシュトークンを保存
+      // 注意: user_push_tokensテーブルが存在することを前提としています
+      const { error } = await supabase
+        .from('user_push_tokens')
+        .upsert({
+          user_id: user.id,
+          push_token: token,
+          platform: Platform.OS,
+          device_id: null, // 必要に応じてデバイスIDを追加可能
+          updated_at: new Date().toISOString(),
+        }, {
+          onConflict: 'user_id,platform,device_id',
+        });
+
+      if (error) {
+        logger.error('❌ プッシュトークンの登録エラー:', error);
+        ErrorHandler.handle(error, 'プッシュトークン登録', false);
+        return false;
+      }
+
+      logger.debug('✅ プッシュトークンをサーバーに登録しました');
+      return true;
+    } catch (error) {
+      logger.error('❌ プッシュトークン登録処理のエラー:', error);
+      ErrorHandler.handle(error, 'プッシュトークン登録', false);
+      return false;
+    }
   }
 }
 

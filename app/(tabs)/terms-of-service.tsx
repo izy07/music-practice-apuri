@@ -19,7 +19,7 @@ export default function TermsOfServiceScreen() {
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => safeGoBack('/(tabs)/privacy-settings')}
+          onPress={() => safeGoBack('/(tabs)/privacy-settings', true)}
         >
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
@@ -123,13 +123,13 @@ export default function TermsOfServiceScreen() {
           </Text>
           <View style={styles.bulletList}>
             <Text style={[styles.bulletItem, { color: currentTheme.textSecondary }]}>
-              • 月額プラン: 980円（税込）
+              • 月額プラン: 380円（税込）
             </Text>
             <Text style={[styles.bulletItem, { color: currentTheme.textSecondary }]}>
-              • 年額プラン: 9,800円（税込、月額プランより約17%割引）
+              • 年額プラン: 3,800円（税込、月額プランより約17%割引）
             </Text>
             <Text style={[styles.bulletItem, { color: currentTheme.textSecondary }]}>
-              • 学生プラン: 月額490円（税込、学生証の提示が必要）
+              • 学生プラン: 月額190円（税込、学生証の提示が必要）
             </Text>
           </View>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>

@@ -40,7 +40,33 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = piano_id AND title = '子犬のワルツ' AND composer = 'ショパン');
 END $$;
 
--- 3. ギターの代表曲データを追加
+-- 3. バイオリンの代表曲データを追加
+DO $$
+DECLARE
+  violin_id UUID := '550e8400-e29b-41d4-a716-446655440003';
+BEGIN
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT violin_id, 'チャルダッシュ', 'モンティ', '近代', '舞曲', 3, 'https://www.youtube.com/watch?v=3yK_7I8Z_8s', '情熱的で技巧的なジプシー音楽の名曲。', true, 1
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'チャルダッシュ' AND composer = 'モンティ');
+  
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT violin_id, 'ツィゴイネルワイゼン', 'サラサーテ', 'ロマン派', '舞曲', 5, 'https://www.youtube.com/watch?v=YyknBTm_YyM', 'ジプシー音楽を題材にした超絶技巧曲。', true, 2
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'ツィゴイネルワイゼン' AND composer = 'サラサーテ');
+  
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT violin_id, '四季より「春」', 'ヴィヴァルディ', 'バロック', '協奏曲', 3, 'https://www.youtube.com/watch?v=GRxofEmo3HA', 'バロック時代の代表的な協奏曲。', true, 3
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = '四季より「春」' AND composer = 'ヴィヴァルディ');
+  
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT violin_id, 'カノン', 'パッヘルベル', 'バロック', 'カノン', 2, 'https://www.youtube.com/watch?v=NlprozGcs80', '美しい和声進行で知られる名曲。', true, 4
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'カノン' AND composer = 'パッヘルベル');
+  
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT violin_id, 'サマータイム', 'ガーシュウィン', '近代', 'ジャズ', 3, 'https://www.youtube.com/watch?v=O7-Qa92Rzb4', 'ジャズクラシックの名曲。', true, 5
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'サマータイム' AND composer = 'ガーシュウィン');
+END $$;
+
+-- 4. ギターの代表曲データを追加
 DO $$
 DECLARE
   guitar_id UUID := '550e8400-e29b-41d4-a716-446655440002';
@@ -66,7 +92,7 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = guitar_id AND title = 'ロマンス' AND composer = 'アノニマス');
 END $$;
 
--- 4. フルートの代表曲データを追加
+-- 5. フルートの代表曲データを追加
 DO $$
 DECLARE
   flute_id UUID := '550e8400-e29b-41d4-a716-446655440004';
@@ -92,7 +118,7 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = flute_id AND title = 'フルート協奏曲' AND composer = 'ヴィヴァルディ');
 END $$;
 
--- 5. トランペットの代表曲データを追加
+-- 6. トランペットの代表曲データを追加
 DO $$
 DECLARE
   trumpet_id UUID := '550e8400-e29b-41d4-a716-446655440005';
@@ -118,7 +144,7 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = trumpet_id AND title = 'トランペット協奏曲' AND composer = 'テレマン');
 END $$;
 
--- 6. クラリネットの代表曲データを追加
+-- 7. クラリネットの代表曲データを追加
 DO $$
 DECLARE
   clarinet_id UUID := '550e8400-e29b-41d4-a716-446655440009';
@@ -144,7 +170,7 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = clarinet_id AND title = 'ラプソディ・イン・ブルー' AND composer = 'ガーシュウィン');
 END $$;
 
--- 7. サックスの代表曲データを追加
+-- 8. サックスの代表曲データを追加
 DO $$
 DECLARE
   saxophone_id UUID := '550e8400-e29b-41d4-a716-446655440007';
@@ -170,7 +196,7 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = saxophone_id AND title = 'サマータイム' AND composer = 'ガーシュウィン');
 END $$;
 
--- 8. ホルンの代表曲データを追加
+-- 9. ホルンの代表曲データを追加
 DO $$
 DECLARE
   horn_id UUID := '550e8400-e29b-41d4-a716-446655440008';
@@ -196,7 +222,7 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = horn_id AND title = 'ホルン協奏曲' AND composer = 'シュトラウス');
 END $$;
 
--- 9. トロンボーンの代表曲データを追加
+-- 10. トロンボーンの代表曲データを追加
 DO $$
 DECLARE
   trombone_id UUID := '550e8400-e29b-41d4-a716-446655440010';
@@ -222,7 +248,7 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = trombone_id AND title = 'トロンボーン協奏曲' AND composer = 'ボルドウィン');
 END $$;
 
--- 10. チェロの代表曲データを追加
+-- 11. チェロの代表曲データを追加
 DO $$
 DECLARE
   cello_id UUID := '550e8400-e29b-41d4-a716-446655440011';
@@ -248,7 +274,7 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = cello_id AND title = 'チェロ協奏曲' AND composer = 'ハイドン');
 END $$;
 
--- 11. ファゴットの代表曲データを追加
+-- 12. ファゴットの代表曲データを追加
 DO $$
 DECLARE
   bassoon_id UUID := '550e8400-e29b-41d4-a716-446655440012';
@@ -274,7 +300,7 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = bassoon_id AND title = 'ファゴット協奏曲' AND composer = 'フンメル');
 END $$;
 
--- 12. オーボエの代表曲データを追加
+-- 13. オーボエの代表曲データを追加
 DO $$
 DECLARE
   oboe_id UUID := '550e8400-e29b-41d4-a716-446655440013';
@@ -300,7 +326,7 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = oboe_id AND title = 'オーボエ協奏曲' AND composer = 'ヴィヴァルディ');
 END $$;
 
--- 13. コントラバスの代表曲データを追加
+-- 14. コントラバスの代表曲データを追加
 DO $$
 DECLARE
   contrabass_id UUID := '550e8400-e29b-41d4-a716-446655440015';
@@ -326,7 +352,7 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = contrabass_id AND title = 'コントラバス協奏曲' AND composer = 'ヴァン・ハル');
 END $$;
 
--- 14. ヴィオラの代表曲データを追加
+-- 15. ヴィオラの代表曲データを追加
 DO $$
 DECLARE
   viola_id UUID := '550e8400-e29b-41d4-a716-446655440018';
@@ -352,7 +378,33 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = viola_id AND title = 'ヴィオラ協奏曲' AND composer = 'テレマン');
 END $$;
 
--- 15. 打楽器の代表曲データを追加
+-- 15. ハープの代表曲データを追加
+DO $$
+DECLARE
+  harp_id UUID := '550e8400-e29b-41d4-a716-446655440014';
+BEGIN
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT harp_id, 'ハープ協奏曲', 'ハンデル', 'バロック', '協奏曲', 4, 'https://www.youtube.com/watch?v=example', 'ハンデルの美しいハープ協奏曲。', true, 1
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = harp_id AND title = 'ハープ協奏曲' AND composer = 'ハンデル');
+  
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT harp_id, 'ハープ協奏曲', 'ボエルデュー', '古典派', '協奏曲', 4, 'https://www.youtube.com/watch?v=example', 'ボエルデューの技巧的なハープ協奏曲。', true, 2
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = harp_id AND title = 'ハープ協奏曲' AND composer = 'ボエルデュー');
+  
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT harp_id, 'ハープ協奏曲', 'ディッタースドルフ', '古典派', '協奏曲', 3, 'https://www.youtube.com/watch?v=example', 'ディッタースドルフの優雅なハープ協奏曲。', true, 3
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = harp_id AND title = 'ハープ協奏曲' AND composer = 'ディッタースドルフ');
+  
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT harp_id, 'ハープソナタ', 'ドビュッシー', '印象派', 'ソナタ', 4, 'https://www.youtube.com/watch?v=example', 'ドビュッシーの印象的なハープソナタ。', true, 4
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = harp_id AND title = 'ハープソナタ' AND composer = 'ドビュッシー');
+  
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT harp_id, 'ハープ協奏曲', 'ジンマーマン', '現代', '協奏曲', 5, 'https://www.youtube.com/watch?v=example', 'ジンマーマンの現代的なハープ協奏曲。', true, 5
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = harp_id AND title = 'ハープ協奏曲' AND composer = 'ジンマーマン');
+END $$;
+
+-- 16. 打楽器の代表曲データを追加
 DO $$
 DECLARE
   drums_id UUID := '550e8400-e29b-41d4-a716-446655440006';
@@ -398,6 +450,7 @@ WHERE i.id IN (
   '550e8400-e29b-41d4-a716-446655440011', -- チェロ
   '550e8400-e29b-41d4-a716-446655440012', -- ファゴット
   '550e8400-e29b-41d4-a716-446655440013', -- オーボエ
+  '550e8400-e29b-41d4-a716-446655440014', -- ハープ
   '550e8400-e29b-41d4-a716-446655440015', -- コントラバス
   '550e8400-e29b-41d4-a716-446655440018'  -- ヴィオラ
 )

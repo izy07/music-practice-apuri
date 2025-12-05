@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import TimerService from '@/components/TimerService';
 import logger from '@/lib/logger';
 
@@ -8,6 +8,18 @@ export function useTimer(onTimerComplete?: () => void) {
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [isStopwatchRunning, setIsStopwatchRunning] = useState(false);
   const timerService = TimerService.getInstance();
+  
+  // 最新の値を保持するためのref（クロージャ問題を解決）
+  const timerSecondsRef = useRef(timerSeconds);
+  const isTimerRunningRef = useRef(isTimerRunning);
+  const onTimerCompleteRef = useRef(onTimerComplete);
+
+  // refを最新の値に更新
+  useEffect(() => {
+    timerSecondsRef.current = timerSeconds;
+    isTimerRunningRef.current = isTimerRunning;
+    onTimerCompleteRef.current = onTimerComplete;
+  }, [timerSeconds, isTimerRunning, onTimerComplete]);
 
   useEffect(() => {
     // Initialize with current timer state
@@ -18,8 +30,9 @@ export function useTimer(onTimerComplete?: () => void) {
 
     // Listen for timer updates
     const listener = (newTimerSeconds: number, newStopwatchSeconds: number, newIsTimerRunning: boolean, newIsStopwatchRunning: boolean) => {
-      const prevTimerSeconds = timerSeconds;
-      const prevIsTimerRunning = isTimerRunning;
+      // refから最新の値を取得（クロージャ問題を回避）
+      const prevTimerSeconds = timerSecondsRef.current;
+      const prevIsTimerRunning = isTimerRunningRef.current;
       
       setTimerSeconds(newTimerSeconds);
       setStopwatchSeconds(newStopwatchSeconds);
@@ -27,9 +40,9 @@ export function useTimer(onTimerComplete?: () => void) {
       setIsStopwatchRunning(newIsStopwatchRunning);
       
       // タイマー完了の検出
-      if (prevIsTimerRunning && !newIsTimerRunning && newTimerSeconds === 0 && onTimerComplete) {
+      if (prevIsTimerRunning && !newIsTimerRunning && newTimerSeconds === 0 && onTimerCompleteRef.current) {
         logger.debug('useTimer: タイマー完了検出');
-        onTimerComplete();
+        onTimerCompleteRef.current();
       }
     };
 

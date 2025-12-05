@@ -97,3 +97,4 @@ SELECT
   ) THEN 1 END) as required_instruments_found
 FROM instruments;
 
+

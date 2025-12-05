@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { TIMEOUT } from '@/lib/constants';
+import { getBasePath } from '@/lib/navigationUtils';
 
 // 認証ユーザーの型定義
 export interface AuthUser {
@@ -129,33 +130,56 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           sessionError = result.error;
           
           // ネットワークエラーでない場合、または成功した場合はループを抜ける
-          if (!sessionError || (sessionError.message && !sessionError.message.includes('Failed to fetch') && !sessionError.message.includes('NetworkError'))) {
+          const isNetworkError = sessionError && (
+            sessionError.message?.includes('Failed to fetch') || 
+            sessionError.message?.includes('NetworkError') ||
+            sessionError.message?.includes('ERR_INTERNET_DISCONNECTED') ||
+            sessionError.message?.includes('internet disconnected') ||
+            sessionError.message === 'NETWORK_ERROR'
+          );
+          
+          if (!sessionError || !isNetworkError) {
             break;
           }
           
           // ネットワークエラーの場合、リトライ
-          if (sessionError && (sessionError.message?.includes('Failed to fetch') || sessionError.message?.includes('NetworkError'))) {
+          if (isNetworkError) {
             retryCount++;
             if (retryCount < maxRetries) {
-              logger.warn(`[useAuthAdvanced] ネットワークエラー - リトライ ${retryCount}/${maxRetries}`, {
-                error: sessionError.message,
-              });
+              // 開発環境でのみログを出力
+              if (__DEV__) {
+                logger.debug(`[useAuthAdvanced] ネットワークエラー - リトライ ${retryCount}/${maxRetries}`);
+              }
               // 指数バックオフで待機（1秒、2秒、3秒）
               await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
               continue;
             }
+            // リトライ上限に達した場合は、ループを抜ける（エラーとして扱わない）
+            break;
           }
         } catch (error) {
           // 予期しないエラーの場合
-          if (error instanceof Error && (error.message.includes('Failed to fetch') || error.message.includes('NetworkError'))) {
+          const isNetworkError = error instanceof Error && (
+            error.message.includes('Failed to fetch') || 
+            error.message.includes('NetworkError') ||
+            error.message.includes('ERR_INTERNET_DISCONNECTED') ||
+            error.message.includes('internet disconnected') ||
+            error.message === 'NETWORK_ERROR'
+          );
+          
+          if (isNetworkError) {
             retryCount++;
             if (retryCount < maxRetries) {
-              logger.warn(`[useAuthAdvanced] ネットワークエラー（例外） - リトライ ${retryCount}/${maxRetries}`, {
-                error: error.message,
-              });
+              // 開発環境でのみログを出力
+              if (__DEV__) {
+                logger.debug(`[useAuthAdvanced] ネットワークエラー（例外） - リトライ ${retryCount}/${maxRetries}`);
+              }
               await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
               continue;
             }
+            // リトライ上限に達した場合は、ネットワークエラーとして処理（エラーを投げない）
+            // オフライン時は正常な動作として扱う
+            break;
           }
           // ネットワークエラーでない場合はそのままエラーを投げる
           throw error;
@@ -164,10 +188,36 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       
       if (sessionError) {
         // ネットワークエラーと認証エラーを区別
-        const isNetworkError = sessionError.message?.includes('Failed to fetch') || sessionError.message?.includes('NetworkError');
-        const errorMessage = isNetworkError 
-          ? 'ネットワーク接続に失敗しました。インターネット接続を確認してください。'
-          : sessionError.message;
+        const isNetworkError = 
+          sessionError.message?.includes('Failed to fetch') || 
+          sessionError.message?.includes('NetworkError') ||
+          sessionError.message?.includes('ERR_INTERNET_DISCONNECTED') ||
+          sessionError.message?.includes('internet disconnected') ||
+          sessionError.message === 'NETWORK_ERROR';
+        
+        // ネットワークエラーの場合は、エラーを表示せずに未認証状態として処理
+        // オフライン時は正常な動作として扱う
+        if (isNetworkError) {
+          // 開発環境でのみログを出力（本番環境では表示しない）
+          if (__DEV__) {
+            logger.debug(`[useAuthAdvanced] ネットワークエラー - オフライン状態として処理`, {
+              retryCount,
+            });
+          }
+          
+          // ネットワークエラーの場合は、エラーメッセージを設定せずに未認証状態として処理
+          // これにより、オフライン時でもアプリが正常に動作する
+          updateAuthState({
+            isAuthenticated: false,
+            isLoading: false,
+            isInitialized: true,
+            error: null, // ネットワークエラーはエラーとして扱わない
+          });
+          return;
+        }
+        
+        // ネットワークエラー以外の認証エラーの場合
+        const errorMessage = sessionError.message;
         
         logger.error(`[useAuthAdvanced] セッション取得エラー`, {
           isNetworkError,
@@ -224,7 +274,32 @@ export const useAuthAdvanced = (): AuthHookReturn => {
 
   // 初期化処理
   useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    
+    // 読み込み中表示を防ぐため、即座に初期化を完了（非ブロッキング）
+    // Web環境では、初期化が完了しない場合に備えてタイムアウトを設定
+    // ただし、タイムアウトを長めに設定して、認証状態の確認を確実に行う
+    if (typeof window !== 'undefined') {
+      timeoutId = setTimeout(() => {
+        if (globalAuthState.isLoading) {
+          logger.warn('[useAuthAdvanced] 認証初期化がタイムアウトしました。強制的に初期化を完了します。');
+          updateAuthState({
+            ...globalAuthState,
+            isLoading: false,
+            isInitialized: true,
+          });
+        }
+      }, 1000); // 500ms → 1000msに延長（認証状態の確認を確実に行う）
+    }
+    
+    // 初期化を非ブロッキングで実行
     initializeAuth();
+    
+    return () => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    };
   }, [initializeAuth]);
 
   // サイレントリフレッシュ（失効前に更新）
@@ -291,68 +366,138 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           }
         }
         // PGRST116エラー（プロフィールが存在しない）の場合は新規作成を試みる
-        if (profileError.code === 'PGRST116' || profileError.status === 400) {
-        const displayName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
+        const isProfileNotFound = profileError.code === 'PGRST116' || 
+                                   profileError.code === 'PGRST205' ||
+                                   (profileError.status === 400 && (
+                                     profileError.message?.includes('No rows found') ||
+                                     profileError.message?.includes('does not exist') ||
+                                     profileError.message?.includes('not found')
+                                   ));
         
-        const { data: newProfile, error: createError } = await supabase
-          .from('user_profiles')
-          .insert({
-            user_id: user.id,
-            display_name: displayName,
-            practice_level: 'beginner',
-            total_practice_minutes: 0,
-          })
-            .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
-          .single();
-        
-        if (createError) {
-          ErrorHandler.handle(createError, 'プロフィール作成', false);
-          // プロフィール作成に失敗した場合は基本情報のみで処理
-          const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
-          const authUser: AuthUser = {
-            id: user.id,
-            email: user.email || '',
-            name: fallbackName,
-            avatar_url: user.user_metadata?.avatar_url,
-            created_at: user.created_at,
-            last_sign_in_at: user.last_sign_in_at,
-            selected_instrument_id: null,
-            tutorial_completed: false,
-            onboarding_completed: false,
-          };
+        if (isProfileNotFound) {
+          logger.debug('プロフィールが存在しないため作成を試みます', { userId: user.id });
+          const displayName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
           
-          updateAuthState({
-            user: authUser,
-            isAuthenticated: true,
-            isLoading: false,
-            isInitialized: true,
-            error: null,
-          });
-          return authUser;
-        }
-        
-        // 新規作成されたプロフィールを使用
+          // upsertを使用して確実に作成（既に存在する場合は更新）
+          const { data: newProfile, error: createError } = await supabase
+            .from('user_profiles')
+            .upsert(
+              {
+                user_id: user.id,
+                display_name: displayName,
+              },
+              { onConflict: 'user_id' }
+            )
+            .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
+            .single();
+          
+          if (createError) {
+            // 既にプロフィールが存在する場合は成功として扱う（競合エラー）
+            if (createError.code === '23505' || createError.status === 409 || (createError.message?.includes('duplicate key') || createError.message?.includes('already exists'))) {
+              logger.debug('プロフィールは既に存在します（競合エラー） - 再度取得を試みます', { userId: user.id });
+              // 再度取得を試みる
+              const { data: retryProfile, error: retryError } = await supabase
+                .from('user_profiles')
+                .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
+                .eq('user_id', user.id)
+                .maybeSingle();
+              
+              if (retryError || !retryProfile) {
+                ErrorHandler.handle(retryError || new Error('プロフィールの取得に失敗しました'), 'プロフィール取得', false);
+                // プロフィール取得に失敗した場合は基本情報のみで処理
+                const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
+                const authUser: AuthUser = {
+                  id: user.id,
+                  email: user.email || '',
+                  name: fallbackName,
+                  avatar_url: user.user_metadata?.avatar_url,
+                  created_at: user.created_at,
+                  last_sign_in_at: user.last_sign_in_at,
+                  selected_instrument_id: null,
+                  tutorial_completed: false,
+                  onboarding_completed: false,
+                };
+                
+                updateAuthState({
+                  user: authUser,
+                  isAuthenticated: true,
+                  isLoading: false,
+                  isInitialized: true,
+                  error: null,
+                });
+                return authUser;
+              }
+              
+              // 取得したプロフィールを使用
+              const authUser: AuthUser = {
+                id: user.id,
+                email: user.email || '',
+                name: retryProfile.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー',
+                avatar_url: (retryProfile as any).avatar_url || user.user_metadata?.avatar_url,
+                created_at: user.created_at,
+                last_sign_in_at: user.last_sign_in_at,
+                selected_instrument_id: retryProfile.selected_instrument_id || null,
+                tutorial_completed: (retryProfile as any).tutorial_completed ?? false,
+                onboarding_completed: (retryProfile as any).onboarding_completed ?? false,
+              };
+              
+              updateAuthState({
+                user: authUser,
+                isAuthenticated: true,
+                isLoading: false,
+                isInitialized: true,
+                error: null,
+              });
+              return authUser;
+            }
+            
+            ErrorHandler.handle(createError, 'プロフィール作成', false);
+            // プロフィール作成に失敗した場合は基本情報のみで処理
+            const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
+            const authUser: AuthUser = {
+              id: user.id,
+              email: user.email || '',
+              name: fallbackName,
+              avatar_url: user.user_metadata?.avatar_url,
+              created_at: user.created_at,
+              last_sign_in_at: user.last_sign_in_at,
+              selected_instrument_id: null,
+              tutorial_completed: false,
+              onboarding_completed: false,
+            };
+            
+            updateAuthState({
+              user: authUser,
+              isAuthenticated: true,
+              isLoading: false,
+              isInitialized: true,
+              error: null,
+            });
+            return authUser;
+          }
+          
+          // 新規作成されたプロフィールを使用
           if (newProfile) {
-        const authUser: AuthUser = {
-          id: user.id,
-          email: user.email || '',
-          name: newProfile.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー',
+            const authUser: AuthUser = {
+              id: user.id,
+              email: user.email || '',
+              name: newProfile.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー',
               avatar_url: (newProfile as any).avatar_url || user.user_metadata?.avatar_url,
-          created_at: user.created_at,
-          last_sign_in_at: user.last_sign_in_at,
-          selected_instrument_id: newProfile.selected_instrument_id || null,
+              created_at: user.created_at,
+              last_sign_in_at: user.last_sign_in_at,
+              selected_instrument_id: newProfile.selected_instrument_id || null,
               tutorial_completed: (newProfile as any).tutorial_completed ?? false,
               onboarding_completed: (newProfile as any).onboarding_completed ?? false,
-        };
-        
-        updateAuthState({
-          user: authUser,
-          isAuthenticated: true,
-          isLoading: false,
-          isInitialized: true,
-          error: null,
-        });
-        return authUser;
+            };
+            
+            updateAuthState({
+              user: authUser,
+              isAuthenticated: true,
+              isLoading: false,
+              isInitialized: true,
+              error: null,
+            });
+            return authUser;
           }
         } else {
           ErrorHandler.handle(profileError, 'プロフィール取得', false);
@@ -532,11 +677,91 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       }
       
       if (data.user) {
-        logger.debug('ログイン成功:', data.user.email);
-        await handleAuthenticatedUser(data.user);
-        return true;
+        logger.debug('ログイン成功:', { email: data.user.email, userId: data.user.id });
+        try {
+          const authUser = await handleAuthenticatedUser(data.user);
+          
+          // authUserが取得できた場合は成功として扱う
+          if (authUser) {
+            logger.debug('認証済みユーザー処理完了:', { 
+              authUser: { id: authUser.id, email: authUser.email },
+              isAuthenticated: globalAuthState.isAuthenticated 
+            });
+            
+            // 認証状態が更新されるまで少し待つ（状態更新の反映を待つ）
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // 認証状態が更新されているか確認（authUserが取得できた場合は成功）
+            if (globalAuthState.isAuthenticated && globalAuthState.user?.id === authUser.id) {
+              logger.debug('認証状態が正常に更新されました');
+              return true;
+            } else {
+              // 認証状態が更新されていない場合は、再度更新を試みる
+              logger.debug('認証状態の再更新を試みます', {
+                authUser: !!authUser,
+                currentIsAuthenticated: globalAuthState.isAuthenticated,
+                currentUserId: globalAuthState.user?.id
+              });
+              
+              // 認証状態を手動で更新（確実に認証状態を設定）
+              updateAuthState({
+                user: authUser,
+                isAuthenticated: true,
+                isLoading: false,
+                isInitialized: true,
+                error: null,
+              });
+              
+              // 状態更新の反映を待つ
+              await new Promise(resolve => setTimeout(resolve, 200));
+              
+              logger.debug('認証状態を手動で更新しました', {
+                isAuthenticated: globalAuthState.isAuthenticated,
+                userId: globalAuthState.user?.id
+              });
+              
+              // authUserが取得できた場合は成功として扱う（認証状態の更新は非同期で行われる）
+              return true;
+            }
+          } else {
+            logger.error('認証済みユーザー処理でauthUserが取得できませんでした');
+            updateAuthState({ 
+              isLoading: false, 
+              error: 'ユーザー情報の取得に失敗しました' 
+            });
+            return false;
+          }
+        } catch (handleError) {
+          logger.error('認証済みユーザー処理でエラー:', handleError);
+          ErrorHandler.handle(handleError, '認証済みユーザー処理', false);
+          // エラーが発生しても、ユーザー情報は取得できているので認証状態を更新
+          const fallbackUser: AuthUser = {
+            id: data.user.id,
+            email: data.user.email || '',
+            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'ユーザー',
+            created_at: data.user.created_at,
+            last_sign_in_at: data.user.last_sign_in_at,
+            selected_instrument_id: null,
+            tutorial_completed: false,
+            onboarding_completed: false,
+          };
+          updateAuthState({
+            user: fallbackUser,
+            isAuthenticated: true,
+            isLoading: false,
+            isInitialized: true,
+            error: null,
+          });
+          
+          // 状態更新の反映を待つ
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          logger.debug('フォールバック認証状態を設定しました');
+          return true;
+        }
       }
       
+      logger.warn('ログイン成功したがユーザー情報が取得できませんでした');
       updateAuthState({ isLoading: false, error: 'ログインに失敗しました' });
       return false;
       
@@ -776,7 +1001,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       updateAuthState({ isLoading: true, error: null });
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: typeof window !== 'undefined' ? `${window.location.origin}/auth/reset-password` : '',
+        redirectTo: typeof window !== 'undefined' ? `${window.location.origin}${getBasePath()}/auth/reset-password` : '',
       });
 
       if (error) {
@@ -816,9 +1041,22 @@ export const useAuthAdvanced = (): AuthHookReturn => {
   }, [authState.user]);
 
   // チュートリアル必要状態のチェック（新規登録ユーザーも含む）
+  // 楽器が選択されている、またはチュートリアルが完了している場合はチュートリアルをスキップ
   const needsTutorial = useCallback((): boolean => {
-    return authState.isAuthenticated && !hasInstrumentSelected();
-  }, [authState.isAuthenticated, hasInstrumentSelected]);
+    if (!authState.isAuthenticated) {
+      return false;
+    }
+    // チュートリアルが既に完了している場合は、チュートリアルをスキップ
+    if (authState.user?.tutorial_completed === true) {
+      return false;
+    }
+    // 楽器が選択されている場合は、既存ユーザーとみなしてチュートリアルをスキップ
+    if (hasInstrumentSelected()) {
+      return false;
+    }
+    // 楽器が選択されていない場合はチュートリアルが必要
+    return true;
+  }, [authState.isAuthenticated, authState.user?.tutorial_completed, hasInstrumentSelected]);
 
   // メインアプリアクセス可能状態のチェック
   const canAccessMainApp = useCallback((): boolean => {

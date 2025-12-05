@@ -10,6 +10,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { useLanguage } from '@/components/LanguageContext';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { safeGoBack } from '@/lib/navigationUtils';
 import {
@@ -28,6 +29,7 @@ import { AppearanceSettings } from '@/components/main-settings/AppearanceSetting
 
 export default function MainSettingsScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
   const { 
     currentTheme, 
     selectedInstrument,
@@ -40,7 +42,7 @@ export default function MainSettingsScreen() {
   if (!currentTheme) {
     return (
       <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text>テーマの読み込み中...</Text>
+        <Text>{t('themeLoading')}</Text>
       </SafeAreaView>
     );
   }
@@ -188,7 +190,7 @@ export default function MainSettingsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
+    <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} edges={[]}>
       <InstrumentHeader />
       
       {/* Header */}
@@ -200,7 +202,7 @@ export default function MainSettingsScreen() {
         >
           <ArrowLeft size={24} color={currentTheme?.text || '#2D3748'} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: currentTheme?.text || '#2D3748' }]}>主要機能設定</Text>
+        <Text style={[styles.headerTitle, { color: currentTheme?.text || '#2D3748' }]}>{t('mainFeaturesSettings')}</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -228,7 +230,7 @@ export default function MainSettingsScreen() {
               styles.tabButtonText,
               { color: mode === 'tuner' ? currentTheme?.surface || '#FFFFFF' : currentTheme?.text || '#2D3748' }
             ]}>
-              チューナー
+              {t('tunerSettings')}
             </Text>
           </TouchableOpacity>
           
@@ -243,13 +245,13 @@ export default function MainSettingsScreen() {
             onPress={() => setMode('instrument')}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel="楽器選択タブ"
+            accessibilityLabel={t('instrumentSelection')}
           >
             <Text style={[
               styles.tabButtonText,
               { color: mode === 'instrument' ? currentTheme?.surface || '#FFFFFF' : currentTheme?.text || '#2D3748' }
             ]}>
-              楽器選択
+              {t('instrumentSelection')}
             </Text>
           </TouchableOpacity>
 
@@ -264,13 +266,13 @@ export default function MainSettingsScreen() {
             onPress={() => setMode('level')}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel="演奏レベルタブ"
+            accessibilityLabel={t('practiceLevel')}
           >
             <Text style={[
               styles.tabButtonText,
               { color: mode === 'level' ? currentTheme?.surface || '#FFFFFF' : currentTheme?.text || '#2D3748' }
             ]}>
-              演奏レベル
+              {t('practiceLevel')}
             </Text>
           </TouchableOpacity>
 
@@ -285,13 +287,13 @@ export default function MainSettingsScreen() {
             onPress={() => setMode('appearance')}
             activeOpacity={0.7}
             accessibilityRole="button"
-            accessibilityLabel="外観設定タブ"
+            accessibilityLabel={t('appearanceSettings')}
           >
             <Text style={[
               styles.tabButtonText,
               { color: mode === 'appearance' ? currentTheme?.surface || '#FFFFFF' : currentTheme?.text || '#2D3748' }
             ]}>
-              外観設定
+              {t('appearanceSettings')}
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -372,14 +374,14 @@ const styles = StyleSheet.create({
   tabScrollContent: {
     paddingHorizontal: 20,
     paddingVertical: 12,
-    gap: 8,
+    gap: 4,
   },
   tabButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    marginRight: 8,
+    marginRight: 4,
   },
   tabButtonText: {
     fontSize: 14,

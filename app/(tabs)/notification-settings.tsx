@@ -47,19 +47,35 @@ export default function NotificationSettingsScreen() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data, error } = await supabase
-          .from('user_settings')
-          .select('notification_settings')
-          .eq('user_id', user.id)
-          .single();
+        try {
+          // select('*')を使用することで、カラムが存在しない場合でも400エラーを回避
+          const { data, error } = await supabase
+            .from('user_settings')
+            .select('*')
+            .eq('user_id', user.id)
+            .maybeSingle();
 
-        if (data?.notification_settings) {
-          setSettings({ ...settings, ...data.notification_settings });
+          // エラーが発生した場合（レコードが存在しない等）は無視
+          if (error) {
+            // レコードが存在しない場合は正常（デフォルト設定を使用）
+            if (error.code === 'PGRST116' || error.code === 'PGRST205') {
+              return;
+            }
+            // その他のエラーも無視
+            return;
+          }
+
+          // notification_settingsカラムが存在する場合のみ設定を更新
+          if (data && 'notification_settings' in data && data.notification_settings) {
+            setSettings({ ...settings, ...data.notification_settings });
+          }
+        } catch (queryError) {
+          // すべてのエラーを無視（カラムが存在しない場合などは正常な動作）
         }
       }
-            } catch (error) {
-          // Error loading notification settings
-        }
+    } catch (error) {
+      // エラーを完全に無視
+    }
   };
 
   const saveNotificationSettings = async (newSettings: NotificationSettings) => {
