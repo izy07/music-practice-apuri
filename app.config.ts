@@ -20,7 +20,7 @@ const config: ExpoConfig = {
   },
   web: {
     bundler: 'metro', // WebプラットフォームでもMetroを使用（Webpackとの競合を避ける）
-    // output: 'static', // 開発環境では削除（本番ビルド時のみ使用）
+    output: 'static', // 静的エクスポート用（GitHub Pagesデプロイに必要）
     favicon: './assets/images/favicon.png',
     // GitHub Pages用のベースパス設定
     baseUrl: process.env.EXPO_PUBLIC_WEB_BASE || '/',
