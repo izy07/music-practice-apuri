@@ -24,12 +24,6 @@ const config: ExpoConfig = {
     favicon: './assets/images/favicon.png',
     // GitHub Pages用のベースパス設定
     baseUrl: process.env.EXPO_PUBLIC_WEB_BASE || '/',
-    // Expo RouterのWebルーティングを有効化
-    build: {
-      babel: {
-        include: ['expo-router'],
-      },
-    },
   },
   plugins: [
     'expo-router', 
