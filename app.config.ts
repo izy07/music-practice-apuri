@@ -57,7 +57,11 @@ const config: ExpoConfig = {
     supabaseUrl: 'https://uteeqkpsezbabdmritkn.supabase.co',
     supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0ZWVxa3BzZXpiYWJkbXJpdGtuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDQyNDUsImV4cCI6MjA3MDcyMDI0NX0.3wITO5E53yW2spDHi99ngaA0SRqnsJbAYzdT7DDa1tM',
     // Web環境用のリダイレクトURI
-    webRedirectUrl: process.env.EXPO_PUBLIC_WEB_REDIRECT_URL || 'http://localhost:8081/auth/callback',
+    // GitHub Pagesデプロイ時は自動的にGitHub PagesのURLを使用
+    webRedirectUrl: process.env.EXPO_PUBLIC_WEB_REDIRECT_URL || 
+      (process.env.EXPO_PUBLIC_WEB_BASE && process.env.EXPO_PUBLIC_WEB_BASE !== '/' 
+        ? `https://izy07.github.io${process.env.EXPO_PUBLIC_WEB_BASE}/auth/callback`
+        : 'http://localhost:8081/auth/callback'),
   },
 };
 
