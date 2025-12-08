@@ -58,8 +58,8 @@ export const getUserSettings = async (
           return null;
         } else if (error.status === 406 || error.message?.includes('406') || error.message?.includes('Not Acceptable')) {
           // 406エラーの場合はRLSポリシーまたは認証状態の問題
-          // レコードが存在しないものとして扱い、デフォルト値を返す
-          logger.warn(`[${REPOSITORY_CONTEXT}] getUserSettings:406エラー - RLSポリシーまたは認証状態の問題。デフォルト値を使用します。`, {
+          // エラーを適切に処理し、ユーザーに通知する
+          logger.error(`[${REPOSITORY_CONTEXT}] getUserSettings:406エラー - RLSポリシーまたは認証状態の問題`, {
             userId,
             error: {
               code: error.code,
@@ -67,7 +67,8 @@ export const getUserSettings = async (
               status: error.status
             }
           });
-          return null;
+          // エラーを投げて、呼び出し元で適切に処理できるようにする
+          throw error;
         } else {
           throw error;
         }
@@ -175,8 +176,8 @@ export const getLanguageSetting = async (
           return 'ja' as 'ja' | 'en';
         } else if (error.status === 406 || error.message?.includes('406') || error.message?.includes('Not Acceptable')) {
           // 406エラーの場合はRLSポリシーまたは認証状態の問題
-          // レコードが存在しないものとして扱い、デフォルト値'ja'を返す
-          logger.warn(`[${REPOSITORY_CONTEXT}] getLanguageSetting:406エラー - RLSポリシーまたは認証状態の問題。デフォルト値'ja'を使用します。`, {
+          // エラーを適切に処理し、ユーザーに通知する
+          logger.error(`[${REPOSITORY_CONTEXT}] getLanguageSetting:406エラー - RLSポリシーまたは認証状態の問題`, {
             userId,
             error: {
               code: error.code,
@@ -184,7 +185,8 @@ export const getLanguageSetting = async (
               status: error.status
             }
           });
-          return 'ja' as 'ja' | 'en';
+          // エラーを投げて、呼び出し元で適切に処理できるようにする
+          throw error;
         } else {
           throw error;
         }

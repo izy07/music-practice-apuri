@@ -19,7 +19,7 @@ const config: ExpoConfig = {
     package: 'com.musicpractice.app',
   },
   web: {
-    // bundler: 'metro', // expo exportでは不要
+    bundler: 'metro', // WebプラットフォームでもMetroを使用（Webpackとの競合を避ける）
     // output: 'static', // 開発環境では削除（本番ビルド時のみ使用）
     favicon: './assets/images/favicon.png',
     // GitHub Pages用のベースパス設定

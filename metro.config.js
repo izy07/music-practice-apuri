@@ -1,11 +1,14 @@
 const { getDefaultConfig } = require('expo/metro-config');
 
 // Webプラットフォームを検出
-const isWeb = process.env.EXPO_PLATFORM === 'web' || process.env.EXPO_PUBLIC_PLATFORM === 'web';
+const isWeb = 
+  process.env.EXPO_PLATFORM === 'web' || 
+  process.env.EXPO_PUBLIC_PLATFORM === 'web' ||
+  process.env.PLATFORM === 'web' ||
+  (process.argv && process.argv.includes('--web'));
 
-// WebプラットフォームではHermesを無効化
+// デフォルト設定を取得
 const config = getDefaultConfig(__dirname, {
-  // WebプラットフォームではHermesを使用しない
   isCSSEnabled: true,
 });
 
@@ -22,68 +25,86 @@ config.resolver.alias = {
 // Expo RouterのWebサポートを有効化
 config.resolver.sourceExts = [...(config.resolver.sourceExts || []), 'web.js', 'web.jsx', 'web.ts', 'web.tsx'];
 
+// Metroサーバーの設定（URL書き換えは常に有効化）
+if (!config.server) {
+  config.server = {};
+}
+
+// 既存のrewriteRequestUrlを保持しつつ、新しい関数を追加
+const originalRewriteRequestUrl = config.server.rewriteRequestUrl;
+
+config.server.rewriteRequestUrl = (url) => {
+  // バンドルリクエストからHermesパラメータを削除
+  if (url.includes('.bundle') || url.includes('/node_modules/') || url.includes('entry.bundle')) {
+    // Hermesパラメータが含まれているかチェック
+    if (url.includes('transform.engine=hermes') || url.includes('unstable_transformProfile=hermes-stable')) {
+      // 文字列操作で確実にHermesパラメータを削除
+      let cleanedUrl = url;
+      
+      // transform.engine=hermes を削除
+      cleanedUrl = cleanedUrl.replace(/[?&]transform\.engine=hermes(&|$)/g, (match, suffix) => {
+        return suffix === '&' ? '&' : '';
+      });
+      cleanedUrl = cleanedUrl.replace(/transform\.engine=hermes&/, '');
+      
+      // unstable_transformProfile=hermes-stable を削除
+      cleanedUrl = cleanedUrl.replace(/[?&]unstable_transformProfile=hermes-stable(&|$)/g, (match, suffix) => {
+        return suffix === '&' ? '&' : '';
+      });
+      cleanedUrl = cleanedUrl.replace(/unstable_transformProfile=hermes-stable&/, '');
+      
+      // 末尾の&や?を削除
+      cleanedUrl = cleanedUrl.replace(/[?&]$/, '');
+      cleanedUrl = cleanedUrl.replace(/\?&/, '?');
+      
+      url = cleanedUrl;
+    }
+  }
+  
+  // 既存のrewriteRequestUrlがあれば実行
+  if (originalRewriteRequestUrl) {
+    url = originalRewriteRequestUrl(url);
+  }
+  
+  // 静的ファイル（.js, .css, .png など）や内部API（/_）はそのまま返す
+  if (
+    url.includes('.') || 
+    url.startsWith('/_') || 
+    url.startsWith('/api')
+  ) {
+    return url;
+  }
+  
+  // それ以外のすべてのルート（/auth/signup など）は /index.html にリダイレクト
+  const [path, query] = url.split('?');
+  return query ? `/index.html?${query}` : '/index.html';
+};
+
+// WebプラットフォームではHermesエンジンを無効化
 if (isWeb) {
-  // WebプラットフォームではHermesエンジンを無効化
+  if (!config.transformer) {
+    config.transformer = {};
+  }
+  config.transformer.unstable_allowRequireContext = true;
+  
+  // Hermesパーサーを無効化し、Babelパーサーを強制使用
+  if (!config.transformer.babelTransformerPath) {
+    try {
+      config.transformer.babelTransformerPath = require.resolve('metro-react-native-babel-transformer');
+    } catch (e) {
+      // エラーが発生した場合は無視
+    }
+  }
+  
+  // Webプラットフォーム用のTransformer設定
   config.transformer = {
     ...config.transformer,
-    // WebではHermesパーサーを使用しない（Babelパーサーを使用）
-    babelTransformerPath: require.resolve('metro-react-native-babel-transformer'),
     getTransformOptions: async () => ({
       transform: {
         experimentalImportSupport: false,
         inlineRequires: true,
       },
     }),
-  };
-
-  // Metroサーバーの設定
-  config.server = {
-    ...config.server,
-    // リクエストURLを書き換えてHermesパラメータを削除
-    rewriteRequestUrl: (url) => {
-      // バンドルリクエストからHermesパラメータを削除
-      if (url.includes('.bundle') || url.includes('/node_modules/') || url.includes('entry.bundle')) {
-        try {
-          const urlObj = new URL(url, 'http://localhost');
-          // Hermes関連のパラメータを削除
-          urlObj.searchParams.delete('transform.engine');
-          urlObj.searchParams.delete('unstable_transformProfile');
-          // パスとクエリを再構築
-          const newUrl = urlObj.pathname + (urlObj.search ? urlObj.search : '');
-          return newUrl;
-        } catch (error) {
-          // URL解析に失敗した場合は、文字列操作で処理
-          try {
-            const [path, query] = url.split('?');
-            if (query) {
-              const params = new URLSearchParams(query);
-              params.delete('transform.engine');
-              params.delete('unstable_transformProfile');
-              const newQuery = params.toString();
-              return newQuery ? `${path}?${newQuery}` : path;
-            }
-            return path;
-          } catch (fallbackError) {
-            // エラーが発生した場合は元のURLを返す
-            console.warn('Metro rewriteRequestUrl error:', error, fallbackError);
-            return url;
-          }
-        }
-      }
-      
-      // 静的ファイル（.js, .css, .png など）や内部API（/_）はそのまま返す
-      if (
-        url.includes('.') || 
-        url.startsWith('/_') || 
-        url.startsWith('/api')
-      ) {
-        return url;
-      }
-      
-      // それ以外のすべてのルート（/auth/signup など）は /index.html にリダイレクト
-      const [path, query] = url.split('?');
-      return query ? `/index.html?${query}` : '/index.html';
-    },
   };
 }
 

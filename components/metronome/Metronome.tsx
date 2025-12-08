@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform } from 'react-native';
 import { Play, Pause } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import logger from '@/lib/logger';
@@ -10,11 +10,8 @@ const timeSignatures = [
   { id: '2/4', name: '2/4拍子', beats: 2, noteValue: 4, display: '2/4' },
   { id: '3/4', name: '3/4拍子', beats: 3, noteValue: 4, display: '3/4' },
   { id: '4/4', name: '4/4拍子', beats: 4, noteValue: 4, display: '4/4' },
-  { id: '2/2', name: '2/2拍子', beats: 2, noteValue: 2, display: '2/2' },
   { id: '5/4', name: '5/4拍子', beats: 5, noteValue: 4, display: '5/4' },
   { id: '6/8', name: '6/8拍子', beats: 6, noteValue: 8, display: '6/8' },
-  { id: '9/8', name: '9/8拍子', beats: 3, noteValue: 8, display: '9/8' },
-  { id: '12/8', name: '12/8拍子', beats: 4, noteValue: 8, display: '12/8' },
 ];
 
 interface MetronomeProps {
@@ -51,35 +48,84 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
     };
   }, []);
 
+  // AudioContextの初期化と再開
+  const ensureAudioContext = async (): Promise<AudioContext | null> => {
+    // Web環境でのみ動作
+    if (typeof window === 'undefined' || !window.AudioContext && !(window as any).webkitAudioContext) {
+      logger.warn('Web Audio API is not available');
+      return null;
+    }
+
+    try {
+      // AudioContextが存在しない場合は作成
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        audioContextRef.current = new AudioContextClass();
+      }
+
+      const ctx = audioContextRef.current;
+
+      // AudioContextが停止している場合は再開
+      if (ctx.state === 'suspended') {
+        await ctx.resume();
+      }
+
+      return ctx;
+    } catch (error) {
+      logger.error('Failed to initialize AudioContext:', error);
+      ErrorHandler.handle(error, 'AudioContextの初期化', false);
+      return null;
+    }
+  };
+
   // メトロノームのクリック音を再生
-  const playMetronomeClick = (isStrongBeat: boolean) => {
-    if (!audioContextRef.current) return;
+  const playMetronomeClick = async (isStrongBeat: boolean) => {
+    const ctx = await ensureAudioContext();
+    if (!ctx) return;
     
-    const ctx = audioContextRef.current;
     const currentTime = ctx.currentTime;
     
     switch (metronomeSoundType) {
       case 'click':
-        // デフォルトのクリック音
+        // 典型的なメトロノームのクリック音（チック・トック）
         {
-          const oscillator = ctx.createOscillator();
-          const gainNode = ctx.createGain();
-          oscillator.connect(gainNode);
-          gainNode.connect(ctx.destination);
-          
           if (isStrongBeat) {
-            oscillator.frequency.setValueAtTime(800, currentTime);
-            oscillator.type = 'sine';
+            // 強拍: 「チック」音（高い音、短く鋭い）
+            const oscillator = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            
+            // 典型的なメトロノームの強拍音: 約1000Hz
+            oscillator.frequency.setValueAtTime(1000, currentTime);
+            oscillator.type = 'square'; // より明確な音色
+            
+            // 短く鋭いアタック（典型的なメトロノームの「チック」音）
+            gainNode.gain.setValueAtTime(0, currentTime);
+            gainNode.gain.linearRampToValueAtTime(metronomeVolume * 0.6, currentTime + 0.005);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.05);
+            
+            oscillator.start(currentTime);
+            oscillator.stop(currentTime + 0.05);
           } else {
+            // 弱拍: 「トック」音（低い音、やや柔らかい）
+            const oscillator = ctx.createOscillator();
+            const gainNode = ctx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(ctx.destination);
+            
+            // 典型的なメトロノームの弱拍音: 約600Hz
             oscillator.frequency.setValueAtTime(600, currentTime);
-            oscillator.type = 'triangle';
+            oscillator.type = 'square'; // 強拍と同じ音色で統一感を出す
+            
+            // やや柔らかいアタック（典型的なメトロノームの「トック」音）
+            gainNode.gain.setValueAtTime(0, currentTime);
+            gainNode.gain.linearRampToValueAtTime(metronomeVolume * 0.4, currentTime + 0.005);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.08);
+            
+            oscillator.start(currentTime);
+            oscillator.stop(currentTime + 0.08);
           }
-          
-          gainNode.gain.setValueAtTime(metronomeVolume * 0.3, currentTime);
-          gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.1);
-          
-          oscillator.start(currentTime);
-          oscillator.stop(currentTime + 0.1);
         }
         break;
         
@@ -93,9 +139,9 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
           
           oscillator.type = 'sine';
           if (isStrongBeat) {
-            oscillator.frequency.setValueAtTime(1000, currentTime);
+            oscillator.frequency.setValueAtTime(1200, currentTime);
           } else {
-            oscillator.frequency.setValueAtTime(800, currentTime);
+            oscillator.frequency.setValueAtTime(500, currentTime);
           }
           
           gainNode.gain.setValueAtTime(metronomeVolume * 0.4, currentTime);
@@ -109,7 +155,7 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
       case 'bell':
         // ベル音（複数のオシレーターで倍音を生成）
         {
-          const baseFreq = isStrongBeat ? 880 : 660;
+          const baseFreq = isStrongBeat ? 1000 : 500;
           const oscillators: OscillatorNode[] = [];
           const gainNodes: GainNode[] = [];
           
@@ -145,8 +191,8 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
           gainNode.connect(ctx.destination);
           
           oscillator.type = 'sine';
-          const startFreq = isStrongBeat ? 600 : 500;
-          const endFreq = isStrongBeat ? 1000 : 800;
+          const startFreq = isStrongBeat ? 1000 : 400;
+          const endFreq = isStrongBeat ? 1500 : 600;
           
           oscillator.frequency.setValueAtTime(startFreq, currentTime);
           oscillator.frequency.linearRampToValueAtTime(endFreq, currentTime + 0.1);
@@ -177,13 +223,17 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
     
     // 最初のビートを即座に設定して音を再生
     setCurrentBeat(0);
-    playMetronomeClick(true); // 強拍音
+    playMetronomeClick(true).catch((error) => {
+      logger.error('Failed to play initial metronome click:', error);
+    });
     
     metronomeIntervalRef.current = setInterval(() => {
       beatCount++;
       const currentBeatIndex = beatCount % selectedTimeSignature.beats;
       setCurrentBeat(currentBeatIndex);
-      playMetronomeClick(currentBeatIndex === 0); // 強拍は1拍目のみ
+      playMetronomeClick(currentBeatIndex === 0).catch((error) => {
+        logger.error('Failed to play metronome click:', error);
+      }); // 強拍は1拍目のみ
     }, interval);
   };
 
@@ -197,22 +247,55 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
     }
   };
 
-  // BPMの変更
-  const changeBpm = (delta: number) => {
-    const wasPlaying = isMetronomePlaying; // 現在の再生状態を保存
-    const newBpm = Math.max(30, Math.min(300, bpm + delta));
-    
-    // メトロノームが再生中だった場合は完全に停止してから再開
-    if (wasPlaying) {
-      stopMetronome();
-      setBpm(newBpm);
-      setTimeout(() => {
-        startMetronome(true); // ビートカウントを完全にリセット
-      }, 50);
+  // BPMを直接設定（即座に反映）
+  const setBpmDirect = (value: string) => {
+    const numValue = parseInt(value, 10);
+    if (!isNaN(numValue) && numValue >= 30 && numValue <= 300) {
+      const wasPlaying = isMetronomePlaying;
+      
+      // まずBPMを更新
+      setBpm(numValue);
+      setBpmInput(numValue.toString()); // 入力値も正しい値に更新
+      
+      // 再生中の場合は、即座にインターバルを更新
+      if (wasPlaying && metronomeIntervalRef.current) {
+        // 既存のインターバルをクリア
+        clearInterval(metronomeIntervalRef.current);
+        metronomeIntervalRef.current = null;
+        
+        // 新しいBPMで即座に再開
+        const newInterval = (60 / numValue) * 1000;
+        let beatCount = 0;
+        
+        // 最初のビートを即座に再生
+        setCurrentBeat(0);
+        playMetronomeClick(true).catch((error) => {
+          logger.error('Failed to play initial metronome click:', error);
+        });
+        
+        // 新しいインターバルを設定
+        metronomeIntervalRef.current = setInterval(() => {
+          beatCount++;
+          const currentBeatIndex = beatCount % selectedTimeSignature.beats;
+          setCurrentBeat(currentBeatIndex);
+          playMetronomeClick(currentBeatIndex === 0).catch((error) => {
+            logger.error('Failed to play metronome click:', error);
+          });
+        }, newInterval);
+      }
     } else {
-      setBpm(newBpm);
+      // 無効な値の場合は、現在のBPMに戻す
+      setBpmInput(bpm.toString());
     }
   };
+
+  // BPM入力用の状態
+  const [bpmInput, setBpmInput] = useState<string>('');
+
+  // BPMが変更されたら入力値も更新
+  useEffect(() => {
+    setBpmInput(bpm.toString());
+  }, [bpm]);
 
   // 拍子変更時の処理
   const handleTimeSignatureChange = (timeSignature: typeof timeSignatures[0]) => {
@@ -231,7 +314,9 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
       
       // 新しい拍子で即座に再開
       setCurrentBeat(0);
-      playMetronomeClick(true); // 最初のビートを再生
+      playMetronomeClick(true).catch((error) => {
+        logger.error('Failed to play initial metronome click:', error);
+      }); // 最初のビートを再生
       
       const interval = (60 / bpm) * 1000;
       let beatCount = 0;
@@ -240,23 +325,15 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
         beatCount++;
         const currentBeatIndex = beatCount % timeSignature.beats;
         setCurrentBeat(currentBeatIndex);
-        playMetronomeClick(currentBeatIndex === 0);
+        playMetronomeClick(currentBeatIndex === 0).catch((error) => {
+          logger.error('Failed to play metronome click:', error);
+        });
       }, interval);
     }
   };
 
   return (
     <>
-      {/* 拍子表示 */}
-      <View style={styles.timeSignatureContainer}>
-        <Text style={[styles.timeSignatureLabel, { color: currentTheme.textSecondary }]}>
-          拍子
-        </Text>
-        <Text style={[styles.timeSignatureDisplay, { color: currentTheme.text }]}>
-          {selectedTimeSignature.display}
-        </Text>
-      </View>
-
       {/* BPM表示 */}
       <View style={styles.bpmContainer}>
         <Text style={[styles.bpmLabel, { color: currentTheme.textSecondary }]}>
@@ -306,46 +383,66 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
           <Text style={[styles.settingLabel, { color: currentTheme.textSecondary }]}>
             BPM調整
           </Text>
-          <View style={styles.bpmAdjustControls}>
-            <TouchableOpacity
-              style={[styles.bpmAdjustButton, { backgroundColor: currentTheme.secondary }]}
-              onPress={() => changeBpm(-10)}
-            >
-              <Text style={[styles.bpmAdjustButtonText, { color: currentTheme.primary }]}>
-                -10
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.bpmAdjustButton, { backgroundColor: currentTheme.secondary }]}
-              onPress={() => changeBpm(-1)}
-            >
-              <Text style={[styles.bpmAdjustButtonText, { color: currentTheme.primary }]}>
-                -1
-              </Text>
-            </TouchableOpacity>
-            
-            <Text style={[styles.bpmDisplay, { color: currentTheme.text }]}>
-              {bpm}
+          
+          {/* スライダー（Web環境） */}
+          {Platform.OS === 'web' && (
+            <View style={styles.bpmSliderContainer}>
+              <input
+                type="range"
+                min="30"
+                max="300"
+                value={bpm}
+                onChange={(e) => {
+                  const newBpm = parseInt(e.target.value, 10);
+                  if (!isNaN(newBpm) && newBpm >= 30 && newBpm <= 300) {
+                    setBpmDirect(newBpm.toString());
+                    setBpmInput(newBpm.toString());
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  height: '8px',
+                  borderRadius: '4px',
+                  outline: 'none',
+                  backgroundColor: currentTheme.secondary,
+                  accentColor: currentTheme.primary,
+                }}
+              />
+            </View>
+          )}
+          
+          {/* 直接入力 */}
+          <View style={styles.bpmInputContainer}>
+            <TextInput
+              style={[
+                styles.bpmInput,
+                {
+                  backgroundColor: currentTheme.secondary,
+                  color: currentTheme.text,
+                  borderColor: currentTheme.primary,
+                }
+              ]}
+              value={bpmInput}
+              onChangeText={(text) => {
+                // 数字のみを許可（空文字も許可して入力中を可能にする）
+                const numericText = text.replace(/[^0-9]/g, '');
+                setBpmInput(numericText);
+              }}
+              onBlur={() => {
+                // フォーカスを外した時にバリデーションして設定
+                setBpmDirect(bpmInput);
+              }}
+              onSubmitEditing={() => {
+                // Enterキーで確定時にバリデーションして設定
+                setBpmDirect(bpmInput);
+              }}
+              keyboardType="numeric"
+              placeholder="BPM"
+              placeholderTextColor={currentTheme.textSecondary}
+            />
+            <Text style={[styles.bpmInputLabel, { color: currentTheme.textSecondary }]}>
+              BPM (30-300)
             </Text>
-            
-            <TouchableOpacity
-              style={[styles.bpmAdjustButton, { backgroundColor: currentTheme.secondary }]}
-              onPress={() => changeBpm(1)}
-            >
-              <Text style={[styles.bpmAdjustButtonText, { color: currentTheme.primary }]}>
-                +1
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.bpmAdjustButton, { backgroundColor: currentTheme.secondary }]}
-              onPress={() => changeBpm(10)}
-            >
-              <Text style={[styles.bpmAdjustButtonText, { color: currentTheme.primary }]}>
-                +10
-              </Text>
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -481,27 +578,29 @@ const styles = StyleSheet.create({
   bpmAdjustContainer: {
     marginBottom: 20,
   },
-  bpmAdjustControls: {
-    flexDirection: 'row',
+  bpmSliderContainer: {
+    width: '100%',
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  bpmInputContainer: {
+    marginBottom: 16,
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 8,
   },
-  bpmAdjustButton: {
+  bpmInput: {
+    width: 120,
+    height: 40,
+    borderWidth: 2,
+    borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    elevation: 2,
-  },
-  bpmAdjustButtonText: {
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 4,
   },
-  bpmDisplay: {
-    fontSize: 24,
-    fontWeight: '700',
-    fontFamily: 'monospace',
-    marginHorizontal: 20,
+  bpmInputLabel: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   timeSignatureSettingContainer: {
     marginBottom: 20,

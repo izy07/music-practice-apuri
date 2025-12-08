@@ -366,26 +366,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     // 楽器選択と背景色はローカルストレージから即座に読み込む（データベース読み込みは不要）
     const loadExistingTheme = async () => {
       try {
-        // 1. useAuthAdvancedからuser.selected_instrument_idを取得（最優先・同期的に実行可能）
-        // 読み込み中でも選択楽器の背景色を表示するため、即座に設定
-        // 同期的に実行できる部分は即座に実行（リロード時の黒を防ぐ）
-        if (user?.selected_instrument_id) {
-          // まずdbInstrumentsから探す（データベースから読み込まれた最新データ）
-          let instrument = dbInstruments.find(inst => inst.id === user.selected_instrument_id);
-          // 見つからない場合はdefaultInstrumentsから探す（フォールバック）
-          if (!instrument) {
-            instrument = defaultInstruments.find(inst => inst.id === user.selected_instrument_id);
-          }
-          if (instrument) {
-            // 同期的に即座に設定（リロード時の黒を防ぐ）
-            setInitialTheme(instrument);
-            setSelectedInstrumentState(user.selected_instrument_id);
-            // 即座に終了（AsyncStorage読み込みをスキップして高速化）
-            return;
-          }
-        }
-        
-        // 2. AsyncStorageから読み込む（user.selected_instrument_idがない場合のみ）
+        // 1. AsyncStorageから読み込む（selectedInstrument状態を優先するため）
         // 楽器選択と背景色はローカルストレージから即座に読み込む
         // 非同期処理だが、initialThemeの初期値は既に設定されているため問題ない
         try {
@@ -424,7 +405,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
               }
             }
             
-            // 楽器が選択されている場合は、その楽器のテーマを使用
+            // 楽器が選択されている場合は、その楽器のテーマを使用（最優先）
             if (instrumentStr) {
               const instrument = defaultInstruments.find(inst => inst.id === instrumentStr);
               if (instrument) {
@@ -433,27 +414,32 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
                 return; // 楽器テーマが見つかったので終了
               }
             }
-            
-            // それ以外の場合でも、user.selected_instrument_idがあればそれを使用
-            if (user?.selected_instrument_id) {
-              let instrument = dbInstruments.find(inst => inst.id === user.selected_instrument_id);
-              if (!instrument) {
-                instrument = defaultInstruments.find(inst => inst.id === user.selected_instrument_id);
-              }
-              if (instrument) {
-                setInitialTheme(instrument);
-                setSelectedInstrumentState(user.selected_instrument_id);
-                return;
-              }
-            }
-            
-            // それ以外の場合は、既に設定されているデフォルトテーマを維持（変更しない）
-            // initialThemeの初期値は既に設定されているため、ここで設定する必要はない
           }
         } catch (storageError) {
           // ストレージ読み込みエラーは無視（initialThemeの初期値を使用）
           logger.warn('ストレージ読み込みエラー（デフォルトテーマを維持）:', storageError);
         }
+        
+        // 2. useAuthAdvancedからuser.selected_instrument_idを取得（AsyncStorageにない場合のみ）
+        // 読み込み中でも選択楽器の背景色を表示するため、即座に設定
+        // 同期的に実行できる部分は即座に実行（リロード時の黒を防ぐ）
+        if (user?.selected_instrument_id) {
+          // まずdbInstrumentsから探す（データベースから読み込まれた最新データ）
+          let instrument = dbInstruments.find(inst => inst.id === user.selected_instrument_id);
+          // 見つからない場合はdefaultInstrumentsから探す（フォールバック）
+          if (!instrument) {
+            instrument = defaultInstruments.find(inst => inst.id === user.selected_instrument_id);
+          }
+          if (instrument) {
+            // 同期的に即座に設定（リロード時の黒を防ぐ）
+            setInitialTheme(instrument);
+            setSelectedInstrumentState(user.selected_instrument_id);
+            return;
+          }
+        }
+        
+        // それ以外の場合は、既に設定されているデフォルトテーマを維持（変更しない）
+        // initialThemeの初期値は既に設定されているため、ここで設定する必要はない
       } catch (error) {
         // エラーが発生しても、既に設定されているデフォルトテーマを維持（黒を防ぐ）
         logger.warn('テーマ読み込みエラー（デフォルトテーマを維持）:', error);
@@ -618,17 +604,46 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
 
   // 初期テーマを設定するuseEffect（loadStoredData完了後）
   // 既存のテーマを保持するため、initialThemeが設定されている場合は更新しない
-  // user.selected_instrument_idを最優先で使用
+  // selectedInstrument状態を最優先で使用（楽器選択直後の反映を確実にするため）
   useEffect(() => {
-    // 既にinitialThemeが設定されている場合は更新しない（既存のテーマを保持）
-    // ただし、user.selected_instrument_idが変更された場合は更新する
-    if (initialTheme && initialTheme.id === user?.selected_instrument_id) {
-      return;
+    // 1. selectedInstrument状態を最優先で使用（楽器選択直後の反映を確実にするため）
+    // 楽器選択直後は、user.selected_instrument_idよりもselectedInstrument状態を優先
+    if (selectedInstrument) {
+      // まずdbInstrumentsから探す（データベースから読み込まれた最新データ）
+      let instrument = dbInstruments.find(inst => inst.id === selectedInstrument);
+      // 見つからない場合はdefaultInstrumentsから探す（フォールバック）
+      if (!instrument) {
+        instrument = defaultInstruments.find(inst => inst.id === selectedInstrument);
+      }
+      if (instrument) {
+        // 既にinitialThemeが設定されていて、同じ楽器の場合は更新しない
+        // ただし、user.selected_instrument_idと異なる場合は更新（楽器変更を反映）
+        if (initialTheme && initialTheme.id === selectedInstrument && 
+            (!user?.selected_instrument_id || user.selected_instrument_id === selectedInstrument)) {
+          return;
+        }
+        setInitialTheme(instrument);
+        return;
+      }
     }
     
-    // 1. user.selected_instrument_idを最優先で使用（useAuthAdvancedから取得）
-    // ログイン直後に即座に反映するため、最優先で処理
+    // 2. user.selected_instrument_idを使用（selectedInstrument状態がない場合、または一致している場合のみ）
+    // ログイン直後に即座に反映するため
     if (user?.selected_instrument_id) {
+      // selectedInstrument状態と一致している場合は、既に処理済みなのでスキップ
+      if (selectedInstrument === user.selected_instrument_id) {
+        return;
+      }
+      
+      // 既にinitialThemeが設定されていて、同じ楽器の場合は更新しない
+      if (initialTheme && initialTheme.id === user.selected_instrument_id) {
+        // selectedInstrument状態も更新（同期を保つ）
+        if (!selectedInstrument) {
+          setSelectedInstrumentState(user.selected_instrument_id);
+        }
+        return;
+      }
+      
       // まずdbInstrumentsから探す（データベースから読み込まれた最新データ）
       let instrument = dbInstruments.find(inst => inst.id === user.selected_instrument_id);
       // 見つからない場合はdefaultInstrumentsから探す（フォールバック）
@@ -647,20 +662,10 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       return;
     }
     
-    // 2. カスタムテーマが設定されている場合はそれを使用
+    // 3. カスタムテーマが設定されている場合はそれを使用
     if (isCustomTheme && customTheme) {
       setInitialTheme(customTheme);
       return;
-    }
-    
-    // 3. 楽器が選択されている場合は、その楽器のテーマを使用
-    if (selectedInstrument) {
-      const instrument = dbInstruments.find(inst => inst.id === selectedInstrument) || 
-                         defaultInstruments.find(inst => inst.id === selectedInstrument);
-      if (instrument) {
-        setInitialTheme(instrument);
-        return;
-      }
     }
     
     // 4. それ以外の場合は、デフォルト楽器の最初のテーマを使用（最後の手段）
@@ -669,7 +674,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
 
   // initialThemeが設定されていない場合に、現在のテーマをinitialThemeとして設定（色の変化を防ぐ）
   // 既存のテーマを保持するため、initialThemeが設定されている場合は更新しない
-  // user.selected_instrument_idを最優先で使用
+  // selectedInstrument状態を最優先で使用（楽器選択直後の反映を確実にするため）
   useEffect(() => {
     // 既にinitialThemeが設定されている場合は更新しない（既存のテーマを保持）
     if (initialTheme) {
@@ -678,8 +683,17 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     
     let themeToSet: Instrument | null = null;
     
-    // 1. user.selected_instrument_idを最優先で使用（useAuthAdvancedから取得）
-    if (user?.selected_instrument_id) {
+    // 1. selectedInstrument状態を最優先で使用（楽器選択直後の反映を確実にするため）
+    if (selectedInstrument) {
+      const instrument = dbInstruments.find(inst => inst.id === selectedInstrument) || 
+                         defaultInstruments.find(inst => inst.id === selectedInstrument);
+      if (instrument) {
+        themeToSet = instrument;
+      }
+    }
+    
+    // 2. user.selected_instrument_idを使用（selectedInstrument状態がない場合のみ）
+    if (!themeToSet && user?.selected_instrument_id) {
       const instrument = dbInstruments.find(inst => inst.id === user.selected_instrument_id) || 
                          defaultInstruments.find(inst => inst.id === user.selected_instrument_id);
       if (instrument) {
@@ -688,16 +702,9 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       }
     }
     
-    // 2. カスタムテーマが設定されている場合はそれを使用
+    // 3. カスタムテーマが設定されている場合はそれを使用
     if (!themeToSet && isCustomTheme && customTheme) {
       themeToSet = customTheme;
-    }
-    
-    // 3. 楽器が選択されている場合は、その楽器のテーマを使用
-    if (!themeToSet && selectedInstrument) {
-      const instrument = dbInstruments.find(inst => inst.id === selectedInstrument) || 
-                         defaultInstruments.find(inst => inst.id === selectedInstrument);
-      themeToSet = instrument || defaultInstruments[0] || defaultTheme;
     }
     
     // 4. それ以外の場合は、デフォルト楽器の最初のテーマを使用
@@ -720,7 +727,22 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         return customTheme;
       }
       
-      // user.selected_instrument_idを最優先で使用（ログイン直後に即座に反映）
+      // selectedInstrument状態を最優先で使用（楽器選択直後の反映を確実にするため）
+      if (selectedInstrument) {
+        // まずdbInstrumentsから探す（データベースから読み込まれた最新データ）
+        let instrument = dbInstruments.find(inst => inst.id === selectedInstrument);
+        // 見つからない場合はdefaultInstrumentsから探す（フォールバック）
+        if (!instrument) {
+          instrument = defaultInstruments.find(inst => inst.id === selectedInstrument);
+        }
+        // 見つかった場合は即座に返す（背景色を正しく反映）
+        if (instrument && instrument.background) {
+          return instrument;
+        }
+      }
+      
+      // user.selected_instrument_idを使用（selectedInstrument状態がない場合のみ）
+      // ログイン直後に即座に反映
       if (user?.selected_instrument_id) {
         // まずdbInstrumentsから探す（データベースから読み込まれた最新データ）
         let instrument = dbInstruments.find(inst => inst.id === user.selected_instrument_id);
@@ -742,29 +764,13 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       }
       
       // initialThemeが設定されていない場合（念のため）、通常のテーマ計算を行う
-      if (!selectedInstrument) {
-        // 初期化完了後も楽器が未選択の場合は、デフォルト楽器の最初のテーマを使用
-        // 読み込み中でも黒にならないように、必ず有効なテーマを返す
-        const fallbackTheme = defaultInstruments[0] || defaultTheme;
-        // 念のため、backgroundプロパティが存在することを確認
-        if (fallbackTheme && fallbackTheme.background) {
-          return fallbackTheme;
-        }
-        // 最後の手段としてdefaultThemeを返す（必ず有効な値）
-        return defaultTheme;
-      }
-      
-      // データベースから読み込んだ楽器を優先、フォールバックとしてデフォルト楽器
-      // defaultInstrumentsは既にメモ化されているため、毎回取得する必要はない
-      const instrument = dbInstruments.find(inst => inst.id === selectedInstrument) || 
-                         defaultInstruments.find(inst => inst.id === selectedInstrument);
-      
+      // 初期化完了後も楽器が未選択の場合は、デフォルト楽器の最初のテーマを使用
       // 読み込み中でも黒にならないように、必ず有効なテーマを返す
-      // この行に到達することはないはずだが、念のためフォールバックを設定
-      if (instrument && instrument.background) {
-        return instrument;
+      const fallbackTheme = defaultInstruments[0] || defaultTheme;
+      // 念のため、backgroundプロパティが存在することを確認
+      if (fallbackTheme && fallbackTheme.background) {
+        return fallbackTheme;
       }
-      
       // 最後の手段としてdefaultThemeを返す（必ず有効な値）
       return defaultTheme;
     } catch (error) {

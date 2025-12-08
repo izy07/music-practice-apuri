@@ -17,6 +17,7 @@ import logger from '@/lib/logger'; // ロガー
 import { ErrorHandler } from '@/lib/errorHandler'; // エラーハンドラー
 import { getBasePath, navigateWithBasePath } from '@/lib/navigationUtils'; // ベースパス取得関数とナビゲーション関数
 import { checkDatabaseSchema } from '@/lib/databaseSchemaChecker'; // データベーススキーマチェック
+import { initializeGoalRepository } from '@/repositories/goalRepository'; // 目標リポジトリの初期化
 
 // Web環境ではexpo-status-barをインポートしない
 type StatusBarComponent = React.ComponentType<{ style: 'dark' | 'light' | 'auto' }>;
@@ -127,8 +128,13 @@ function RootLayoutContent() {
         } else {
           logger.debug('データベーススキーマのチェックが完了しました。すべてのカラムが存在します。');
         }
-      }).catch((error) => {
+      }).catch((error: unknown) => {
         logger.error('データベーススキーマのチェック中にエラーが発生しました:', error);
+      });
+      
+      // 目標リポジトリのカラム存在確認を初期化（一度だけ実行）
+      initializeGoalRepository().catch((error: unknown) => {
+        logger.error('目標リポジトリの初期化中にエラーが発生しました:', error);
       });
     }
   }, [isAuthenticated, isInitialized, isLoading]);
@@ -195,6 +201,13 @@ function RootLayoutContent() {
           if (fullMessage.includes('/rpc/check_column_exists') && 
               (fullMessage.includes('404') || fullMessage.includes('Not Found'))) {
             // RPC関数が存在しない場合の404エラーは、フォールバック方法で処理されるため無視
+            return;
+          }
+          
+          // representative_songsテーブルの404エラーを抑制（フォールバックデータを使用するため）
+          if ((fullMessage.includes('representative_songs') || fullMessage.includes('representative-songs')) && 
+              (fullMessage.includes('404') || fullMessage.includes('Not Found') || fullMessage.includes('PGRST205'))) {
+            // テーブルが存在しない場合の404エラーは、フォールバックデータを使用するため無視
             return;
           }
           
@@ -361,59 +374,23 @@ function RootLayoutContent() {
    */
   useEffect(() => {
     /**
-     * 【シンプルな認証保護】
+     * 【統一された認証保護ロジック】
      * - 未認証 → ログイン画面
-     * - 認証済み + 楽器未選択 → 楽器選択画面（強制）
+     * - 認証済み + 楽器未選択 → チュートリアル or 楽器選択画面
      * - 認証済み + 楽器選択済み → メイン画面
      */
     // 初期化中は何もしない（リロード時も現在の画面を維持）
-    // 初期化が完了するまで、画面遷移を待つ（一瞬ログイン画面に飛ぶのを防ぐ）
     if (isLoading || !isInitialized) {
       logger.debug('認証初期化中 - 画面遷移を待機中', { isLoading, isInitialized });
       return;
     }
-    
-    // Web環境では、現在の画面を確認して、初期化完了後も現在の画面を維持
-    if (Platform.OS === 'web') {
-      const currentSegments = segmentsRef.current;
-      const isInTabsGroup = currentSegments[0] === '(tabs)';
-      const isInOrgGroup = currentSegments[0] === 'organization-dashboard' || currentSegments[0] === 'organization-settings';
-      const isInAuthGroup = currentSegments[0] === 'auth';
-      
-      // 認証済みで適切な画面にいる場合は、リロード時も現在の画面を維持
-      if (isAuthenticated && (isInTabsGroup || isInOrgGroup)) {
-        // 楽器が選択されている場合は、現在の画面を維持
-        if (hasInstrumentSelected()) {
-          logger.debug('認証済み・楽器選択済み - 現在の画面を維持', { segments: currentSegments });
-          return;
-        }
-      }
-      
-      // 未認証で認証画面にいる場合は、現在の画面を維持（リロード時の一瞬の遷移を防ぐ）
-      if (!isAuthenticated && isInAuthGroup) {
-        logger.debug('未認証・認証画面 - 現在の画面を維持', { segments: currentSegments });
-        return;
-      }
-      
-      // 認証済みで認証画面にいる場合は、メイン画面に遷移（初期化完了後）
-      if (isAuthenticated && isInAuthGroup) {
-        logger.debug('認証済み・認証画面 - メイン画面に遷移', { segments: currentSegments });
-        router.replace('/(tabs)/');
-        return;
-      }
-      
-      // 未認証でメイン画面にいる場合は、ログイン画面に遷移（初期化完了後）
-      if (!isAuthenticated && (isInTabsGroup || isInOrgGroup)) {
-        logger.debug('未認証・メイン画面 - ログイン画面に遷移', { segments: currentSegments });
-        router.replace('/auth/login');
-        return;
-      }
-    }
 
-    // segmentsRefから最新の値を取得（Web環境での強制遷移を防ぐため）
+    // 現在のセグメントを取得（Web環境ではrefから取得して強制遷移を防ぐ）
     const currentSegments = Platform.OS === 'web' ? segmentsRef.current : segments;
-    const isInAuthGroup = currentSegments[0] === 'auth';
-    const isInTabsGroup = currentSegments[0] === '(tabs)';
+    const firstSegment = currentSegments[0];
+    const isInAuthGroup = firstSegment === 'auth';
+    const isInTabsGroup = firstSegment === '(tabs)';
+    const isInOrgGroup = firstSegment === 'organization-dashboard' || firstSegment === 'organization-settings';
     const currentTab = isInTabsGroup && currentSegments.length > 1 ? currentSegments[1] : null;
     const isAtRoot = currentSegments.length === 0;
     
@@ -427,13 +404,27 @@ function RootLayoutContent() {
     });
     
     // 利用規約・プライバシーポリシー画面は許可
-    if (currentSegments[0] === 'terms-of-service' || currentSegments[0] === 'privacy-policy') {
+    if (firstSegment === 'terms-of-service' || firstSegment === 'privacy-policy') {
       return;
+    }
+
+    // Web環境: リロード時に現在の画面を維持する処理
+    if (Platform.OS === 'web') {
+      // 認証済みで適切な画面にいる場合は、リロード時も現在の画面を維持
+      if (isAuthenticated && (isInTabsGroup || isInOrgGroup) && hasInstrumentSelected()) {
+        logger.debug('認証済み・楽器選択済み - 現在の画面を維持', { segments: currentSegments });
+        return;
+      }
+      
+      // 未認証で認証画面にいる場合は、現在の画面を維持（リロード時の一瞬の遷移を防ぐ）
+      if (!isAuthenticated && isInAuthGroup) {
+        logger.debug('未認証・認証画面 - 現在の画面を維持', { segments: currentSegments });
+        return;
+      }
     }
     
     // 未認証ユーザー → ログイン画面にリダイレクト
     if (!isAuthenticated) {
-      // 認証画面以外にいる場合はログイン画面にリダイレクト
       if (!isInAuthGroup) {
         logger.debug('未認証ユーザー - ログイン画面にリダイレクト');
         router.replace('/auth/login');
@@ -444,46 +435,35 @@ function RootLayoutContent() {
     // 認証済みユーザー
     // 楽器未選択の場合の処理
     if (!hasInstrumentSelected()) {
-      // チュートリアルが必要な場合（新規登録直後など）はチュートリアル画面にリダイレクト
+      // チュートリアル画面または楽器選択画面にいる場合は許可（遷移をブロックしない）
+      if (currentTab === 'tutorial' || currentTab === 'instrument-selection') {
+        return; // 遷移を許可
+      }
+      
       if (needsTutorial()) {
-        if (currentTab !== 'tutorial') {
-          logger.debug('新規登録直後のため、チュートリアル画面にリダイレクト');
-          router.replace('/(tabs)/tutorial');
-        }
+        // チュートリアルが必要な場合（新規登録直後など）
+        logger.debug('新規登録直後のため、チュートリアル画面にリダイレクト');
+        router.replace('/(tabs)/tutorial');
         return;
       }
       // チュートリアル完了後は楽器選択画面にリダイレクト
-      if (currentTab !== 'instrument-selection') {
-        logger.debug('楽器未選択のため、楽器選択画面にリダイレクト');
-        router.replace('/(tabs)/instrument-selection');
-      }
+      logger.debug('楽器未選択のため、楽器選択画面にリダイレクト');
+      router.replace('/(tabs)/instrument-selection');
       return;
     }
 
     // 認証済み + 楽器選択済み
-    // Web環境では、現在の画面を維持（リロード時も現在の画面を保持）
-    if (Platform.OS === 'web' && isInTabsGroup) {
-      // 既に適切な画面にいる場合は何もしない（リロード時も現在の画面を維持）
+    // Web環境: 既に適切な画面にいる場合は維持（リロード時も現在の画面を保持）
+    if (Platform.OS === 'web' && (isInTabsGroup || isInOrgGroup)) {
       return;
     }
     
-    // 組織関連の画面にいる場合も維持
-    if (Platform.OS === 'web' && (currentSegments[0] === 'organization-dashboard' || currentSegments[0] === 'organization-settings')) {
-      return;
-    }
-    
-    // ルートパスにいる場合はメイン画面に遷移
-    if (isAtRoot) {
+    // ルートパスまたは認証画面にいる場合はメイン画面に遷移
+    if (isAtRoot || isInAuthGroup) {
       router.replace('/(tabs)/');
       return;
     }
-
-    // 認証画面にいる場合はメイン画面に遷移
-    if (isInAuthGroup) {
-      router.replace('/(tabs)/');
-      return;
-    }
-  }, [isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, needsTutorial, router]);
+  }, [isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, needsTutorial, router, segments]);
 
   // checkUserProgressAndNavigate関数は削除（シンプル化のため不要）
 

@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { safeExecute, createResult, RepositoryResult } from '@/lib/database/baseRepository';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { instrumentService } from '@/services';
 
 const REPOSITORY_CONTEXT = 'userRepository';
 
@@ -188,21 +189,61 @@ export const updateSelectedInstrument = async (
       
       // instrument_idが存在するか確認（nullの場合はスキップ）
       if (instrumentId) {
-        const { data: instrumentExists, error: checkError } = await supabase
-          .from('instruments')
-          .select('id')
-          .eq('id', instrumentId)
-          .maybeSingle();
-        
-        if (checkError) {
-          logger.error(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:checkError`, checkError);
-          throw checkError;
-        }
-        
-        if (!instrumentExists) {
-          const error = new Error(`楽器ID ${instrumentId} が存在しません`);
-          logger.error(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:invalidInstrumentId`, { instrumentId });
-          throw error;
+        // その他楽器のIDの場合はスキップ
+        if (instrumentId === '550e8400-e29b-41d4-a716-446655440016') {
+          // その他楽器の場合は存在確認をスキップ
+        } else {
+          const { data: instrumentExists, error: checkError } = await supabase
+            .from('instruments')
+            .select('id')
+            .eq('id', instrumentId)
+            .maybeSingle();
+          
+          if (checkError) {
+            logger.error(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:checkError`, checkError);
+            throw checkError;
+          }
+          
+          // 楽器が存在しない場合は、デフォルト楽器データから作成を試みる
+          if (!instrumentExists) {
+            logger.warn(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:楽器が存在しないため、作成を試みます`, { instrumentId });
+            
+            // デフォルト楽器データから該当楽器を取得
+            const defaultInstruments = instrumentService.getDefaultInstruments();
+            const defaultInstrument = defaultInstruments.find(inst => inst.id === instrumentId);
+            
+            if (defaultInstrument) {
+              // 楽器をデータベースに作成
+              const { error: createError } = await supabase
+                .from('instruments')
+                .upsert({
+                  id: defaultInstrument.id,
+                  name: defaultInstrument.name,
+                  name_en: defaultInstrument.nameEn,
+                  color_primary: defaultInstrument.primary,
+                  color_secondary: defaultInstrument.secondary,
+                  color_accent: defaultInstrument.accent,
+                }, {
+                  onConflict: 'id'
+                });
+              
+              if (createError) {
+                logger.error(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:楽器作成エラー`, createError);
+                // 楽器作成に失敗した場合はエラーを投げる（外部キー制約違反を防ぐため）
+                const error = new Error(`楽器の作成に失敗しました: ${createError.message || 'Unknown error'}`);
+                (error as any).code = createError.code;
+                (error as any).status = createError.status;
+                throw error;
+              } else {
+                logger.debug(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:楽器を作成しました`, { instrumentId });
+              }
+            } else {
+              // デフォルト楽器データにも存在しない場合はエラー
+              const error = new Error(`楽器ID ${instrumentId} が存在しません`);
+              logger.error(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:invalidInstrumentId`, { instrumentId });
+              throw error;
+            }
+          }
         }
       }
       
@@ -264,6 +305,7 @@ export const updateSelectedInstrument = async (
       }
       
       // レコードが存在する場合はupdateを実行
+      // ただし、400エラーが発生する可能性があるため、失敗時はupsertにフォールバック
       const { error: updateError } = await supabase
         .from('user_profiles')
         .update({
@@ -284,6 +326,79 @@ export const updateSelectedInstrument = async (
           instrumentId,
         };
         
+        // 400エラー、外部キー制約違反、またはその他のエラーの場合、upsertを試みる
+        const is400Error = updateError.status === 400;
+        const isForeignKeyError = updateError.code === '23503' || 
+            (updateError.message?.includes('violates foreign key constraint') && updateError.message?.includes('instruments'));
+        const isPGRSTError = updateError.code === 'PGRST116' || updateError.code === 'PGRST205';
+        
+        if (is400Error || isForeignKeyError || isPGRSTError) {
+          logger.warn(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:updateエラー - upsertを試みます`, errorDetails);
+          
+          // 楽器が存在しない場合は、再度作成を試みる（外部キー制約違反の場合）
+          if (isForeignKeyError && instrumentId && instrumentId !== '550e8400-e29b-41d4-a716-446655440016') {
+            const defaultInstruments = instrumentService.getDefaultInstruments();
+            const defaultInstrument = defaultInstruments.find(inst => inst.id === instrumentId);
+            
+            if (defaultInstrument) {
+              // 楽器をデータベースに作成（upsertを使用して確実に作成）
+              const { error: createError } = await supabase
+                .from('instruments')
+                .upsert({
+                  id: defaultInstrument.id,
+                  name: defaultInstrument.name,
+                  name_en: defaultInstrument.nameEn,
+                  color_primary: defaultInstrument.primary,
+                  color_secondary: defaultInstrument.secondary,
+                  color_accent: defaultInstrument.accent,
+                }, {
+                  onConflict: 'id'
+                });
+              
+              if (createError) {
+                logger.error(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:楽器作成再試行エラー`, createError);
+                // 楽器作成に失敗した場合はエラーを投げる（外部キー制約違反を防ぐため）
+                const error = new Error(`楽器の作成に失敗しました（再試行）: ${createError.message || 'Unknown error'}`);
+                (error as any).code = createError.code;
+                (error as any).status = createError.status;
+                throw error;
+              } else {
+                logger.debug(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:楽器を作成しました（再試行）`, { instrumentId });
+                
+                // 楽器作成後に少し待機（データベースの反映を待つ）
+                await new Promise(resolve => setTimeout(resolve, 300));
+              }
+            }
+          }
+          
+          // upsertを試みる（レコードが存在しない場合や、外部キー制約違反を回避するため）
+          const { error: upsertError } = await supabase
+            .from('user_profiles')
+            .upsert(
+              {
+                user_id: userId,
+                selected_instrument_id: instrumentId,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: 'user_id' }
+            );
+          
+          if (upsertError) {
+            // upsertも失敗した場合、詳細なエラー情報をログに出力
+            logger.error(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:upsertも失敗`, {
+              error: upsertError,
+              userId,
+              instrumentId,
+              originalUpdateError: errorDetails,
+            });
+            throw upsertError;
+          }
+          
+          logger.debug(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:upsert成功（updateエラーからのフォールバック）`);
+          return;
+        }
+        
+        // その他のエラーの場合
         logger.error(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:updateError`, errorDetails);
         throw updateError;
       }

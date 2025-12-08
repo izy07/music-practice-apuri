@@ -11,6 +11,8 @@ import { taskRepository } from '@/repositories/taskRepository';
 import { safeServiceExecute, ServiceResult } from './baseService';
 import logger from '@/lib/logger';
 import type { Task, TaskStatus } from '@/types/organization';
+import NotificationService from '@/lib/notificationService';
+import { organizationRepository } from '@/repositories/organizationRepository';
 
 const SERVICE_CONTEXT = 'taskService';
 
@@ -108,6 +110,27 @@ export class TaskService {
           taskId: result.data.id,
           organizationId: data.organizationId,
         });
+
+        // 組織メンバーに通知を送信
+        try {
+          const notificationService = NotificationService.getInstance();
+          await notificationService.loadSettings();
+          
+          // 組織情報を取得
+          const orgResult = await organizationRepository.findById(data.organizationId);
+          const organizationName = orgResult.data?.name || '組織';
+          
+          // 組織のメンバーに通知を送信（非同期で実行、エラーは無視）
+          await notificationService.sendTaskAddedNotification(
+            organizationName,
+            result.data.title
+          ).catch((error) => {
+            logger.warn(`[${SERVICE_CONTEXT}] createTask:notification failed`, { error });
+          });
+        } catch (error) {
+          logger.warn(`[${SERVICE_CONTEXT}] createTask:notification error`, { error });
+          // 通知エラーは無視して処理を続行
+        }
 
         return result.data;
       },

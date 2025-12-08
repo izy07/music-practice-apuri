@@ -56,6 +56,18 @@ export default function RecordingsLibraryScreen() {
     loadRecordings();
   }, [entitlement]);
 
+  // Audioオブジェクトのクリーンアップ（メモリリーク防止）
+  useEffect(() => {
+    return () => {
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.src = ''; // リソースを解放
+        setAudioElement(null);
+        logger.debug('Audioオブジェクトをクリーンアップ');
+      }
+    };
+  }, [audioElement]);
+
   // 画面がフォーカスされた時にデータを再読み込み
   useFocusEffect(
     React.useCallback(() => {
@@ -92,11 +104,8 @@ export default function RecordingsLibraryScreen() {
         } else {
           logger.debug('録音データ取得成功:', data?.length || 0, '件');
           logger.debug('録音データ詳細:', data);
-          // 既存のデータを保持しながら更新（読み込み中でも既存データを表示）
-          setRecordings(prevRecordings => {
-            // 新しいデータがある場合は更新、ない場合は既存データを保持
-            return data && data.length > 0 ? data : prevRecordings;
-          });
+          // データを更新（0件の場合は空配列を設定）
+          setRecordings(data || []);
         }
       } else {
         logger.debug('ユーザー情報なし');
@@ -302,22 +311,27 @@ export default function RecordingsLibraryScreen() {
   const scrollToFilteredRecording = (filter: TimeFilter) => {
     setTimeFilter(filter);
     
-    // フィルター適用後にスクロール（少し遅延させてレンダリング完了を待つ）
-    setTimeout(() => {
-      const filtered = getFilteredRecordings(filter);
-      if (filtered.length > 0 && scrollViewRef.current) {
-        // 最初の録音の位置を計算してスクロール
-        // ヘッダーとフィルターの高さを考慮
-        const headerHeight = 100;
-        const filterHeight = 80;
-        const estimatedPosition = headerHeight + filterHeight;
-        
-        scrollViewRef.current.scrollTo({ 
-          y: estimatedPosition, 
-          animated: true 
+    // フィルター適用後にスクロール（レンダリング完了を待つ）
+    // requestAnimationFrameを使用してブラウザのレンダリングサイクルに合わせる
+    if (typeof window !== 'undefined') {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const filtered = getFilteredRecordings(filter);
+          if (filtered.length > 0 && scrollViewRef.current) {
+            // 最初の録音の位置を計算してスクロール
+            // ヘッダーとフィルターの高さを考慮
+            const headerHeight = 100;
+            const filterHeight = 80;
+            const estimatedPosition = headerHeight + filterHeight;
+            
+            scrollViewRef.current.scrollTo({ 
+              y: estimatedPosition, 
+              animated: true 
+            });
+          }
         });
-      }
-    }, 200);
+      });
+    }
   };
 
   const sortedRecordings = [...getFilteredRecordings()].sort((a, b) => {

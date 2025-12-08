@@ -3,7 +3,7 @@
  */
 
 import React, { memo, useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Trophy } from 'lucide-react-native';
 import { useThemeColors } from '@/hooks/useThemeColors';
 
@@ -24,12 +24,16 @@ interface Props {
   completedGoals: Goal[];
   getGoalTypeLabel: (type: string) => string;
   getGoalTypeColor: (type: string) => string;
+  onUpdateProgress?: (goalId: string, progress: number) => Promise<void>;
+  onDeleteGoal?: (goalId: string) => Promise<void>;
 }
 
 export const CompletedGoalsSection: React.FC<Props> = memo(({
   completedGoals,
   getGoalTypeLabel,
   getGoalTypeColor,
+  onUpdateProgress,
+  onDeleteGoal,
 }) => {
   const colors = useThemeColors();
 
@@ -70,6 +74,8 @@ export const CompletedGoalsSection: React.FC<Props> = memo(({
               colors={colors}
               getGoalTypeLabel={getGoalTypeLabel}
               getGoalTypeColor={getGoalTypeColor}
+              onUpdateProgress={onUpdateProgress}
+              onDeleteGoal={onDeleteGoal}
             />
           ))}
         </View>
@@ -84,7 +90,9 @@ const CompletedGoalCard = memo<{
   colors: ReturnType<typeof useThemeColors>;
   getGoalTypeLabel: (type: string) => string;
   getGoalTypeColor: (type: string) => string;
-}>(({ goal, colors, getGoalTypeLabel, getGoalTypeColor }) => {
+  onUpdateProgress?: (goalId: string, progress: number) => Promise<void>;
+  onDeleteGoal?: (goalId: string) => Promise<void>;
+}>(({ goal, colors, getGoalTypeLabel, getGoalTypeColor, onUpdateProgress, onDeleteGoal }) => {
   const cardStyle = useMemo(() => [
     styles.completedGoalCard,
     { backgroundColor: colors.background, borderColor: colors.secondary + '33' }
@@ -107,8 +115,25 @@ const CompletedGoalCard = memo<{
 
   return (
     <View style={cardStyle}>
-      <View style={[styles.completedGoalBadge, { backgroundColor: getGoalTypeColor(goal.goal_type) }]}>
-        <Text style={styles.completedGoalBadgeText}>{getGoalTypeLabel(goal.goal_type)}</Text>
+      <View style={styles.completedGoalHeader}>
+        <View style={[styles.completedGoalBadge, { backgroundColor: getGoalTypeColor(goal.goal_type) }]}>
+          <Text style={styles.completedGoalBadgeText}>{getGoalTypeLabel(goal.goal_type)}</Text>
+        </View>
+        {onDeleteGoal && (
+          <TouchableOpacity
+            style={[styles.deleteButton, { backgroundColor: '#FF4444' }]}
+            onPress={() => {
+              if (onDeleteGoal) {
+                onDeleteGoal(goal.id).catch((error) => {
+                  console.error('削除エラー:', error);
+                });
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.deleteButtonText}>×</Text>
+          </TouchableOpacity>
+        )}
       </View>
       <Text style={titleStyle}>{goal.title}</Text>
       {goal.description && (
@@ -152,12 +177,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
   },
+  completedGoalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
   completedGoalBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 4,
-    marginBottom: 8,
   },
   completedGoalBadgeText: {
     color: '#FFFFFF',
@@ -175,6 +205,20 @@ const styles = StyleSheet.create({
   },
   completedGoalDate: {
     fontSize: 12,
+  },
+  deleteButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#FF4444',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  deleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    lineHeight: 20,
   },
 });
 

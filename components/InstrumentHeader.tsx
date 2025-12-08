@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useInstrumentTheme } from './InstrumentThemeContext';
 import { useLanguage } from './LanguageContext';
@@ -9,6 +9,7 @@ import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { getUserProfile } from '@/repositories/userRepository';
 import { getSession } from '@/lib/authService';
+import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
 
 export default function InstrumentHeader() {
   const router = useRouter();
@@ -48,24 +49,32 @@ export default function InstrumentHeader() {
         return;
       }
       
-      // user.selected_instrument_idを優先的に使用
-      const instrumentIdFromUser = user.selected_instrument_id;
-      
-      // 既にselectedInstrumentがある場合はスキップ（ただし、user.selected_instrument_idと一致しない場合は更新）
-      if (selectedInstrument && selectedInstrument === instrumentIdFromUser) {
+      // selectedInstrument状態を優先的に使用（楽器選択直後の反映を確実にするため）
+      // user.selected_instrument_idは、selectedInstrument状態がない場合のみ使用
+      if (selectedInstrument) {
+        // コンテキストのキャッシュから楽器情報を取得（データベースクエリ不要）
+        const instrument = dbInstruments.find(inst => inst.id === selectedInstrument);
+        if (instrument && !cancelled) {
+          setUserInstrumentInfo({
+            id: instrument.id,
+            name: instrument.name,
+            name_en: instrument.nameEn,
+          });
+        }
         return;
       }
+      
+      // selectedInstrument状態がない場合のみ、user.selected_instrument_idを使用
+      const instrumentIdFromUser = user.selected_instrument_id;
       
       try {
         // user.selected_instrument_idがある場合は即座に使用
         if (instrumentIdFromUser) {
           // コンテキストに未反映の場合は即時反映
-          if (selectedInstrument !== instrumentIdFromUser) {
-            try {
-              await setSelectedInstrument(instrumentIdFromUser);
-            } catch (e) {
-              // 失敗しても表示用のフォールバックは続ける
-            }
+          try {
+            await setSelectedInstrument(instrumentIdFromUser);
+          } catch (e) {
+            // 失敗しても表示用のフォールバックは続ける
           }
           
           // コンテキストのキャッシュから楽器情報を取得（データベースクエリ不要）
@@ -155,41 +164,60 @@ export default function InstrumentHeader() {
     };
   }, [isAuthenticated, user, selectedInstrument, dbInstruments, setSelectedInstrument]);
 
+  // Webプラットフォームでのフォーカス管理
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      const isModalOpen = showLearningTools || showAppealModal;
+      if (isModalOpen) {
+        disableBackgroundFocus();
+      } else {
+        enableBackgroundFocus();
+      }
+    }
+    
+    return () => {
+      if (Platform.OS === 'web' && !showLearningTools && !showAppealModal) {
+        enableBackgroundFocus();
+      }
+    };
+  }, [showLearningTools, showAppealModal]);
+
+  // 絵文字を削除する関数
+  const removeEmoji = (text: string): string => {
+    if (!text) return text;
+    // 絵文字のUnicode範囲を削除
+    // 基本的な絵文字（U+1F300-U+1F9FF）、補助絵文字（U+1FA00-U+1FAFF）、
+    // 装飾記号（U+2600-U+26FF）、その他の記号（U+2700-U+27BF）などを削除
+    return text
+      .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // 絵文字
+      .replace(/[\u{1FA00}-\u{1FAFF}]/gu, '') // 補助絵文字
+      .replace(/[\u{2600}-\u{26FF}]/gu, '')   // 装飾記号
+      .replace(/[\u{2700}-\u{27BF}]/gu, '')   // その他の記号
+      .replace(/[\u{1F900}-\u{1F9FF}]/gu, '') // 補助絵文字・記号
+      .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '') // 国旗
+      .trim();
+  };
 
   const getInstrumentName = () => {
     // 現在選択されている楽器がある場合はそれを表示
     const currentInstrumentId = selectedInstrument || user?.selected_instrument_id;
     if (currentInstrumentId && instrumentInfo) {
-      const emoji = getInstrumentEmoji(instrumentInfo.name_en);
       const displayName = language === 'en' ? instrumentInfo.name_en : instrumentInfo.name;
-      // 楽器名が6文字以上の場合は絵文字を付けない
-      if (displayName.length >= 6) {
-        return displayName;
-      }
-      return `${emoji} ${displayName}`;
+      return removeEmoji(displayName);
     }
     
     // 過去に選択されていた楽器がある場合はそれを表示
     if (userInstrumentInfo) {
-      const emoji = getInstrumentEmoji(userInstrumentInfo.name_en);
       const displayName = language === 'en' ? userInstrumentInfo.name_en : userInstrumentInfo.name;
-      // 楽器名が6文字以上の場合は絵文字を付けない
-      if (displayName.length >= 6) {
-        return displayName;
-      }
-      return `${emoji} ${displayName}`;
+      return removeEmoji(displayName);
     }
     
     // user.selected_instrument_idから直接楽器情報を取得
     if (user?.selected_instrument_id && dbInstruments.length > 0) {
       const instrument = dbInstruments.find(inst => inst.id === user.selected_instrument_id);
       if (instrument) {
-        const emoji = getInstrumentEmoji(instrument.nameEn);
         const displayName = language === 'en' ? instrument.nameEn : instrument.name;
-        if (displayName.length >= 6) {
-          return displayName;
-        }
-        return `${emoji} ${displayName}`;
+        return removeEmoji(displayName);
       }
     }
     

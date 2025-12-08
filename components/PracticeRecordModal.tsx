@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Alert, ScrollView } from 'react-native';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Alert, ScrollView, Platform } from 'react-native';
 import { X, Save, Mic, Video, Trash2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import AudioRecorder from './AudioRecorder';
@@ -7,8 +7,11 @@ import { supabase } from '@/lib/supabase';
 import { formatLocalDate, formatMinutesToHours } from '@/lib/dateUtils';
 import { uploadRecordingBlob, saveRecording, deletePracticeSession, deleteRecording, getRecordingsByDate } from '@/lib/database';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import { getPracticeSessionsByDate } from '@/repositories/practiceSessionRepository';
+import { cleanContentFromTimeDetails } from '@/lib/utils/contentCleaner';
 import logger from '@/lib/logger';
-import { ErrorHandler } from '@/lib/errorHandler';
+import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
 
 interface PracticeRecordModalProps {
   visible: boolean;
@@ -27,6 +30,7 @@ export default function PracticeRecordModal({
 }: PracticeRecordModalProps) {
   const router = useRouter();
   const { selectedInstrument } = useInstrumentTheme();
+  const { user } = useAuthAdvanced();
   const [minutes, setMinutes] = useState('');
   const [content, setContent] = useState('');
   const [audioUrl, setAudioUrl] = useState('');
@@ -56,25 +60,22 @@ export default function PracticeRecordModal({
     existingRecording: typeof existingRecording;
   } | null>(null); // 録音画面に移動する前のフォーム状態と録音状態
 
-  // 既存の練習記録を読み込む
-  const loadExistingRecord = useCallback(async (preserveExistingRecording = false) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+  // 練習記録を読み込む（リポジトリを使用）
+  const loadPracticeSessions = useCallback(async () => {
+    if (!user || !selectedDate) return;
 
-      const practiceDate = formatLocalDate(selectedDate!);
-      
-      const { data: sessions, error } = await supabase
-        .from('practice_sessions')
-        .select('id, duration_minutes, content, input_method')
-        .eq('user_id', user.id)
-        .eq('practice_date', practiceDate)
-        .order('created_at', { ascending: false });
-      
+    try {
+      const practiceDate = formatLocalDate(selectedDate);
+      const { data: sessions, error } = await getPracticeSessionsByDate(
+        user.id,
+        practiceDate,
+        selectedInstrument?.id || null
+      );
+
       logger.debug('読み込んだ練習セッション:', sessions);
 
       if (error) {
-        ErrorHandler.handle(error, '既存記録の読み込み', false);
+        // エラーは無視（既存記録の読み込み失敗は致命的ではない）
         return;
       }
 
@@ -84,7 +85,7 @@ export default function PracticeRecordModal({
         const otherSessions = sessions.filter(s => s.input_method !== 'timer');
         
         // タイマー記録の合計時間を計算
-        const totalTimerMinutes = timerSessions.reduce((sum, s) => sum + s.duration_minutes, 0);
+        const totalTimerMinutes = timerSessions.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
         setTimerMinutes(totalTimerMinutes);
         
         // 練習時間の内訳を計算（基礎練は時間を追加しないため除外）
@@ -112,7 +113,7 @@ export default function PracticeRecordModal({
           // その他の記録がある場合
           const session = otherSessions[0];
           setExistingRecord({
-            id: session.id,
+            id: session.id!,
             minutes: session.duration_minutes,
             content: session.content
           });
@@ -120,16 +121,8 @@ export default function PracticeRecordModal({
           // 既存の記録をフォームに設定
           setMinutes(session.duration_minutes.toString());
           if (session.content) {
-            // contentから時間詳細（経由情報）を削除して設定
-            const cleanedContent = session.content
-              .replace(/\s*\(累計\d+分\)/g, '')
-              .replace(/\s*累計\d+分/g, '')
-              .replace(/\s*\+\s*[^,]+?\d+分/g, '')
-              .replace(/\s*[^,]+?\d+分/g, '')
-              .replace(/練習記録/g, '')
-              .replace(/^[\s,]+|[\s,]+$/g, '')
-              .replace(/,\s*,/g, ',')
-              .trim();
+            // contentから時間詳細（経由情報）を削除して設定（共通関数を使用）
+            const cleanedContent = cleanContentFromTimeDetails(session.content);
             setContent(cleanedContent);
           }
         } else {
@@ -147,101 +140,78 @@ export default function PracticeRecordModal({
         // セッションがない場合でも、内訳は空にする
         setPracticeBreakdown([]);
       }
+    } catch (error) {
+      // エラーは無視（練習記録の読み込み失敗は致命的ではない）
+    }
+  }, [user, selectedDate, selectedInstrument]);
 
-      // 録音記録を取得（日付範囲で検索）
-      // タイムゾーンの問題を回避するため、前後1日を含める
-      const startOfDay = new Date(practiceDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      startOfDay.setDate(startOfDay.getDate() - 1); // 前日を含める
-      
-      const endOfDay = new Date(practiceDate);
-      endOfDay.setHours(23, 59, 59, 999);
-      endOfDay.setDate(endOfDay.getDate() + 1); // 翌日を含める
-      
-      let recordingQuery = supabase
-        .from('recordings')
-        .select('id, title, duration_seconds, file_path, recorded_at')
-        .eq('user_id', user.id)
-        .gte('recorded_at', startOfDay.toISOString())
-        .lte('recorded_at', endOfDay.toISOString());
-      
-      // 楽器IDでフィルタリング
-      if (selectedInstrument) {
-        recordingQuery = recordingQuery.eq('instrument_id', selectedInstrument);
-      } else {
-        recordingQuery = recordingQuery.is('instrument_id', null);
-      }
-      
-      const { data: recordings, error: recordingError } = await recordingQuery
-        .order('created_at', { ascending: false })
-        .limit(1);
+  // 録音記録を読み込む（簡素化）
+  const loadRecording = useCallback(async (savedRecordingId?: string) => {
+    if (!user || !selectedDate) return;
+
+    try {
+      const practiceDate = formatLocalDate(selectedDate);
+
+      // 録音記録を取得（getRecordingsByDateを使用）
+      const { data: recordings, error: recordingError } = await getRecordingsByDate(
+        user.id,
+        practiceDate,
+        selectedInstrument || null
+      );
 
       if (recordingError) {
-        ErrorHandler.handle(recordingError, '既存録音の読み込み', false);
+        // エラーは無視（既存録音の読み込み失敗は致命的ではない）
         return;
       }
 
       if (recordings && recordings.length > 0) {
-        // 録音を日付でフィルタリング（ローカル日付で比較）
-        const practiceDateStr = formatLocalDate(new Date(practiceDate));
-        const matchingRecording = recordings.find((recording: { recorded_at: string }) => {
-          if (!recording.recorded_at) return false;
-          const recordedDateStr = formatLocalDate(new Date(recording.recorded_at));
-          return recordedDateStr === practiceDateStr;
-        });
+        // 最初の録音を使用（既に日付でフィルタリング済み）
+        const matchingRecording = recordings[0];
         
         if (matchingRecording) {
-          // 既にexistingRecordingが設定されている場合（録音保存直後など）は、上書きしない
+          // 保存した録音IDが指定されている場合、そのIDを優先的に使用
+          // または、既にexistingRecordingが設定されている場合（録音保存直後など）は、上書きしない
           // ただし、IDが一致する場合は更新する（データベースから最新情報を取得）
-          if (!existingRecording || existingRecording.id === matchingRecording.id) {
+          const shouldUpdate = savedRecordingId 
+            ? matchingRecording.id === savedRecordingId
+            : (!existingRecording || existingRecording.id === matchingRecording.id);
+          
+          if (shouldUpdate) {
             setExistingRecording({
               id: matchingRecording.id,
               title: matchingRecording.title || '無題の録音',
               duration: matchingRecording.duration_seconds || 0
             });
-            setAudioUrl(matchingRecording.file_path);
-            logger.debug('録音記録を読み込みました:', matchingRecording.id);
-          } else {
-            logger.debug('既存の録音状態を保持します（録音保存直後の可能性）:', {
-              existingId: existingRecording.id,
-              foundId: matchingRecording.id
+            setAudioUrl('');
+            logger.debug('録音記録を読み込みました:', {
+              id: matchingRecording.id,
+              savedRecordingId
             });
           }
-        } else {
-          // 日付が一致しない場合は、preserveExistingRecordingがtrueの場合は既存の状態を保持
-          if (!preserveExistingRecording) {
-            setExistingRecording(null);
-            setAudioUrl('');
-            logger.debug('録音記録が見つかりませんでした（日付不一致）');
-          } else {
-            logger.debug('録音記録が見つかりませんでしたが、既存の状態を保持します（日付不一致）');
-          }
-        }
-      } else {
-        // 録音が見つからない場合でも、preserveExistingRecordingがtrueまたは録音保存直後の場合は既存の状態を保持する
-        // （保存直後でデータベースへの反映が遅い場合があるため）
-        if (!preserveExistingRecording && !isRecordingJustSaved) {
+        } else if (!savedRecordingId && !isRecordingJustSaved) {
+          // 日付が一致せず、保存直後でもない場合はクリア
           setExistingRecording(null);
           setAudioUrl('');
-          logger.debug('録音記録はありません');
-        } else {
-          logger.debug('録音記録が見つかりませんでしたが、既存の状態を保持します', {
-            preserveExistingRecording,
-            isRecordingJustSaved
-          });
+        }
+      } else if (!savedRecordingId && !isRecordingJustSaved) {
+        // 録音が見つからず、保存直後でもない場合はクリア
+        if (!existingRecording) {
+          setExistingRecording(null);
+          setAudioUrl('');
         }
       }
-      
-      // デバッグ: 削除アイコンが表示される条件を確認
-      logger.debug('削除アイコン表示条件:', {
-        existingRecord: !!existingRecord,
-        existingRecording: !!existingRecording,
-        shouldShow: !!(existingRecord || existingRecording)
-      });
     } catch (error) {
-      ErrorHandler.handle(error, '既存記録の読み込み', false);
+      // エラーは無視（録音記録の読み込み失敗は致命的ではない）
     }
-  }, [selectedDate, selectedInstrument, isRecordingJustSaved, visible, existingRecording]);
+  }, [user, selectedDate, selectedInstrument, existingRecording, isRecordingJustSaved]);
+
+  // 既存記録を読み込む（統合関数）
+  const loadExistingRecord = useCallback(async (savedRecordingId?: string) => {
+    await Promise.all([
+      loadPracticeSessions(),
+      loadRecording(savedRecordingId)
+    ]);
+  }, [loadPracticeSessions, loadRecording]);
 
   // 選択された日付の練習記録を取得
   useEffect(() => {
@@ -257,8 +227,8 @@ export default function PracticeRecordModal({
         }
         // フォーム状態をクリア
         setFormStateBeforeRecording(null);
-        // 録音状態を保持してデータを再読み込み（既存の録音状態を上書きしない）
-        loadExistingRecord(true);
+        // 録音状態を保持してデータを再読み込み
+        loadExistingRecord();
       } else {
         // 通常のモーダルオープン時はリセット
         setExistingRecord(null);
@@ -270,39 +240,28 @@ export default function PracticeRecordModal({
         setTimerMinutes(0);
         setIsRecordingJustSaved(false); // フラグをリセット
         // データを再読み込み（モーダルが開かれたときに必ず最新データを取得）
-        loadExistingRecord(false);
+        loadExistingRecord();
       }
     }
   }, [visible, selectedDate, showAudioRecorder, loadExistingRecord, formStateBeforeRecording]);
 
-  // 練習記録更新イベントをリッスン（クイック記録などで更新された場合に再読み込み）
+  // Webプラットフォームでのフォーカス管理
   useEffect(() => {
-    const handlePracticeRecordUpdate = (event: Event & { detail?: { action?: string } }) => {
-      if (visible && selectedDate) {
-        const action = (event as CustomEvent).detail?.action;
-        logger.debug('練習記録更新イベントを受信、データを再読み込み', { action });
-        
-        // 録音保存の場合は、再読み込みをスキップ（既に状態が設定されているため）
-        if (action === 'recording_saved') {
-          logger.debug('録音保存イベントのため、再読み込みをスキップします');
-          return;
-        }
-        
-        // その他の更新の場合は再読み込み
-        setTimeout(() => {
-          loadExistingRecord(false);
-        }, 500);
+    if (Platform.OS === 'web') {
+      if (visible) {
+        disableBackgroundFocus();
+      } else {
+        enableBackgroundFocus();
+      }
+    }
+    
+    return () => {
+      if (Platform.OS === 'web' && !visible) {
+        enableBackgroundFocus();
       }
     };
+  }, [visible]);
 
-    if (typeof window !== 'undefined') {
-      window.addEventListener('practiceRecordUpdated', handlePracticeRecordUpdate);
-      
-      return () => {
-        window.removeEventListener('practiceRecordUpdated', handlePracticeRecordUpdate);
-      };
-    }
-  }, [visible, selectedDate, loadExistingRecord]);
 
   // 録音のみを保存する関数（練習記録は保存しない）
   const handleAudioOnlySave = async () => {
@@ -340,51 +299,43 @@ export default function PracticeRecordModal({
 
         // 保存成功時に即座に状態を更新（録音済みを表示するため）
         if (savedRecording) {
-          setExistingRecording({
+          const recordingState = {
             id: savedRecording.id,
             title: audioTitle || '録音',
             duration: audioDuration || 0
-          });
+          };
+          // 即座にexistingRecordingを設定してUIに反映
+          setExistingRecording(recordingState);
           setIsRecordingJustSaved(true); // 録音保存直後フラグを設定
-          logger.debug('✅ 録音情報を状態に設定しました:', {
-            id: savedRecording.id,
-            title: audioTitle || '録音',
-            duration: audioDuration || 0
+          
+          // 録音済み情報を表示するため、一時的な録音データはクリア
+          // 録音済み表示条件: existingRecording && !audioUrl && !videoUrl
+          setAudioUrl(''); // 録音済みとして表示するため、一時的なURLをクリア
+          setVideoUrl(''); // 動画URLもクリア
+          
+          logger.debug('✅ 録音情報を即座に状態に設定しました（録音済み状態を表示）:', {
+            recordingState,
+            audioUrl: '',
+            videoUrl: '',
+            willShow: true
           });
-        }
-
-        // Reset form
-        setAudioUrl('');
-        setAudioTitle('');
-        setAudioMemo('');
-        setIsAudioFavorite(false);
-        setAudioDuration(0);
-        
-        // カレンダーデータ更新のためのカスタムイベントを発火
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
-            detail: { 
-              action: 'recording_saved', 
-              date: recordedAt
-            }
-          }));
-          console.log('📢 カレンダーデータ更新イベントを発火しました');
-        }
-        
-        // モーダルを閉じない（録音済みを表示するため）
-        // onClose();
-        
-        // コールバックを呼び出す
-        onRecordingSaved?.();
-        
-        // 録音保存後、少し遅延してからデータを再取得（データベースへの反映を待つ）
-        setTimeout(() => {
+          setAudioTitle('');
+          setAudioMemo('');
+          setIsAudioFavorite(false);
+          setAudioDuration(0);
+          
+          // コールバックを呼び出す（カレンダーデータの更新はコールバック側で処理）
+          onRecordingSaved?.();
+          
+          // 録音保存後、データを再取得
           setIsRecordingJustSaved(false);
-          // フラグをリセットした後、データを再取得して確実に録音済み状態を表示
           if (visible && selectedDate) {
-            loadExistingRecord(false);
+            loadExistingRecord(savedRecording.id);
           }
-        }, 1000); // 1秒後に再取得（データベースへの反映を待つ）
+        } else {
+          // 保存に失敗した場合は、フォームをリセットしない
+          logger.warn('⚠️ 録音保存は成功しましたが、savedRecordingがnullです');
+        }
         
         Alert.alert('保存完了', '録音を保存しました');
       }
@@ -404,7 +355,7 @@ export default function PracticeRecordModal({
   }) => {
     // 録音保存後、existingRecordingの状態を更新して録音情報を表示
     if (audioData.recordingId) {
-      // 録音が保存された場合は、状態を直接更新
+      // 録音が保存された場合は、即座に状態を直接更新してUIに反映
       setExistingRecording({
         id: audioData.recordingId,
         title: audioData.title,
@@ -412,26 +363,28 @@ export default function PracticeRecordModal({
       });
       setIsRecordingJustSaved(true); // 録音保存直後フラグを設定
       // 録音済み情報を表示するため、一時的な録音データはクリア
+      // 録音済み表示条件: existingRecording && !audioUrl && !videoUrl
       setAudioUrl(''); // 録音済みとして表示するため、一時的なURLをクリア
+      setVideoUrl(''); // 動画URLもクリア
       setAudioTitle('');
       setAudioMemo('');
       setIsAudioFavorite(false);
       setAudioDuration(0);
       
-      console.log('✅ 録音情報を状態に設定しました:', {
+      logger.debug('✅ 録音情報を即座に状態に設定しました（録音済み状態を表示）:', {
         id: audioData.recordingId,
         title: audioData.title,
-        duration: audioData.duration
+        duration: audioData.duration,
+        audioUrl: '',
+        videoUrl: '',
+        willShow: true
       });
       
-      // 録音保存後、少し遅延してからデータを再取得（データベースへの反映を待つ）
-      setTimeout(() => {
-        setIsRecordingJustSaved(false);
-        // フラグをリセットした後、データを再取得して確実に録音済み状態を表示
-        if (visible && selectedDate) {
-          loadExistingRecord(false);
-        }
-      }, 1000); // 1秒後に再取得（データベースへの反映を待つ）
+      // 録音保存後、データを再取得
+      setIsRecordingJustSaved(false);
+      if (visible && selectedDate) {
+        loadExistingRecord(audioData.recordingId);
+      }
     } else {
       // 録音IDがない場合（保存前の状態）は、録音情報を表示
       setAudioTitle(audioData.title);
@@ -487,30 +440,37 @@ export default function PracticeRecordModal({
       return;
     }
     
-    // 即座にモーダルを閉じてカレンダー画面に戻る（UX向上）
-    onClose();
-    
-    // 保存処理をバックグラウンドで実行（完了を待たない）
-    (async () => {
-      try {
-        // タイマー時間を加算した合計時間を計算
-        const totalMinutes = minutesNumber + timerMinutes;
-        
-        // 保存処理を実行（バックグラウンドで実行）
-        await onSave?.(minutesNumber, content?.trim() || undefined, audioUrl || undefined, videoUrl || undefined);
-        
-        // コールバックを呼び出す
+    try {
+      // タイマー時間を加算した合計時間を計算
+      const totalMinutes = minutesNumber + timerMinutes;
+      
+      // 録音や動画があるかチェック
+      const hasMedia = !!(audioUrl || videoUrl);
+      
+      // 保存処理を実行（完了を待つ）
+      await onSave?.(minutesNumber, content?.trim() || undefined, audioUrl || undefined, videoUrl || undefined);
+      
+      // 録音や動画がある場合のみコールバックを呼び出す
+      if (hasMedia) {
         onRecordingSaved?.();
-      } catch (error) {
-        console.error('❌ 保存処理エラー:', error);
-        // エラーはバックグラウンドで処理（ユーザーには既に画面が戻っている）
-        ErrorHandler.handle(error, '練習記録保存', false);
       }
-    })();
+      
+      // 保存が完了したらモーダルを閉じる
+      onClose();
+    } catch (error) {
+      Alert.alert('エラー', '練習記録の保存に失敗しました');
+      // エラーが発生した場合もモーダルを閉じる（ユーザーにエラーが通知される）
+      onClose();
+    }
   };
 
   const handleDeleteRecord = () => {
-    console.log('🗑️ 削除ボタンが押されました');
+    logger.debug('🗑️ 削除ボタンが押されました', {
+      existingRecord: !!existingRecord,
+      existingRecording: !!existingRecording,
+      existingRecordId: existingRecord?.id,
+      existingRecordingId: existingRecording?.id
+    });
     
     // 削除可能な項目を確認
     const canDeletePractice = !!existingRecord;
@@ -520,6 +480,12 @@ export default function PracticeRecordModal({
       Alert.alert('情報', '削除できる項目がありません');
       return;
     }
+
+    logger.debug('削除モーダルを表示します', {
+      canDeletePractice,
+      canDeleteRecording,
+      canDeleteBoth: canDeletePractice && canDeleteRecording
+    });
 
     // 削除選択モーダルを表示
     setShowDeleteModal(true);
@@ -579,13 +545,6 @@ export default function PracticeRecordModal({
       setTimerMinutes(0);
       setPracticeBreakdown([]);
 
-      // 練習記録更新イベントを発火
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
-          detail: { action: 'practice_deleted' }
-        }));
-      }
-
       // コールバックを呼び出してデータを更新
       onRecordingSaved?.();
       
@@ -644,6 +603,7 @@ export default function PracticeRecordModal({
         { text: 'キャンセル', style: 'cancel' },
         { text: '削除', style: 'destructive', onPress: async () => {
           try {
+            logger.debug('🗑️ 両方削除を開始します');
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
               Alert.alert('エラー', 'ログインが必要です');
@@ -651,6 +611,10 @@ export default function PracticeRecordModal({
             }
 
             const practiceDate = formatLocalDate(selectedDate!);
+            let practiceDeleteSuccess = false;
+            let recordingDeleteSuccess = false;
+            let practiceDeleteError: any = null;
+            let recordingDeleteError: any = null;
             
             // その日のすべての練習セッションを取得
             let query = supabase
@@ -668,6 +632,7 @@ export default function PracticeRecordModal({
             const { data: sessions, error: fetchError } = await query;
             
             if (fetchError) {
+              logger.error('練習記録の取得エラー:', fetchError);
               Alert.alert('エラー', '練習記録の取得に失敗しました');
               return;
             }
@@ -675,27 +640,68 @@ export default function PracticeRecordModal({
             // すべてのセッションIDを削除（時間詳細も含めてすべて削除）
             if (sessions && sessions.length > 0) {
               const sessionIds = sessions.map(s => s.id);
+              logger.debug('練習セッションを削除します:', sessionIds);
               const { error } = await supabase
                 .from('practice_sessions')
                 .delete()
                 .in('id', sessionIds);
               
               if (error) {
-                Alert.alert('エラー', '練習記録の削除に失敗しました');
-                return;
+                logger.error('練習記録の削除エラー:', error);
+                practiceDeleteError = error;
+              } else {
+                practiceDeleteSuccess = true;
+                logger.debug('✅ 練習記録の削除に成功しました');
               }
+            } else {
+              // 削除する練習記録がない場合も成功とみなす
+              practiceDeleteSuccess = true;
+              logger.debug('削除する練習記録がありません');
             }
 
             // 録音ファイルも削除
             if (existingRecording) {
+              logger.debug('録音を削除します:', existingRecording.id);
               const { error: recordingError } = await deleteRecording(existingRecording.id);
               if (recordingError) {
-                console.error('Error deleting recording:', recordingError);
+                logger.error('録音の削除エラー:', recordingError);
+                recordingDeleteError = recordingError;
+              } else {
+                recordingDeleteSuccess = true;
+                logger.debug('✅ 録音の削除に成功しました');
+                setAudioUrl('');
+                setExistingRecording(null);
               }
-              setAudioUrl('');
-              setExistingRecording(null);
+            } else {
+              // 削除する録音がない場合も成功とみなす
+              recordingDeleteSuccess = true;
+              logger.debug('削除する録音がありません');
             }
 
+            // エラーが発生した場合の処理
+            if (practiceDeleteError || recordingDeleteError) {
+              let errorMessage = '削除処理中にエラーが発生しました:\n';
+              if (practiceDeleteError) {
+                errorMessage += '・練習記録の削除に失敗\n';
+              }
+              if (recordingDeleteError) {
+                errorMessage += '・録音の削除に失敗\n';
+              }
+              
+              // 部分的に成功した場合は、成功した部分の状態を更新
+              if (practiceDeleteSuccess) {
+                setExistingRecord(null);
+                setMinutes('');
+                setContent('');
+                setTimerMinutes(0);
+                setPracticeBreakdown([]);
+              }
+              
+              Alert.alert('削除エラー', errorMessage);
+              return;
+            }
+
+            // すべて成功した場合
             // ローカル状態をリセット
             setExistingRecord(null);
             setMinutes('');
@@ -704,17 +710,15 @@ export default function PracticeRecordModal({
             setTimerMinutes(0);
             setPracticeBreakdown([]);
 
-            // 練習記録更新イベントを発火
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
-                detail: { action: 'practice_deleted' }
-              }));
-            }
+            // コールバックを呼び出してデータを更新
+            onRecordingSaved?.();
 
-            Alert.alert('削除完了', '練習記録と演奏録音を削除しました');
-            onClose();
+            logger.debug('✅ 両方削除が完了しました');
+            Alert.alert('削除完了', '練習記録と演奏録音を削除しました', [
+              { text: 'OK', onPress: () => onClose() }
+            ]);
           } catch (error) {
-            console.error('Error deleting both records:', error);
+            logger.error('両方削除処理エラー:', error);
             Alert.alert('エラー', '削除処理に失敗しました');
           }
         }}
@@ -1069,7 +1073,15 @@ export default function PracticeRecordModal({
           </TouchableOpacity>
           
           {/* 削除ボタン（既存の記録または録音がある場合のみ表示） */}
-          {(existingRecord || existingRecording) && (
+          {useMemo(() => {
+            const shouldShow = !!(existingRecord || existingRecording);
+            logger.debug('削除ボタン表示条件:', {
+              existingRecord: !!existingRecord,
+              existingRecording: !!existingRecording,
+              shouldShow
+            });
+            return shouldShow;
+          }, [existingRecord, existingRecording]) && (
             <TouchableOpacity
               style={styles.deleteButtonFooter}
               onPress={handleDeleteRecord}
@@ -1162,9 +1174,14 @@ export default function PracticeRecordModal({
                 <TouchableOpacity
                   style={[styles.deleteModalButton, styles.deleteModalButtonDestructive]}
                   onPress={() => {
+                    logger.debug('両方削除ボタンが押されました', {
+                      existingRecord: !!existingRecord,
+                      existingRecording: !!existingRecording
+                    });
                     setShowDeleteModal(false);
                     deleteBoth();
                   }}
+                  activeOpacity={0.8}
                 >
                   <Text style={styles.deleteModalButtonText}>両方削除</Text>
                 </TouchableOpacity>

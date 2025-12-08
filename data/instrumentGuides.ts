@@ -62,20 +62,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌',
-          'チューリップ',
-          'ロンドン橋',
-          'むすんでひらいて',
-          'ちょうちょう',
-          '春の小川'
-        ],
+        beginner: [],
         intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー',
-          'アマリリス',
           '愛のあいさつ',
           'G線上のアリア',
           'カノン',
@@ -166,20 +154,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌',
-          'チューリップ',
-          'ロンドン橋',
-          'むすんでひらいて',
-          'ちょうちょう',
-          '春の小川'
-        ],
+        beginner: [],
         intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー',
-          'アマリリス',
           '愛のあいさつ',
           '夢路より',
           'トルコ行進曲',
@@ -271,20 +247,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌',
-          'チューリップ',
-          'ロンドン橋',
-          'むすんでひらいて',
-          'ちょうちょう',
-          '春の小川'
-        ],
+        beginner: [],
         intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー',
-          'アマリリス',
           '愛のあいさつ',
           '夢路より',
           '禁じられた遊び',
@@ -375,20 +339,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌',
-          'チューリップ',
-          'ロンドン橋',
-          'むすんでひらいて',
-          'ちょうちょう',
-          '春の小川'
-        ],
+        beginner: [],
         intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー',
-          'アマリリス',
           '愛のあいさつ',
           '夢路より',
           'シチリアーノ',
@@ -479,20 +431,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌',
-          'チューリップ',
-          'ロンドン橋',
-          'むすんでひらいて',
-          'ちょうちょう',
-          '春の小川'
-        ],
+        beginner: [],
         intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー',
-          'アマリリス',
           '愛のあいさつ',
           '夢路より',
           'トランペット協奏曲',
@@ -584,17 +524,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌',
-          'チューリップ'
-        ],
-        intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー',
-          'アマリリス'
-        ],
+        beginner: [],
+        intermediate: [],
         tips: '初心者は開放弦から始めて、徐々に指を使った演奏に進みましょう。'
       },
       faq: [
@@ -675,15 +606,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌'
-        ],
-        intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー'
-        ],
+        beginner: [],
+        intermediate: [],
         tips: 'ロングトーンから始めて、徐々に音階練習に進みましょう。'
       },
       faq: [
@@ -763,15 +687,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌'
-        ],
-        intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー'
-        ],
+        beginner: [],
+        intermediate: [],
         tips: '初心者は開放弦から始めて、徐々に指を使った演奏に進みましょう。'
       },
       faq: [
@@ -851,15 +768,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌'
-        ],
-        intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー'
-        ],
+        beginner: [],
+        intermediate: [],
         tips: '初心者は開放弦から始めて、徐々に指を使った演奏に進みましょう。'
       },
       faq: [
@@ -938,15 +848,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌'
-        ],
-        intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー'
-        ],
+        beginner: [],
+        intermediate: [],
         tips: 'ロングトーンから始めて、徐々に音階練習に進みましょう。'
       },
       faq: [
@@ -1025,15 +928,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌'
-        ],
-        intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー'
-        ],
+        beginner: [],
+        intermediate: [],
         tips: 'ロングトーンから始めて、徐々に音階練習に進みましょう。'
       },
       faq: [
@@ -1112,15 +1008,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌'
-        ],
-        intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー'
-        ],
+        beginner: [],
+        intermediate: [],
         tips: 'ロングトーンから始めて、徐々に音階練習に進みましょう。'
       },
       faq: [
@@ -1199,15 +1088,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌'
-        ],
-        intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー'
-        ],
+        beginner: [],
+        intermediate: [],
         tips: 'ロングトーンから始めて、徐々に音階練習に進みましょう。'
       },
       faq: [
@@ -1286,15 +1168,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌'
-        ],
-        intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー'
-        ],
+        beginner: [],
+        intermediate: [],
         tips: '基本的な指使いから始めて、徐々に和音演奏に進みましょう。'
       },
       faq: [
@@ -1461,15 +1336,8 @@ export const instrumentGuides = {
         ]
       },
       repertoire: {
-        beginner: [
-          'きらきら星',
-          'メリーさんの羊',
-          'かえるの歌'
-        ],
-        intermediate: [
-          'アニー・ローリー',
-          'ロング・ロング・アゴー'
-        ],
+        beginner: [],
+        intermediate: [],
         tips: 'ロングトーンから始めて、徐々に音階練習に進みましょう。'
       },
       faq: [

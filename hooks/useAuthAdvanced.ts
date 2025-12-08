@@ -282,14 +282,17 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     if (typeof window !== 'undefined') {
       timeoutId = setTimeout(() => {
         if (globalAuthState.isLoading) {
-          logger.warn('[useAuthAdvanced] 認証初期化がタイムアウトしました。強制的に初期化を完了します。');
+          // タイムアウト警告は開発環境のみ表示（本番環境では警告を出さない）
+          if (__DEV__) {
+            logger.debug('[useAuthAdvanced] 認証初期化がタイムアウトしました。強制的に初期化を完了します。');
+          }
           updateAuthState({
             ...globalAuthState,
             isLoading: false,
             isInitialized: true,
           });
         }
-      }, 1000); // 500ms → 1000msに延長（認証状態の確認を確実に行う）
+      }, 3000); // 1000ms → 3000msに延長（認証状態の確認を確実に行う）
     }
     
     // 初期化を非ブロッキングで実行

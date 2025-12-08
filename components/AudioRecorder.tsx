@@ -261,7 +261,20 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         const elapsedTime = Math.round((Date.now() - startTime) / 1000);
         setRecordingTime(elapsedTime);
         
-        if (elapsedTime >= MAX_RECORDING_TIME) {
+        // 59秒に達したら自動的に録音を停止開始（60秒を超えないようにする）
+        // Math.roundによる丸め誤差とMediaRecorder停止処理の遅延を考慮して1秒前に停止開始
+        if (elapsedTime >= MAX_RECORDING_TIME - 1) {
+          logger.debug('⏱️ 録音時間が最大時間に近づきました。自動停止を開始します。', {
+            elapsedTime,
+            maxTime: MAX_RECORDING_TIME,
+            stopAt: MAX_RECORDING_TIME - 1
+          });
+          // タイマーを即座にクリア（重複停止を防止）
+          if (recordingIntervalRef.current) {
+            clearInterval(recordingIntervalRef.current);
+            recordingIntervalRef.current = null;
+          }
+          // 停止処理を開始（MediaRecorderの停止処理には時間がかかるため、早めに開始）
           stopRecording('auto');
         }
       }, 250); // UI更新を250ms間隔にしてCPU負荷を軽減
@@ -286,21 +299,49 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
 
   // 録音停止
   const stopRecording = (cause: 'auto' | 'manual' = 'manual') => {
-    if (mediaRecorderRef.current && isRecording) {
-      // 録音時間は onstop イベントで確定されるため、ここでは設定しない
-      
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-        recordingIntervalRef.current = null;
-      }
+    // 既に停止している場合は何もしない
+    if (!isRecording || !mediaRecorderRef.current) {
+      logger.debug('録音は既に停止しています');
+      return;
+    }
 
-      // 停止時の通知
+    logger.debug('🛑 録音を停止します:', { 
+      cause,
+      recorderState: mediaRecorderRef.current?.state 
+    });
+    
+    // タイマーを最優先でクリア（重複停止を防止）
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+
+    // MediaRecorderの状態を厳密にチェックして停止
+    try {
+      const recorder = mediaRecorderRef.current;
+      const currentState = recorder.state;
+      
+      // 'recording'状態の場合のみ停止処理を実行
+      // 'inactive'や'paused'の場合は既に停止しているため、何もしない
+      if (currentState === 'recording') {
+        logger.debug('MediaRecorderを停止します:', { state: currentState });
+        recorder.stop();
+      } else {
+        logger.debug('MediaRecorderは既に停止しています:', { state: currentState });
+      }
+    } catch (error) {
+      logger.error('録音停止エラー:', error);
+      ErrorHandler.handle(error, '録音停止', false);
+    }
+    
+    // 録音状態を即座に更新（UIの即座反映のため）
+    setIsRecording(false);
+
+    // 停止時の通知（自動停止の場合のみ）
+    if (cause === 'auto') {
       Alert.alert(
         '録音停止',
-        cause === 'auto' ? '最大1分に達したため自動停止しました' : '録音を停止しました'
+        '最大1分に達したため自動停止しました'
       );
     }
   };

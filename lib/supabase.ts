@@ -124,13 +124,21 @@ const getSupabaseClient = () => {
       try {
         const response = await fetch(url, options);
         
-        // RPC関数の404エラーは、フォールバック方法で処理されるため、コンソールに表示しない
-        // （開発環境でもログのみに記録）
-        if (response.status === 404 && __DEV__) {
+        // 404エラーを静かに処理（フォールバック方法で処理されるため）
+        if (response.status === 404) {
           const urlObj = new URL(url);
-          if (urlObj.pathname.includes('/rpc/check_column_exists')) {
-            // RPC関数が存在しない場合の404エラーは、フォールバック方法で処理されるため無視
+          const pathname = urlObj.pathname;
+          
+          // RPC関数の404エラーは、フォールバック方法で処理されるため無視
+          if (pathname.includes('/rpc/check_column_exists')) {
             // エラーレスポンスをそのまま返す（呼び出し側で処理される）
+            return response;
+          }
+          
+          // representative_songsテーブルの404エラーは、フォールバックデータを使用するため無視
+          if (pathname.includes('/representative_songs') || url.includes('representative_songs')) {
+            // エラーレスポンスをそのまま返す（呼び出し側で処理される）
+            return response;
           }
         }
         

@@ -7,6 +7,7 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { supabase } from '@/lib/supabase';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { instrumentGuides } from '@/data/instrumentGuides';
+import logger from '@/lib/logger';
 
 const { width } = Dimensions.get('window');
 
@@ -54,6 +55,8 @@ export default function RepresentativeSongsScreen() {
     try {
       setLoading(true);
       
+      logger.debug('[代表曲画面] 楽器ID:', instrumentId);
+      
       // 楽器情報を取得
       const { data: instrumentData, error: instrumentError } = await supabase
         .from('instruments')
@@ -62,56 +65,96 @@ export default function RepresentativeSongsScreen() {
         .single();
       
       if (instrumentError) {
-        console.error('楽器情報取得エラー:', instrumentError);
+        logger.error('[代表曲画面] 楽器情報取得エラー:', instrumentError);
+        Alert.alert('エラー', `楽器情報の取得に失敗しました: ${instrumentError.message}`);
         return;
       }
       
+      if (!instrumentData) {
+        logger.error('[代表曲画面] 楽器データが見つかりません');
+        Alert.alert('エラー', '楽器データが見つかりません');
+        return;
+      }
+      
+      logger.debug('[代表曲画面] 楽器情報取得成功:', instrumentData.name);
       setInstrument(instrumentData);
       
-      // 代表曲を取得
-      const { data: songsData, error: songsError } = await supabase
-        .from('representative_songs')
-        .select('*')
-        .eq('instrument_id', instrumentId)
-        .order('display_order', { ascending: true });
-      
-      if (songsError) {
-        // テーブルが存在しない場合（PGRST205エラー）は空配列を設定
-        if (songsError.code === 'PGRST205' || songsError.code === 'PGRST116' || songsError.status === 404 || 
-            songsError.message?.includes('Could not find the table') || 
-            songsError.message?.includes('does not exist')) {
-          // 開発環境でのみ警告を表示
-          if (__DEV__) {
-            console.warn('representative_songsテーブルが存在しません。フォールバックデータを使用します。', songsError);
-          }
-        } else {
-          console.error('代表曲取得エラー:', songsError);
+      // 代表曲を取得（エラーを静かに処理）
+      let songsData: RepresentativeSong[] | null = null;
+      try {
+        const result = await supabase
+          .from('representative_songs')
+          .select('*')
+          .eq('instrument_id', instrumentId)
+          .order('display_order', { ascending: true });
+        
+        songsData = result.data;
+        
+        // テーブルが存在しない場合（404エラー）は正常なフォールバック動作として処理
+        const isTableNotFound = result.error && (
+          result.error.code === 'PGRST205' || 
+          result.error.code === 'PGRST116' || 
+          result.error.status === 404 || 
+          result.error.message?.includes('Could not find the table') || 
+          result.error.message?.includes('does not exist')
+        );
+        
+        if (result.error && !isTableNotFound) {
+          // テーブルが存在しない以外のエラーのみログ出力
+          logger.error('[代表曲画面] 代表曲取得エラー:', {
+            code: result.error.code,
+            message: result.error.message,
+            status: result.error.status,
+          });
+        }
+      } catch (error) {
+        // ネットワークエラーなど、予期しないエラーをキャッチ
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const isTableNotFound = errorMessage.includes('404') || 
+                                errorMessage.includes('Not Found') ||
+                                errorMessage.includes('Could not find the table');
+        
+        if (!isTableNotFound) {
+          logger.error('[代表曲画面] 代表曲取得で予期しないエラー:', error);
         }
       }
       
       // データベースから代表曲が取得できた場合はそれを使用
       if (songsData && songsData.length > 0) {
+        logger.debug('[代表曲画面] データベースから代表曲を取得:', songsData.length, '曲');
         setSongs(songsData);
         return;
       }
       
-      // データベースに代表曲がない場合、instrumentGuides.tsからフォールバックデータを取得
-      const fallbackSongs = getFallbackSongs(instrumentData?.name_en || '');
-      if (fallbackSongs.length > 0) {
-        setSongs(fallbackSongs);
-        return;
+      // データベースに代表曲がない場合はフォールバックデータを使用（静かに処理）
+      if (instrumentData && instrumentData.name_en) {
+        const fallbackSongs = getFallbackSongs(instrumentData.name_en);
+        if (fallbackSongs.length > 0) {
+          logger.debug('[代表曲画面] フォールバックデータを使用:', fallbackSongs.length, '曲');
+          setSongs(fallbackSongs);
+          return;
+        }
       }
       
       // フォールバックデータもない場合は空配列
+      logger.debug('[代表曲画面] 代表曲データなし');
       setSongs([]);
     } catch (error) {
-      console.error('データ読み込みエラー:', error);
-      // エラー時もフォールバックデータを試す
-      const fallbackSongs = getFallbackSongs(instrument?.name_en || '');
-      if (fallbackSongs.length > 0) {
-        setSongs(fallbackSongs);
-      } else {
-        Alert.alert('エラー', 'データの読み込みに失敗しました');
+      logger.error('[代表曲画面] データ読み込みエラー:', error);
+      // エラー時はフォールバックデータを試す
+      if (instrument && instrument.name_en) {
+        const fallbackSongs = getFallbackSongs(instrument.name_en);
+        if (fallbackSongs.length > 0) {
+          logger.debug('[代表曲画面] エラー発生。フォールバックデータを使用');
+          setSongs(fallbackSongs);
+          return;
+        }
+      }
+      // フォールバックデータもない場合は空配列
+      setSongs([]);
+      // ユーザーに表示するエラーは重大なエラーのみ
+      if (error instanceof Error && !error.message.includes('Could not find the table')) {
+        Alert.alert('エラー', `データの読み込みに失敗しました: ${error.message}`);
       }
     } finally {
       setLoading(false);

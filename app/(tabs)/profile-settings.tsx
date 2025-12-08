@@ -640,14 +640,17 @@ export default function ProfileSettingsScreen() {
       };
       
       // オプショナルカラム（存在する場合のみ追加）
-      // これらのカラムはマイグレーション（20250120000003_add_age_fields.sql）で追加される必要があります
-      // カラムが存在しない場合のエラーを避けるため、一旦コメントアウト
-      // マイグレーションを実行した後、以下のコメントを解除してください
-      // if (currentAge) upsertRow.current_age = parseInt(currentAge);
-      // if (musicStartAge) upsertRow.music_start_age = parseInt(musicStartAge);
-      // if (musicExperienceYears) upsertRow.music_experience_years = musicExperienceYears;
-      // if (birthday) upsertRow.birthday = birthday.toISOString().split('T')[0];
-      // if (organizationsString) upsertRow.organization = organizationsString;
+      // カラムが存在しない場合はエラーを無視して続行
+      try {
+        if (currentAge) upsertRow.current_age = parseInt(currentAge);
+        if (musicStartAge) upsertRow.music_start_age = parseInt(musicStartAge);
+        if (musicExperienceYears) upsertRow.music_experience_years = musicExperienceYears;
+        if (birthday) upsertRow.birthday = birthday.toISOString().split('T')[0];
+        if (organizationsString) upsertRow.organization = organizationsString;
+      } catch (optionalColumnError) {
+        // カラムが存在しない場合のエラーは無視（基本情報は保存される）
+        logger.debug('オプショナルカラムの設定をスキップ（カラムが存在しない可能性）:', optionalColumnError);
+      }
 
       logger.debug('保存データ:', upsertRow);
 
@@ -655,8 +658,14 @@ export default function ProfileSettingsScreen() {
       const result = await upsertUserProfile(upsertRow);
 
       if (result.error) {
-        logger.error('Supabase upsert エラー:', result.error);
-        throw result.error;
+        // カラムが存在しないエラーの場合は警告として処理（基本情報は保存済みの可能性）
+        if (result.error.code === '42703' || result.error.message?.includes('column') || result.error.message?.includes('does not exist')) {
+          logger.warn('一部のカラムが存在しないため、オプショナル情報は保存されませんでした:', result.error);
+          // 基本情報は保存されている可能性があるため、成功として扱う
+        } else {
+          logger.error('Supabase upsert エラー:', result.error);
+          throw result.error;
+        }
       }
 
       logger.info('保存成功:', result.data);

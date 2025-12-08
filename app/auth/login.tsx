@@ -26,7 +26,6 @@ import { useRouter } from 'expo-router';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
-import { ErrorHandler } from '@/lib/errorHandler';
 import { getBasePath } from '@/lib/navigationUtils';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -68,7 +67,6 @@ export default function LoginScreen() {
   });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [showPassword, setShowPassword] = useState(false);
-  const [uiError, setUiError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false); // ログイン処理中のローカル状態
   
   // アニメーション状態
@@ -99,11 +97,6 @@ export default function LoginScreen() {
       
       // ログイン処理完了
       setIsLoggingIn(false);
-      
-      // ログイン直後フラグをクリア（画面遷移を実行するため）
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('login-just-completed');
-      }
       
       // 一般的なアプリと同様に、すぐに画面遷移を実行（遅延なし）
       logger.debug('認証状態更新完了 - 画面遷移を実行');
@@ -141,7 +134,6 @@ export default function LoginScreen() {
   // エラーが変更された時のアニメーション
   useEffect(() => {
     if (error) {
-      setUiError(error);
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 1.05,
@@ -181,7 +173,6 @@ export default function LoginScreen() {
     logger.debug('ログイン処理開始');
     
     // エラーをクリア
-    setUiError(null);
     setFormErrors({});
     clearError();
     
@@ -217,47 +208,17 @@ export default function LoginScreen() {
       
       if (success) {
         logger.debug('ログイン成功 - 認証状態の更新を待機中');
-        setUiError(null);
         setFormErrors({});
         
-        // ログイン直後フラグを設定（_layout.tsxで認証チェックをスキップするため）
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('login-just-completed', 'true');
-          logger.debug('ログイン直後フラグを設定');
-        }
-        
-        // 認証状態が更新されるまで待つ（最大2秒、一般的なアプリと同様の速度）
-        let retryCount = 0;
-        const maxRetries = 20; // 2秒間待機（100ms × 20回）
-        while (retryCount < maxRetries && !isAuthenticated && !isLoading) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          retryCount++;
-        }
-        
-        if (isAuthenticated) {
-          logger.debug('ログイン成功 - 認証状態確認済み', {
-            isAuthenticated,
-            isLoading,
-            retryCount
-          });
-          // 画面遷移はRootLayoutのuseEffectで処理される
-          // 認証状態が更新されたら自動的に適切な画面に遷移する
-        } else {
-          // 認証状態が更新されない場合でも、成功として扱う
-          // RootLayoutのuseEffectで認証状態が更新されたら自動的に遷移する
-          // 警告は出さない（認証状態の更新は非同期で行われるため）
-          logger.debug('ログイン成功 - 認証状態の更新を待機中（非同期処理）', { 
-            success, 
-            isAuthenticated, 
-            isLoading,
-            retryCount
-          });
-        }
+        // 認証状態の更新と画面遷移は、useEffect（88-123行）で自動的に処理される
+        // useAuthAdvancedのsignIn関数がupdateAuthStateを呼び出し、
+        // 認証状態が更新されるとuseEffectが検知して適切な画面に遷移する
+        // フラグは使用せず、認証状態のみで判定する
+        logger.debug('ログイン成功 - 認証状態の更新と画面遷移は自動的に処理されます');
       } else {
         setIsLoggingIn(false);
         logger.debug('ログイン失敗', { success, isAuthenticated, error });
         const fallbackMsg = error || 'メールアドレスまたはパスワードが正しくありません';
-        setUiError(fallbackMsg);
         // Webでも確実に視認できるようフィールドエラーも表示
         setFormErrors(prev => ({
           ...prev,
@@ -298,9 +259,9 @@ export default function LoginScreen() {
     } catch (error) {
       setIsLoggingIn(false);
       logger.error('ログイン処理で例外が発生:', error);
-      ErrorHandler.handle(error, 'ログイン処理', true);
+      // エラーは既にAlertで表示済み
       const errorMessage = error instanceof Error ? error.message : 'ログインに失敗しました。もう一度お試しください。';
-      setUiError(errorMessage);
+      // 例外エラーはuseAuthAdvancedのerrorに設定されないため、Alertで表示
       Alert.alert('エラー', errorMessage);
     }
   };
@@ -340,7 +301,8 @@ export default function LoginScreen() {
       
       if (resetError) {
         ErrorHandler.handle(resetError, 'パスワードリセットメール送信', true);
-        setUiError(resetError.message || 'メール送信に失敗しました');
+        // パスワードリセットエラーはuseAuthAdvancedのerrorに含まれないため、Alertで表示
+        Alert.alert('エラー', resetError.message || 'メール送信に失敗しました');
         return;
       }
 
@@ -352,7 +314,8 @@ export default function LoginScreen() {
       );
     } catch (e: any) {
       ErrorHandler.handle(e, 'パスワードリセット処理', true);
-      setUiError(e?.message || 'メール送信に失敗しました');
+      // パスワードリセット例外はuseAuthAdvancedのerrorに含まれないため、Alertで表示
+      Alert.alert('エラー', e?.message || 'メール送信に失敗しました');
     }
   };
 
@@ -410,14 +373,14 @@ export default function LoginScreen() {
             </View>
 
             {/* エラー表示（上部バナー） */}
-            {(uiError || error) && (
+            {error && (
               <Animated.View
                 style={[
                   styles.errorContainer,
                   { transform: [{ scale: pulseAnim }] },
                 ]}
               >
-                <Text style={styles.errorText}>⚠️ {uiError || error}</Text>
+                <Text style={styles.errorText}>⚠️ {error}</Text>
               </Animated.View>
             )}
 

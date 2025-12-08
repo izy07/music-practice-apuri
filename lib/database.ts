@@ -396,18 +396,54 @@ export const deleteRecording = async (recordingId: string) => {
   }
 };
 
-// 特定の日付の録音データを取得
-export const getRecordingsByDate = async (userId: string, date: string) => {
+// 特定の日付の録音データを取得（タイムゾーン対応）
+export const getRecordingsByDate = async (
+  userId: string, 
+  date: string,
+  instrumentId?: string | null
+) => {
   try {
-    const { data, error } = await supabase
+    // 日付範囲を計算（タイムゾーンの問題を回避）
+    // 指定日の00:00:00から23:59:59までをカバーするため、UTCで前後1日を含める
+    const targetDate = new Date(date);
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    startOfDay.setDate(startOfDay.getDate() - 1); // 前日を含める（タイムゾーン対応）
+    
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+    endOfDay.setDate(endOfDay.getDate() + 1); // 翌日を含める（タイムゾーン対応）
+    
+    let query = supabase
       .from('recordings')
-      .select('*')
+      .select('id, title, duration_seconds, file_path, recorded_at, instrument_id')
       .eq('user_id', userId)
-      .eq('recorded_at', date)
-      .order('created_at', { ascending: false });
+      .gte('recorded_at', startOfDay.toISOString())
+      .lte('recorded_at', endOfDay.toISOString());
+    
+    // 楽器IDでフィルタリング
+    if (instrumentId) {
+      query = query.eq('instrument_id', instrumentId);
+    } else {
+      query = query.is('instrument_id', null);
+    }
+    
+    const { data, error } = await query
+      .order('created_at', { ascending: false })
+      .limit(10); // 最大10件（通常は1件のみ）
 
     if (error) throw error;
-    return { data, error: null };
+    
+    // ローカル日付で再フィルタリング（タイムゾーンの問題を確実に回避）
+    const { formatLocalDate } = require('./dateUtils');
+    const dateStr = formatLocalDate(targetDate);
+    const filteredData = (data || []).filter((recording: { recorded_at: string }) => {
+      if (!recording.recorded_at) return false;
+      const recordedDateStr = formatLocalDate(new Date(recording.recorded_at));
+      return recordedDateStr === dateStr;
+    });
+    
+    return { data: filteredData, error: null };
   } catch (error) {
     ErrorHandler.handle(error, '録音データ取得（日付別）', false);
     return { data: null, error };

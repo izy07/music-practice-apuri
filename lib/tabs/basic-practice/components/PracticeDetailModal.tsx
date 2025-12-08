@@ -11,6 +11,7 @@ import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import logger from '@/lib/logger';
 import { getCurrentUser } from '@/repositories/userRepository';
 import { getPracticeSessionsByDate, updatePracticeSession, createPracticeSession } from '@/repositories/practiceSessionRepository';
+import { cleanContentFromTimeDetails } from '@/lib/utils/contentCleaner';
 import type { PracticeItem } from '../types/practice.types';
 import { styles } from '../styles';
 
@@ -62,18 +63,9 @@ export function PracticeDetailModal({
       if (existingRecords.data && existingRecords.data.length > 0) {
         // 既存の記録がある場合は、時間を追加せずcontentだけを更新
         const existing = existingRecords.data[0];
-        let existingContent = existing.content || '';
         
-        // 既存のcontentから時間詳細を削除（「累計XX分」「XX分」などを削除）
-        existingContent = existingContent
-          .replace(/\s*\(累計\d+分\)/g, '') // 「（累計XX分）」を削除
-          .replace(/\s*累計\d+分/g, '') // 「累計XX分」を削除
-          .replace(/\s*\+\s*[^,]+?\d+分/g, '') // 「+ XX分」を削除
-          .replace(/\s*[^,]+?\d+分/g, '') // 「XX分」を含む文字列を削除
-          .replace(/練習記録/g, '') // 「練習記録」を削除
-          .replace(/^[\s,]+|[\s,]+$/g, '') // 前後のカンマとスペースを削除
-          .replace(/,\s*,/g, ',') // 連続するカンマを1つに
-          .trim();
+        // 既存のcontentから時間詳細を削除（共通関数を使用）
+        const existingContent = cleanContentFromTimeDetails(existing.content);
         
         // 基礎練のメニュー名を追加
         const newContent = existingContent 
@@ -85,17 +77,19 @@ export function PracticeDetailModal({
           return;
         }
         
-        const success = await updatePracticeSession(existing.id, {
+        // 既存の記録を更新（基礎練の場合はinput_methodも'preset'に設定）
+        const { data: updatedSession, error: updateError } = await updatePracticeSession(existing.id, {
           content: newContent,
+          input_method: 'preset', // 基礎練の場合は必ず'preset'に設定
         });
         
-        if (!success) {
+        if (updateError || !updatedSession) {
           Alert.alert('エラー', '練習記録の更新に失敗しました');
           return;
         }
       } else {
         // 新規記録を作成（基礎練は時間を追加しないため、duration_minutes: 0）
-        const success = await createPracticeSession({
+        const { data: createdSession, error: createError } = await createPracticeSession({
           user_id: authUser.id,
           practice_date: today,
           duration_minutes: 0, // 基礎練は時間を追加しない
@@ -104,7 +98,7 @@ export function PracticeDetailModal({
           instrument_id: selectedInstrument || null,
         });
         
-        if (!success) {
+        if (createError || !createdSession) {
           Alert.alert('エラー', '練習記録の作成に失敗しました');
           return;
         }

@@ -45,6 +45,29 @@ export const disableBackgroundFocus = () => {
   if (modalCount === 1) {
     root.setAttribute('inert', '');
     
+    // 背景のすべてのaria-hidden属性を即座に削除
+    const removeAriaHidden = () => {
+      const elementsWithAriaHidden = document.querySelectorAll('[aria-hidden="true"]');
+      elementsWithAriaHidden.forEach((element) => {
+        const htmlElement = element as HTMLElement;
+        // モーダル内の要素は除外
+        if (!htmlElement.closest('[role="dialog"]') && 
+            !htmlElement.closest('[aria-modal="true"]') &&
+            !htmlElement.closest('[data-modal-content]')) {
+          htmlElement.removeAttribute('aria-hidden');
+        }
+      });
+    };
+    
+    // 即座に削除
+    removeAriaHidden();
+    
+    // 少し遅延して再度削除（React Native Webが設定するタイミングに対応）
+    setTimeout(removeAriaHidden, 0);
+    setTimeout(removeAriaHidden, 10);
+    setTimeout(removeAriaHidden, 50);
+    setTimeout(removeAriaHidden, 100);
+    
     // フォールバック: 古いブラウザでinertがサポートされていない場合の対策
     // 背景のフォーカス可能な要素にtabindex="-1"を設定
     const focusableElements = document.querySelectorAll(

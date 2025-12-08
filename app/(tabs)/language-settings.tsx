@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Globe, Check } from 'lucide-react-native';
+import { ArrowLeft, Globe } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useLanguage } from '@/components/LanguageContext';
 import { safeGoBack } from '@/lib/navigationUtils';
@@ -11,7 +11,6 @@ import { supabase } from '@/lib/supabase';
 // 多言語対応のテキスト
 const getTexts = (lang: 'ja' | 'en') => ({
   title: lang === 'ja' ? '言語設定' : 'Language Settings',
-  save: lang === 'ja' ? '保存' : 'Save',
   languageSelection: lang === 'ja' ? '言語選択' : 'Language Selection',
   languageDescription: lang === 'ja' ? 'アプリの表示言語を選択してください' : 'Select your preferred language',
   japanese: lang === 'ja' ? '日本語' : 'Japanese',
@@ -67,14 +66,12 @@ export default function LanguageSettingsScreen() {
     },
   ];
 
-  const handleLanguageChange = useCallback((newLanguage: 'ja' | 'en') => {
-    setSelectedLanguage(newLanguage);
-  }, []);
-
-  const saveLanguage = useCallback(async () => {
+  const handleLanguageChange = useCallback(async (newLanguage: 'ja' | 'en') => {
     if (isLoading) return;
     
+    setSelectedLanguage(newLanguage);
     setIsLoading(true);
+    
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -82,24 +79,18 @@ export default function LanguageSettingsScreen() {
         return;
       }
 
-      const { error: dbError } = await saveLanguageSetting(user.id, selectedLanguage);
+      const { error: dbError } = await saveLanguageSetting(user.id, newLanguage);
       if (dbError) {
         Alert.alert(texts.warning, texts.errorMessages.saveFailed);
       }
 
-      await setLanguage(selectedLanguage);
-      
-      Alert.alert(
-        texts.success,
-        selectedLanguage === 'ja' ? texts.successMessage : 'Language changed to English!',
-        [{ text: 'OK' }]
-      );
+      await setLanguage(newLanguage);
     } catch (error) {
       Alert.alert(texts.error, texts.errorMessages.changeFailed);
     } finally {
       setIsLoading(false);
     }
-  }, [selectedLanguage, isLoading, texts, setLanguage]);
+  }, [isLoading, texts, setLanguage]);
 
   const goBack = useCallback(() => {
     safeGoBack('/(tabs)/settings', true); // 強制的にsettings画面に戻る
@@ -118,23 +109,7 @@ export default function LanguageSettingsScreen() {
         <Text style={[styles.headerTitle, { color: fallbackTheme.text }]}>
           {texts.title}
         </Text>
-        <TouchableOpacity 
-          style={[
-            styles.saveButton, 
-            selectedLanguage !== language && styles.saveButtonActive,
-            isLoading && styles.saveButtonDisabled
-          ]} 
-          onPress={saveLanguage}
-          disabled={selectedLanguage === language || isLoading}
-        >
-          <Check size={18} color={selectedLanguage !== language ? fallbackTheme.surface : fallbackTheme.textSecondary} />
-          <Text style={[
-            styles.saveButtonText, 
-            { color: selectedLanguage !== language ? fallbackTheme.surface : fallbackTheme.textSecondary }
-          ]}>
-            {texts.save}
-          </Text>
-        </TouchableOpacity>
+        <View style={{ width: 40 }} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -237,24 +212,6 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '600',
-  },
-  saveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    gap: 6,
-  },
-  saveButtonActive: {
-    backgroundColor: '#4CAF50',
-  },
-  saveButtonDisabled: {
-    opacity: 0.5,
-  },
-  saveButtonText: {
-    fontSize: 14,
     fontWeight: '600',
   },
   content: {

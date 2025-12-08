@@ -9,10 +9,12 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { safeGoBack } from '@/lib/navigationUtils';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import {
   DEFAULT_A4_FREQUENCY,
 } from '@/lib/tunerUtils';
@@ -37,6 +39,15 @@ export default function MainSettingsScreen() {
     setCustomTheme, 
     resetToInstrumentTheme,
   } = useInstrumentTheme();
+  const { fetchUserProfile } = useAuthAdvanced();
+  
+  // 画面にフォーカスが当たった時に楽器選択状態を更新
+  useFocusEffect(
+    React.useCallback(() => {
+      // 楽器選択画面から戻ってきた時に、最新の楽器選択状態を取得
+      fetchUserProfile();
+    }, [fetchUserProfile])
+  );
   
   // currentThemeが存在しない場合のフォールバック
   if (!currentTheme) {
@@ -119,10 +130,10 @@ export default function MainSettingsScreen() {
           const errorStatus = 'status' in error ? (error as { status?: number }).status : undefined;
           const errorMessage = error.message || '';
           if (errorCode === 'PGRST116' || errorCode === 'PGRST205') {
+            // レコードが存在しない場合はデフォルト値を使用（エラーではない）
             logger.info('user_settingsテーブルが存在しないか、データがありません。デフォルト値を使用します。');
-          } else if (errorMessage.includes('406') || errorStatus === 406) {
-            logger.warn('user_settingsテーブルへのアクセスが拒否されました（406エラー）。RLSポリシーを確認してください。');
           } else {
+            // その他のエラー（406エラーを含む）は適切に処理する
             ErrorHandler.handle(settingsResult.error, 'チューナー設定読み込み', false);
           }
         } else if (settingsResult.data?.tuner_settings) {
@@ -162,6 +173,38 @@ export default function MainSettingsScreen() {
       cancelled = true;
     };
   }, []);
+
+  // 楽器変更時に演奏レベルを再読み込み
+  useEffect(() => {
+    let cancelled = false;
+    
+    const loadLevel = async () => {
+      try {
+        const { user, error: userError } = await getCurrentUser();
+        if (userError || !user || cancelled) {
+          return;
+        }
+
+        try {
+          const profileResult = await getUserProfile(user.id);
+          
+          if (!cancelled && !profileResult.error && profileResult.data?.practice_level) {
+            setPracticeLevel(profileResult.data.practice_level as 'beginner' | 'intermediate' | 'advanced');
+          }
+        } catch (profileError) {
+          // エラーは無視
+        }
+      } catch (error) {
+        // エラーは無視
+      }
+    };
+
+    loadLevel();
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedInstrument?.id]);
 
   // 設定保存
   useEffect(() => {
@@ -374,14 +417,14 @@ const styles = StyleSheet.create({
   tabScrollContent: {
     paddingHorizontal: 20,
     paddingVertical: 12,
-    gap: 4,
+    gap: 2,
   },
   tabButton: {
     paddingHorizontal: 20,
     paddingVertical: 8,
     borderRadius: 20,
     borderWidth: 1,
-    marginRight: 4,
+    marginRight: 2,
   },
   tabButtonText: {
     fontSize: 14,

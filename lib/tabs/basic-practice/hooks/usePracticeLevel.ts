@@ -39,12 +39,44 @@ export const usePracticeLevel = (): UsePracticeLevelReturn => {
 
   /**
    * ユーザーの演奏レベルを確認
+   * データベースを優先データソースとし、AsyncStorageはキャッシュとして使用
    */
   const checkUserLevel = useCallback(async () => {
     try {
       logger.debug('ユーザーレベル確認開始');
 
-      // オフライン対応: まずローカルから読み込み
+      // データベースから最新を取得（優先データソース）
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        try {
+          const profileResult = await getUserProfile(user.id);
+          
+          if (profileResult.error) {
+            logger.warn('プロフィール取得エラー（オフライン時など）:', profileResult.error);
+            // エラー時はキャッシュから復元を試みる
+          } else {
+            const profile = profileResult.data;
+            logger.debug('データベースのレベル:', profile?.practice_level);
+
+            if (profile?.practice_level) {
+              // データベースの値を優先して設定
+              setUserLevel(profile.practice_level);
+              setSelectedLevel(profile.practice_level as PracticeLevel);
+              setHasSelectedLevel(true);
+              setIsFirstTime(false);
+              // データベースの値でキャッシュを更新
+              await AsyncStorage.setItem(LEVEL_CACHE_KEY, profile.practice_level);
+              logger.debug('データベースからレベル復元:', profile.practice_level);
+              return;
+            }
+          }
+        } catch (dbError) {
+          logger.warn('データベースアクセスエラー（オフライン時など）:', dbError);
+          // エラー時はキャッシュから復元を試みる
+        }
+      }
+
+      // オフライン時またはデータベースにデータがない場合: キャッシュから読み込み
       const cached = await AsyncStorage.getItem(LEVEL_CACHE_KEY);
       logger.debug('ローカルキャッシュ:', cached);
 
@@ -53,33 +85,8 @@ export const usePracticeLevel = (): UsePracticeLevelReturn => {
         setSelectedLevel(cached as PracticeLevel);
         setHasSelectedLevel(true);
         setIsFirstTime(false);
-        logger.debug('ローカルキャッシュからレベル復元:', cached);
+        logger.debug('ローカルキャッシュからレベル復元（オフライン時）:', cached);
         return;
-      }
-
-      // オンラインなら最新を取得
-      logger.debug('データベースからレベル取得中...');
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const profileResult = await getUserProfile(user.id);
-        
-        if (profileResult.error) {
-          logger.error('プロフィール取得エラー:', profileResult.error);
-          throw profileResult.error;
-        }
-
-        const profile = profileResult.data;
-        logger.debug('データベースのレベル:', profile?.practice_level);
-
-        if (profile?.practice_level) {
-          setUserLevel(profile.practice_level);
-          setSelectedLevel(profile.practice_level as PracticeLevel);
-          setHasSelectedLevel(true);
-          setIsFirstTime(false);
-          await AsyncStorage.setItem(LEVEL_CACHE_KEY, profile.practice_level);
-          logger.debug('データベースからレベル復元:', profile.practice_level);
-          return;
-        }
       }
 
       // ここまで来たら未設定: チェック完了後にのみモーダルを表示
@@ -90,6 +97,19 @@ export const usePracticeLevel = (): UsePracticeLevelReturn => {
       setShowLevelModal(true);
     } catch (error) {
       logger.error('ユーザーレベル確認エラー:', error);
+      // エラー時もキャッシュから復元を試みる
+      try {
+        const cached = await AsyncStorage.getItem(LEVEL_CACHE_KEY);
+        if (cached && cached !== '') {
+          setUserLevel(cached);
+          setSelectedLevel(cached as PracticeLevel);
+          setHasSelectedLevel(true);
+          setIsFirstTime(false);
+          logger.debug('エラー時のフォールバック: ローカルキャッシュからレベル復元:', cached);
+        }
+      } catch (cacheError) {
+        logger.error('キャッシュ読み込みエラー:', cacheError);
+      }
     }
   }, []);
 

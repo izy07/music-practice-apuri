@@ -13,6 +13,8 @@ import logger from '@/lib/logger';
 import type { PracticeSchedule } from '@/types/organization';
 import { createEvent, updateEvent, deleteEvent, getEventsByUserId } from '@/repositories/eventRepository';
 import { supabase } from '@/lib/supabase';
+import NotificationService from '@/lib/notificationService';
+import { organizationRepository } from '@/repositories/organizationRepository';
 
 const SERVICE_CONTEXT = 'scheduleService';
 
@@ -144,6 +146,28 @@ export class ScheduleService {
           scheduleId: result.data.id,
           organizationId: schedule.organization_id,
         });
+
+        // 組織メンバーに通知を送信
+        try {
+          const notificationService = NotificationService.getInstance();
+          await notificationService.loadSettings();
+          
+          // 組織情報を取得
+          const orgResult = await organizationRepository.findById(schedule.organization_id);
+          const organizationName = orgResult.data?.name || '組織';
+          
+          // 組織のメンバーに通知を送信（非同期で実行、エラーは無視）
+          await notificationService.sendScheduleAddedNotification(
+            organizationName,
+            result.data.title,
+            result.data.practice_date
+          ).catch((error) => {
+            logger.warn(`[${SERVICE_CONTEXT}] createSchedule:notification failed`, { error });
+          });
+        } catch (error) {
+          logger.warn(`[${SERVICE_CONTEXT}] createSchedule:notification error`, { error });
+          // 通知エラーは無視して処理を続行
+        }
 
         return result.data;
       },

@@ -10,6 +10,8 @@ import { ErrorHandler } from '@/lib/errorHandler';
 let supportsShowOnCalendar: boolean | null = null; // nullの場合は未チェック
 let supportsInstrumentId = true; // instrument_idカラムの存在をキャッシュ
 let supportsIsCompleted = true; // is_completedカラムの存在をキャッシュ
+let isInitializing = false; // 初期化中フラグ
+let initializationPromise: Promise<void> | null = null; // 初期化のPromise
 
 // show_on_calendarカラムの存在を確認する関数
 // パフォーマンス最適化: localStorageを先に確認して、不要なDBクエリを避ける
@@ -17,6 +19,12 @@ const checkShowOnCalendarSupport = async (): Promise<boolean> => {
   // 既にチェック済みの場合は即座に返す
   if (supportsShowOnCalendar !== null) {
     return supportsShowOnCalendar;
+  }
+  
+  // 初期化中の場合、初期化の完了を待つ
+  if (isInitializing && initializationPromise) {
+    await initializationPromise;
+    return supportsShowOnCalendar ?? true;
   }
 
   // まずlocalStorageのフラグを確認（エラーを避けるため、同期処理）
@@ -120,6 +128,87 @@ try {
     if (isCompletedFlag === '1') supportsIsCompleted = false;
   }
 } catch {}
+
+/**
+ * カラム存在確認を初期化時に一度だけ実行する関数
+ * アプリ起動時に呼び出すことで、パフォーマンスを向上
+ */
+export const initializeGoalRepository = async (): Promise<void> => {
+  // 既に初期化済みの場合はスキップ
+  if (supportsShowOnCalendar !== null && !isInitializing) {
+    return;
+  }
+  
+  // 初期化中の場合は既存のPromiseを返す
+  if (isInitializing && initializationPromise) {
+    return initializationPromise;
+  }
+  
+  // 初期化を開始
+  isInitializing = true;
+  initializationPromise = (async () => {
+    try {
+      // show_on_calendarカラムの存在確認
+      if (supportsShowOnCalendar === null) {
+        await checkShowOnCalendarSupport();
+      }
+      
+      // instrument_idカラムの存在確認（必要に応じて）
+      if (supportsInstrumentId) {
+        try {
+          const { error } = await supabase
+            .from('goals')
+            .select('instrument_id')
+            .limit(1);
+          
+          if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('instrument_id'))) {
+            supportsInstrumentId = false;
+            if (typeof window !== 'undefined') {
+              try {
+                window.localStorage.setItem('disable_instrument_id', '1');
+              } catch {}
+            }
+          }
+        } catch {
+          // エラーは無視（デフォルトはtrue）
+        }
+      }
+      
+      // is_completedカラムの存在確認（必要に応じて）
+      if (supportsIsCompleted) {
+        try {
+          const { error } = await supabase
+            .from('goals')
+            .select('is_completed')
+            .limit(1);
+          
+          if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('is_completed'))) {
+            supportsIsCompleted = false;
+            if (typeof window !== 'undefined') {
+              try {
+                window.localStorage.setItem('disable_is_completed', '1');
+              } catch {}
+            }
+          }
+        } catch {
+          // エラーは無視（デフォルトはtrue）
+        }
+      }
+      
+      logger.debug('[goalRepository] カラム存在確認の初期化が完了しました', {
+        supportsShowOnCalendar,
+        supportsInstrumentId,
+        supportsIsCompleted
+      });
+    } catch (error) {
+      logger.error('[goalRepository] カラム存在確認の初期化でエラーが発生しました', error);
+    } finally {
+      isInitializing = false;
+    }
+  })();
+  
+  return initializationPromise;
+};
 
 export const goalRepository = {
   /**
@@ -229,36 +318,8 @@ export const goalRepository = {
               show_on_calendar: g.show_on_calendar ?? false,
             }));
             
-            // localStorageの選択IDを反映
-            let filtered = goalsWithDefaults.filter((g: any) => !g.is_completed);
-            try {
-              if (typeof window !== 'undefined') {
-                // 各目標のlocalStorageから状態を読み込む
-                filtered = filtered.map((g: any) => {
-                  const savedState = window.localStorage.getItem(`goal_show_calendar_${g.id}`);
-                  if (savedState !== null) {
-                    return {
-                      ...g,
-                      show_on_calendar: savedState === 'true',
-                    };
-                  }
-                  // 旧形式のcalendar_goal_idもチェック（後方互換性のため）
-                  const selectedId = window.localStorage.getItem('calendar_goal_id');
-                  if (selectedId && g.id === selectedId) {
-                    return {
-                      ...g,
-                      show_on_calendar: true,
-                    };
-                  }
-                  return {
-                    ...g,
-                    show_on_calendar: false,
-                  };
-                });
-              }
-            } catch {}
-            
-            return filtered;
+            // DBから取得した値をそのまま使用
+            return goalsWithDefaults.filter((g: any) => !g.is_completed);
           }
         }
         
@@ -297,36 +358,8 @@ export const goalRepository = {
               show_on_calendar: g.show_on_calendar ?? false,
             }));
             
-            // localStorageの選択IDを反映
-            let filtered = goalsWithDefaults.filter((g: any) => !g.is_completed);
-            try {
-              if (typeof window !== 'undefined') {
-                // 各目標のlocalStorageから状態を読み込む
-                filtered = filtered.map((g: any) => {
-                  const savedState = window.localStorage.getItem(`goal_show_calendar_${g.id}`);
-                  if (savedState !== null) {
-                    return {
-                      ...g,
-                      show_on_calendar: savedState === 'true',
-                    };
-                  }
-                  // 旧形式のcalendar_goal_idもチェック（後方互換性のため）
-                  const selectedId = window.localStorage.getItem('calendar_goal_id');
-                  if (selectedId && g.id === selectedId) {
-                    return {
-                      ...g,
-                      show_on_calendar: true,
-                    };
-                  }
-                  return {
-                    ...g,
-                    show_on_calendar: false,
-                  };
-                });
-              }
-            } catch {}
-            
-            return filtered;
+            // DBから取得した値をそのまま使用
+            return goalsWithDefaults.filter((g: any) => !g.is_completed);
           }
         }
         
@@ -370,36 +403,8 @@ export const goalRepository = {
               show_on_calendar: false,
             }));
             
-            // localStorageの選択IDを反映
-            let filtered = goalsWithDefaults.filter((g: any) => !g.is_completed);
-            try {
-              if (typeof window !== 'undefined') {
-                // 各目標のlocalStorageから状態を読み込む
-                filtered = filtered.map((g: any) => {
-                  const savedState = window.localStorage.getItem(`goal_show_calendar_${g.id}`);
-                  if (savedState !== null) {
-                    return {
-                      ...g,
-                      show_on_calendar: savedState === 'true',
-                    };
-                  }
-                  // 旧形式のcalendar_goal_idもチェック（後方互換性のため）
-                  const selectedId = window.localStorage.getItem('calendar_goal_id');
-                  if (selectedId && g.id === selectedId) {
-                    return {
-                      ...g,
-                      show_on_calendar: true,
-                    };
-                  }
-                  return {
-                    ...g,
-                    show_on_calendar: false,
-                  };
-                });
-              }
-            } catch {}
-            
-            return filtered;
+            // DBから取得した値をそのまま使用
+            return goalsWithDefaults.filter((g: any) => !g.is_completed);
           }
         }
       }
@@ -413,39 +418,8 @@ export const goalRepository = {
         show_on_calendar: g.show_on_calendar ?? false,
       }));
       
-      let filtered = goalsWithDefaults.filter((g: any) => !g.is_completed);
-      
-      // カラム未対応モードではローカルの選択IDを反映
-      if (!isSupported) {
-        try {
-          if (typeof window !== 'undefined') {
-            // 各目標のlocalStorageから状態を読み込む
-            filtered = filtered.map((g: any) => {
-              const savedState = window.localStorage.getItem(`goal_show_calendar_${g.id}`);
-              if (savedState !== null) {
-                return {
-                  ...g,
-                  show_on_calendar: savedState === 'true',
-                };
-              }
-              // 旧形式のcalendar_goal_idもチェック（後方互換性のため）
-              const selectedId = window.localStorage.getItem('calendar_goal_id');
-              if (selectedId && g.id === selectedId) {
-                return {
-                  ...g,
-                  show_on_calendar: true,
-                };
-              }
-              return {
-                ...g,
-                show_on_calendar: false,
-              };
-            });
-          }
-        } catch {}
-      }
-      
-      return filtered;
+      // DBから取得した値をそのまま使用
+      return goalsWithDefaults.filter((g: any) => !g.is_completed);
     }
     
     return [];
@@ -946,50 +920,21 @@ export const goalRepository = {
   },
 
   /**
-   * 目標のカレンダー表示を更新
-   * パフォーマンス最適化: localStorageを先に確認して、不要なDBクエリを避ける
+   * 目標のカレンダー表示を更新（DBのみ使用）
    */
   async updateShowOnCalendar(goalId: string, show: boolean, userId: string): Promise<void> {
-    // まずlocalStorageのフラグを確認（同期処理で高速化）
+    // カラム存在チェック
     let isSupported = supportsShowOnCalendar;
-    if (isSupported === null && typeof window !== 'undefined') {
-      try {
-        const flag = window.localStorage.getItem('disable_show_on_calendar');
-        if (flag === '1') {
-          isSupported = false;
-          supportsShowOnCalendar = false;
-        }
-      } catch (e) {
-        // localStorageへのアクセスエラーは無視
-      }
-    }
-    
-    // フラグが設定されていない場合のみ、データベースをチェック
     if (isSupported === null) {
       isSupported = await checkShowOnCalendarSupport();
     }
     
     if (!isSupported) {
-      // カラム未対応の場合はlocalStorageに保存（即座に完了）
-      try {
-        if (typeof window !== 'undefined') {
-          if (show) {
-            window.localStorage.setItem('calendar_goal_id', goalId);
-          } else {
-            window.localStorage.removeItem('calendar_goal_id');
-          }
-          // 個別の目標の状態も保存
-          window.localStorage.setItem(`goal_show_calendar_${goalId}`, String(show));
-        }
-      } catch {}
-      // イベントを発火してUIを更新
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
-      }
+      // カラムが存在しない場合は機能を無効化（何もしない）
       return;
     }
 
-    // カラムが存在する場合はデータベースを更新
+    // データベースを更新
     const { error } = await supabase
       .from('goals')
       .update({ show_on_calendar: show })
@@ -1008,47 +953,13 @@ export const goalRepository = {
         error.message?.includes('schema cache');
       
       if (isShowOnCalendarError) {
-        // フラグを設定（次回以降はリクエストを送らない）
+        // カラムが存在しない場合は機能を無効化（エラーをthrowしない）
         supportsShowOnCalendar = false;
-        try { 
-          if (typeof window !== 'undefined') {
-            window.localStorage.setItem('disable_show_on_calendar', '1');
-            // 個別の目標の状態も保存
-            window.localStorage.setItem(`goal_show_calendar_${goalId}`, String(show));
-            if (show) {
-              window.localStorage.setItem('calendar_goal_id', goalId);
-            } else {
-              window.localStorage.removeItem('calendar_goal_id');
-            }
-          }
-        } catch {}
-        // エラーをthrowしない（ローカル状態のみ更新）
-        // イベントを発火してUIを更新
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
-        }
         return;
       }
       
       // その他のエラーはthrow
       throw error;
-    }
-
-    // 成功時はlocalStorageにも保存
-    try {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(`goal_show_calendar_${goalId}`, String(show));
-        if (show) {
-          window.localStorage.setItem('calendar_goal_id', goalId);
-        } else {
-          window.localStorage.removeItem('calendar_goal_id');
-        }
-      }
-    } catch {}
-
-    // イベントを発火してUIを更新
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
     }
   },
 };

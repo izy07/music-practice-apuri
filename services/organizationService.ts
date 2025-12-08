@@ -184,8 +184,8 @@ export class OrganizationService {
         }
 
         // ソロモードでない場合のみパスワードと招待コードを設定
-        if (!input.isSolo && password && passwordHash && inviteCode && inviteCodeHash) {
-          insertData.password = password;
+        // セキュリティのため、パスワードの平文は保存しない（password_hashのみ）
+        if (!input.isSolo && passwordHash && inviteCode && inviteCodeHash) {
           insertData.password_hash = passwordHash;
           insertData.invite_code = inviteCode;
           insertData.invite_code_hash = inviteCodeHash;
@@ -209,26 +209,40 @@ export class OrganizationService {
 
         // メンバーシップはデータベーストリガー（SECURITY DEFINER）によって自動的に作成される
         // アプリケーション側からの明示的な作成は不要（RLSポリシーエラーを回避するため）
-        // トリガーが正しく動作していることを確認するため、少し待機してからメンバーシップの存在を確認
+        // トリガーが正しく動作していることを確認するため、指数バックオフでメンバーシップの存在を確認
         try {
-          // トリガーが動作するまで少し待機（非同期処理のため）
-          await new Promise(resolve => setTimeout(resolve, 100));
+          // メンバーシップが作成されるまで最大5回リトライ（指数バックオフ: 200ms, 400ms, 800ms, 1600ms, 3200ms）
+          let membershipFound = false;
+          const baseDelay = 200; // ベース遅延時間（ms）
+          const maxRetries = 5;
           
-          // メンバーシップが正しく作成されたか確認（オプション、エラーは無視）
-          const membershipCheck = await membershipRepository.getByUserAndOrganization(
-            user.id,
-            createdOrganization.id
-          );
+          for (let retry = 0; retry < maxRetries; retry++) {
+            // 指数バックオフ: 200ms, 400ms, 800ms, 1600ms, 3200ms
+            const delay = baseDelay * Math.pow(2, retry);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            
+            // メンバーシップが正しく作成されたか確認（オプション、エラーは無視）
+            const membershipCheck = await membershipRepository.getByUserAndOrganization(
+              user.id,
+              createdOrganization.id
+            );
+            
+            if (membershipCheck.data) {
+              logger.info(`[${SERVICE_CONTEXT}] createOrganization:membership confirmed (created by trigger)`, {
+                organizationId: createdOrganization.id,
+                userId: user.id,
+                membershipId: membershipCheck.data.id,
+                retryCount: retry + 1,
+              });
+              membershipFound = true;
+              break;
+            }
+          }
           
-          if (membershipCheck.data) {
-            logger.info(`[${SERVICE_CONTEXT}] createOrganization:membership confirmed (created by trigger)`, {
-              organizationId: createdOrganization.id,
-              userId: user.id,
-              membershipId: membershipCheck.data.id,
-            });
-          } else {
-            // メンバーシップが存在しない場合は警告（ただし、組織作成は成功とする）
-            logger.warn(`[${SERVICE_CONTEXT}] createOrganization:membership not found after creation (may be created by trigger later)`, {
+          if (!membershipFound) {
+            // メンバーシップが存在しない場合はデバッグログ（警告レベルを下げる）
+            // トリガーが後で作成する可能性があるため、警告ではなくデバッグログに変更
+            logger.debug(`[${SERVICE_CONTEXT}] createOrganization:membership not found after creation (may be created by trigger later)`, {
               organizationId: createdOrganization.id,
               userId: user.id,
               hint: 'データベーストリガーが正しく動作しているか確認してください',

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, TextInput, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CheckSquare, CheckCircle, XCircle, Clock, ArrowLeft, Users } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -42,6 +42,73 @@ export default function AttendanceScreen() {
       loadAttendanceRecords();
     }
   }, [selectedSchedule]);
+
+  // 出席登録可能日になったときに通知を送信
+  useEffect(() => {
+    const checkAndSendAttendanceNotifications = async () => {
+      try {
+        const NotificationService = (await import('@/lib/notificationService')).default;
+        const notificationService = NotificationService.getInstance();
+        await notificationService.loadSettings();
+
+        // ストレージの取得（Web環境ではlocalStorage、それ以外ではAsyncStorage）
+        const AsyncStorage = Platform.OS === 'web' ? null : (await import('@react-native-async-storage/async-storage')).default;
+        const getStorageItem = async (key: string): Promise<string | null> => {
+          if (Platform.OS === 'web') {
+            return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+          } else if (AsyncStorage) {
+            return await AsyncStorage.getItem(key);
+          }
+          return null;
+        };
+        const setStorageItem = async (key: string, value: string): Promise<void> => {
+          if (Platform.OS === 'web') {
+            if (typeof localStorage !== 'undefined') {
+              localStorage.setItem(key, value);
+            }
+          } else if (AsyncStorage) {
+            await AsyncStorage.setItem(key, value);
+          }
+        };
+
+        // 出席登録可能な練習日程をチェック
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (const schedule of schedules) {
+          const practiceDate = new Date(schedule.practice_date);
+          practiceDate.setHours(0, 0, 0, 0);
+          
+          const diffTime = practiceDate.getTime() - today.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          // 練習日の5日前になったときに通知を送信（1回だけ）
+          if (diffDays === 5) {
+            const notificationKey = `attendance_notified_${schedule.id}`;
+            const hasNotified = await getStorageItem(notificationKey);
+            
+            if (!hasNotified) {
+              await notificationService.sendAttendanceAvailableNotification(
+                schedule.organization_name || '組織',
+                schedule.practice_date,
+                schedule.title
+              );
+              
+              // 通知を送信したことを記録
+              await setStorageItem(notificationKey, 'true');
+            }
+          }
+        }
+      } catch (error) {
+        // 通知エラーは無視
+        console.warn('出席登録通知エラー:', error);
+      }
+    };
+
+    if (schedules.length > 0) {
+      checkAndSendAttendanceNotifications();
+    }
+  }, [schedules]);
 
   const loadSchedules = async () => {
     setLoading(true);

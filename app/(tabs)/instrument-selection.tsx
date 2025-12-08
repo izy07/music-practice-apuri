@@ -6,12 +6,12 @@ import { supabase } from '@/lib/supabase';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { CheckCircle, ArrowLeft } from 'lucide-react-native';
-import { ErrorHandler } from '@/lib/errorHandler';
 import { SuccessMessages } from '@/lib/errorMessages';
 import logger from '@/lib/logger';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { storageManager, emitStorageEvent } from '@/lib/storageManager';
 import { withUser, STORAGE_KEYS } from '@/lib/storageKeys';
+import { instrumentService } from '@/services';
 
 interface Instrument {
   id: string;
@@ -87,6 +87,7 @@ export default function InstrumentSelectionScreen() {
         .single();
       
       if (error) {
+        // エラーは無視（カスタム楽器名の取得失敗は致命的ではない）
         return;
       }
       
@@ -94,7 +95,7 @@ export default function InstrumentSelectionScreen() {
         setCustomInstrumentName(data.custom_instrument_name);
       }
     } catch (error) {
-      // カスタム楽器名取得エラーは無視
+      // エラーは無視（カスタム楽器名の取得失敗は致命的ではない）
     }
   };
 
@@ -109,12 +110,12 @@ export default function InstrumentSelectionScreen() {
 
   const handleSaveInstrument = async () => {
     if (!selectedInstrumentId) {
-      ErrorHandler.handle(new Error('楽器が選択されていません'), 'instrument_selection');
+      Alert.alert('エラー', '楽器が選択されていません');
       return;
     }
 
     if (!user?.id) {
-      ErrorHandler.handle(new Error('ユーザー情報が取得できません'), 'instrument_selection');
+      Alert.alert('エラー', 'ユーザー情報が取得できません');
       return;
     }
 
@@ -137,7 +138,7 @@ export default function InstrumentSelectionScreen() {
         .maybeSingle();
 
       if (fetchError) {
-        ErrorHandler.handle(fetchError, 'profile_fetch');
+        Alert.alert('エラー', 'プロフィールの取得に失敗しました');
         setLoading(false);
         return;
       }
@@ -324,59 +325,46 @@ export default function InstrumentSelectionScreen() {
             // 楽器を先に作成
             if (selectedInstrumentId && selectedInstrumentId !== '550e8400-e29b-41d4-a716-446655440016') {
               try {
-                // 楽器リストから楽器情報を取得
-                const instrument = instruments.find(inst => inst.id === selectedInstrumentId);
-                if (instrument) {
-                  // 楽器をデータベースに作成（すべての楽器の色情報を含む）
-                  const defaultColors: Record<string, { primary: string; secondary: string; accent: string }> = {
-                    '550e8400-e29b-41d4-a716-446655440001': { primary: '#1A1A1A', secondary: '#FFFFFF', accent: '#D4AF37' }, // ピアノ
-                    '550e8400-e29b-41d4-a716-446655440002': { primary: '#654321', secondary: '#DEB887', accent: '#8B4513' }, // ギター
-                    '550e8400-e29b-41d4-a716-446655440003': { primary: '#A0522D', secondary: '#CD853F', accent: '#8B4513' }, // バイオリン
-                    '550e8400-e29b-41d4-a716-446655440004': { primary: '#C0C0C0', secondary: '#E6E6FA', accent: '#A9A9A9' }, // フルート
-                    '550e8400-e29b-41d4-a716-446655440005': { primary: '#B8860B', secondary: '#DAA520', accent: '#8B4513' }, // トランペット
-                    '550e8400-e29b-41d4-a716-446655440006': { primary: '#000000', secondary: '#696969', accent: '#000000' }, // 打楽器
-                    '550e8400-e29b-41d4-a716-446655440007': { primary: '#4B0082', secondary: '#9370DB', accent: '#2E0854' }, // サックス
-                    '550e8400-e29b-41d4-a716-446655440008': { primary: '#8B4513', secondary: '#F4A460', accent: '#654321' }, // ホルン
-                    '550e8400-e29b-41d4-a716-446655440009': { primary: '#000000', secondary: '#2F2F2F', accent: '#1A1A1A' }, // クラリネット
-                    '550e8400-e29b-41d4-a716-446655440010': { primary: '#C0C0C0', secondary: '#E6E6FA', accent: '#A9A9A9' }, // トロンボーン
-                    '550e8400-e29b-41d4-a716-446655440011': { primary: '#DC143C', secondary: '#FF69B4', accent: '#8B0000' }, // チェロ
-                    '550e8400-e29b-41d4-a716-446655440012': { primary: '#A0522D', secondary: '#DEB887', accent: '#8B4513' }, // ファゴット
-                    '550e8400-e29b-41d4-a716-446655440013': { primary: '#DAA520', secondary: '#F0E68C', accent: '#B8860B' }, // オーボエ
-                    '550e8400-e29b-41d4-a716-446655440015': { primary: '#2F4F4F', secondary: '#708090', accent: '#000000' }, // コントラバス
-                    '550e8400-e29b-41d4-a716-446655440018': { primary: '#7A3D1F', secondary: '#A0522D', accent: '#5C2E12' }, // ヴィオラ
-                  };
-                  
-                  const colors = defaultColors[instrument.id] || { primary: '#A0522D', secondary: '#CD853F', accent: '#8B4513' };
-                  
+                // instrumentServiceからデフォルト楽器データを取得
+                const defaultInstruments = instrumentService.getDefaultInstruments();
+                const defaultInstrument = defaultInstruments.find(inst => inst.id === selectedInstrumentId);
+                
+                if (defaultInstrument) {
+                  // 楽器をデータベースに作成
                   const { error: createError } = await supabase
                     .from('instruments')
                     .upsert({
-                      id: instrument.id,
-                      name: instrument.name,
-                      name_en: instrument.nameEn,
-                      color_primary: colors.primary,
-                      color_secondary: colors.secondary,
-                      color_accent: colors.accent,
+                      id: defaultInstrument.id,
+                      name: defaultInstrument.name,
+                      name_en: defaultInstrument.nameEn,
+                      color_primary: defaultInstrument.primary,
+                      color_secondary: defaultInstrument.secondary,
+                      color_accent: defaultInstrument.accent,
                     }, {
                       onConflict: 'id'
                     });
                   
                   if (createError) {
-                    logger.warn('楽器の作成に失敗しましたが、続行します。', { createError });
-                  } else {
-                    logger.debug('楽器を作成しました。再試行します。', { selectedInstrumentId });
+                    // 楽器作成に失敗した場合はエラーを投げる（外部キー制約違反を防ぐため）
+                    throw createError;
                   }
+                } else {
+                  // デフォルト楽器データにも存在しない場合はエラー
+                  throw new Error(`楽器ID ${selectedInstrumentId} がデフォルト楽器データに存在しません`);
                 }
               } catch (createErr) {
-                logger.warn('楽器作成中にエラーが発生しましたが、続行します。', { createErr });
+                throw createErr;
               }
             }
             
             // リトライ（楽器作成後に再試行）
             retryCount++;
             if (retryCount < maxRetries) {
-              // 少し待ってから再試行（楽器作成の反映を待つ）
-              await new Promise<void>((resolve) => setTimeout(resolve, 500));
+              // 指数バックオフで待機（楽器作成の反映を待つ）
+              // 200ms, 400ms, 800ms, 1600ms
+              const baseDelay = 200;
+              const delay = baseDelay * Math.pow(2, retryCount - 1);
+              await new Promise<void>((resolve) => setTimeout(resolve, delay));
               // 最新のプロフィールを再取得
               const { data: refreshedProfile } = await supabase
                 .from('user_profiles')
@@ -402,7 +390,7 @@ export default function InstrumentSelectionScreen() {
             }
           }
           // その他のエラーまたはリトライ上限に達した場合
-          ErrorHandler.handle(error, 'instrument_save');
+          Alert.alert('エラー', '楽器の保存に失敗しました');
           setLoading(false);
           return;
         } else {
@@ -413,11 +401,6 @@ export default function InstrumentSelectionScreen() {
 
       await setSelectedInstrument(selectedInstrumentId);
       
-      // テーマ更新を確実にするため、少し待機
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      await fetchUserProfile();
-
       // 楽器変更イベントを発火（データ再取得のため）
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('instrumentChanged', {
@@ -471,23 +454,29 @@ export default function InstrumentSelectionScreen() {
               .select('id, user_id, selected_instrument_id');
             
             if (upsertError) {
-              // カラムが存在しない場合は無視
+              // カラムが存在しない場合は警告を出してスキップ（エラーではない）
               if (upsertError.code === '42703' || upsertError.message?.includes('column') || upsertError.message?.includes('does not exist')) {
                 logger.debug('tutorial_completedカラムが存在しないため、スキップします。');
               } else {
-                logger.warn('チュートリアル完了状態のupsertに失敗しましたが、続行します。', { upsertError });
+                // その他のエラーは適切に処理する
+                logger.error('チュートリアル完了状態のupsertに失敗しました。', { upsertError });
+                // エラーは無視（チュートリアル完了状態の更新失敗は致命的ではない）
               }
             } else {
               logger.debug('✅ チュートリアル完了状態をupsertで更新しました');
             }
           } else {
-            logger.warn('チュートリアル完了状態の更新に失敗しましたが、続行します。', { updateTutorialError });
+            // その他のエラーは適切に処理する
+            logger.error('チュートリアル完了状態の更新に失敗しました。', { updateTutorialError });
+            // エラーは無視（チュートリアル完了状態の更新失敗は致命的ではない）
           }
         } else {
           logger.debug('✅ チュートリアル完了状態を更新しました');
         }
       } catch (tutorialErr) {
-        logger.warn('チュートリアル完了状態の更新中にエラーが発生しましたが、続行します。', { tutorialErr });
+        // エラーを適切に処理する
+        logger.error('チュートリアル完了状態の更新中にエラーが発生しました。', { tutorialErr });
+        // エラーは無視（チュートリアル完了状態の更新失敗は致命的ではない）
       }
       
       // ストレージイベントを発火して、useAuthSimpleが楽器選択状態を検出できるようにする
@@ -500,9 +489,7 @@ export default function InstrumentSelectionScreen() {
           // グローバルキャッシュも更新
           (globalThis as any).__last_selected_instrument_id = selectedInstrumentId;
         } catch (storageError) {
-          // storageManagerのエラーは無視（オフライン環境の可能性）
-          logger.warn('storageManagerの更新に失敗しました（続行）:', storageError);
-          // グローバルキャッシュのみ更新
+          // グローバルキャッシュのみ更新（フォールバック）
           (globalThis as any).__last_selected_instrument_id = selectedInstrumentId;
         }
       }
@@ -516,17 +503,14 @@ export default function InstrumentSelectionScreen() {
         tutorialCompleted: updatedUser?.tutorial_completed 
       });
       
-      // 認証状態の更新を確実に反映するため、少し待つ
-      await new Promise(resolve => setTimeout(resolve, 800));
-      
       // 遷移直前にloadingをfalseにする（メッセージ表示を防ぐため）
       setLoading(false);
       
-      // Webプラットフォームではアラートが不安定なため、直接遷移
-      router.replace('/(tabs)/' as any);
+      // 主要機能設定画面に戻る（router.back()を使用）
+      router.back();
 
     } catch (error) {
-      ErrorHandler.handle(error, 'instrument_save');
+      Alert.alert('エラー', '楽器の保存に失敗しました');
       setLoading(false);
     }
   };

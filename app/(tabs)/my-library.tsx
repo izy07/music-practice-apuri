@@ -8,6 +8,7 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
 import { supabase } from '@/lib/supabase';
 import { canAccessFeature } from '../../lib/subscriptionService';
+import { useSubscription } from '@/hooks/useSubscription';
 import EventCalendar from '@/components/EventCalendar';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
@@ -31,9 +32,8 @@ export default function MyLibraryScreen() {
   const { currentTheme } = useInstrumentTheme();
   const { t } = useLanguage();
   
-  // サブスクリプション状態を模擬（実際の実装では適切なフックを使用）
-  const entitlement = { isEntitled: true }; // 仮の値
-  const entitlementLoading = false;
+  // サブスクリプション状態を取得
+  const { entitlement, loading: entitlementLoading } = useSubscription();
   
   const [songs, setSongs] = useState<Song[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -76,9 +76,13 @@ export default function MyLibraryScreen() {
         if (error) throw error;
         setSongs(data || []);
       }
-            } catch (error) {
-          // 曲の読み込みエラー
-        }
+    } catch (error) {
+      // 曲の読み込みエラー
+      ErrorHandler.handle(error, '楽曲読み込み', true);
+      logger.error('楽曲読み込みエラー:', error);
+      Alert.alert('エラー', '楽曲の読み込みに失敗しました。もう一度お試しください。');
+      setSongs([]); // エラー時は空配列を設定
+    }
   };
 
   // 曲の保存

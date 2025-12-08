@@ -6,7 +6,6 @@
 import { supabase } from '@/lib/supabase';
 import { formatLocalDate } from '@/lib/dateUtils';
 import logger from '@/lib/logger';
-import { ErrorHandler } from '@/lib/errorHandler';
 import { cleanContentFromTimeDetails, appendToContent } from '@/lib/utils/contentCleaner';
 
 const REPOSITORY_CONTEXT = 'practiceSessionRepository';
@@ -71,13 +70,13 @@ export const getTodayPracticeSessions = async (
     }
     
     if (error) {
-      ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getTodayPracticeSessions`, false);
+      // エラーをそのまま返す
       return { data: null, error };
     }
     
     return { data, error: null };
   } catch (error) {
-    ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getTodayPracticeSessions:exception`, false);
+    // エラーをそのまま返す
     return { data: null, error: error as SupabaseError };
   }
 };
@@ -89,59 +88,21 @@ export const createPracticeSession = async (
   session: Omit<PracticeSession, 'id' | 'created_at' | 'updated_at'>
 ): Promise<{ data: PracticeSession | null; error: SupabaseError }> => {
   try {
-    // input_methodを確実に検証
-    const validInputMethods: ('manual' | 'preset' | 'voice' | 'timer')[] = ['manual', 'preset', 'voice', 'timer'];
-    const rawInputMethod = session.input_method;
-    let validatedInputMethod: 'manual' | 'preset' | 'voice' | 'timer' = 'manual';
+    // input_methodを確実に検証（型安全な方法）
+    const validInputMethods = ['manual', 'preset', 'voice', 'timer'] as const;
+    type ValidInputMethod = typeof validInputMethods[number];
     
-    // より厳密な検証（大文字小文字を保持）
-    if (rawInputMethod && typeof rawInputMethod === 'string' && rawInputMethod.trim() !== '') {
-      const trimmedValue = rawInputMethod.trim();
-      if (validInputMethods.includes(trimmedValue as any)) {
-        validatedInputMethod = trimmedValue as 'manual' | 'preset' | 'voice' | 'timer';
-      } else {
-        logger.warn(`[${REPOSITORY_CONTEXT}] createPracticeSession:invalid input_method, using 'manual'`, {
-          receivedValue: rawInputMethod,
-          receivedType: typeof rawInputMethod,
-          trimmedValue: trimmedValue,
-          validValues: validInputMethods
-        });
-      }
-    } else {
-      logger.warn(`[${REPOSITORY_CONTEXT}] createPracticeSession:input_method is falsy/empty, using 'manual'`, {
-        receivedValue: rawInputMethod,
-        receivedType: typeof rawInputMethod
-      });
-    }
+    // TypeScriptの型システムに依存
+    const validatedInputMethod: ValidInputMethod = (session.input_method && validInputMethods.includes(session.input_method as ValidInputMethod))
+      ? (session.input_method as ValidInputMethod)
+      : 'manual';
     
-    // 最終的な検証（二重チェック）
-    if (!validInputMethods.includes(validatedInputMethod)) {
-      logger.error(`[${REPOSITORY_CONTEXT}] createPracticeSession:validatedInputMethod is still invalid, forcing 'manual'`, {
-        validatedInputMethod,
-        validatedInputMethodType: typeof validatedInputMethod,
-        validValues: validInputMethods
-      });
-      validatedInputMethod = 'manual';
-    }
-    
-    // 最終検証：payload作成直前に再度確認
-    const finalInputMethod: 'manual' | 'preset' | 'voice' | 'timer' = 
-      validInputMethods.includes(validatedInputMethod) ? validatedInputMethod : 'manual';
-    
-    if (finalInputMethod !== validatedInputMethod) {
-      logger.error(`[${REPOSITORY_CONTEXT}] createPracticeSession:finalInputMethod differs from validatedInputMethod`, {
-        validatedInputMethod,
-        finalInputMethod
-      });
-    }
-    
-    // 必要なプロパティのみを明示的に抽出（スプレッド演算子を使わない）
-    // 型を明示的に定義して、確実に正しい値が送信されるようにする
-    const payload: {
+    // 型安全なペイロードを作成
+    const insertPayload: {
       user_id: string;
       practice_date: string;
       duration_minutes: number;
-      input_method: 'manual' | 'preset' | 'voice' | 'timer';
+      input_method: ValidInputMethod;
       created_at: string;
       instrument_id?: string | null;
       content?: string | null;
@@ -150,76 +111,27 @@ export const createPracticeSession = async (
       user_id: session.user_id,
       practice_date: session.practice_date,
       duration_minutes: session.duration_minutes,
-      input_method: finalInputMethod,
+      input_method: validatedInputMethod, // 型安全な値
       created_at: new Date().toISOString(),
     };
     
-    // オプショナルなプロパティを追加（nullやundefinedは送信しない）
-    if (session.instrument_id !== undefined && session.instrument_id !== null) {
-      payload.instrument_id = session.instrument_id;
-    } else if (session.instrument_id === null) {
-      payload.instrument_id = null;
-    }
-    if (session.content !== undefined && session.content !== null) {
-      payload.content = session.content;
-    } else if (session.content === null) {
-      payload.content = null;
-    }
-    if (session.audio_url !== undefined && session.audio_url !== null) {
-      payload.audio_url = session.audio_url;
-    } else if (session.audio_url === null) {
-      payload.audio_url = null;
-    }
-    
-    // デバッグログ: 実際に送信されるinput_methodの値を確認
-    logger.debug(`[${REPOSITORY_CONTEXT}] createPracticeSession:payload`, {
-      rawInputMethod: rawInputMethod,
-      validatedInputMethod: validatedInputMethod,
-      finalInputMethod: finalInputMethod,
-      payload_input_method: payload.input_method,
-      payload_input_method_type: typeof payload.input_method,
-      payload_input_method_in_valid_list: validInputMethods.includes(payload.input_method),
-      user_id: payload.user_id,
-      practice_date: payload.practice_date,
-      duration_minutes: payload.duration_minutes,
-      full_payload: JSON.stringify(payload)
-    });
-    
-    // Supabaseに送信する直前に、payloadを完全に再構築してinput_methodを確実に設定
-    const insertPayload: Record<string, any> = {
-      user_id: payload.user_id,
-      practice_date: payload.practice_date,
-      duration_minutes: payload.duration_minutes,
-      input_method: finalInputMethod, // 確実に検証済みの値を使用
-      created_at: payload.created_at,
-    };
-    
     // オプショナルなプロパティを追加
-    if (payload.instrument_id !== undefined) {
-      insertPayload.instrument_id = payload.instrument_id;
+    if (session.instrument_id !== undefined) {
+      insertPayload.instrument_id = session.instrument_id;
     }
-    if (payload.content !== undefined) {
-      insertPayload.content = payload.content;
+    if (session.content !== undefined) {
+      insertPayload.content = session.content;
     }
-    if (payload.audio_url !== undefined) {
-      insertPayload.audio_url = payload.audio_url;
-    }
-    
-    // 最終検証：insertPayloadのinput_methodが確実に正しい値であることを確認
-    if (!validInputMethods.includes(insertPayload.input_method)) {
-      logger.error(`[${REPOSITORY_CONTEXT}] createPracticeSession:insertPayload.input_method is invalid, forcing 'manual'`, {
-        insertPayload_input_method: insertPayload.input_method,
-        insertPayload_input_method_type: typeof insertPayload.input_method,
-        validValues: validInputMethods
-      });
-      insertPayload.input_method = 'manual';
+    if (session.audio_url !== undefined) {
+      insertPayload.audio_url = session.audio_url;
     }
     
+    // デバッグログ: 実際に送信される値を確認
     logger.debug(`[${REPOSITORY_CONTEXT}] createPracticeSession:insertPayload`, {
       input_method: insertPayload.input_method,
       input_method_type: typeof insertPayload.input_method,
       input_method_in_valid_list: validInputMethods.includes(insertPayload.input_method),
-      full_insert_payload: JSON.stringify(insertPayload)
+      full_payload: JSON.stringify(insertPayload)
     });
     
     const { data, error } = await supabase
@@ -229,7 +141,7 @@ export const createPracticeSession = async (
       .single();
     
     if (error) {
-      ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:createPracticeSession`, false);
+      // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:createPracticeSession`, false);
       logger.error(`[${REPOSITORY_CONTEXT}] createPracticeSession:error`, {
         error,
         error_code: error.code,
@@ -240,20 +152,15 @@ export const createPracticeSession = async (
           input_method_type: typeof insertPayload.input_method,
           input_method_in_valid_list: validInputMethods.includes(insertPayload.input_method)
         },
-        original_payload: {
-          ...payload,
-          input_method: payload.input_method
-        },
-        rawInputMethod: rawInputMethod,
-        validatedInputMethod: validatedInputMethod,
-        finalInputMethod: finalInputMethod
+        original_session_input_method: session.input_method,
+        validatedInputMethod: validatedInputMethod
       });
       return { data: null, error };
     }
     
     return { data, error: null };
   } catch (error) {
-    ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:createPracticeSession:exception`, false);
+    // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:createPracticeSession:exception`, false);
     return { data: null, error: error as SupabaseError };
   }
 };
@@ -269,57 +176,29 @@ export const updatePracticeSession = async (
     // updated_atカラムが存在しない可能性があるため、payloadから除外
     const { updated_at, ...updatesWithoutTimestamp } = updates;
     
-    // input_methodが含まれている場合は、許可された値かチェック
+    // input_methodが含まれている場合は、許可された値かチェック（型安全な方法）
     if ('input_method' in updatesWithoutTimestamp && updatesWithoutTimestamp.input_method !== undefined) {
-      const validInputMethods: ('manual' | 'preset' | 'voice' | 'timer')[] = ['manual', 'preset', 'voice', 'timer'];
-      const rawInputMethod = updatesWithoutTimestamp.input_method;
-      let validatedInputMethod: 'manual' | 'preset' | 'voice' | 'timer' = 'manual';
+      const validInputMethods = ['manual', 'preset', 'voice', 'timer'] as const;
+      type ValidInputMethod = typeof validInputMethods[number];
       
-      // より厳密な検証
-      if (rawInputMethod !== null && rawInputMethod !== undefined) {
-        if (typeof rawInputMethod === 'string') {
-          const trimmedValue = rawInputMethod.trim();
-          if (trimmedValue && validInputMethods.includes(trimmedValue as any)) {
-            validatedInputMethod = trimmedValue as 'manual' | 'preset' | 'voice' | 'timer';
-          } else {
-            logger.warn(`[${REPOSITORY_CONTEXT}] updatePracticeSession:invalid input_method string, using 'manual'`, {
-              receivedValue: rawInputMethod,
-              trimmedValue: trimmedValue,
-              type: typeof rawInputMethod,
-              validValues: validInputMethods
-            });
-          }
-        } else {
-          logger.warn(`[${REPOSITORY_CONTEXT}] updatePracticeSession:input_method is not a string, using 'manual'`, {
-            receivedValue: rawInputMethod,
-            type: typeof rawInputMethod
-          });
+      const validateInputMethod = (value: unknown): ValidInputMethod => {
+        if (typeof value === 'string' && validInputMethods.includes(value as ValidInputMethod)) {
+          return value as ValidInputMethod;
         }
-      } else {
-        logger.warn(`[${REPOSITORY_CONTEXT}] updatePracticeSession:input_method is null/undefined, using 'manual'`, {
-          receivedValue: rawInputMethod,
-          type: typeof rawInputMethod
-        });
-      }
-      
-      // 最終検証
-      if (!validInputMethods.includes(validatedInputMethod)) {
-        logger.error(`[${REPOSITORY_CONTEXT}] updatePracticeSession:validatedInputMethod is still invalid, forcing 'manual'`, {
-          validatedInputMethod,
-          validatedInputMethodType: typeof validatedInputMethod,
+        logger.warn(`[${REPOSITORY_CONTEXT}] updatePracticeSession:invalid input_method, using 'manual'`, {
+          receivedValue: value,
+          receivedType: typeof value,
           validValues: validInputMethods
         });
-        validatedInputMethod = 'manual';
+        return 'manual';
+      };
+      
+      // TypeScriptの型システムに依存
+      if (updatesWithoutTimestamp.input_method) {
+        updatesWithoutTimestamp.input_method = (validInputMethods.includes(updatesWithoutTimestamp.input_method as ValidInputMethod))
+          ? (updatesWithoutTimestamp.input_method as ValidInputMethod)
+          : 'manual';
       }
-      
-      updatesWithoutTimestamp.input_method = validatedInputMethod;
-      
-      logger.debug(`[${REPOSITORY_CONTEXT}] updatePracticeSession:validated input_method`, {
-        rawInputMethod,
-        validatedInputMethod,
-        input_method_type: typeof validatedInputMethod,
-        input_method_in_valid_list: validInputMethods.includes(validatedInputMethod)
-      });
     }
     
     const payload = {
@@ -345,20 +224,20 @@ export const updatePracticeSession = async (
           .single();
         
         if (retryError) {
-          ErrorHandler.handle(retryError, `${REPOSITORY_CONTEXT}:updatePracticeSession`, false);
+          // ErrorHandler.handle(retryError, `${REPOSITORY_CONTEXT}:updatePracticeSession`, false);
           return { data: null, error: retryError };
         }
         
         return { data: retryData, error: null };
       }
       
-      ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:updatePracticeSession`, false);
+      // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:updatePracticeSession`, false);
       return { data: null, error };
     }
     
     return { data, error: null };
   } catch (error) {
-    ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:updatePracticeSession:exception`, false);
+    // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:updatePracticeSession:exception`, false);
     return { data: null, error: error as SupabaseError };
   }
 };
@@ -366,34 +245,104 @@ export const updatePracticeSession = async (
 /**
  * 複数の練習セッションを削除
  */
+/**
+ * 練習セッションを削除（リトライ機能付き）
+ */
 export const deletePracticeSessions = async (
   sessionIds: string[],
-  instrumentId?: string | null
-): Promise<{ error: SupabaseError }> => {
-  try {
-    let query = supabase
-      .from('practice_sessions')
-      .delete()
-      .in('id', sessionIds);
-    
-    if (instrumentId) {
-      query = query.eq('instrument_id', instrumentId);
-    } else {
-      query = query.is('instrument_id', null);
+  instrumentId?: string | null,
+  options: {
+    maxRetries?: number;
+    baseDelay?: number;
+  } = {}
+): Promise<{ error: SupabaseError; retryCount?: number }> => {
+  const { maxRetries = 3, baseDelay = 200 } = options;
+  let retryCount = 0;
+  let lastError: SupabaseError = null;
+
+  while (retryCount < maxRetries) {
+    try {
+      let query = supabase
+        .from('practice_sessions')
+        .delete()
+        .in('id', sessionIds);
+      
+      if (instrumentId) {
+        query = query.eq('instrument_id', instrumentId);
+      } else {
+        query = query.is('instrument_id', null);
+      }
+      
+      const { error } = await query;
+      
+      if (!error) {
+        if (retryCount > 0) {
+          logger.debug(`[${REPOSITORY_CONTEXT}] deletePracticeSessions:succeeded-after-retry`, {
+            retryCount,
+            sessionIds
+          });
+        }
+        return { error: null, retryCount };
+      }
+
+      lastError = error;
+      
+      // リトライ不可なエラーの場合は即座に終了
+      const isNonRetryableError = error.code === 'PGRST205' || // テーブル不存在
+                                   error.code === 'PGRST116' || // レコード不存在
+                                   error.code === '23503' ||   // 外部キー制約違反
+                                   error.code === '23505';     // 一意制約違反
+      
+      if (isNonRetryableError) {
+        logger.warn(`[${REPOSITORY_CONTEXT}] deletePracticeSessions:non-retryable-error`, {
+          error,
+          sessionIds
+        });
+        // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:deletePracticeSessions`, false);
+        return { error, retryCount };
+      }
+
+      // リトライ可能なエラーの場合
+      retryCount++;
+      if (retryCount < maxRetries) {
+        // 指数バックオフ: 200ms, 400ms, 800ms
+        const delay = baseDelay * Math.pow(2, retryCount - 1);
+        logger.debug(`[${REPOSITORY_CONTEXT}] deletePracticeSessions:retrying`, {
+          retryCount,
+          maxRetries,
+          delay,
+          error: error.message
+        });
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+    } catch (error) {
+      lastError = error as SupabaseError;
+      retryCount++;
+      
+      if (retryCount < maxRetries) {
+        const delay = baseDelay * Math.pow(2, retryCount - 1);
+        logger.debug(`[${REPOSITORY_CONTEXT}] deletePracticeSessions:exception-retrying`, {
+          retryCount,
+          maxRetries,
+          delay,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
     }
-    
-    const { error } = await query;
-    
-    if (error) {
-      ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:deletePracticeSessions`, false);
-      return { error };
-    }
-    
-    return { error: null };
-  } catch (error) {
-    ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:deletePracticeSessions:exception`, false);
-    return { error: error as SupabaseError };
   }
+
+  // リトライ上限に達した場合
+  logger.error(`[${REPOSITORY_CONTEXT}] deletePracticeSessions:failed-after-retries`, {
+    retryCount,
+    maxRetries,
+    sessionIds,
+    error: lastError
+  });
+  // ErrorHandler.handle(lastError, `${REPOSITORY_CONTEXT}:deletePracticeSessions:exception`, false);
+  return { error: lastError, retryCount };
 };
 
 /**
@@ -407,70 +356,44 @@ export const savePracticeSessionWithIntegration = async (
     content?: string;
     inputMethod?: 'manual' | 'preset' | 'voice' | 'timer';
     existingContentPrefix?: string;
+    practiceDate?: string; // 練習日付（指定がない場合は今日）
   } = {}
 ): Promise<{ success: boolean; error?: SupabaseError }> => {
   try {
-    const today = formatLocalDate(new Date());
     const {
       instrumentId = null,
       content = '練習記録',
       inputMethod: rawInputMethod,
-      existingContentPrefix = '練習記録'
+      existingContentPrefix = '練習記録',
+      practiceDate
     } = options;
     
-    // inputMethodを確実に検証し、型をキャスト
-    const validInputMethods: ('manual' | 'preset' | 'voice' | 'timer')[] = ['manual', 'preset', 'voice', 'timer'];
-    let inputMethod: 'manual' | 'preset' | 'voice' | 'timer' = 'manual';
+    // 練習日付が指定されていない場合は今日の日付を使用
+    const targetDate = practiceDate || formatLocalDate(new Date());
     
-    // より厳密な検証
-    if (rawInputMethod !== undefined && rawInputMethod !== null) {
-      if (typeof rawInputMethod === 'string') {
-        const trimmedValue = rawInputMethod.trim();
-        if (trimmedValue && validInputMethods.includes(trimmedValue as any)) {
-          inputMethod = trimmedValue as 'manual' | 'preset' | 'voice' | 'timer';
-        } else {
-          logger.warn(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:invalid inputMethod string, using 'manual'`, {
-            receivedValue: rawInputMethod,
-            trimmedValue: trimmedValue,
-            type: typeof rawInputMethod,
-            validValues: validInputMethods
-          });
-        }
-      } else {
-        logger.warn(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:inputMethod is not a string, using 'manual'`, {
-          receivedValue: rawInputMethod,
-          type: typeof rawInputMethod
-        });
-      }
+    // inputMethodを確実に検証（型安全な方法）
+    const validInputMethods = ['manual', 'preset', 'voice', 'timer'] as const;
+    type ValidInputMethod = typeof validInputMethods[number];
+    
+    // TypeScriptの型システムに依存
+    const inputMethod: ValidInputMethod = (rawInputMethod && validInputMethods.includes(rawInputMethod as ValidInputMethod))
+      ? (rawInputMethod as ValidInputMethod)
+      : 'manual';
+    
+    // 指定された日付の既存の練習記録を取得
+    let query = supabase
+      .from('practice_sessions')
+      .select('id, duration_minutes, input_method, content, instrument_id')
+      .eq('user_id', userId)
+      .eq('practice_date', targetDate);
+    
+    if (instrumentId) {
+      query = query.eq('instrument_id', instrumentId);
     } else {
-      logger.warn(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:inputMethod is undefined/null, using 'manual'`, {
-        receivedValue: rawInputMethod,
-        type: typeof rawInputMethod
-      });
+      query = query.is('instrument_id', null);
     }
     
-    // 最終検証：確実に有効な値であることを確認
-    if (!validInputMethods.includes(inputMethod)) {
-      logger.error(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:inputMethod validation failed, forcing 'manual'`, {
-        inputMethod,
-        inputMethodType: typeof inputMethod,
-        validValues: validInputMethods
-      });
-      inputMethod = 'manual';
-    }
-    
-    // デバッグログ: 検証後のinputMethodの値を確認
-    logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:validated inputMethod`, {
-      inputMethod,
-      inputMethodType: typeof inputMethod,
-      inputMethodInValidList: validInputMethods.includes(inputMethod),
-      rawInputMethod,
-      userId,
-      minutes
-    });
-    
-    // 今日の既存の練習記録を取得
-    const { data: existingRecords, error: fetchError } = await getTodayPracticeSessions(userId, instrumentId);
+    const { data: existingRecords, error: fetchError } = await query.order('created_at', { ascending: true });
     
     if (fetchError && fetchError.code === 'PGRST205') {
       logger.warn(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:table-not-found`);
@@ -492,23 +415,13 @@ export const savePracticeSessionWithIntegration = async (
       // 既存の記録を更新（時間詳細は含めない）
       const updateContent = appendToContent(existing.content, existingContentPrefix);
       
-      // inputMethodを確実に検証済みの値を使用（型キャストは不要、既に検証済み）
+      // inputMethodは既に検証済みの値を使用（型安全）
       const updateData: Partial<PracticeSession> = {
         duration_minutes: totalMinutes,
         content: updateContent,
         instrument_id: instrumentId || null,
         input_method: inputMethod, // 既に検証済みの値を使用
       };
-      
-      // 最終確認：updateDataのinput_methodが有効であることを確認
-      if (!validInputMethods.includes(updateData.input_method!)) {
-        logger.error(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:updateData.input_method is invalid, forcing 'manual'`, {
-          updateData_input_method: updateData.input_method,
-          validatedInputMethod: inputMethod,
-          validValues: validInputMethods
-        });
-        updateData.input_method = 'manual';
-      }
       
       logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:updating session`, {
         input_method: updateData.input_method,
@@ -518,18 +431,47 @@ export const savePracticeSessionWithIntegration = async (
       const { error: updateError } = await updatePracticeSession(existing.id!, updateData);
       
       if (updateError) {
-        ErrorHandler.handle(updateError, `${REPOSITORY_CONTEXT}:savePracticeSessionWithIntegration:update`, false);
+        // ErrorHandler.handle(updateError, `${REPOSITORY_CONTEXT}:savePracticeSessionWithIntegration:update`, false);
         return { success: false, error: updateError };
       }
       
       // 他の記録を削除（統合のため）
+      // 注意: 削除に失敗しても統合保存は成功しているため、警告として扱う
+      // ただし、データ整合性を保つため、削除処理は重要
       if (existingRecords.length > 1) {
         const otherRecordIds = existingRecords.slice(1).map(record => record.id!).filter(Boolean);
         if (otherRecordIds.length > 0) {
-          const { error: deleteError } = await deletePracticeSessions(otherRecordIds, instrumentId);
+          logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:deleting-duplicate-records`, {
+            count: otherRecordIds.length,
+            ids: otherRecordIds
+          });
+          
+          // リトライ機能付きで削除を実行
+          const { error: deleteError, retryCount: deleteRetryCount } = await deletePracticeSessions(
+            otherRecordIds, 
+            instrumentId,
+            {
+              maxRetries: 3,
+              baseDelay: 200
+            }
+          );
+          
           if (deleteError) {
-            logger.warn(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:delete-error`, { error: deleteError });
-            // 削除エラーは警告のみ（統合は成功している）
+            // 削除エラーは警告として記録（統合保存は成功しているため、処理は続行）
+            // ただし、データ整合性の問題が発生する可能性があるため、詳細を記録
+            logger.warn(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:delete-error`, {
+              error: deleteError,
+              deletedCount: 0,
+              failedIds: otherRecordIds,
+              retryCount: deleteRetryCount,
+              message: '統合保存は成功しましたが、重複記録の削除に失敗しました。データ整合性に問題が発生する可能性があります。'
+            });
+            // ErrorHandler.handle(deleteError, `${REPOSITORY_CONTEXT}:savePracticeSessionWithIntegration:delete-duplicates`, false);
+          } else {
+            logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:deleted-duplicate-records`, {
+              count: otherRecordIds.length,
+              retryCount: deleteRetryCount || 0
+            });
           }
         }
       }
@@ -543,25 +485,15 @@ export const savePracticeSessionWithIntegration = async (
       return { success: true };
     } else {
       // 新規記録として挿入
-      // inputMethodは既に検証済みの値を使用（型キャストは不要）
+      // inputMethodは既に検証済みの値を使用（型安全）
       const sessionData: Omit<PracticeSession, 'id' | 'created_at' | 'updated_at'> = {
         user_id: userId,
-        practice_date: today,
+        practice_date: targetDate, // 選択された日付を使用
         duration_minutes: minutes,
         content: content || null,
         input_method: inputMethod, // 既に検証済みの値を使用
         instrument_id: instrumentId || null,
       };
-      
-      // 最終確認：sessionDataのinput_methodが有効であることを確認
-      if (!validInputMethods.includes(sessionData.input_method)) {
-        logger.error(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:sessionData.input_method is invalid, forcing 'manual'`, {
-          sessionData_input_method: sessionData.input_method,
-          validatedInputMethod: inputMethod,
-          validValues: validInputMethods
-        });
-        sessionData.input_method = 'manual';
-      }
       
       logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:creating session`, {
         input_method: sessionData.input_method,
@@ -575,7 +507,7 @@ export const savePracticeSessionWithIntegration = async (
       const { error: insertError } = await createPracticeSession(sessionData);
       
       if (insertError) {
-        ErrorHandler.handle(insertError, `${REPOSITORY_CONTEXT}:savePracticeSessionWithIntegration:insert`, false);
+        // ErrorHandler.handle(insertError, `${REPOSITORY_CONTEXT}:savePracticeSessionWithIntegration:insert`, false);
         return { success: false, error: insertError };
       }
       
@@ -583,7 +515,7 @@ export const savePracticeSessionWithIntegration = async (
       return { success: true };
     }
   } catch (error) {
-    ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:savePracticeSessionWithIntegration:exception`, false);
+    // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:savePracticeSessionWithIntegration:exception`, false);
     return { success: false, error: error as SupabaseError };
   }
 };
@@ -623,13 +555,13 @@ export const getPracticeSessionsByDateRange = async (
     const { data, error } = await query;
     
     if (error) {
-      ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDateRange`, false);
+      // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDateRange`, false);
       return { data: null, error };
     }
     
     return { data, error: null };
   } catch (error) {
-    ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDateRange:exception`, false);
+    // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDateRange:exception`, false);
     return { data: null, error: error as SupabaseError };
   }
 };
@@ -658,13 +590,13 @@ export const getPracticeSessionsByDate = async (
     const { data, error } = await query.order('created_at', { ascending: true });
     
     if (error) {
-      ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDate`, false);
+      // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDate`, false);
       return { data: null, error };
     }
     
     return { data, error: null };
   } catch (error) {
-    ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDate:exception`, false);
+    // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDate:exception`, false);
     return { data: null, error: error as SupabaseError };
   }
 };

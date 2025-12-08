@@ -27,7 +27,6 @@ import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
 import { COMMON_STYLES, APP_COLORS } from '@/lib/appStyles';
 import logger from '@/lib/logger';
-import { ErrorHandler } from '@/lib/errorHandler';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { navigateWithBasePath } from '@/lib/navigationUtils';
@@ -79,8 +78,6 @@ export default function SignupScreen() {
       });
       
       if (error) {
-        ErrorHandler.handle(error, '新規登録', false);
-        
         // ユーザーが既に存在する場合の処理
         if (error.message?.includes('User already registered') || 
             error.message?.includes('already exists') ||
@@ -114,56 +111,11 @@ export default function SignupScreen() {
         email: data.user.email 
       });
       
-      // user_profilesレコードが存在することを確認し、存在しない場合は作成する
-      // データベーストリガーが実行される前に確認するため、少し待ってから確認
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // user_profilesレコードの存在確認
-      const { data: existingProfile, error: profileCheckError } = await supabase
-        .from('user_profiles')
-        .select('id, user_id')
-        .eq('user_id', data.user.id)
-        .maybeSingle();
-      
-      if (profileCheckError && profileCheckError.code !== 'PGRST116') {
-        // PGRST116（レコードが存在しない）以外のエラーの場合
-        logger.error('❌ user_profiles確認エラー:', profileCheckError);
-        const errorMessage = 'プロフィールの確認に失敗しました。もう一度お試しください。';
-        setError(errorMessage);
-        setIsLoading(false);
-        return { success: false, error: errorMessage };
-      }
-      
-      // プロフィールが存在しない場合は作成する
-      if (!existingProfile) {
-        logger.debug('⏳ user_profilesレコードが存在しないため作成します');
-        const displayName = formData.name.trim() || data.user.email?.split('@')[0] || 'ユーザー';
-        
-        // upsertを使用して確実に作成（既に存在する場合は更新）
-        const { data: newProfile, error: createError } = await supabase
-          .from('user_profiles')
-          .upsert(
-            {
-              user_id: data.user.id,
-              display_name: displayName,
-            },
-            { onConflict: 'user_id' }
-          )
-          .select('id, user_id, display_name')
-          .single();
-        
-        if (createError) {
-          logger.error('❌ user_profiles作成エラー:', createError);
-          const errorMessage = 'プロフィールの作成に失敗しました。もう一度お試しください。';
-          setError(errorMessage);
-          setIsLoading(false);
-          return { success: false, error: errorMessage };
-        }
-        
-        logger.debug('✅ user_profilesレコード作成成功:', { profileId: newProfile?.id });
-      } else {
-        logger.debug('✅ user_profilesレコードは既に存在します:', { profileId: existingProfile.id });
-      }
+      // プロフィール作成はデータベーストリガー（handle_new_user）で自動的に行われる
+      // トリガーはauth.usersにINSERTされたときに発火し、user_profilesを自動作成する
+      // 手動でのプロフィール作成処理は削除（トリガーと重複する可能性があるため）
+      // プロフィールが存在しない場合は、handleAuthenticatedUser関数でフォールバック処理が行われる
+      logger.debug('✅ プロフィール作成はデータベーストリガーで自動処理されます');
       
       // セッションが確立されている場合は成功
       // セッションがない場合は、onAuthStateChangeで検出されるまで待つ
@@ -185,7 +137,7 @@ export default function SignupScreen() {
         return { success: false, error: errorMessage };
       }
     } catch (err) {
-      ErrorHandler.handle(err, '新規登録', true);
+      // エラーは既にAlertで表示済み
       const errorMessage = '新規登録に失敗しました';
       setError(errorMessage);
       setIsLoading(false);
@@ -318,19 +270,8 @@ export default function SignupScreen() {
   const handleSignup = async () => {
     logger.debug('📝 新規登録処理開始');
     
-    // 新規登録処理開始フラグを最初に設定（_layout.tsxの認証チェックをスキップするため）
-    // バリデーション前に設定することで、ボタンを押した瞬間から認証チェックをスキップ
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('signup-processing', 'true');
-      logger.debug('✅ 新規登録処理中フラグを設定');
-    }
-    
     if (!validateForm()) {
       logger.debug('❌ フォームバリデーション失敗');
-      // バリデーション失敗時はフラグを削除
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('signup-processing');
-      }
       return;
     }
     
@@ -346,20 +287,52 @@ export default function SignupScreen() {
       logger.debug('📊 新規登録結果:', result);
       
       if (result.success) {
-        logger.debug('✅ 新規登録成功 - 即座にチュートリアル画面に遷移します');
+        logger.debug('✅ 新規登録成功 - 認証状態を更新してからチュートリアル画面に遷移します');
         setSignupSuccess(true);
         
-        // 新規登録直後であることをsessionStorageに記録（_layout.tsxで認証チェックをスキップするため）
-        // signup-processingフラグは保持（認証状態が更新されるまで認証チェックをスキップするため）
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem('signup-just-completed', 'true');
-          // signup-processingフラグは保持（認証状態が更新されるまで）
-          logger.debug('✅ 新規登録直後フラグを設定、処理中フラグは保持');
-        }
-        
-        // 即座にチュートリアル画面に遷移（認証状態の更新を待たない）
-        // _layout.tsxで新規登録直後フラグを確認して認証チェックをスキップする
+        // 認証状態を更新してから画面遷移する（_layout.tsxの認証チェックと競合しないようにする）
         try {
+          // セッションを確認
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (sessionData.session?.user) {
+            logger.debug('✅ セッション確認成功 - 認証状態を更新', {
+              userId: sessionData.session.user.id,
+              email: sessionData.session.user.email,
+            });
+            // 認証状態を更新（同期的に待つ）
+            await fetchUserProfile();
+            logger.debug('✅ 認証状態更新完了 - チュートリアル画面に遷移');
+          } else {
+            // セッションが存在しない場合は、ポーリングで確認（指数バックオフ）
+            logger.debug('⏳ セッション未確立 - ポーリングで確認を開始');
+            let retryCount = 0;
+            const maxRetries = 5;
+            const baseDelay = 200; // ベース遅延時間（ms）
+            
+            while (retryCount < maxRetries) {
+              // 指数バックオフ: 200ms, 400ms, 800ms, 1600ms, 3200ms
+              const delay = baseDelay * Math.pow(2, retryCount);
+              await new Promise(resolve => setTimeout(resolve, delay));
+              
+              const { data: retrySessionData } = await supabase.auth.getSession();
+              if (retrySessionData.session?.user) {
+                await fetchUserProfile();
+                logger.debug(`✅ 認証状態更新完了（${retryCount + 1}回目の試行後） - チュートリアル画面に遷移`);
+                break;
+              }
+              
+              retryCount++;
+              if (retryCount < maxRetries) {
+                logger.debug(`⏳ セッション未確立 - ${delay}ms後に再試行（${retryCount + 1}/${maxRetries}）`);
+              }
+            }
+            
+            if (retryCount >= maxRetries) {
+              logger.warn('⚠️ セッション確立を待機しましたが、タイムアウトしました。続行します。');
+            }
+          }
+          
+          // 認証状態更新後にチュートリアル画面に遷移
           logger.debug('🔄 チュートリアル画面への遷移を開始');
           router.replace('/(tabs)/tutorial');
           logger.debug('✅ チュートリアル画面への遷移完了');
@@ -370,71 +343,6 @@ export default function SignupScreen() {
             navigateWithBasePath('/(tabs)/tutorial');
           }
         }
-        
-        // バックグラウンドで認証状態を更新（画面遷移をブロックしない）
-        // これにより、_layout.tsxの認証チェックが実行される前に認証状態を更新できる
-        (async () => {
-          try {
-            // セッションを確認
-            const { data: sessionData } = await supabase.auth.getSession();
-            if (sessionData.session?.user) {
-              logger.debug('✅ セッション確認成功 - 認証状態を更新', {
-                userId: sessionData.session.user.id,
-                email: sessionData.session.user.email,
-              });
-              // 認証状態を更新
-              await fetchUserProfile();
-              logger.debug('✅ 認証状態更新完了');
-              
-              // 認証状態が更新されたら、新規登録関連フラグを削除
-              if (typeof window !== 'undefined') {
-                sessionStorage.removeItem('signup-just-completed');
-                sessionStorage.removeItem('signup-processing');
-                logger.debug('✅ 新規登録関連フラグを削除');
-              }
-              
-              // 認証状態が更新されたら、新規登録直後フラグを削除
-              if (typeof window !== 'undefined') {
-                sessionStorage.removeItem('signup-just-completed');
-                logger.debug('✅ 新規登録直後フラグを削除');
-              }
-            } else {
-              // セッションが存在しない場合は、少し待ってから再試行
-              logger.debug('⏳ セッション未確立 - 再試行を待機');
-              setTimeout(async () => {
-                try {
-                  await fetchUserProfile();
-                  logger.debug('✅ 認証状態更新完了（再試行）');
-                  // 認証状態が更新されたら、新規登録関連フラグを削除
-                  if (typeof window !== 'undefined') {
-                    sessionStorage.removeItem('signup-just-completed');
-                    sessionStorage.removeItem('signup-processing');
-                    logger.debug('✅ 新規登録関連フラグを削除（再試行後）');
-                  }
-                } catch (error) {
-                  logger.warn('⚠️ 認証状態の更新に失敗しましたが、続行します:', error);
-                }
-              }, 1000);
-            }
-          } catch (error) {
-            logger.warn('⚠️ 認証状態の更新に失敗しましたが、続行します:', error);
-            // エラーが発生した場合でも、少し待ってから再試行
-            setTimeout(async () => {
-              try {
-                await fetchUserProfile();
-                logger.debug('✅ 認証状態更新完了（エラー後の再試行）');
-                // 認証状態が更新されたら、新規登録関連フラグを削除
-                if (typeof window !== 'undefined') {
-                  sessionStorage.removeItem('signup-just-completed');
-                  sessionStorage.removeItem('signup-processing');
-                  logger.debug('✅ 新規登録関連フラグを削除（エラー後の再試行）');
-                }
-              } catch (retryError) {
-                logger.warn('⚠️ 認証状態の更新に失敗しました（再試行も失敗）:', retryError);
-              }
-            }, 1500);
-          }
-        })();
       } else {
         logger.debug('❌ 新規登録失敗');
         const errorMessage = result.error || '登録に失敗しました。メールが既に登録済みか、入力内容に誤りがあります。';
@@ -479,16 +387,12 @@ export default function SignupScreen() {
       }
     } catch (error) {
       logger.error('💥 新規登録処理エラー:', error);
-      ErrorHandler.handle(error, '新規登録処理', true);
+      // エラーは既にAlertで表示済み
       setError('新規登録に失敗しました。もう一度お試しください。');
       Alert.alert('エラー', '新規登録に失敗しました。もう一度お試しください。');
     } finally {
       // 確実にisLoadingをfalseにする
       setIsLoading(false);
-      // 新規登録処理フラグをクリア
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('signup-processing');
-      }
     }
   };
 

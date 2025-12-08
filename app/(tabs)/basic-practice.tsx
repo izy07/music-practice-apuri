@@ -74,20 +74,21 @@ export default function BasicPracticeScreen() {
         <View style={styles.placeholder} />
       </View>
 
+      {/* レベル選択 - ヘッダーの直下に配置 */}
+      <LevelSelector
+        levels={levels}
+        selectedLevel={selectedLevel}
+        userLevel={userLevel}
+        onLevelChange={handleLevelChange}
+        onOpenModal={() => setShowLevelModal(true)}
+      />
+
       {/* メインコンテンツ - 全体をスクロール可能にする */}
       <ScrollView 
         style={styles.mainContent} 
-        contentContainerStyle={{ paddingTop: 20 }}
+        contentContainerStyle={{ paddingTop: 8 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* レベル選択 */}
-        <LevelSelector
-          levels={levels}
-          selectedLevel={selectedLevel}
-          userLevel={userLevel}
-          onLevelChange={handleLevelChange}
-          onOpenModal={() => setShowLevelModal(true)}
-        />
 
         {/* 基礎情報セクション - マスターレベルでは表示しない */}
         {userLevel && userLevel !== 'advanced' && (

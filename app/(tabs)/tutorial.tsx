@@ -14,7 +14,6 @@ import { useRouter } from 'expo-router';
 import { ArrowRight, ArrowLeft } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
-import { ErrorHandler } from '@/lib/errorHandler';
 import { navigateWithBasePath } from '@/lib/navigationUtils';
 import NotificationService from '@/lib/notificationService';
 
@@ -157,7 +156,7 @@ export default function TutorialScreen() {
       }
     } catch (error) {
       logger.error('❌ 通知設定の更新エラー:', error);
-      ErrorHandler.handle(error, '通知設定の更新', false);
+      // エラーは無視（通知設定の更新失敗は致命的ではない）
       Alert.alert('エラー', '通知設定の更新に失敗しました');
     } finally {
       setIsRequestingPermission(false);
@@ -214,30 +213,29 @@ export default function TutorialScreen() {
    */
   const handleInstrumentSelection = async () => {
     if (isNavigating) {
-      logger.debug('既に遷移中です');
       return;
     }
     
-    logger.debug('楽器選択ボタンが押されました');
     setIsNavigating(true);
     
     try {
-      logger.debug('楽器選択画面に遷移開始');
-      
-      // シンプルな遷移処理
-      await router.push('/(tabs)/instrument-selection');
-      logger.debug('楽器選択画面への遷移完了');
-      
+      // シンプルに楽器選択画面に遷移（カラムの存在確認や更新は不要）
+      router.replace('/(tabs)/instrument-selection');
     } catch (error) {
-      ErrorHandler.handle(error, '楽器選択画面への遷移', false);
+      Alert.alert('エラー', '楽器選択画面への遷移に失敗しました');
       
       // フォールバック: 直接URLを変更
       if (typeof window !== 'undefined') {
-        logger.debug('フォールバック: window.location を使用');
-        navigateWithBasePath('/instrument-selection');
+        try {
+          navigateWithBasePath('/instrument-selection');
+        } catch (navError) {
+          Alert.alert('エラー', '画面遷移に失敗しました。ページをリロードしてください。');
+        }
       }
     } finally {
-      setIsNavigating(false);
+      setTimeout(() => {
+        setIsNavigating(false);
+      }, 200);
     }
   };
 
@@ -292,7 +290,7 @@ export default function TutorialScreen() {
           logger.warn('tutorial_completedカラムが存在しません。スキップします。', { updateError });
         } else {
           logger.error('❌ チュートリアル完了状況の保存エラー:', updateError);
-          ErrorHandler.handle(updateError, 'チュートリアル完了状況の保存', false);
+          // エラーは無視（チュートリアル完了状況の保存失敗は致命的ではない）
         }
       } else {
         logger.debug('✅ チュートリアル完了状況を保存しました');
@@ -319,7 +317,7 @@ export default function TutorialScreen() {
             logger.debug('✅ メイン画面への遷移完了');
           } catch (navError) {
             logger.error('❌ メイン画面への遷移エラー:', navError);
-            ErrorHandler.handle(navError, 'メイン画面への遷移', false);
+            Alert.alert('エラー', 'メイン画面への遷移に失敗しました');
             // フォールバック: 直接URLを変更
             if (typeof window !== 'undefined') {
               navigateWithBasePath('/');
@@ -336,7 +334,7 @@ export default function TutorialScreen() {
             logger.debug('✅ 楽器選択画面への遷移完了');
           } catch (navError) {
             logger.error('❌ 楽器選択画面への遷移エラー:', navError);
-            ErrorHandler.handle(navError, '楽器選択画面への遷移', false);
+            Alert.alert('エラー', '楽器選択画面への遷移に失敗しました');
             // フォールバック: 直接URLを変更
             if (typeof window !== 'undefined') {
               navigateWithBasePath('/instrument-selection');
@@ -346,14 +344,14 @@ export default function TutorialScreen() {
       }
     } catch (error) {
       logger.error('❌ 完了処理エラー:', error);
-      ErrorHandler.handle(error, 'チュートリアル完了処理', false);
+      Alert.alert('エラー', 'チュートリアル完了処理に失敗しました');
       // 失敗時も選択画面へフォールバック
       setTimeout(() => {
         try {
           router.replace('/(tabs)/instrument-selection');
         } catch (fallbackError) {
           logger.error('❌ フォールバック遷移エラー:', fallbackError);
-          ErrorHandler.handle(fallbackError, 'フォールバック遷移', false);
+          Alert.alert('エラー', '画面遷移に失敗しました。ページをリロードしてください。');
           if (typeof window !== 'undefined') {
             navigateWithBasePath('/instrument-selection');
           }

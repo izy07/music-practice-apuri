@@ -13,8 +13,8 @@ import { X, Mic, Square } from 'lucide-react-native';
 import { Platform } from 'react-native';
 import { SttService } from '@/lib/sttService';
 import { useInstrumentTheme } from './InstrumentThemeContext';
-import { supabase } from '@/lib/supabase';
-import { formatLocalDate } from '@/lib/dateUtils';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import { savePracticeSessionWithIntegration } from '@/repositories/practiceSessionRepository';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { createShadowStyle } from '@/lib/shadowStyles';
@@ -28,131 +28,43 @@ interface QuickRecordModalProps {
 const { height } = Dimensions.get('window');
 
 export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRecordModalProps) {
-  const { currentTheme } = useInstrumentTheme();
+  const { currentTheme, selectedInstrument } = useInstrumentTheme();
+  const { user } = useAuthAdvanced();
   const [isRecording, setIsRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
 
-  // 既存記録との統合処理
+  // 既存記録との統合処理（リポジトリを使用）
   const savePracticeRecordWithIntegration = async (minutes: number) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('ユーザーが認証されていません');
       }
 
-      const today = formatLocalDate(new Date());
-      
-      // 現在の楽器IDを取得
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('selected_instrument_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      const currentInstrumentId = profile?.selected_instrument_id;
-      
-      // 今日の既存の練習記録を取得（楽器IDでフィルタリング）
-      let query = supabase
-        .from('practice_sessions')
-        .select('id, duration_minutes, input_method, content, instrument_id')
-        .eq('user_id', user.id)
-        .eq('practice_date', today);
-      
-      if (currentInstrumentId) {
-        query = query.eq('instrument_id', currentInstrumentId);
-      } else {
-        query = query.is('instrument_id', null);
-      }
-      
-      const { data: existingRecords, error: fetchError } = await query.order('created_at', { ascending: true });
+      const result = await savePracticeSessionWithIntegration(
+        user.id,
+        minutes,
+        {
+          instrumentId: selectedInstrument?.id || null,
+          content: 'クイック記録',
+          inputMethod: 'voice',
+          existingContentPrefix: 'クイック記録'
+        }
+      );
 
-      // テーブルが存在しない場合のエラーハンドリング
-      if (fetchError && fetchError.code === 'PGRST205') {
-        ErrorHandler.handle(fetchError, 'practice_sessionsテーブル読み込み', true);
-        Alert.alert('エラー', 'データベースの設定が完了していません。管理者にお問い合わせください。');
-        return;
+      if (!result.success) {
+        const errorMessage = result.error?.message || '練習記録の保存に失敗しました';
+        
+        // テーブルが存在しないエラーの場合
+        if (result.error?.code === 'PGRST205' || result.error?.code === 'PGRST116') {
+          Alert.alert('エラー', 'データベースの設定が完了していません。管理者にお問い合わせください。');
+          throw new Error('データベースの設定が完了していません');
+        }
+        
+        // その他のエラー
+        throw result.error || new Error(errorMessage);
       }
 
-      if (existingRecords && existingRecords.length > 0) {
-        // 既存の記録がある場合は時間を加算して更新
-        const existing = existingRecords[0];
-        const totalMinutes = existing.duration_minutes + minutes;
-        
-        // 既存の記録を更新
-        // contentから時間詳細を削除
-        let existingContent = existing.content || '';
-        existingContent = existingContent
-          .replace(/\s*\(累計\d+分\)/g, '')
-          .replace(/\s*累計\d+分/g, '')
-          .replace(/\s*\+\s*[^,]+?\d+分/g, '')
-          .replace(/\s*[^,]+?\d+分/g, '')
-          .replace(/練習記録/g, '')
-          .replace(/^[\s,]+|[\s,]+$/g, '')
-          .replace(/,\s*,/g, ',')
-          .trim();
-        
-        const updateContent = existingContent
-          ? `${existingContent}, クイック記録`
-          : 'クイック記録';
-        
-        const { error } = await supabase
-          .from('practice_sessions')
-          .update({
-            duration_minutes: totalMinutes,
-            content: updateContent,
-            instrument_id: currentInstrumentId
-            // updated_atはトリガーで自動更新されるため、明示的に更新しない
-          })
-          .eq('id', existing.id);
-        
-        if (error) {
-          throw error;
-        }
-        
-        // 他の記録を削除（統合のため）
-        if (existingRecords.length > 1) {
-          const otherRecordIds = existingRecords.slice(1).map((record: { id?: string }) => record.id).filter((id): id is string => !!id);
-          let deleteQuery = supabase
-            .from('practice_sessions')
-            .delete()
-            .in('id', otherRecordIds);
-          
-          if (currentInstrumentId) {
-            deleteQuery = deleteQuery.eq('instrument_id', currentInstrumentId);
-          } else {
-            deleteQuery = deleteQuery.is('instrument_id', null);
-          }
-          
-          await deleteQuery;
-        }
-        
-        logger.debug(`クイック記録を追加: ${existing.duration_minutes}分 → ${totalMinutes}分`);
-      } else {
-        // 新規記録として挿入
-        const { error } = await supabase
-          .from('practice_sessions')
-          .insert({
-            user_id: user.id,
-            practice_date: today,
-            duration_minutes: minutes,
-            content: 'クイック記録',
-            input_method: 'voice',
-            instrument_id: currentInstrumentId,
-            created_at: new Date().toISOString()
-          });
-        
-        if (error) {
-          throw error;
-        }
-        
-        logger.debug(`新規クイック記録を保存: ${minutes}分`);
-      }
-      
-      // カレンダー画面に更新を通知
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
-          detail: { action: 'saved', date: new Date() }
-        }));
-      }
+      logger.debug(`クイック記録を保存: ${minutes}分`);
     } catch (error) {
       ErrorHandler.handle(error, '練習記録の保存', true);
       throw error;
@@ -173,10 +85,17 @@ export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRe
 
   // 音声録音の開始（ネイティブ・Web両対応）
   const startRecording = async () => {
+    let disposeFn: (() => Promise<void>) | null = null;
+    
     try {
+      // マイク権限の確認
       const granted = await SttService.requestMicPermission();
       if (!granted) {
-        Alert.alert('権限が必要', '音声録音の権限が必要です。ブラウザの設定でマイクの許可を確認してください。');
+        Alert.alert(
+          'マイクの権限が必要です',
+          '音声録音を使用するには、マイクへのアクセス許可が必要です。\n\nブラウザの設定でマイクの許可を確認してください。',
+          [{ text: 'OK' }]
+        );
         return;
       }
       
@@ -184,33 +103,126 @@ export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRe
       setProcessing(true);
       
       // 音声録音を開始（最大10秒間）
-      const { uri, dispose } = await SttService.recordAudio(10);
-      
       try {
+        const recordResult = await SttService.recordAudio(10);
+        disposeFn = recordResult.dispose;
+        const uri = recordResult.uri;
+        
+        // 音声認識を実行
         setProcessing(true);
-        const result = await SttService.transcribe(uri);
-        const parsed = parseMinutesFromText(result.text);
+        let transcriptionResult: { text: string };
+        try {
+          transcriptionResult = await SttService.transcribe(uri);
+        } catch (transcribeError) {
+          logger.error('音声認識エラー:', transcribeError);
+          const errorMessage = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
+          
+          // APIキー関連のエラー
+          if (errorMessage.includes('API key') || errorMessage.includes('not configured')) {
+            Alert.alert(
+              '音声認識の設定エラー',
+              '音声認識サービスが設定されていません。\n\n時間選択をご利用ください。',
+              [{ text: 'OK' }]
+            );
+            return;
+          }
+          
+          // ネットワークエラー
+          if (errorMessage.includes('fetch') || errorMessage.includes('network') || errorMessage.includes('Failed to fetch')) {
+            Alert.alert(
+              'ネットワークエラー',
+              '音声認識サービスに接続できませんでした。\n\nインターネット接続を確認して、もう一度お試しください。\n\n時間選択もご利用いただけます。',
+              [{ text: 'OK' }]
+            );
+            return;
+          }
+          
+          // その他のエラー
+          Alert.alert(
+            '音声認識に失敗しました',
+            '音声を認識できませんでした。\n\nもう一度お試しいただくか、時間選択をご利用ください。',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        
+        const parsed = parseMinutesFromText(transcriptionResult.text);
         
         if (parsed) {
           // 既存記録との統合処理を実行
-          await savePracticeRecordWithIntegration(parsed);
-          
-          Alert.alert('保存しました', `音声認識で${parsed}分の練習記録を保存しました！`, [
-            { text: 'OK', onPress: onClose }
-          ]);
+          try {
+            await savePracticeRecordWithIntegration(parsed);
+            // 親コンポーネントに通知してデータ更新をトリガー
+            onRecord(parsed);
+            Alert.alert('保存しました', `音声認識で${parsed}分の練習記録を保存しました！`, [
+              { text: 'OK', onPress: onClose }
+            ]);
+          } catch (saveError) {
+            logger.error('練習記録保存エラー:', saveError);
+            Alert.alert(
+              '保存に失敗しました',
+              '練習記録の保存に失敗しました。\n\nもう一度お試しください。',
+              [{ text: 'OK' }]
+            );
+          }
         } else {
-          Alert.alert('認識できませんでした', '「○分練習しました」や「○時間練習しました」のように話してください。');
+          Alert.alert(
+            '認識できませんでした',
+            '音声を認識できませんでした。\n\n「5分練習しました」や「1時間練習しました」のように話してください。\n\n時間選択もご利用いただけます。',
+            [{ text: 'OK' }]
+          );
         }
+      } catch (recordError) {
+        logger.error('録音エラー:', recordError);
+        const errorMessage = recordError instanceof Error ? recordError.message : String(recordError);
+        
+        // マイクアクセス拒否
+        if (errorMessage.includes('マイク') || errorMessage.includes('permission') || errorMessage.includes('denied')) {
+          Alert.alert(
+            'マイクへのアクセスが拒否されました',
+            'マイクへのアクセスが拒否されました。\n\nブラウザの設定でマイクの許可を確認してください。',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        
+        // 録音デバイスエラー
+        if (errorMessage.includes('device') || errorMessage.includes('not available')) {
+          Alert.alert(
+            '録音デバイスが見つかりません',
+            '録音デバイスが見つかりませんでした。\n\nマイクが接続されているか確認してください。\n\n時間選択もご利用いただけます。',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        
+        // その他の録音エラー
+        Alert.alert(
+          '録音に失敗しました',
+          '音声の録音に失敗しました。\n\nもう一度お試しいただくか、時間選択をご利用ください。',
+          [{ text: 'OK' }]
+        );
       } finally {
-        await dispose();
+        if (disposeFn) {
+          try {
+            await disposeFn();
+          } catch (disposeError) {
+            logger.warn('録音リソースの解放エラー:', disposeError);
+          }
+        }
         setIsRecording(false);
         setProcessing(false);
       }
       
     } catch (error) {
+      logger.error('音声録音処理の予期しないエラー:', error);
       setIsRecording(false);
       setProcessing(false);
-      Alert.alert('エラー', '録音を開始できませんでした。時間選択をご利用ください。');
+      Alert.alert(
+        'エラーが発生しました',
+        '音声録音の処理中にエラーが発生しました。\n\n時間選択をご利用ください。',
+        [{ text: 'OK' }]
+      );
     }
   };
 
@@ -250,6 +262,9 @@ export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRe
       // 既存記録との統合処理を実行
       await savePracticeRecordWithIntegration(minutes);
       
+      // 親コンポーネントに通知してデータ更新をトリガー
+      onRecord(minutes);
+      
       // 保存完了後はすぐにモーダルを閉じる
       onClose();
       
@@ -257,7 +272,12 @@ export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRe
       Alert.alert('記録しました', '練習記録を記録しました。');
     } catch (error) {
       ErrorHandler.handle(error, '練習記録の保存', true);
-      Alert.alert('エラー', '練習記録の保存に失敗しました');
+      const errorMessage = error instanceof Error ? error.message : '練習記録の保存に失敗しました';
+      
+      // 既にAlertが表示されている場合は、重複して表示しない
+      if (!errorMessage.includes('データベース')) {
+        Alert.alert('エラー', errorMessage);
+      }
     }
   };
 

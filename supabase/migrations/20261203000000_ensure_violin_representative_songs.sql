@@ -1,44 +1,25 @@
--- ============================================
--- バイオリンの代表曲を復元・整理するマイグレーション
--- ============================================
--- 実行日: 2025-12-03
--- ============================================
--- このマイグレーションは、バイオリンの代表曲を元の設定に復元し、
--- すべての代表曲を整理します
--- ============================================
+-- バイオリンの代表曲を確実にデータベースに挿入
+-- 既存のデータがあっても重複しないように、重複チェック付きで挿入
 
--- 1. representative_songsテーブルが存在することを確認
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'representative_songs') THEN
-    RAISE NOTICE 'representative_songsテーブルが存在しません。先にテーブルを作成してください。';
-    RETURN;
-  END IF;
-END $$;
-
--- 2. instrumentsテーブルにバイオリンが存在することを確認
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM instruments WHERE id = '550e8400-e29b-41d4-a716-446655440003') THEN
-    -- バイオリンを挿入（存在しない場合）
-    INSERT INTO instruments (id, name, name_en, color_primary, color_secondary, color_accent, starting_note, tuning_notes) 
-    VALUES ('550e8400-e29b-41d4-a716-446655440003', 'バイオリン', 'Violin', '#6B4423', '#C9A961', '#D4AF37', 'G3', ARRAY['G3', 'D4', 'A4', 'E5'])
-    ON CONFLICT (id) DO NOTHING;
-    
-    RAISE NOTICE 'バイオリンデータを挿入しました';
-  END IF;
-END $$;
-
--- 3. バイオリンの代表曲データを復元・整理
 DO $$
 DECLARE
   violin_id UUID := '550e8400-e29b-41d4-a716-446655440003';
 BEGIN
-  -- 既存のバイオリンの代表曲を一旦削除（整理のため）
-  -- ただし、これは慎重に行う必要があるため、コメントアウト
-  -- DELETE FROM representative_songs WHERE instrument_id = violin_id;
+  -- バイオリンの存在確認（存在しない場合は追加）
+  IF NOT EXISTS (SELECT 1 FROM instruments WHERE id = violin_id) THEN
+    INSERT INTO instruments (id, name, name_en, color_primary, color_secondary, color_accent, starting_note, tuning_notes) 
+    VALUES (violin_id, 'バイオリン', 'Violin', '#6B4423', '#C9A961', '#D4AF37', 'G3', ARRAY['G3', 'D4', 'A4', 'E5'])
+    ON CONFLICT (id) DO NOTHING;
+    RAISE NOTICE 'バイオリンデータを挿入しました';
+  END IF;
   
-  -- 元々設定されていた代表曲を追加（重複チェック付き）
+  -- 代表曲テーブルの存在確認
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'representative_songs') THEN
+    RAISE NOTICE 'representative_songsテーブルが存在しません。先にテーブルを作成してください。';
+    RETURN;
+  END IF;
+  
+  -- バイオリンの代表曲を挿入（重複チェック付き）
   -- 1. コウモリ序曲
   INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
   SELECT violin_id, 'コウモリ序曲', 'ヨハン・シュトラウス2世', 'ロマン派', 'オペレッタ', 4, 'https://youtu.be/BugDZWgVQnY?si=k-wwJiiY_lfx2wWI', 'オペレッタ「こうもり」の序曲。ウィーンを代表する軽快で華やかな旋律。', true, 1
@@ -74,10 +55,10 @@ BEGIN
   SELECT violin_id, '四季「春」', 'アントニオ・ヴィヴァルディ', 'バロック', 'クラシック', 2, 'https://www.youtube.com/watch?v=example_spring', 'バロック時代の名作。春の訪れを美しく表現した協奏曲。', true, 7
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = '四季「春」' AND composer = 'アントニオ・ヴィヴァルディ');
   
-  -- 8. 愛のあいさつ（愛の挨拶）
+  -- 8. 愛の挨拶
   INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
-  SELECT violin_id, '愛のあいさつ', 'エドワード・エルガー', 'ロマン派', 'クラシック', 2, 'https://www.youtube.com/watch?v=YyknBTm_YyM', 'エルガーの最も美しい作品の一つ。結婚式でもよく演奏されるロマンチックな名曲。', true, 8
-  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = '愛のあいさつ' AND composer = 'エドワード・エルガー');
+  SELECT violin_id, '愛の挨拶', 'エドワード・エルガー', 'ロマン派', 'クラシック', 2, 'https://www.youtube.com/watch?v=example_salut', '結婚式でよく演奏される美しい旋律。ロマンチックで親しみやすい作品。', true, 8
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = '愛の挨拶' AND composer = 'エドワード・エルガー');
   
   -- 9. ハバネラ
   INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
@@ -104,43 +85,6 @@ BEGIN
   SELECT violin_id, '二つのバイオリンのための協奏曲', 'ヨハン・セバスチャン・バッハ', 'バロック', '協奏曲', 4, 'https://youtu.be/P_4rbNHsPaQ?si=2f2uIoBmkNSbPY87', 'バッハの二重協奏曲。二つのバイオリンが美しく絡み合う名作。', true, 13
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = '二つのバイオリンのための協奏曲' AND composer = 'ヨハン・セバスチャン・バッハ');
   
-  -- 追加の代表曲（他のマイグレーションで追加されたものも含める）
-  -- 14. カノン
-  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
-  SELECT violin_id, 'カノン', 'パッヘルベル', 'バロック', 'カノン', 2, 'https://www.youtube.com/watch?v=NlprozGcs80', '美しい和声進行で知られる名曲。', true, 14
-  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'カノン' AND composer = 'パッヘルベル');
-  
-  -- 15. サマータイム
-  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
-  SELECT violin_id, 'サマータイム', 'ガーシュウィン', '近代', 'ジャズ', 3, 'https://www.youtube.com/watch?v=O7-Qa92Rzb4', 'ジャズクラシックの名曲。', true, 15
-  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'サマータイム' AND composer = 'ガーシュウィン');
-  
-  RAISE NOTICE 'バイオリンの代表曲を復元しました（合計15曲）';
-  
-END $$;
-
--- 4. マイグレーション完了メッセージ
-DO $$
-BEGIN
-  RAISE NOTICE '========================================';
-  RAISE NOTICE 'バイオリンの代表曲復元マイグレーション完了';
-  RAISE NOTICE '========================================';
-  RAISE NOTICE '以下の代表曲が追加されました:';
-  RAISE NOTICE '1. コウモリ序曲（ヨハン・シュトラウス2世）';
-  RAISE NOTICE '2. 情熱大陸（葉加瀬太郎）';
-  RAISE NOTICE '3. G線のアリア（バッハ）';
-  RAISE NOTICE '4. チャルダッシュ（モンティ）';
-  RAISE NOTICE '5. ツィゴイネルワイゼン（サラサーテ）';
-  RAISE NOTICE '6. カプリース第24番（パガニーニ）';
-  RAISE NOTICE '7. 四季「春」（ヴィヴァルディ）';
-  RAISE NOTICE '8. 愛のあいさつ（エルガー）';
-  RAISE NOTICE '9. ハバネラ（ビゼー）';
-  RAISE NOTICE '10. ユーモレスク（ドヴォルザーク）';
-  RAISE NOTICE '11. メンデルスゾーンのバイオリン協奏曲';
-  RAISE NOTICE '12. ブラームスのバイオリン協奏曲';
-  RAISE NOTICE '13. 二つのバイオリンのための協奏曲（バッハ）';
-  RAISE NOTICE '14. カノン（パッヘルベル）';
-  RAISE NOTICE '15. サマータイム（ガーシュウィン）';
-  RAISE NOTICE '========================================';
+  RAISE NOTICE 'バイオリンの代表曲13曲を確認・挿入しました';
 END $$;
 

@@ -35,7 +35,7 @@ type UnifiedTask = {
 };
 
 export default function OrgOverviewScreen() {
-  const { currentTheme } = useInstrumentTheme();
+  const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
@@ -92,6 +92,67 @@ export default function OrgOverviewScreen() {
           setSchedules(allSchedules);
           setAttendanceNow(attendables);
 
+          // 出席登録可能日になったときに通知を送信
+          (async () => {
+            try {
+              const NotificationService = (await import('@/lib/notificationService')).default;
+              const notificationService = NotificationService.getInstance();
+              await notificationService.loadSettings();
+
+              // ストレージの取得（Web環境ではlocalStorage、それ以外ではAsyncStorage）
+              const { Platform } = await import('react-native');
+              const AsyncStorage = Platform.OS === 'web' ? null : (await import('@react-native-async-storage/async-storage')).default;
+              const getStorageItem = async (key: string): Promise<string | null> => {
+                if (Platform.OS === 'web') {
+                  return typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+                } else if (AsyncStorage) {
+                  return await AsyncStorage.getItem(key);
+                }
+                return null;
+              };
+              const setStorageItem = async (key: string, value: string): Promise<void> => {
+                if (Platform.OS === 'web') {
+                  if (typeof localStorage !== 'undefined') {
+                    localStorage.setItem(key, value);
+                  }
+                } else if (AsyncStorage) {
+                  await AsyncStorage.setItem(key, value);
+                }
+              };
+
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+
+              for (const schedule of attendables) {
+                const practiceDate = new Date(schedule.practice_date);
+                practiceDate.setHours(0, 0, 0, 0);
+                
+                const diffTime = practiceDate.getTime() - today.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                
+                // 練習日の5日前になったときに通知を送信（1回だけ）
+                if (diffDays === 5) {
+                  const notificationKey = `attendance_notified_${schedule.id}`;
+                  const hasNotified = await getStorageItem(notificationKey);
+                  
+                  if (!hasNotified) {
+                    await notificationService.sendAttendanceAvailableNotification(
+                      schedule.organization_name || '組織',
+                      schedule.practice_date,
+                      schedule.title
+                    );
+                    
+                    // 通知を送信したことを記録
+                    await setStorageItem(notificationKey, 'true');
+                  }
+                }
+              }
+            } catch (error) {
+              // 通知エラーは無視
+              console.warn('出席登録通知エラー:', error);
+            }
+          })();
+
           // 課題（組織レベルで集約・最大20件）
           const unifiedTasks: UnifiedTask[] = [];
           for (const org of uniqueOrgs) {
@@ -116,6 +177,75 @@ export default function OrgOverviewScreen() {
       }
     })();
   }, []);
+
+  // 楽器変更時にデータを再読み込み
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const orgsResult = await organizationRepository.getUserOrganizations();
+        if (orgsResult.error || !orgsResult.data) {
+          setOrganizations([]);
+          return;
+        }
+        const orgs = orgsResult.data;
+        if (orgs && orgs.length >= 0) {
+          const uniqueOrgs = Array.from(new Map(orgs.map((o: Organization) => [o.id, o])).values());
+          setOrganizations(uniqueOrgs);
+
+          const current = new Date();
+          const year = current.getFullYear();
+          const month = current.getMonth() + 1;
+          const allSchedules: UnifiedSchedule[] = [];
+          const attendables: UnifiedSchedule[] = [];
+
+          for (const org of uniqueOrgs) {
+            const monthlyResult = await scheduleRepository.getMonthlySchedules(org.id, year, month);
+            const monthly = monthlyResult.error ? null : monthlyResult.data;
+            if (monthly) {
+              monthly.forEach((s: any) => {
+                const entry: UnifiedSchedule = {
+                  id: s.id,
+                  organization_id: org.id,
+                  organization_name: (org as any).name,
+                  title: s.title,
+                  practice_date: s.practice_date,
+                  start_time: s.start_time,
+                  location: s.location,
+                };
+                allSchedules.push(entry);
+                if (attendanceRepository.canRegisterAttendance(s.practice_date)) attendables.push(entry);
+              });
+            }
+          }
+          allSchedules.sort((a, b) => a.practice_date.localeCompare(b.practice_date));
+          attendables.sort((a, b) => a.practice_date.localeCompare(b.practice_date));
+          setSchedules(allSchedules);
+          setAttendanceNow(attendables);
+
+          const unifiedTasks: UnifiedTask[] = [];
+          for (const org of uniqueOrgs) {
+            try {
+              const tasksResult = await taskRepository.getByOrganizationId(org.id);
+              const tasks = tasksResult.error ? [] : (tasksResult.data || []);
+              (tasks as any[]).forEach(task => {
+                unifiedTasks.push({
+                  id: task.id,
+                  organization_id: org.id,
+                  organization_name: (org as any).name,
+                  title: task.title,
+                  status: task.status,
+                });
+              });
+            } catch {}
+          }
+          setTasks(unifiedTasks.slice(0, 20));
+        }
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [selectedInstrument?.id]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} > 

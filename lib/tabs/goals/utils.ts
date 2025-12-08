@@ -2,7 +2,7 @@
  * goals.tsx のユーティリティ関数
  */
 
-import { Goal } from './_types';
+import { Goal } from './types';
 
 /**
  * 目標タイプのラベルを取得

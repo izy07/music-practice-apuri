@@ -7,10 +7,8 @@ import { useRouter } from 'expo-router';
 import Svg, { Rect, G, Line, Text as SvgText } from 'react-native-svg';
 import { supabase } from '@/lib/supabase';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
-import logger from '@/lib/logger';
-import { ErrorHandler } from '@/lib/errorHandler';
 import { UI, DATA, STATISTICS } from '@/lib/constants';
-import { practiceService } from '@/services/practiceService';
+import { getPracticeSessionsByDateRange } from '@/repositories/practiceSessionRepository';
 import { formatMinutesToHours } from '@/lib/dateUtils';
 
 const { width } = Dimensions.get('window');
@@ -108,23 +106,28 @@ export default function StatisticsScreen() {
       // コンテキストから楽器IDを取得（DBアクセス不要）
       const currentInstrumentId = selectedInstrument || null;
       
-      // 最適化されたクエリ: 必要なカラムのみ取得、全期間表示
-      const result = await practiceService.getSessionsByDateRange(
+      // 最適化されたクエリ: 必要なカラムのみ取得、最近2年分を取得（年別統計のため24ヶ月分）
+      // 2年分のデータで年別グラフ（12ヶ月）を表示可能
+      const twoYearsAgo = new Date();
+      twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+      const startDate = twoYearsAgo.toISOString().split('T')[0]; // YYYY-MM-DD形式
+      
+      const result = await getPracticeSessionsByDateRange(
         user.id,
-        '1970-01-01', // 全期間
+        startDate, // 最近2年分
         undefined,
         currentInstrumentId,
         DATA.MAX_PRACTICE_RECORDS
       );
 
-      if (!result.success || result.error) {
-        ErrorHandler.handle(result.error || new Error('練習記録取得エラー'), '練習記録取得', true);
+      if (result.error) {
+        Alert.alert('エラー', '練習記録の取得に失敗しました');
         return;
       }
 
       setPracticeRecords(result.data || []);
     } catch (error) {
-      ErrorHandler.handle(error, '練習記録取得', true);
+      Alert.alert('エラー', '練習記録の取得に失敗しました');
     } finally {
       setLoading(false);
     }
@@ -134,21 +137,6 @@ export default function StatisticsScreen() {
     fetchPracticeRecords();
   }, [user, selectedInstrument, fetchPracticeRecords]);
 
-  // 練習記録更新通知をリッスン
-  useEffect(() => {
-    const handlePracticeRecordUpdate = () => {
-      logger.debug('練習記録更新通知を受信、データを再読み込み');
-      fetchPracticeRecords();
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('practiceRecordUpdated', handlePracticeRecordUpdate);
-      
-      return () => {
-        window.removeEventListener('practiceRecordUpdated', handlePracticeRecordUpdate);
-      };
-    }
-  }, [fetchPracticeRecords]);
 
   // 日別（当週：月〜日）- メモ化で最適化
   const weeklyData = useMemo<DayData[]>(() => {
@@ -210,7 +198,7 @@ export default function StatisticsScreen() {
     });
   }, [practiceRecords, anchorDate]);
 
-  // 年別（現在の月から過去10ヶ月分）- メモ化で最適化
+  // 年別（現在の月から過去12ヶ月分）- メモ化で最適化
   const yearlyData = useMemo<DayData[]>(() => {
     const arr: DayData[] = [];
     
@@ -221,22 +209,22 @@ export default function StatisticsScreen() {
       recordsByMonth.set(monthKey, (recordsByMonth.get(monthKey) || 0) + record.duration_minutes);
     });
     
-    // 現在の月から過去10ヶ月分を表示
+    // 現在の月から過去12ヶ月分を表示
     const now = new Date(anchorDate);
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
     
-    // 表示する月の範囲を決定（現在の月を最初にして過去10ヶ月）
+    // 表示する月の範囲を決定（現在の月を最初にして過去12ヶ月）
     let displayMonths: Array<{ year: number; month: number }> = [];
-    const maxMonths = 10;
+    const maxMonths = 12;
     
-    // 現在の月から過去に向かって10ヶ月分を追加（新しい順）
-    for (let i = 0; i < maxMonths; i++) {
+    // 過去の月から現在の月に向かって12ヶ月分を追加（古い順）
+    for (let i = maxMonths - 1; i >= 0; i--) {
       const date = new Date(currentYear, currentMonth - 1 - i, 1);
       const displayYear = date.getFullYear();
       const displayMonth = date.getMonth() + 1;
       
-      displayMonths.push({ year: displayYear, month: displayMonth }); // 新しい順（現在の月が最初）
+      displayMonths.push({ year: displayYear, month: displayMonth }); // 古い順（過去の月が最初）
     }
     
     // データを配列に追加
@@ -375,20 +363,7 @@ export default function StatisticsScreen() {
     // 5. 練習頻度（週に何回）
     const recordsPerWeek = Math.round((practiceRecords.length / 30) * 7);
 
-    // 6. 練習時間帯別統計（時間別の練習回数）
-    const timeSlotPattern: { [key: string]: number } = {};
-    practiceRecords.forEach(record => {
-      const date = new Date(record.practice_date);
-      const hour = date.getHours();
-      let timeSlot = '';
-      if (hour >= 5 && hour < 12) timeSlot = '朝（5-12時）';
-      else if (hour >= 12 && hour < 18) timeSlot = '昼（12-18時）';
-      else if (hour >= 18 && hour < 23) timeSlot = '夕方（18-23時）';
-      else timeSlot = '深夜（23-5時）';
-      timeSlotPattern[timeSlot] = (timeSlotPattern[timeSlot] || 0) + 1;
-    });
-
-    // 7. 練習強度別統計（短時間/中時間/長時間）
+    // 6. 練習強度別統計（短時間/中時間/長時間）
     const intensityStats = {
       short: 0, // 30分未満
       medium: 0, // 30分-60分
@@ -400,13 +375,10 @@ export default function StatisticsScreen() {
       else intensityStats.long++;
     });
 
-    // 8. 総練習日数と練習回数
+    // 7. 総練習日数と練習回数
     const uniqueDates = new Set(practiceRecords.map(r => r.practice_date));
     const totalPracticeDays = uniqueDates.size;
     const totalPracticeCount = practiceRecords.length;
-
-    // 9. 最も多い練習時間帯
-    const mostFrequentTimeSlot = Object.entries(timeSlotPattern).sort((a, b) => b[1] - a[1])[0];
 
     return {
       avgMinutes,
@@ -414,11 +386,9 @@ export default function StatisticsScreen() {
       weeklyPattern,
       monthlyTendency: sortedMonths,
       recordsPerWeek,
-      timeSlotPattern,
       intensityStats,
       totalPracticeDays,
       totalPracticeCount,
-      mostFrequentTimeSlot: mostFrequentTimeSlot ? { slot: mostFrequentTimeSlot[0], count: mostFrequentTimeSlot[1] } : null,
     };
   }, [practiceRecords]);
 
@@ -769,14 +739,6 @@ export default function StatisticsScreen() {
                   {getAdditionalStats.recordsPerWeek}日
                 </Text>
               </View>
-              {getAdditionalStats.mostFrequentTimeSlot && (
-                <View style={styles.analysisRow}>
-                  <Text style={[styles.analysisLabel, { color: SecondaryText }]}>最も多い時間帯</Text>
-                  <Text style={[styles.analysisValue, { color: TextColor }]}>
-                    {getAdditionalStats.mostFrequentTimeSlot.slot} ({getAdditionalStats.mostFrequentTimeSlot.count}回)
-                  </Text>
-                </View>
-              )}
             </View>
           )}
 
@@ -804,41 +766,6 @@ export default function StatisticsScreen() {
               </View>
             </View>
           )}
-
-          {/* 時間帯別統計 */}
-          {getAdditionalStats && Object.keys(getAdditionalStats.timeSlotPattern).length > 0 && (
-            <View style={styles.analysisSection}>
-              <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>練習時間帯統計</Text>
-              {Object.entries(getAdditionalStats.timeSlotPattern)
-                .sort((a, b) => (b[1] as number) - (a[1] as number))
-                .map(([slot, count], index) => (
-                <View style={styles.analysisRow} key={index}>
-                  <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{slot}</Text>
-                  <Text style={[styles.analysisValue, { color: TextColor }]}>
-                    {count as number}回
-                  </Text>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {/* 最近の練習記録（拡張版） */}
-          <View style={styles.analysisSection}>
-            <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>最近の練習記録（直近10件）</Text>
-            {[...practiceRecords]
-              .sort((a, b) => new Date(b.practice_date).getTime() - new Date(a.practice_date).getTime())
-              .slice(0, 10)
-              .map((record, index) => (
-                <View style={styles.analysisRow} key={index}>
-                  <Text style={[styles.analysisLabel, { color: SecondaryText }]}>
-                    {new Date(record.practice_date).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
-                  </Text>
-                  <Text style={[styles.analysisValue, { color: TextColor }]}>
-                    {formatMinutesToHours(record.duration_minutes)} ({record.input_method})
-                  </Text>
-                </View>
-              ))}
-          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
