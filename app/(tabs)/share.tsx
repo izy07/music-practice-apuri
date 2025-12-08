@@ -501,10 +501,14 @@ export default function ShareScreen() {
                     borderColor: currentTheme.secondary
                   }]}
                   value={joinForm.password}
-                  onChangeText={(text) => setJoinForm(prev => ({ ...prev, password: text }))}
-                  placeholder={t('language') === 'en' ? '8-digit number' : '8桁の数字'}
+                  onChangeText={(text) => {
+                    // 大文字英数字のみを許可し、自動的に大文字に変換
+                    const upperText = text.toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    setJoinForm(prev => ({ ...prev, password: upperText }));
+                  }}
+                  placeholder={t('language') === 'en' ? '8 uppercase alphanumeric' : '8桁の大文字英数字'}
                   placeholderTextColor={currentTheme.textSecondary}
-                  keyboardType="numeric"
+                  autoCapitalize="characters"
                   maxLength={8}
                 />
               </View>

@@ -832,10 +832,14 @@ export default function GoalsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={[styles.header, { borderBottomColor: currentTheme.secondary, paddingLeft: 20 }]}> 
-          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, flex: 1 }}>
             <Target size={24} color={currentTheme.primary} style={{ marginTop: 2 }} />
-            <View style={{ flexDirection: 'column' }}>
-              <Text style={[styles.title, { color: currentTheme.text }]}>
+            <View style={{ flex: 1, flexShrink: 1 }}>
+              <Text 
+                style={[styles.title, { color: currentTheme.text }]}
+                numberOfLines={2}
+                ellipsizeMode="tail"
+              >
                 {(() => {
                   // 優先順位: userProfile.nickname > user.name > 'ユーザー'
                   const nickname = userProfile?.nickname && userProfile.nickname.trim().length > 0
@@ -843,11 +847,8 @@ export default function GoalsScreen() {
                     : (user?.name && String(user.name).trim().length > 0
                       ? String(user.name).trim()
                       : 'ユーザー');
-                  return nickname;
+                  return `${nickname}の目標`;
                 })()}
-              </Text>
-              <Text style={[styles.title, { color: currentTheme.text }]}>
-                の目標
               </Text>
             </View>
           </View>
