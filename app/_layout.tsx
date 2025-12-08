@@ -409,8 +409,16 @@ function RootLayoutContent() {
     }
 
     // Web環境: リロード時に現在の画面を維持する処理
+    // ただし、認証状態の初期化が完了している場合のみ（キャッシュされた認証状態を信頼しない）
     if (Platform.OS === 'web') {
+      // 認証状態の初期化が完了していない場合は、画面遷移を待つ
+      if (!isInitialized || isLoading) {
+        logger.debug('認証状態の初期化中 - 画面遷移を待機', { isInitialized, isLoading });
+        return;
+      }
+      
       // 認証済みで適切な画面にいる場合は、リロード時も現在の画面を維持
+      // ただし、認証状態の初期化が完了している場合のみ
       if (isAuthenticated && (isInTabsGroup || isInOrgGroup) && hasInstrumentSelected()) {
         logger.debug('認証済み・楽器選択済み - 現在の画面を維持', { segments: currentSegments });
         return;
@@ -425,8 +433,9 @@ function RootLayoutContent() {
     
     // 未認証ユーザー → ログイン画面にリダイレクト
     if (!isAuthenticated) {
-      if (!isInAuthGroup) {
-        logger.debug('未認証ユーザー - ログイン画面にリダイレクト');
+      // ルートパス（/）にアクセスした場合も、ログイン画面にリダイレクト
+      if (isAtRoot || !isInAuthGroup) {
+        logger.debug('未認証ユーザー - ログイン画面にリダイレクト', { isAtRoot, isInAuthGroup });
         router.replace('/auth/login');
       }
       return;
