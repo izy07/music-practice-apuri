@@ -275,6 +275,130 @@ export default function BeginnerGuideScreen() {
                 <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.fingering.chart}</Text>
               </View>
               
+              {/* 音階表記（英語・ドイツ語） */}
+              {(currentGuide.fingering as any)?.noteNames && (
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>音階の表記</Text>
+                  <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                    日本語：{(currentGuide.fingering as any).noteNames.japanese}{'\n'}
+                    英語：{(currentGuide.fingering as any).noteNames.english}{'\n'}
+                    ドイツ語：{(currentGuide.fingering as any).noteNames.german}
+                  </Text>
+                </View>
+              )}
+              
+              {/* 弦楽器の各弦説明 */}
+              {(currentGuide.fingering as any)?.stringInfo && (
+                <>
+                  {(currentGuide.fingering as any).stringInfo.eString && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>E線について</Text>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide.fingering as any).stringInfo.eString}
+                      </Text>
+                    </View>
+                  )}
+                  {(currentGuide.fingering as any).stringInfo.aString && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>A線について</Text>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide.fingering as any).stringInfo.aString}
+                      </Text>
+                    </View>
+                  )}
+                  {(currentGuide.fingering as any).stringInfo.dString && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>D線について</Text>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide.fingering as any).stringInfo.dString}
+                      </Text>
+                    </View>
+                  )}
+                  {(currentGuide.fingering as any).stringInfo.gString && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>G線について</Text>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide.fingering as any).stringInfo.gString}
+                      </Text>
+                    </View>
+                  )}
+                  {(currentGuide.fingering as any).stringInfo.cString && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>C線について</Text>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide.fingering as any).stringInfo.cString}
+                      </Text>
+                    </View>
+                  )}
+                  <View style={styles.infoItem}>
+                    <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>弦の構成</Text>
+                    <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                      {(currentGuide.fingering as any).stringInfo.strings}
+                    </Text>
+                  </View>
+                </>
+              )}
+              
+              {/* 管楽器のB管・C管説明 */}
+              {(currentGuide.fingering as any)?.keyInfo && (
+                <>
+                  <View style={styles.infoItem}>
+                    <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>管のキーについて</Text>
+                    <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                      {(currentGuide.fingering as any).keyInfo.description}
+                    </Text>
+                  </View>
+                  {(currentGuide.fingering as any).keyInfo.bFlat && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>B♭管について</Text>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide.fingering as any).keyInfo.bFlat}
+                      </Text>
+                    </View>
+                  )}
+                  {(currentGuide.fingering as any).keyInfo.c && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>C管について</Text>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide.fingering as any).keyInfo.c}
+                      </Text>
+                    </View>
+                  )}
+                  {(currentGuide.fingering as any).keyInfo.eFlat && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>E♭管について</Text>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide.fingering as any).keyInfo.eFlat}
+                      </Text>
+                    </View>
+                  )}
+                  {(currentGuide.fingering as any).keyInfo.a && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>A管について</Text>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide.fingering as any).keyInfo.a}
+                      </Text>
+                    </View>
+                  )}
+                  {(currentGuide.fingering as any).keyInfo.f && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>F管について</Text>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide.fingering as any).keyInfo.f}
+                      </Text>
+                    </View>
+                  )}
+                  {(currentGuide.fingering as any).keyInfo.difference && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>初心者へのアドバイス</Text>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide.fingering as any).keyInfo.difference}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )}
+              
               <View style={styles.infoItem}>
                 <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>練習のコツ</Text>
                 <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.fingering.tips}</Text>

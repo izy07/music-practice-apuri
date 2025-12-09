@@ -56,3 +56,5 @@ COMMENT ON COLUMN user_push_tokens.push_token IS 'Expo Push Token（ExponentPush
 COMMENT ON COLUMN user_push_tokens.platform IS 'プラットフォーム（ios または android）';
 COMMENT ON COLUMN user_push_tokens.device_id IS 'デバイスID（オプション）';
 
+
+

@@ -21,3 +21,5 @@ LEFT JOIN practice_sessions ps ON up.user_id = ps.user_id
 GROUP BY up.user_id, up.display_name, up.created_at
 ORDER BY SUM(ps.duration_minutes) DESC NULLS LAST;
 
+
+

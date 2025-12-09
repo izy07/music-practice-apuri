@@ -374,3 +374,5 @@ FROM goals g
 LEFT JOIN user_profiles up ON g.user_id = up.user_id
 ORDER BY g.created_at DESC;
 
+
+

@@ -67,6 +67,37 @@ export const disableBackgroundFocus = () => {
     setTimeout(removeAriaHidden, 10);
     setTimeout(removeAriaHidden, 50);
     setTimeout(removeAriaHidden, 100);
+    setTimeout(removeAriaHidden, 200);
+    setTimeout(removeAriaHidden, 500);
+    
+    // MutationObserverでリアルタイムにaria-hiddenの追加を監視
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'aria-hidden') {
+          const target = mutation.target as HTMLElement;
+          if (target.getAttribute('aria-hidden') === 'true') {
+            // モーダル内の要素は除外
+            if (!target.closest('[role="dialog"]') && 
+                !target.closest('[aria-modal="true"]') &&
+                !target.closest('[data-modal-content]')) {
+              target.removeAttribute('aria-hidden');
+            }
+          }
+        }
+      });
+    });
+    
+    // ルート要素とその子孫を監視
+    if (root) {
+      observer.observe(root, {
+        attributes: true,
+        attributeFilter: ['aria-hidden'],
+        subtree: true
+      });
+      
+      // モーダルが閉じたときにobserverを切断するため、グローバルに保存
+      (window as any).__modalAriaHiddenObserver = observer;
+    }
     
     // フォールバック: 古いブラウザでinertがサポートされていない場合の対策
     // 背景のフォーカス可能な要素にtabindex="-1"を設定
@@ -100,6 +131,12 @@ export const enableBackgroundFocus = () => {
     const root = getRootElement();
     if (root) {
       root.removeAttribute('inert');
+    }
+    
+    // MutationObserverを切断
+    if ((window as any).__modalAriaHiddenObserver) {
+      (window as any).__modalAriaHiddenObserver.disconnect();
+      delete (window as any).__modalAriaHiddenObserver;
     }
     
     // フォールバック: 無効化したフォーカス可能な要素を再有効化

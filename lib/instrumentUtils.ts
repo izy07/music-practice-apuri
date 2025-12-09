@@ -95,3 +95,15 @@ export const getInstrumentEmoji = (nameEn: string, defaultEmoji: string = '🎵'
   return INSTRUMENT_NAME_TO_EMOJI_MAP[nameEn] || defaultEmoji;
 };
 
+/**
+ * selectedInstrumentから楽器IDを統一的な方法で取得
+ * すべての場所で同じロジックを使用するための共通関数
+ * @param selectedInstrument selectedInstrument（string型のID文字列）
+ * @returns 楽器ID（string）またはnull（空文字列や未設定の場合）
+ */
+export const getInstrumentId = (selectedInstrument: string | null | undefined): string | null => {
+  return selectedInstrument && selectedInstrument.trim() !== '' 
+    ? selectedInstrument 
+    : null;
+};
+

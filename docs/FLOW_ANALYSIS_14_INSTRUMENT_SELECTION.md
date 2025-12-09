@@ -353,3 +353,5 @@ await new Promise<void>((resolve) => setTimeout(resolve, 500));
 
 これらの改善により、楽器変更時のデータ切り替えが確実に動作し、コードの可読性向上が期待できる。
 
+
+

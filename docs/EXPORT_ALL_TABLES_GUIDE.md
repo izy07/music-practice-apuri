@@ -214,3 +214,5 @@ RLS（Row Level Security）の設定を確認してください。Supabaseダッ
 - `scripts/quick_export_user_summary.sql` - ユーザー集計のみ
 - `docs/HOW_TO_VIEW_CSV.md` - CSVファイルの見方
 
+
+

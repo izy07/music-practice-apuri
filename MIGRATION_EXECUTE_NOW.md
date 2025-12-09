@@ -153,3 +153,5 @@ ALTER TABLE goals DROP COLUMN IF EXISTS show_on_calendar;
 **優先度**: 🔴 高（新規登録ユーザーがエラーで使用できない状態）
 
 
+
+

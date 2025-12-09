@@ -95,3 +95,5 @@ bash scripts/execute_migration_now.sh
 4. **プロフィール更新が動作するか確認**
 
 
+
+

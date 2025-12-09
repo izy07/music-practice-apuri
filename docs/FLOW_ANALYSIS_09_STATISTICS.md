@@ -243,3 +243,5 @@ window.dispatchEvent('practiceRecordUpdated')
 
 これらの改善により、パフォーマンス向上とネットワーク負荷の削減が期待できる。
 
+
+

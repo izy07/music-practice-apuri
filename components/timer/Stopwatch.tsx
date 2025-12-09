@@ -68,7 +68,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
         </Text>
       </View>
       
-      {/* ラップタイムリスト */}
+      {/* ラップタイムリスト（横スクロール） */}
       {lapTimes.length > 0 && (
         <View style={[styles.lapTimesContainer, { backgroundColor: currentTheme.surface }]}>
           <View style={styles.lapTimesHeader}>
@@ -85,9 +85,14 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
               <Text style={[styles.clearLapsButton, { color: currentTheme.primary }]}>クリア</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView style={styles.lapTimesList} showsVerticalScrollIndicator={false}>
+          <ScrollView 
+            style={styles.lapTimesList} 
+            horizontal={true}
+            showsHorizontalScrollIndicator={true}
+            contentContainerStyle={styles.lapTimesListContent}
+          >
             {lapTimes.map((lap, index) => (
-              <View key={lap.id} style={[styles.lapTimeItem, { borderBottomColor: currentTheme.textSecondary + '20' }]}>
+              <View key={lap.id} style={[styles.lapTimeItem, { borderRightColor: currentTheme.textSecondary + '20' }]}>
                 <Text style={[styles.lapNumber, { color: currentTheme.textSecondary }]}>
                   #{lapTimes.length - index}
                 </Text>
@@ -209,11 +214,10 @@ const styles = StyleSheet.create({
   },
   lapTimesContainer: {
     width: '100%',
-    maxWidth: 400,
     marginTop: 20,
+    marginBottom: 12,
     padding: 16,
     borderRadius: 16,
-    maxHeight: 300,
     elevation: 2,
     ...createShadowStyle({
       shadowColor: '#000',
@@ -238,35 +242,40 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   lapTimesList: {
-    maxHeight: 200,
+    width: '100%',
+  },
+  lapTimesListContent: {
+    paddingRight: 8,
   },
   lapTimeItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: 'column',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 12,
+    borderRightWidth: 1,
+    minWidth: 100,
   },
   lapNumber: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    minWidth: 50,
+    marginBottom: 4,
     color: '#666',
   },
   lapTimeText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     fontFamily: 'monospace',
-    flex: 1,
     textAlign: 'center',
     letterSpacing: 0.5,
+    marginBottom: 4,
   },
   lapTotalTime: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '500',
     fontFamily: 'monospace',
-    minWidth: 90,
-    textAlign: 'right',
+    textAlign: 'center',
     color: '#999',
   },
 });

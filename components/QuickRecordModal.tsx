@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -18,6 +18,10 @@ import { savePracticeSessionWithIntegration } from '@/repositories/practiceSessi
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { createShadowStyle } from '@/lib/shadowStyles';
+import { formatLocalDate } from '@/lib/dateUtils';
+import { supabase } from '@/lib/supabase';
+import { getInstrumentId } from '@/lib/instrumentUtils';
+import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
 
 interface QuickRecordModalProps {
   visible: boolean;
@@ -40,11 +44,14 @@ export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRe
         throw new Error('ユーザーが認証されていません');
       }
 
+      // 共通関数を使用して楽器IDを取得
+      const currentInstrumentId = getInstrumentId(selectedInstrument);
+      
       const result = await savePracticeSessionWithIntegration(
         user.id,
         minutes,
         {
-          instrumentId: selectedInstrument?.id || null,
+          instrumentId: currentInstrumentId,
           content: 'クイック記録',
           inputMethod: 'voice',
           existingContentPrefix: 'クイック記録'
@@ -64,7 +71,22 @@ export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRe
         throw result.error || new Error(errorMessage);
       }
 
-      logger.debug(`クイック記録を保存: ${minutes}分`);
+      logger.info(`✅ クイック記録を保存: ${minutes}分`, {
+        practiceDate: formatLocalDate(new Date()),
+        instrumentId: currentInstrumentId
+      });
+
+      // イベントを発火（保存処理の戻り値で成功を確認済みのため、検証処理は不要）
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
+          detail: {
+            action: 'saved',
+            date: new Date(),
+            source: 'quick_record',
+            minutes: minutes
+          }
+        }));
+      }
     } catch (error) {
       ErrorHandler.handle(error, '練習記録の保存', true);
       throw error;
@@ -281,7 +303,20 @@ export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRe
     }
   };
 
-
+  // モーダルの開閉に応じてフォーカス管理
+  useEffect(() => {
+    if (visible) {
+      disableBackgroundFocus();
+    } else {
+      enableBackgroundFocus();
+    }
+    
+    return () => {
+      if (visible) {
+        enableBackgroundFocus();
+      }
+    };
+  }, [visible]);
 
   return (
     <Modal
@@ -291,9 +326,22 @@ export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRe
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <View style={styles.modalContainer}>
+        <View 
+          style={styles.modalContainer}
+          {...(Platform.OS === 'web' ? { 
+            role: 'dialog',
+            'aria-modal': true,
+            'aria-labelledby': 'quick-record-modal-title',
+            'data-modal-content': true
+          } : {})}
+        >
           <View style={styles.header}>
-            <Text style={styles.title}>クイック記録</Text>
+            <Text 
+              id="quick-record-modal-title"
+              style={styles.title}
+            >
+              クイック記録
+            </Text>
             <TouchableOpacity onPress={onClose} style={styles.closeButton}>
               <X size={24} color="#666666" />
             </TouchableOpacity>

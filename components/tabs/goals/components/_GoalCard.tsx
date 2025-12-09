@@ -30,7 +30,7 @@ export const GoalCard: React.FC<GoalCardProps> = ({
 
   return (
     <View key={goal.id} style={[styles.goalCard, { backgroundColor: currentTheme.surface }]}>
-      <View style={styles.goalHeader}>
+      <View style={[styles.goalHeader, { position: 'relative', zIndex: 1 }]}>
         <View style={styles.goalHeaderLeft}>
           <View style={[styles.goalTypeBadge, { backgroundColor: getGoalTypeColor(goal.goal_type) }]}>
             {goal.goal_type === 'personal_long' ? (
@@ -47,8 +47,21 @@ export const GoalCard: React.FC<GoalCardProps> = ({
           )}
         </View>
         <TouchableOpacity
-          style={styles.deleteButton}
-          onPress={() => onDeleteGoal(goal.id)}
+          style={[styles.deleteButton, { position: 'relative', zIndex: 10 }]}
+          onPress={async (e) => {
+            e.stopPropagation();
+            try {
+              if (onDeleteGoal) {
+                await onDeleteGoal(goal.id);
+              } else {
+                console.warn('onDeleteGoal is not provided');
+              }
+            } catch (error) {
+              console.error('削除エラー:', error);
+            }
+          }}
+          activeOpacity={0.7}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
           <Text style={styles.deleteButtonText}>×</Text>
         </TouchableOpacity>
@@ -79,9 +92,33 @@ export const GoalCard: React.FC<GoalCardProps> = ({
               <Text style={styles.bigAchievementText}>達成成功！</Text>
             </View>
           )}
+          
+          {/* 進捗スライダー（大きく目立つように） */}
+          <View style={styles.progressSliderContainer}>
+            <View style={styles.progressSliderTrack}>
+              <View 
+                style={[
+                  styles.progressSliderFill, 
+                  { 
+                    width: `${goal.progress_percentage || 0}%`,
+                    backgroundColor: getGoalTypeColor(goal.goal_type)
+                  }
+                ]} 
+              />
+            </View>
+            <Text style={[styles.progressPercentageLabel, { color: getGoalTypeColor(goal.goal_type) }]}>
+              {goal.progress_percentage || 0}%
+            </Text>
+          </View>
+
+          {/* 進捗変更ボタン */}
           <View style={styles.progressButtonsWithBar}>
             <TouchableOpacity
-              style={[styles.progressButton, styles.progressButtonMinus]}
+              style={[
+                styles.progressButton, 
+                styles.progressButtonMinus,
+                { borderColor: currentTheme.textSecondary + '80' }
+              ]}
               activeOpacity={0.7}
               onPress={() => {
                 const currentProgress = goal.progress_percentage || 0;
@@ -91,7 +128,15 @@ export const GoalCard: React.FC<GoalCardProps> = ({
               <Text style={styles.progressButtonText}>−10%</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.progressButton, styles.progressButtonPlus, { backgroundColor: getGoalTypeColor(goal.goal_type) }]}
+              style={[
+                styles.progressButton, 
+                styles.progressButtonPlus, 
+                { 
+                  backgroundColor: getGoalTypeColor(goal.goal_type),
+                  borderWidth: 1.5,
+                  borderColor: getGoalTypeColor(goal.goal_type)
+                }
+              ]}
               activeOpacity={0.7}
               onPress={() => {
                 const currentProgress = goal.progress_percentage || 0;
@@ -100,20 +145,6 @@ export const GoalCard: React.FC<GoalCardProps> = ({
             >
               <Text style={[styles.progressButtonText, { color: '#FFFFFF' }]}>+10%</Text>
             </TouchableOpacity>
-            <View style={styles.progressBarCompact}>
-              <View 
-                style={[
-                  styles.progressFill, 
-                  { 
-                    width: `${goal.progress_percentage || 0}%`,
-                    backgroundColor: getGoalTypeColor(goal.goal_type)
-                  }
-                ]} 
-              />
-            </View>
-            <Text style={[styles.progressPercentageCompact, { color: getGoalTypeColor(goal.goal_type) }]}>
-              {goal.progress_percentage || 0}%
-            </Text>
           </View>
 
           {/* カレンダー表示切り替えと達成ボタン（長期目標のみ） */}
@@ -163,17 +194,33 @@ export const GoalCard: React.FC<GoalCardProps> = ({
               </View>
             </View>
           ) : (
-            <View style={styles.calendarToggleRow}>
-              <View style={styles.calendarToggleButtons}>
+            <View style={[styles.calendarToggleRow, { gap: 0 }]}>
+              <View style={[styles.calendarToggleButtons, { gap: 0 }]}>
                 <TouchableOpacity
-                  style={[styles.calendarToggleBtn, { borderColor: currentTheme.secondary, backgroundColor: goal.show_on_calendar ? currentTheme.primary : 'transparent' }]}
+                  style={[styles.calendarToggleBtn, { 
+                    borderColor: currentTheme.secondary, 
+                    backgroundColor: goal.show_on_calendar ? currentTheme.primary : 'transparent',
+                    borderRightWidth: 0,
+                    borderTopLeftRadius: 8,
+                    borderBottomLeftRadius: 8,
+                    borderTopRightRadius: 0,
+                    borderBottomRightRadius: 0,
+                  }]}
                   onPress={() => onSetGoalShowOnCalendar(goal.id, true)}
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.calendarToggleText, { color: goal.show_on_calendar ? '#FFFFFF' : currentTheme.text }]}>カレンダーに表示</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.calendarToggleBtn, { borderColor: currentTheme.secondary, backgroundColor: !goal.show_on_calendar ? currentTheme.primary : 'transparent' }]}
+                  style={[styles.calendarToggleBtn, { 
+                    borderColor: currentTheme.secondary, 
+                    backgroundColor: !goal.show_on_calendar ? currentTheme.primary : 'transparent',
+                    borderLeftWidth: 0,
+                    borderTopLeftRadius: 0,
+                    borderBottomLeftRadius: 0,
+                    borderTopRightRadius: 8,
+                    borderBottomRightRadius: 8,
+                  }]}
                   onPress={() => onSetGoalShowOnCalendar(goal.id, false)}
                   activeOpacity={0.7}
                 >
@@ -181,7 +228,12 @@ export const GoalCard: React.FC<GoalCardProps> = ({
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
-                style={[styles.completeButton, { backgroundColor: currentTheme.primary }]}
+                style={[styles.completeButton, { 
+                  backgroundColor: currentTheme.primary,
+                  marginLeft: 0,
+                  borderTopLeftRadius: 0,
+                  borderBottomLeftRadius: 0,
+                }]}
                 onPress={() => onCompleteGoal(goal.id)}
               >
                 <CheckCircle size={20} color="#FFFFFF" />

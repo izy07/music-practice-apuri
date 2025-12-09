@@ -74,3 +74,5 @@ BEGIN
   RAISE NOTICE 'representative_songsテーブルが作成されました（または既に存在していました）';
 END $$;
 
+
+

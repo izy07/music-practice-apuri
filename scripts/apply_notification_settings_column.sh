@@ -53,3 +53,5 @@ fi
 echo ""
 echo "✅ 準備完了！上記のSQLをSupabaseダッシュボードで実行してください。"
 
+
+

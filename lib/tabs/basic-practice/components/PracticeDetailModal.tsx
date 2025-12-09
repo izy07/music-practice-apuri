@@ -10,10 +10,12 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import logger from '@/lib/logger';
 import { getCurrentUser } from '@/repositories/userRepository';
-import { getPracticeSessionsByDate, updatePracticeSession, createPracticeSession } from '@/repositories/practiceSessionRepository';
+import { updatePracticeSession, createPracticeSession } from '@/repositories/practiceSessionRepository';
 import { cleanContentFromTimeDetails } from '@/lib/utils/contentCleaner';
 import type { PracticeItem } from '../types/practice.types';
 import { styles } from '../styles';
+import { getInstrumentId } from '@/lib/instrumentUtils';
+import { supabase } from '@/lib/supabase';
 
 export interface PracticeDetailModalProps {
   visible: boolean;
@@ -47,30 +49,63 @@ export function PracticeDetailModal({
       // 基礎練の完了を記録（時間は追加しない、✅マークだけ）
       const today = new Date().toISOString().split('T')[0];
       
-      // 今日の既存の練習記録を取得
+      // 基礎練のみを検索（input_method = 'preset' + 楽器ID + LIMIT 1）
       const authUser = await getCurrentUser();
       if (!authUser) {
         Alert.alert('エラー', 'ログインが必要です');
         return;
       }
 
-      const existingRecords = await getPracticeSessionsByDate(
-        authUser.id,
-        today,
-        selectedInstrument || null
-      );
+      const instrumentId = getInstrumentId(selectedInstrument);
+      
+      // 基礎練のみを検索
+      let query = supabase
+        .from('practice_sessions')
+        .select('id, content, input_method')
+        .eq('user_id', authUser.id)
+        .eq('practice_date', today)
+        .eq('input_method', 'preset') // 基礎練のみ
+        .limit(1); // LIMIT 1
 
-      if (existingRecords.data && existingRecords.data.length > 0) {
-        // 既存の記録がある場合は、時間を追加せずcontentだけを更新
-        const existing = existingRecords.data[0];
+      if (instrumentId) {
+        query = query.eq('instrument_id', instrumentId);
+      } else {
+        query = query.is('instrument_id', null);
+      }
+
+      const { data: existingBasicPracticeRecords, error: fetchError } = await query;
+
+      if (fetchError) {
+        logger.error('基礎練記録の取得エラー:', fetchError);
+        Alert.alert('エラー', '基礎練記録の取得に失敗しました');
+        return;
+      }
+
+      // 基礎練レコードが既に存在する場合
+      if (existingBasicPracticeRecords && existingBasicPracticeRecords.length > 0) {
+        const existing = existingBasicPracticeRecords[0];
         
-        // 既存のcontentから時間詳細を削除（共通関数を使用）
+        // 既存のcontentから時間詳細を削除
         const existingContent = cleanContentFromTimeDetails(existing.content);
         
-        // 基礎練のメニュー名を追加
+        // 重複チェック: contentに完全一致するメニュー名が含まれているかチェック
+        const menuTitle = selectedMenu.title;
+        const contentParts = existingContent.split(',').map(part => part.trim());
+        const isDuplicate = contentParts.some(part => part === menuTitle);
+        
+        if (isDuplicate) {
+          // 既に存在する場合は何もしない（無視）
+          logger.debug('基礎練メニューが既に記録されています:', menuTitle);
+          onClose();
+          Alert.alert('情報', `${menuTitle}は既に記録されています`);
+          onSaveComplete?.();
+          return;
+        }
+        
+        // 含まれていない場合: contentに追加
         const newContent = existingContent 
-          ? `${existingContent}, ${selectedMenu.title}`
-          : selectedMenu.title;
+          ? `${existingContent}, ${menuTitle}`
+          : menuTitle;
         
         if (!existing.id) {
           Alert.alert('エラー', '練習記録のIDが見つかりません');
@@ -95,7 +130,7 @@ export function PracticeDetailModal({
           duration_minutes: 0, // 基礎練は時間を追加しない
           content: selectedMenu.title,
           input_method: 'preset',
-          instrument_id: selectedInstrument || null,
+          instrument_id: instrumentId,
         });
         
         if (createError || !createdSession) {

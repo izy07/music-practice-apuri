@@ -59,22 +59,74 @@ export default function InstrumentSelectionScreen() {
     { id: '550e8400-e29b-41d4-a716-446655440016', name: 'その他', nameEn: 'Other', emoji: '❓' },
   ];
 
-  // 現在の楽器を取得
+  // 現在の楽器を取得（データベースから取得した値を優先）
   useEffect(() => {
-    if (selectedInstrument && selectedInstrument !== '') {
-      setCurrentInstrumentId(selectedInstrument);
-      // 楽器変更の場合、現在の楽器を選択状態にする
-      setSelectedInstrumentId(selectedInstrument);
-      // その他楽器の場合は楽器名も取得
-      if (selectedInstrument === '550e8400-e29b-41d4-a716-446655440016') {
-        fetchCustomInstrumentName();
+    const fetchCurrentInstrument = async () => {
+      if (!user?.id) {
+        // ユーザーが認証されていない場合はクリア
+        setCurrentInstrumentId('');
+        setSelectedInstrumentId('');
+        return;
       }
-    } else {
-      // 新規ユーザーの場合、楽器IDをクリア
-      setCurrentInstrumentId('');
-      setSelectedInstrumentId('');
-    }
-  }, [selectedInstrument]);
+
+      try {
+        // データベースからselected_instrument_idを取得（キャッシュではなく実際のDB値を確認）
+        const { data: profile, error } = await supabase
+          .from('user_profiles')
+          .select('selected_instrument_id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (error) {
+          logger.error('プロフィール取得エラー:', error);
+          // エラー時はキャッシュを使用
+          if (selectedInstrument && selectedInstrument !== '') {
+            setCurrentInstrumentId(selectedInstrument);
+            setSelectedInstrumentId(selectedInstrument);
+          } else {
+            setCurrentInstrumentId('');
+            setSelectedInstrumentId('');
+          }
+          return;
+        }
+
+        // データベースのselected_instrument_idを優先（新規登録時はnull）
+        const dbInstrumentId = profile?.selected_instrument_id || null;
+        
+        if (dbInstrumentId && dbInstrumentId !== '') {
+          // データベースに楽器IDが保存されている場合
+          setCurrentInstrumentId(dbInstrumentId);
+          setSelectedInstrumentId(dbInstrumentId);
+          // その他楽器の場合は楽器名も取得
+          if (dbInstrumentId === '550e8400-e29b-41d4-a716-446655440016') {
+            fetchCustomInstrumentName();
+          }
+        } else {
+          // 新規登録時（データベースにselected_instrument_idがnullまたは存在しない）
+          // キャッシュを無視してクリア
+          setCurrentInstrumentId('');
+          setSelectedInstrumentId('');
+          // キャッシュに残っている楽器IDもクリア
+          if (selectedInstrument && selectedInstrument !== '') {
+            // キャッシュをクリア（オプション：必要に応じて実装）
+            logger.debug('新規登録ユーザー: キャッシュされた楽器IDを無視', { cachedInstrumentId: selectedInstrument });
+          }
+        }
+      } catch (error) {
+        logger.error('楽器ID取得エラー:', error);
+        // エラー時はキャッシュを使用
+        if (selectedInstrument && selectedInstrument !== '') {
+          setCurrentInstrumentId(selectedInstrument);
+          setSelectedInstrumentId(selectedInstrument);
+        } else {
+          setCurrentInstrumentId('');
+          setSelectedInstrumentId('');
+        }
+      }
+    };
+
+    fetchCurrentInstrument();
+  }, [user?.id, selectedInstrument]);
 
   const fetchCustomInstrumentName = async () => {
     if (!user?.id) return;

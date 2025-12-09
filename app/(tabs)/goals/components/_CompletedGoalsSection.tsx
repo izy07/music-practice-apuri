@@ -121,8 +121,10 @@ const CompletedGoalCard = memo<{
         </View>
         {onDeleteGoal && (
           <TouchableOpacity
-            style={[styles.deleteButton, { backgroundColor: '#FF4444' }]}
-            onPress={() => {
+            style={[styles.deleteButton, { backgroundColor: '#FF4444', zIndex: 10 }]}
+            onPress={(e) => {
+              e.stopPropagation();
+              console.log('達成済み目標の削除ボタンが押されました', goal.id);
               if (onDeleteGoal) {
                 onDeleteGoal(goal.id).catch((error) => {
                   console.error('削除エラー:', error);
@@ -130,6 +132,7 @@ const CompletedGoalCard = memo<{
               }
             }}
             activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
             <Text style={styles.deleteButtonText}>×</Text>
           </TouchableOpacity>
@@ -182,6 +185,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 8,
+    position: 'relative',
+    zIndex: 1,
   },
   completedGoalBadge: {
     alignSelf: 'flex-start',
@@ -213,6 +218,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FF4444',
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 10,
+    position: 'relative',
   },
   deleteButtonText: {
     color: '#FFFFFF',

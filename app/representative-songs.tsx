@@ -44,6 +44,8 @@ export default function RepresentativeSongsScreen() {
   const [songs, setSongs] = useState<RepresentativeSong[]>([]);
   const [instrument, setInstrument] = useState<Instrument | null>(null);
   const [loading, setLoading] = useState(true);
+  const [selectedSong, setSelectedSong] = useState<RepresentativeSong | null>(null);
+  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     if (instrumentId) {
@@ -249,38 +251,31 @@ export default function RepresentativeSongsScreen() {
     return songs;
   };
 
-  const handleSongPress = async (song: RepresentativeSong) => {
-    if (!song.youtube_url) {
+  const handleSongPress = (song: RepresentativeSong) => {
+    // 曲名を押したら、説明を表示するモーダルを開く
+    setSelectedSong(song);
+    setShowModal(true);
+  };
+
+  const handleOpenYouTube = async () => {
+    if (!selectedSong || !selectedSong.youtube_url) {
       return;
     }
     
-    Alert.alert(
-      'YouTubeに移動',
-      `${song.title}のYouTubeリンクに飛びます。URLに飛びますか？`,
-      [
-        {
-          text: 'キャンセル',
-          style: 'cancel',
-        },
-        {
-          text: '開く',
-          onPress: async () => {
-            try {
-              const url = song.youtube_url;
-              const supported = await Linking.canOpenURL(url);
-              if (supported) {
-                await Linking.openURL(url);
-              } else {
-                Alert.alert('エラー', 'このURLを開くことができません');
-              }
-            } catch (error) {
-              console.error('URLを開く際にエラーが発生しました:', error);
-              Alert.alert('エラー', 'URLを開くことができませんでした');
-            }
-          },
-        },
-      ]
-    );
+    try {
+      const url = selectedSong.youtube_url;
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
+        await Linking.openURL(url);
+        setShowModal(false);
+        setSelectedSong(null);
+      } else {
+        Alert.alert('エラー', 'このURLを開くことができません');
+      }
+    } catch (error) {
+      console.error('URLを開く際にエラーが発生しました:', error);
+      Alert.alert('エラー', 'URLを開くことができませんでした');
+    }
   };
 
 
@@ -345,8 +340,7 @@ export default function RepresentativeSongsScreen() {
                 key={song.id}
                 style={[styles.songCard, { backgroundColor: currentTheme.surface }]}
                 onPress={() => handleSongPress(song)}
-                activeOpacity={song.youtube_url ? 0.7 : 1}
-                disabled={!song.youtube_url}
+                activeOpacity={0.7}
               >
                 <View style={styles.songHeader}>
                   <View style={styles.songTitleContainer}>
@@ -354,9 +348,6 @@ export default function RepresentativeSongsScreen() {
                       {song.title}{song.famous_performer ? ` / ${song.famous_performer}` : ''}{song.famous_note ? `（${song.famous_note}）` : ''}
                     </Text>
                   </View>
-                  {song.youtube_url && (
-                    <ExternalLink size={20} color={currentTheme.primary} />
-                  )}
                 </View>
                 
                 <Text style={[styles.composer, { color: currentTheme.textSecondary }]}>
@@ -368,6 +359,79 @@ export default function RepresentativeSongsScreen() {
         </View>
       </ScrollView>
 
+      {/* 曲の説明モーダル */}
+      <Modal
+        visible={showModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setShowModal(false);
+          setSelectedSong(null);
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
+                {selectedSong?.title}
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowModal(false);
+                  setSelectedSong(null);
+                }}
+                style={styles.modalCloseButton}
+              >
+                <Text style={[styles.modalCloseText, { color: currentTheme.textSecondary }]}>×</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalBody}>
+              {selectedSong?.description_ja ? (
+                <Text style={[styles.modalDescription, { color: currentTheme.text }]}>
+                  {selectedSong.description_ja}
+                </Text>
+              ) : (
+                <Text style={[styles.modalDescription, { color: currentTheme.textSecondary }]}>
+                  説明が登録されていません
+                </Text>
+              )}
+              
+              {selectedSong?.composer && (
+                <Text style={[styles.modalComposer, { color: currentTheme.textSecondary }]}>
+                  作曲者: {selectedSong.composer}
+                  {selectedSong.era && ` | 時代: ${selectedSong.era}`}
+                </Text>
+              )}
+            </ScrollView>
+            
+            {selectedSong?.youtube_url && (
+              <View style={styles.modalFooter}>
+                <Text style={[styles.modalQuestion, { color: currentTheme.text }]}>
+                  YOUTUBEに飛びますか？
+                </Text>
+                <View style={styles.modalButtons}>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonCancel, { borderColor: currentTheme.secondary }]}
+                    onPress={() => {
+                      setShowModal(false);
+                      setSelectedSong(null);
+                    }}
+                  >
+                    <Text style={[styles.modalButtonText, { color: currentTheme.text }]}>いいえ</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.modalButtonYes, { backgroundColor: currentTheme.primary }]}
+                    onPress={handleOpenYouTube}
+                  >
+                    <Text style={[styles.modalButtonText, { color: '#FFFFFF' }]}>はい</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -470,5 +534,97 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     marginBottom: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 500,
+    borderRadius: 16,
+    maxHeight: '80%',
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 8,
+    }),
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5E5',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 12,
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalCloseText: {
+    fontSize: 28,
+    fontWeight: '300',
+    lineHeight: 32,
+  },
+  modalBody: {
+    padding: 20,
+    maxHeight: 300,
+  },
+  modalDescription: {
+    fontSize: 16,
+    lineHeight: 24,
+    marginBottom: 16,
+  },
+  modalComposer: {
+    fontSize: 14,
+    marginTop: 8,
+  },
+  modalFooter: {
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5E5',
+  },
+  modalQuestion: {
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalButtonCancel: {
+    borderWidth: 1,
+    backgroundColor: 'transparent',
+  },
+  modalButtonYes: {
+    // backgroundColorは動的に設定
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

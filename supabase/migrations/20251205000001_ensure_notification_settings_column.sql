@@ -51,3 +51,5 @@ WHERE notification_settings IS NULL;
 -- コメントを追加
 COMMENT ON COLUMN public.user_settings.notification_settings IS '通知設定をJSONB形式で保存（practice_reminders, goal_reminders, daily_practice等）';
 
+
+

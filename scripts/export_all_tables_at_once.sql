@@ -294,3 +294,5 @@ ORDER BY 年月 DESC;
 -- 4. ファイル名を分かりやすく変更（例: user_profiles.csv, practice_sessions.csv）
 -- ============================================
 
+
+

@@ -56,3 +56,5 @@ GRANT EXECUTE ON FUNCTION delete_user_account() TO authenticated;
 -- コメントを追加
 COMMENT ON FUNCTION delete_user_account() IS 'ユーザーアカウントのデータを削除します。auth.usersからの削除は別途必要です。';
 
+
+

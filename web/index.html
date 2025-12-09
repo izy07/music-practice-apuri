@@ -7,10 +7,59 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self';" />
   <title>Music Practice</title>
   <script>
-    // aria-hidden警告を根本的に抑制（DOMレベル）
-    // inert属性を使用したモーダル管理と組み合わせて使用
+    // 開発時のコンソールメッセージを早期に抑制（DOMレベル、Reactロード前）
     (function() {
       if (typeof window === 'undefined') return;
+      
+      // console.log, console.info, console.warnを早期にオーバーライド
+      const originalConsoleLog = console.log;
+      const originalConsoleInfo = console.info;
+      const originalConsoleWarn = console.warn;
+      
+      console.log = function(...args) {
+        const fullMessage = args.map(arg => String(arg)).join(' ');
+        // React/Expo開発時の標準メッセージを抑制
+        if (fullMessage.includes('Running application') ||
+            fullMessage.includes('with appParams') ||
+            fullMessage.includes('Development-level warnings') ||
+            fullMessage.includes('Performance optimizations') ||
+            fullMessage.includes('Development-level warnings: ON') ||
+            fullMessage.includes('Performance optimizations: OFF')) {
+          return;
+        }
+        originalConsoleLog.apply(console, args);
+      };
+      
+      console.info = function(...args) {
+        const fullMessage = args.map(arg => String(arg)).join(' ');
+        // React DevToolsのダウンロード案内を抑制
+        if (fullMessage.includes('Download the React DevTools') ||
+            fullMessage.includes('react.dev/link/react-devtools') ||
+            fullMessage.includes('React DevTools')) {
+          return;
+        }
+        // Expo/React開発時の標準メッセージを抑制
+        if (fullMessage.includes('Running application') ||
+            fullMessage.includes('with appParams') ||
+            fullMessage.includes('Development-level warnings') ||
+            fullMessage.includes('Performance optimizations')) {
+          return;
+        }
+        originalConsoleInfo.apply(console, args);
+      };
+      
+      console.warn = function(...args) {
+        const fullMessage = args.map(arg => String(arg)).join(' ');
+        // React DevToolsのダウンロード案内を抑制
+        if (fullMessage.includes('Download the React DevTools') ||
+            fullMessage.includes('react.dev/link/react-devtools')) {
+          return;
+        }
+        originalConsoleWarn.apply(console, args);
+      };
+      
+      // aria-hidden警告を根本的に抑制（DOMレベル）
+      // inert属性を使用したモーダル管理と組み合わせて使用
       
       // フォーカス可能な要素のセレクタ
       const focusableSelector = 'input, textarea, select, button, a, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]';
@@ -38,15 +87,14 @@
       const originalSetAttribute = Element.prototype.setAttribute;
       Element.prototype.setAttribute = function(name, value) {
         if (name === 'aria-hidden' && value === 'true') {
-          // inert属性が設定されている場合は、aria-hiddenの設定を許可
-          // （inert属性がフォーカス管理を適切に処理するため）
-          if (this.hasAttribute && this.hasAttribute('inert')) {
-            return originalSetAttribute.call(this, name, value);
-          }
-          
           // モーダル内の要素の場合は許可（モーダル自体にはaria-hiddenを設定しても良い）
           if (isInModal(this)) {
             return originalSetAttribute.call(this, name, value);
+          }
+          
+          // inert属性が設定されている場合は、aria-hiddenの設定をブロック（inertで十分）
+          if (this.hasAttribute && this.hasAttribute('inert')) {
+            return; // aria-hiddenの設定をブロック（inertで既に処理済み）
           }
           
           // フォーカス可能な要素が含まれている場合は設定を完全にブロック
@@ -69,18 +117,49 @@
             return;
           }
           
-          // フォーカス可能な要素がない場合でも、背景要素の場合はinert属性を使用
-          // React Native Webが設定する背景のaria-hiddenをブロック
+          // React Native Webが設定する背景のaria-hiddenを完全にブロック
+          // 背景要素の場合は常にinert属性を使用
           const isBackgroundElement = this === document.body || 
                                       this === document.getElementById('root') ||
-                                      (this.parentElement && (this.parentElement === document.body || this.parentElement.id === 'root'));
+                                      (this.parentElement && (this.parentElement === document.body || this.parentElement.id === 'root')) ||
+                                      (this.classList && (this.classList.contains('r-flex-13awgt0') || this.classList.contains('css-view-g5y9jx')));
           
           if (isBackgroundElement) {
             // inert属性を設定して、aria-hiddenの代わりにする
             if (!this.hasAttribute('inert')) {
               this.setAttribute('inert', '');
             }
-            return; // aria-hiddenの設定をブロック
+            return; // aria-hiddenの設定を完全にブロック
+          }
+          
+          // その他の場合も、フォーカス可能な要素が含まれている可能性があるため、inert属性を使用
+          try {
+            // 子要素にフォーカス可能な要素があるかチェック（再帰的に）
+            const hasFocusableDescendant = (element) => {
+              if (!element) return false;
+              try {
+                const focusable = element.querySelectorAll ? element.querySelectorAll(focusableSelector) : [];
+                if (focusable.length > 0) return true;
+                // 子要素を再帰的にチェック
+                for (let child of element.children || []) {
+                  if (hasFocusableDescendant(child)) return true;
+                }
+              } catch (e) {
+                // エラーは無視
+              }
+              return false;
+            };
+            
+            if (hasFocusableDescendant(this)) {
+              // inert属性を設定して、aria-hiddenの代わりにする
+              if (!this.hasAttribute('inert')) {
+                this.setAttribute('inert', '');
+              }
+              return; // aria-hiddenの設定をブロック
+            }
+          } catch (e) {
+            // エラーが発生した場合は設定をブロック（安全のため）
+            return;
           }
         }
         return originalSetAttribute.call(this, name, value);
@@ -177,7 +256,8 @@
                 // フォーカス可能な要素がなくても、背景要素の場合は削除
                 const isBackgroundElement = target === document.body || 
                                             target === document.getElementById('root') ||
-                                            (target.parentElement && (target.parentElement === document.body || target.parentElement.id === 'root'));
+                                            (target.parentElement && (target.parentElement === document.body || target.parentElement.id === 'root')) ||
+                                            (target.classList && (target.classList.contains('r-flex-13awgt0') || target.classList.contains('css-view-g5y9jx')));
                 
                 if (isBackgroundElement) {
                   target.removeAttribute('aria-hidden');
@@ -202,13 +282,36 @@
                     return;
                   }
                   
+                  // モーダル内の要素の場合は許可
+                  if (isInModal(element)) {
+                    return;
+                  }
+                  
                   try {
                     const focusableElements = element.querySelectorAll ? element.querySelectorAll(focusableSelector) : [];
                     if (focusableElements.length > 0) {
                       // モーダル内の要素の場合は許可
                       const hasModalContent = Array.from(focusableElements).some(el => isInModal(el));
                       if (!hasModalContent) {
+                        // 即座にaria-hiddenを削除し、inert属性を設定
                         element.removeAttribute('aria-hidden');
+                        if (!element.hasAttribute('inert')) {
+                          element.setAttribute('inert', '');
+                        }
+                        return;
+                      }
+                    }
+                    
+                    // フォーカス可能な要素がなくても、背景要素の場合は削除
+                    const isBackgroundElement = element === document.body || 
+                                              element === document.getElementById('root') ||
+                                              (element.parentElement && (element.parentElement === document.body || element.parentElement.id === 'root')) ||
+                                              (element.classList && (element.classList.contains('r-flex-13awgt0') || element.classList.contains('css-view-g5y9jx')));
+                    
+                    if (isBackgroundElement) {
+                      element.removeAttribute('aria-hidden');
+                      if (!element.hasAttribute('inert')) {
+                        element.setAttribute('inert', '');
                       }
                     }
                   } catch (e) {
@@ -272,7 +375,8 @@
             // フォーカス可能な要素がなくても、背景要素の場合は削除
             const isBackgroundElement = element === document.body || 
                                       element === document.getElementById('root') ||
-                                      (element.parentElement && (element.parentElement === document.body || element.parentElement.id === 'root'));
+                                      (element.parentElement && (element.parentElement === document.body || element.parentElement.id === 'root')) ||
+                                      (element.classList && (element.classList.contains('r-flex-13awgt0') || element.classList.contains('css-view-g5y9jx')));
             
             if (isBackgroundElement) {
               element.removeAttribute('aria-hidden');

@@ -122,3 +122,5 @@ GRANT SELECT ON TABLE public.instruments TO anon, authenticated;
 -- SELECT id, name, name_en FROM public.instruments ORDER BY name;
 
 
+
+

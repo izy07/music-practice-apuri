@@ -34,8 +34,10 @@ if (!config.server) {
 const originalRewriteRequestUrl = config.server.rewriteRequestUrl;
 
 config.server.rewriteRequestUrl = (url) => {
-  // バンドルリクエストからHermesパラメータを削除
-  if (url.includes('.bundle') || url.includes('/node_modules/') || url.includes('entry.bundle')) {
+  // バンドルリクエスト（.bundle、/node_modules/、entry.bundle）からHermesパラメータを削除
+  const isBundleRequest = url.includes('.bundle') || url.includes('/node_modules/') || url.includes('entry.bundle');
+  
+  if (isBundleRequest) {
     // Hermesパラメータが含まれているかチェック
     if (url.includes('transform.engine=hermes') || url.includes('unstable_transformProfile=hermes-stable')) {
       // 文字列操作で確実にHermesパラメータを削除
@@ -57,25 +59,41 @@ config.server.rewriteRequestUrl = (url) => {
       cleanedUrl = cleanedUrl.replace(/[?&]$/, '');
       cleanedUrl = cleanedUrl.replace(/\?&/, '?');
       
-      url = cleanedUrl;
+      // 既存のrewriteRequestUrlがあれば実行（Metroのデフォルト処理）
+      if (originalRewriteRequestUrl) {
+        return originalRewriteRequestUrl(cleanedUrl);
+      }
+      return cleanedUrl;
     }
+    // 既存のrewriteRequestUrlがあれば実行（Metroのデフォルト処理）
+    if (originalRewriteRequestUrl) {
+      return originalRewriteRequestUrl(url);
+    }
+    return url;
   }
   
-  // 既存のrewriteRequestUrlがあれば実行
+  // バンドルリクエスト以外は、既存のrewriteRequestUrlを実行（Expo Routerのデフォルト処理）
+  // これにより、Expo Routerのデフォルトのルーティング動作が維持される
   if (originalRewriteRequestUrl) {
-    url = originalRewriteRequestUrl(url);
+    return originalRewriteRequestUrl(url);
   }
   
-  // 静的ファイル（.js, .css, .png など）や内部API（/_）はそのまま返す
+  // originalRewriteRequestUrlが存在しない場合（Expo Routerのデフォルト動作）
+  // 静的ファイル（拡張子付き）や内部API（/_）はそのまま返す
+  const hasFileExtension = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json|map|html|bundle)$/i.test(url);
+  
   if (
-    url.includes('.') || 
+    hasFileExtension || 
     url.startsWith('/_') || 
-    url.startsWith('/api')
+    url.startsWith('/api') ||
+    url.startsWith('/static') ||
+    url.startsWith('/assets')
   ) {
     return url;
   }
   
-  // それ以外のすべてのルート（/auth/signup など）は /index.html にリダイレクト
+  // それ以外のすべてのルート（/auth/login など）は /index.html にリダイレクト
+  // Expo Routerのクライアントサイドルーティングを有効化
   const [path, query] = url.split('?');
   return query ? `/index.html?${query}` : '/index.html';
 };

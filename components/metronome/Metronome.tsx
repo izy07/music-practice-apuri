@@ -1,17 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Platform, Modal } from 'react-native';
 import { Play, Pause } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 
-// 拍子の選択肢
+// 拍子の選択肢（画像に合わせて拡張）
 const timeSignatures = [
   { id: '2/4', name: '2/4拍子', beats: 2, noteValue: 4, display: '2/4' },
   { id: '3/4', name: '3/4拍子', beats: 3, noteValue: 4, display: '3/4' },
   { id: '4/4', name: '4/4拍子', beats: 4, noteValue: 4, display: '4/4' },
+  { id: '3/8', name: '3/8拍子', beats: 3, noteValue: 8, display: '3/8' },
   { id: '5/4', name: '5/4拍子', beats: 5, noteValue: 4, display: '5/4' },
+  { id: '5/8', name: '5/8拍子', beats: 5, noteValue: 8, display: '5/8' },
+  { id: '6/4', name: '6/4拍子', beats: 6, noteValue: 4, display: '6/4' },
   { id: '6/8', name: '6/8拍子', beats: 6, noteValue: 8, display: '6/8' },
+  { id: '7/4', name: '7/4拍子', beats: 7, noteValue: 4, display: '7/4' },
+  { id: '7/8', name: '7/8拍子', beats: 7, noteValue: 8, display: '7/8' },
+  { id: '9/8', name: '9/8拍子', beats: 9, noteValue: 8, display: '9/8' },
+  { id: '12/8', name: '12/8拍子', beats: 12, noteValue: 8, display: '12/8' },
 ];
 
 interface MetronomeProps {
@@ -34,6 +41,7 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
     display: '4/4'
   });
   const [metronomeSoundType, setMetronomeSoundType] = useState<'click' | 'beep' | 'bell' | 'chime'>('click');
+  const [isTimeSignatureModalVisible, setIsTimeSignatureModalVisible] = useState(false);
 
   // メトロノーム用のref
   const metronomeIntervalRef = useRef<number | null>(null);
@@ -304,6 +312,9 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
     // 拍子を先に変更
     setSelectedTimeSignature(timeSignature);
     
+    // モーダルを閉じる
+    setIsTimeSignatureModalVisible(false);
+    
     // メトロノームが再生中だった場合は再起動
     if (wasPlaying) {
       // インターバルをクリアして即座に再開
@@ -451,36 +462,82 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
           <Text style={[styles.settingLabel, { color: currentTheme.textSecondary }]}>
             拍子設定
           </Text>
-          <View style={styles.timeSignatureSettingGrid}>
-            {timeSignatures.map((timeSignature) => (
-              <TouchableOpacity
-                key={timeSignature.id}
-                style={[
-                  styles.timeSignatureSettingButton,
-                  {
-                    backgroundColor: selectedTimeSignature.id === timeSignature.id
-                      ? currentTheme.primary
-                      : currentTheme.secondary,
-                  }
-                ]}
-                onPress={() => handleTimeSignatureChange(timeSignature)}
-              >
-                <Text
-                  style={[
-                    styles.timeSignatureSettingButtonText,
-                    {
-                      color: selectedTimeSignature.id === timeSignature.id
-                        ? currentTheme.surface
-                        : currentTheme.text,
-                    }
-                  ]}
-                >
-                  {timeSignature.display}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          <TouchableOpacity
+            style={[
+              styles.timeSignatureDisplayButton,
+              {
+                backgroundColor: currentTheme.secondary,
+              }
+            ]}
+            onPress={() => setIsTimeSignatureModalVisible(true)}
+          >
+            <Text
+              style={[
+                styles.timeSignatureDisplayButtonText,
+                {
+                  color: currentTheme.text,
+                }
+              ]}
+            >
+              {selectedTimeSignature.display}
+            </Text>
+          </TouchableOpacity>
         </View>
+
+        {/* 拍子選択モーダル */}
+        <Modal
+          visible={isTimeSignatureModalVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setIsTimeSignatureModalVisible(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setIsTimeSignatureModalVisible(false)}
+          >
+            <View
+              style={[
+                styles.modalContent,
+                { backgroundColor: currentTheme.surface }
+              ]}
+              onStartShouldSetResponder={() => true}
+            >
+              <View style={styles.timeSignatureModalGrid}>
+                {timeSignatures.map((timeSignature) => (
+                  <TouchableOpacity
+                    key={timeSignature.id}
+                    style={[
+                      styles.timeSignatureModalButton,
+                      {
+                        backgroundColor: selectedTimeSignature.id === timeSignature.id
+                          ? currentTheme.primary
+                          : currentTheme.secondary,
+                        borderColor: selectedTimeSignature.id === timeSignature.id
+                          ? currentTheme.primary
+                          : currentTheme.textSecondary + '60',
+                      }
+                    ]}
+                    onPress={() => handleTimeSignatureChange(timeSignature)}
+                  >
+                    <Text
+                      style={[
+                        styles.timeSignatureModalButtonText,
+                        {
+                          color: selectedTimeSignature.id === timeSignature.id
+                            ? currentTheme.surface
+                            : currentTheme.text,
+                        }
+                      ]}
+                    >
+                      {timeSignature.display}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         {/* 音選択 */}
         <View style={styles.metronomeSoundSettingContainer}>
@@ -605,23 +662,62 @@ const styles = StyleSheet.create({
   timeSignatureSettingContainer: {
     marginBottom: 20,
   },
-  timeSignatureSettingGrid: {
+  timeSignatureDisplayButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+    alignSelf: 'center',
+    elevation: 3,
+    borderWidth: 2,
+  },
+  timeSignatureDisplayButtonText: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backdropFilter: 'blur(4px)',
+  },
+  modalContent: {
+    borderRadius: 24,
+    padding: 24,
+    width: '90%',
+    maxWidth: 400,
+    elevation: 8,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 4px 8px rgba(0, 0, 0, 0.3)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+    }),
+  },
+  timeSignatureModalGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
-    gap: 8,
-    marginTop: 8,
+    gap: 16,
   },
-  timeSignatureSettingButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 16,
+  timeSignatureModalButton: {
+    width: 70,
+    height: 70,
+    borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 3,
+    borderWidth: 1.5,
   },
-  timeSignatureSettingButtonText: {
-    fontSize: 16,
+  timeSignatureModalButtonText: {
+    fontSize: 18,
     fontWeight: '700',
   },
   metronomeSoundSettingContainer: {

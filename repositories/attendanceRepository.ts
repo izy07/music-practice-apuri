@@ -23,12 +23,28 @@ export const attendanceRepository = {
       const { data, error } = await supabase
         .from('attendance_records')
         .select('*')
-        .eq('schedule_id', scheduleId)
-        .order('created_at', { ascending: false });
+        .eq('practice_schedule_id', scheduleId)
+        .order('registered_at', { ascending: false });
 
-      if (error) throw error;
+      // テーブルが存在しない場合（404エラー）は空配列を返す
+      if (error) {
+        if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.includes('does not exist')) {
+          // テーブルが存在しない場合は空配列を返す（エラーとして扱わない）
+          return [];
+        }
+        throw error;
+      }
 
-      return (data || []) as AttendanceRecord[];
+      // データベースのカラム名を型定義のプロパティ名にマッピング
+      return (data || []).map((record: any) => ({
+        id: record.id,
+        schedule_id: record.practice_schedule_id,
+        user_id: record.user_id,
+        status: record.attendance_status,
+        notes: undefined, // テーブルにnotesカラムがないため
+        created_at: record.registered_at,
+        updated_at: record.updated_at,
+      })) as AttendanceRecord[];
     }, 'getByScheduleId');
   },
 
@@ -44,12 +60,30 @@ export const attendanceRepository = {
         .from('attendance_records')
         .select('*')
         .eq('user_id', userId)
-        .eq('schedule_id', scheduleId)
+        .eq('practice_schedule_id', scheduleId)
         .maybeSingle();
 
-      if (error) throw error;
+      // テーブルが存在しない場合（404エラー）はnullを返す
+      if (error) {
+        if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.includes('does not exist')) {
+          // テーブルが存在しない場合はnullを返す（エラーとして扱わない）
+          return null;
+        }
+        throw error;
+      }
 
-      return (data as AttendanceRecord) || null;
+      if (!data) return null;
+
+      // データベースのカラム名を型定義のプロパティ名にマッピング
+      return {
+        id: data.id,
+        schedule_id: data.practice_schedule_id,
+        user_id: data.user_id,
+        status: data.attendance_status,
+        notes: undefined, // テーブルにnotesカラムがないため
+        created_at: data.registered_at,
+        updated_at: data.updated_at,
+      } as AttendanceRecord;
     }, 'getByUserAndSchedule');
   },
 
@@ -71,34 +105,67 @@ export const attendanceRepository = {
         const { data: result, error } = await supabase
           .from('attendance_records')
           .update({
-            status: data.status,
-            notes: data.notes,
+            attendance_status: data.status,
             updated_at: new Date().toISOString(),
           })
           .eq('id', existing.data.id)
           .select()
           .single();
 
-        if (error) throw error;
+        // テーブルが存在しない場合（404エラー）の処理
+        if (error) {
+          if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.includes('does not exist')) {
+            throw new Error('attendance_recordsテーブルが存在しません。マイグレーションを実行してください。');
+          }
+          throw error;
+        }
         if (!result) {
           throw new Error('Failed to update attendance record');
         }
 
-        return result as AttendanceRecord;
+        // データベースのカラム名を型定義のプロパティ名にマッピング
+        return {
+          id: result.id,
+          schedule_id: result.practice_schedule_id,
+          user_id: result.user_id,
+          status: result.attendance_status,
+          notes: result.notes,
+          created_at: result.registered_at,
+          updated_at: result.updated_at,
+        } as AttendanceRecord;
       } else {
         // 新しい記録を作成
         const { data: result, error } = await supabase
           .from('attendance_records')
-          .insert(data)
+          .insert({
+            practice_schedule_id: data.schedule_id,
+            user_id: data.user_id,
+            attendance_status: data.status,
+          })
           .select()
           .single();
 
-        if (error) throw error;
+        // テーブルが存在しない場合（404エラー）の処理
+        if (error) {
+          if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.includes('does not exist')) {
+            throw new Error('attendance_recordsテーブルが存在しません。マイグレーションを実行してください。');
+          }
+          throw error;
+        }
         if (!result) {
           throw new Error('Failed to create attendance record');
         }
 
-        return result as AttendanceRecord;
+        // データベースのカラム名を型定義のプロパティ名にマッピング
+        return {
+          id: result.id,
+          schedule_id: result.practice_schedule_id,
+          user_id: result.user_id,
+          status: result.attendance_status,
+          notes: result.notes,
+          created_at: result.registered_at,
+          updated_at: result.updated_at,
+        } as AttendanceRecord;
       }
     }, 'upsert');
   },
@@ -113,7 +180,14 @@ export const attendanceRepository = {
         .delete()
         .eq('id', id);
 
-      if (error) throw error;
+      // テーブルが存在しない場合（404エラー）はエラーを無視（既に削除されているとみなす）
+      if (error) {
+        if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.includes('does not exist')) {
+          // テーブルが存在しない場合は成功として扱う（既に削除されているとみなす）
+          return;
+        }
+        throw error;
+      }
     }, 'delete');
   },
 

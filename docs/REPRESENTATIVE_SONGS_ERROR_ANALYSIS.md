@@ -107,3 +107,5 @@ CREATE POLICY "Anyone can view representative songs" ON representative_songs
 2. マイグレーションを確実に適用する
 3. エラーハンドリングを改善して、ユーザーに分かりやすいメッセージを表示する
 
+
+

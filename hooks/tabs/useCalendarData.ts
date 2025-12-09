@@ -1,10 +1,11 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { formatLocalDate } from '@/lib/dateUtils';
 import { OfflineStorage, isOnline } from '@/lib/offlineStorage';
 import { logger } from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { getInstrumentId } from '@/lib/instrumentUtils';
 
 interface PracticeData {
   [key: number]: {
@@ -40,36 +41,20 @@ export function useCalendarData(currentDate: Date) {
   const [monthlyTotal, setMonthlyTotal] = useState(0);
   const [totalPracticeTime, setTotalPracticeTime] = useState(0);
   const [shortTermGoal, setShortTermGoal] = useState<ShortTermGoal | null>(null);
+  const [shortTermGoals, setShortTermGoals] = useState<ShortTermGoal[]>([]);
   const isFetchingRef = useRef(false);
   
-  // コンテキストから楽器IDを取得（DBアクセス不要）- useEffectより前に定義する必要がある
+  // コンテキストから楽器IDを取得（DBアクセス不要）
   const { selectedInstrument } = useInstrumentTheme();
   
-  // 楽器変更時に状態をクリアしてデータを再読み込み
-  const previousInstrumentIdRef = useRef<string | null>(null);
-  
-  // loadAllDataを先に定義する必要があるため、後でuseEffectを追加
-  
-  // 楽器ID取得の共通関数（コンテキストから取得）
-  const getCurrentInstrumentId = useCallback(async (user: { id: string }): Promise<string | null> => {
-    // コンテキストから取得（既にキャッシュされている）
-    return selectedInstrument?.id || null;
-  }, [selectedInstrument]);
-
+  // 楽器ID取得は共通関数を使用（getInstrumentId）
 
   const loadPracticeData = useCallback(async (userParam?: { id: string }) => {
     try {
       const user = userParam ?? (await supabase.auth.getUser()).data.user;
       if (!user) return;
 
-      const currentInstrumentId = await getCurrentInstrumentId(user);
-      
-      console.log('📥 練習データを読み込み中...', {
-        userId: user.id,
-        currentInstrumentId,
-        month: currentDate.getMonth() + 1,
-        year: currentDate.getFullYear()
-      });
+      const currentInstrumentId = getInstrumentId(selectedInstrument);
       
       if (isOnline()) {
         try {
@@ -78,75 +63,61 @@ export function useCalendarData(currentDate: Date) {
           
           let query = supabase
             .from('practice_sessions')
-            .select('practice_date, duration_minutes, input_method, instrument_id')
+            .select('practice_date, duration_minutes, input_method')
             .eq('user_id', user.id)
             .gte('practice_date', formatLocalDate(startOfMonth))
-            .lte('practice_date', formatLocalDate(endOfMonth))
-            .order('practice_date', { ascending: true });
+            .lte('practice_date', formatLocalDate(endOfMonth));
           
           if (currentInstrumentId) {
             query = query.eq('instrument_id', currentInstrumentId);
           } else {
+            // 楽器IDがnullの場合、instrument_idがnullのデータのみを取得
+            // PracticeRecordModalと一致させるため
             query = query.is('instrument_id', null);
           }
           
           const { data: sessions, error } = await query;
-          
-          console.log('📊 データベースから取得したセッション数:', sessions?.length || 0, {
-            currentInstrumentId,
-            error: error?.message
-          });
 
           if (error) {
             if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
               logger.info('ℹ️ practice_sessionsテーブルが存在しません。マイグレーションを実行してください。');
+              setPracticeData({});
+              setMonthlyTotal(0);
               return;
             }
             ErrorHandler.handle(error, '練習データ読み込み', false);
             logger.error('❌ 練習データ読み込みエラー:', error);
-            // エラー時は既存の値を保持（読み込み中に0にならないように）
             return;
           }
 
           if (sessions) {
             const newPracticeData: PracticeData = {};
             let total = 0;
+            
             const dailyTotals: { [date: string]: number } = {};
-            const dailyHasRecord: { [date: string]: boolean } = {};
-            const dailyHasBasicPractice: { [date: string]: boolean } = {};
+            const dailyHasRecord: { [date: string]: boolean } = {}; // 練習時間が記録されたか（タイマー、クイック、手動入力など）
+            const dailyHasBasicPractice: { [date: string]: boolean } = {}; // 基礎練があるか
             
             sessions.forEach((session: { practice_date: string; duration_minutes: number; input_method?: string }) => {
               const date = session.practice_date;
-              const day = parseInt(date.split('-')[2]);
+              if (!dailyTotals[date]) {
+                dailyTotals[date] = 0;
+              }
               
-              console.log('📝 セッション処理', { date, day, duration_minutes: session.duration_minutes, input_method: session.input_method });
-              
-              // 基礎練（preset）の場合は基礎練フラグのみ設定
+              // 基礎練（input_method: 'preset'）の処理
               if (session.input_method === 'preset') {
                 dailyHasBasicPractice[date] = true;
-                console.log('✅ 基礎練として処理', { date });
+                // 基礎練は時間を加算しない
               } else {
                 // タイマー、クイック、手動入力など、練習時間が記録された場合
-                if (!dailyTotals[date]) {
-                  dailyTotals[date] = 0;
-                }
                 dailyTotals[date] += session.duration_minutes;
-                // duration_minutesが0より大きい場合、hasRecordをtrueに設定
                 if (session.duration_minutes > 0) {
                   dailyHasRecord[date] = true;
-                  console.log('✅ 練習記録として処理', { date, minutes: session.duration_minutes, input_method: session.input_method });
-                } else {
-                  console.log('⚠️ 時間が0のためhasRecordを設定しません', { date, minutes: session.duration_minutes });
                 }
               }
             });
             
-            console.log('📊 集計結果', { 
-              dailyTotals: Object.entries(dailyTotals).slice(0, 5),
-              dailyHasRecord: Object.entries(dailyHasRecord).slice(0, 5),
-              dailyHasBasicPractice: Object.entries(dailyHasBasicPractice).slice(0, 5)
-            });
-            
+            // 練習時間が記録された日を処理
             Object.entries(dailyTotals).forEach(([date, minutes]) => {
               const day = parseInt(date.split('-')[2]);
               newPracticeData[day] = { 
@@ -155,9 +126,9 @@ export function useCalendarData(currentDate: Date) {
                 hasBasicPractice: dailyHasBasicPractice[date] || false
               };
               total += minutes;
-              console.log('✅ 日付データ追加', { date, day, minutes, hasRecord: dailyHasRecord[date] || false });
             });
             
+            // 基礎練のみの日（時間が0だが基礎練がある日）も追加
             Object.entries(dailyHasBasicPractice).forEach(([date, hasBasicPractice]) => {
               if (hasBasicPractice && !dailyTotals[date]) {
                 const day = parseInt(date.split('-')[2]);
@@ -173,13 +144,6 @@ export function useCalendarData(currentDate: Date) {
               }
             });
             
-            console.log('📊 練習データを更新', { 
-              sessionsCount: sessions.length, 
-              practiceDataKeys: Object.keys(newPracticeData),
-              practiceDataFull: newPracticeData,
-              total,
-              currentInstrumentId
-            });
             setPracticeData(newPracticeData);
             setMonthlyTotal(total);
             return;
@@ -194,20 +158,17 @@ export function useCalendarData(currentDate: Date) {
       const newPracticeData: PracticeData = {};
       let total = 0;
       
-      // 現在表示している月の年と月を取得（オフライン時のみフィルタリングに使用）
-      const targetYear = currentDate.getFullYear();
-      const targetMonth = currentDate.getMonth();
-      
       const dailyTotals: { [date: string]: number } = {};
       const dailyHasRecord: { [date: string]: boolean } = {}; // 練習時間が記録されたか（タイマー、クイック、手動入力など）
       const dailyHasBasicPractice: { [date: string]: boolean } = {}; // 基礎練があるか
       
-      // オフライン時は年月でフィルタリング（ローカルストレージには全データが含まれるため）
       localRecords.forEach((record: { created_at: string; duration_minutes?: number; input_method?: string }) => {
         const date = new Date(record.created_at);
-        // 現在表示している月と一致するか確認（オフライン時のみ必要）
-        if (date.getMonth() === targetMonth && date.getFullYear() === targetYear) {
+        if (date.getMonth() === currentDate.getMonth() && date.getFullYear() === currentDate.getFullYear()) {
           const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+          if (!dailyTotals[dateStr]) {
+            dailyTotals[dateStr] = 0;
+          }
           
           // 基礎練（input_method: 'preset'）の処理
           if (record.input_method === 'preset') {
@@ -215,9 +176,6 @@ export function useCalendarData(currentDate: Date) {
             // 基礎練は時間を加算しない
           } else {
             // タイマー、クイック、手動入力など、練習時間が記録された場合
-            if (!dailyTotals[dateStr]) {
-              dailyTotals[dateStr] = 0;
-            }
             const minutes = record.duration_minutes || 0;
             dailyTotals[dateStr] += minutes;
             if (minutes > 0) {
@@ -227,7 +185,7 @@ export function useCalendarData(currentDate: Date) {
         }
       });
       
-      // 練習時間が記録された日を処理（オフライン時は既にフィルタリング済み）
+      // 練習時間が記録された日を処理
       Object.entries(dailyTotals).forEach(([date, minutes]) => {
         const day = parseInt(date.split('-')[2]);
         newPracticeData[day] = { 
@@ -238,7 +196,7 @@ export function useCalendarData(currentDate: Date) {
         total += minutes;
       });
       
-      // 基礎練のみの日（時間が0だが基礎練がある日）も追加（オフライン時は既にフィルタリング済み）
+      // 基礎練のみの日（時間が0だが基礎練がある日）も追加
       Object.entries(dailyHasBasicPractice).forEach(([date, hasBasicPractice]) => {
         if (hasBasicPractice && !dailyTotals[date]) {
           const day = parseInt(date.split('-')[2]);
@@ -260,61 +218,89 @@ export function useCalendarData(currentDate: Date) {
       ErrorHandler.handle(error, '練習データの読み込み', false);
       logger.error('練習データの読み込みエラー:', error);
     }
-  }, [currentDate, getCurrentInstrumentId]);
+  }, [currentDate, selectedInstrument]);
 
   const loadTotalPracticeTime = useCallback(async (userParam?: { id: string }) => {
     try {
       const user = userParam ?? (await supabase.auth.getUser()).data.user;
       if (!user) return;
 
-      const currentInstrumentId = await getCurrentInstrumentId(user);
+      const currentInstrumentId = getInstrumentId(selectedInstrument);
       
-      console.log('📊 総練習時間を読み込み中...', {
-        userId: user.id,
-        currentInstrumentId
-      });
-      
-      let query = supabase
-        .from('practice_sessions')
-        .select('duration_minutes')
-        .eq('user_id', user.id);
-      
-      if (currentInstrumentId) {
-        query = query.eq('instrument_id', currentInstrumentId);
-      } else {
-        query = query.is('instrument_id', null);
-      }
-      
-      const { data: sessions, error } = await query;
+      // RPC関数を使用してデータベース側で集計（パフォーマンス最適化）
+      try {
+        const { data: totalMinutes, error: rpcError } = await supabase.rpc('get_total_practice_time', {
+          p_user_id: user.id,
+          p_instrument_id: currentInstrumentId || null
+        });
 
-      if (error) {
-        if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
-          // エラー時は既存の値を保持（0にリセットしない）
+        if (rpcError) {
+          // RPC関数が存在しない場合、フォールバックとして直接クエリを使用
+          if (rpcError.code === '42883' || rpcError.message?.includes('function') || rpcError.message?.includes('does not exist')) {
+            logger.debug('RPC関数が存在しないため、フォールバック方式を使用');
+            
+            let query = supabase
+              .from('practice_sessions')
+              .select('duration_minutes')
+              .eq('user_id', user.id)
+              .neq('input_method', 'preset'); // 基礎練を除外
+            
+            if (currentInstrumentId) {
+              query = query.eq('instrument_id', currentInstrumentId);
+            } else {
+              query = query.is('instrument_id', null);
+            }
+            
+            const { data: sessions, error: queryError } = await query;
+
+            if (queryError) {
+              if (queryError.code === 'PGRST205' || queryError.code === 'PGRST116' || queryError.message?.includes('Could not find the table')) {
+                return;
+              }
+              return;
+            }
+
+            if (sessions) {
+              const total = sessions.reduce((sum: number, session: { duration_minutes: number }) => sum + (session.duration_minutes || 0), 0);
+              setTotalPracticeTime(total);
+            }
+          } else {
+            logger.error('RPC関数実行エラー:', rpcError);
+          }
           return;
         }
-        console.error('❌ 総練習時間読み込みエラー:', error);
-        // エラー時は既存の値を保持（0にリセットしない）
-        return;
-      }
 
-      if (sessions && sessions.length > 0) {
-        const total = sessions.reduce((sum: number, session: { duration_minutes: number }) => sum + session.duration_minutes, 0);
-        console.log('✅ 総練習時間を更新', {
-          sessionsCount: sessions.length,
-          total,
-          currentInstrumentId
-        });
-        setTotalPracticeTime(total);
-      } else {
-        console.log('ℹ️ 練習セッションが見つかりませんでした', { currentInstrumentId });
-        setTotalPracticeTime(0);
+        if (totalMinutes !== null && totalMinutes !== undefined) {
+          setTotalPracticeTime(totalMinutes);
+        }
+      } catch (rpcException) {
+        // RPC関数の例外時もフォールバック
+        logger.warn('RPC関数実行で例外が発生、フォールバック方式を使用:', rpcException);
+        
+        let query = supabase
+          .from('practice_sessions')
+          .select('duration_minutes')
+          .eq('user_id', user.id)
+          .neq('input_method', 'preset'); // 基礎練を除外
+        
+        if (currentInstrumentId) {
+          query = query.eq('instrument_id', currentInstrumentId);
+        } else {
+          query = query.is('instrument_id', null);
+        }
+        
+        const { data: sessions, error: queryError } = await query;
+
+        if (!queryError && sessions) {
+          const total = sessions.reduce((sum: number, session: { duration_minutes: number }) => sum + (session.duration_minutes || 0), 0);
+          setTotalPracticeTime(total);
+        }
       }
     } catch (error) {
-      console.error('❌ 総練習時間の読み込みエラー:', error);
+      ErrorHandler.handle(error, '総練習時間の読み込み', false);
       logger.error('総練習時間の読み込みエラー:', error);
-      // エラー時は既存の値を保持（0にリセットしない）
     }
-  }, [getCurrentInstrumentId]);
+  }, [selectedInstrument]);
 
   const loadEvents = useCallback(async (userParam?: { id: string }) => {
     try {
@@ -334,20 +320,12 @@ export function useCalendarData(currentDate: Date) {
         .order('date', { ascending: true });
 
       if (error) {
-        // 400エラー（Bad Request）の場合、dateカラムが存在しない可能性が高い
-        if (error.code === '42703' || error.code === 'PGRST116' || error.status === 400 || 
-            error.message?.includes('column') || error.message?.includes('does not exist') || 
-            error.message?.includes('date') || error.message?.includes('date')) {
-          logger.warn('ℹ️ eventsテーブルのdateカラムが存在しません。マイグレーションを実行してください。');
-          return;
-        }
-        if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+        if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
           logger.info('ℹ️ eventsテーブルが存在しません。マイグレーションを実行してください。');
           return;
         }
         ErrorHandler.handle(error, 'イベント読み込み', false);
         logger.error('❌ イベント読み込みエラー:', error);
-        // エラー時は既存の値を保持
         return;
       }
 
@@ -379,7 +357,7 @@ export function useCalendarData(currentDate: Date) {
       const user = userParam ?? (await supabase.auth.getUser()).data.user;
       if (!user) return;
 
-      const currentInstrumentId = await getCurrentInstrumentId(user);
+      const currentInstrumentId = getInstrumentId(selectedInstrument);
       
       // 月の開始日時（ローカルタイムゾーンで00:00:00）
       const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -427,17 +405,18 @@ export function useCalendarData(currentDate: Date) {
       if (error) {
         if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
           logger.info('ℹ️ recordingsテーブルが存在しません');
+          setRecordingsData({});
           return;
         }
         ErrorHandler.handle(error, '録音データ読み込み', false);
         logger.error('❌ 録音データ読み込みエラー:', error);
-        // エラー時は既存の値を保持
+        setRecordingsData({});
         return;
       }
 
       logger.debug('📊 取得した録音データ:', {
         count: recordings?.length || 0,
-        recordings: recordings?.map((r: any) => ({
+        recordings: recordings?.map(r => ({
           recorded_at: r.recorded_at,
           instrument_id: r.instrument_id,
           localDate: r.recorded_at ? formatLocalDate(new Date(r.recorded_at)) : null
@@ -475,108 +454,39 @@ export function useCalendarData(currentDate: Date) {
     } catch (error) {
       ErrorHandler.handle(error, '録音データの読み込み', false);
       logger.error('❌ 録音データの読み込みエラー:', error);
-      // エラー時は既存の値を保持
+      setRecordingsData({});
     }
-  }, [currentDate, getCurrentInstrumentId]);
+  }, [currentDate, selectedInstrument]);
 
   const loadShortTermGoal = useCallback(async (userParam?: { id: string }) => {
     try {
       const user = userParam ?? (await supabase.auth.getUser()).data.user;
       if (!user) {
         setShortTermGoal(null);
+        setShortTermGoals([]);
         return;
       }
 
-      // show_on_calendarカラムが存在するかチェック
-      // まずlocalStorageをチェックして、不要なDBクエリを避ける
-      let supportsShowOnCalendar = true;
-      
-      // localStorageのフラグを先に確認（同期処理で即座に結果を得る）
-      if (typeof window !== 'undefined') {
-        try {
-          const flag = window.localStorage.getItem('disable_show_on_calendar');
-          if (flag === '1') {
-            // カラムが存在しないことが既に分かっている
-            supportsShowOnCalendar = false;
-          } else {
-            // フラグがない場合のみDBクエリを実行
-            try {
-              const { error: checkError } = await supabase
-                .from('goals')
-                .select('show_on_calendar')
-                .limit(1);
-              
-              if (checkError) {
-                const isColumnError = 
-                  checkError.code === 'PGRST204' || 
-                  checkError.code === '42703' || 
-                  checkError.code === 'PGRST116' ||
-                  checkError.status === 400 ||
-                  checkError.message?.includes('show_on_calendar') ||
-                  checkError.message?.includes('Could not find') ||
-                  checkError.message?.includes('schema cache') ||
-                  checkError.message?.includes('does not exist');
-                
-                if (isColumnError) {
-                  supportsShowOnCalendar = false;
-                  // フラグを設定して以降のチェックをスキップ
-                  try {
-                    window.localStorage.setItem('disable_show_on_calendar', '1');
-                  } catch (e) {
-                    // localStorageへの書き込みエラーは無視
-                  }
-                } else {
-                  supportsShowOnCalendar = false;
-                }
-              }
-            } catch (e) {
-              supportsShowOnCalendar = false;
-              // エラー時もフラグを設定
-              try {
-                if (typeof window !== 'undefined') {
-                  window.localStorage.setItem('disable_show_on_calendar', '1');
-                }
-              } catch (storageError) {
-                // localStorageへの書き込みエラーは無視
-              }
-            }
-          }
-        } catch (storageError) {
-          // localStorageへのアクセスエラーは無視し、デフォルト（true）を使用
-          supportsShowOnCalendar = true;
-        }
-      }
-
-      // クエリを構築（show_on_calendarカラムが存在しない場合はselectから除外）
-      let selectFields = 'id, title, target_date, is_completed, progress_percentage, goal_type';
-      if (supportsShowOnCalendar) {
-        selectFields += ', show_on_calendar';
-      }
-
-      // 個人目標（短期・長期）の両方を取得
-      let query = supabase
+      // show_on_calendarがtrueの目標をすべて取得（短期目標と長期目標の両方を含む）
+      // 目標はカレンダーに1つだけ表示できるため、短期目標と長期目標の両方を読み込む
+      const { data: goals, error } = await supabase
         .from('goals')
-        .select(selectFields)
+        .select('title, target_date, show_on_calendar, is_completed, progress_percentage, goal_type')
         .eq('user_id', user.id)
         .in('goal_type', ['personal_short', 'personal_long'])
         .order('created_at', { ascending: false });
-
-      // show_on_calendarカラムが存在する場合はフィルタリング
-      if (supportsShowOnCalendar) {
-        query = query.eq('show_on_calendar', true);
-      }
-
-      const { data: goals, error } = await query;
 
       if (error) {
         if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
           logger.info('ℹ️ goalsテーブルが存在しません。マイグレーションを実行してください。');
           setShortTermGoal(null);
+          setShortTermGoals([]);
           return;
         }
-        ErrorHandler.handle(error, '短期目標の読み込み', false);
-        logger.error('❌ 短期目標の読み込みエラー:', error);
-        // エラー時は既存の値を保持
+        ErrorHandler.handle(error, '目標の読み込み', false);
+        logger.error('❌ 目標の読み込みエラー:', error);
+        setShortTermGoal(null);
+        setShortTermGoals([]);
         return;
       }
 
@@ -587,55 +497,37 @@ export function useCalendarData(currentDate: Date) {
           return !isCompleted;
         });
 
-        // show_on_calendarがtrueの目標のみをフィルタリング
-        let filteredGoals = activeGoals;
-        if (supportsShowOnCalendar) {
-          console.log('📅 カレンダー表示対応: 有効な目標をフィルタリング中', {
-            activeGoalsCount: activeGoals.length,
-            goalsWithShowOnCalendar: activeGoals.map((g: any) => ({
-              id: g.id,
-              title: g.title,
-              show_on_calendar: g.show_on_calendar
-            }))
-          });
-          filteredGoals = activeGoals.filter((goal: any) => goal.show_on_calendar === true);
-          console.log('📅 フィルタリング後の目標数:', filteredGoals.length);
-        } else {
-          // カラムが存在しない場合は機能を無効化（空配列を返す）
-          console.log('⚠️ show_on_calendarカラムが存在しないため、カレンダー表示機能を無効化');
-          filteredGoals = [];
-        }
+        // show_on_calendarがtrueの目標をフィルタリング
+        const visibleGoals = activeGoals.filter((goal: any) => goal.show_on_calendar === true);
 
-        // 最初の有効な目標を取得
-        if (filteredGoals.length > 0) {
-          const goal = filteredGoals[0];
-          console.log('✅ カレンダーに表示する目標を設定:', {
-            title: goal.title,
-            target_date: goal.target_date,
-            show_on_calendar: goal.show_on_calendar
-          });
-          setShortTermGoal({
+        // 目標はカレンダーに1つだけ表示できるため、最初の1つだけを表示
+        // ただし、複数の目標が表示されている場合は、すべて表示する（後方互換性のため）
+        if (visibleGoals.length > 0) {
+          const goalsList = visibleGoals.map((goal: any) => ({
             title: goal.title,
             target_date: goal.target_date || undefined
-          });
+          }));
+          setShortTermGoals(goalsList);
+          // 最初の目標を後方互換性のため設定
+          setShortTermGoal(goalsList[0]);
         } else {
-          console.log('ℹ️ カレンダーに表示する目標がありません');
           setShortTermGoal(null);
+          setShortTermGoals([]);
         }
       } else {
         setShortTermGoal(null);
+        setShortTermGoals([]);
       }
     } catch (error) {
-      ErrorHandler.handle(error, '短期目標の読み込み', false);
-      logger.error('短期目標の読み込みエラー:', error);
-      // エラー時は既存の値を保持
+      ErrorHandler.handle(error, '目標の読み込み', false);
+      logger.error('目標の読み込みエラー:', error);
+      setShortTermGoal(null);
+      setShortTermGoals([]);
     }
   }, []);
 
   const loadAllData = useCallback(async (userParam?: { id: string }) => {
-    if (isFetchingRef.current) {
-      return;
-    }
+    if (isFetchingRef.current) return;
     
     let cancelled = false;
     isFetchingRef.current = true;
@@ -644,7 +536,6 @@ export function useCalendarData(currentDate: Date) {
       const user = userParam ?? (await supabase.auth.getUser()).data.user;
       if (!user || cancelled) return;
 
-      // 並列実行でパフォーマンス向上
       await Promise.all([
         loadPracticeData(user),
         loadTotalPracticeTime(user),
@@ -667,30 +558,7 @@ export function useCalendarData(currentDate: Date) {
       cancelled = true;
       isFetchingRef.current = false;
     };
-  }, [currentDate, loadPracticeData, loadTotalPracticeTime, loadEvents, loadRecordingsData, loadShortTermGoal]);
-
-  // 楽器変更時に状態をクリアしてデータを再読み込み
-  useEffect(() => {
-    if (typeof selectedInstrument === 'undefined') return;
-    const currentInstrumentId = selectedInstrument?.id || null;
-    
-    // 楽器が変更された場合、状態をクリアしてデータを再読み込み
-    if (previousInstrumentIdRef.current !== null && previousInstrumentIdRef.current !== currentInstrumentId) {
-      setPracticeData({});
-      setRecordingsData({});
-      setEvents({});
-      setMonthlyTotal(0);
-      setTotalPracticeTime(0);
-      setShortTermGoal(null);
-      
-      // データを再読み込み
-      loadAllData().catch(() => {
-        // エラーは無視
-      });
-    }
-    
-    previousInstrumentIdRef.current = currentInstrumentId;
-  }, [selectedInstrument?.id, loadAllData]);
+  }, [loadPracticeData, loadTotalPracticeTime, loadEvents, loadRecordingsData, loadShortTermGoal]);
 
   return {
     practiceData,
@@ -699,6 +567,7 @@ export function useCalendarData(currentDate: Date) {
     monthlyTotal,
     totalPracticeTime,
     shortTermGoal,
+    shortTermGoals,
     loadAllData,
     loadPracticeData,
     loadTotalPracticeTime,

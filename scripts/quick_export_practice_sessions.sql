@@ -27,3 +27,5 @@ LEFT JOIN user_profiles up ON ps.user_id = up.user_id
 LEFT JOIN instruments i ON ps.instrument_id = i.id
 ORDER BY ps.practice_date DESC, ps.created_at DESC;
 
+
+

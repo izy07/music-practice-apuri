@@ -28,3 +28,5 @@ CREATE INDEX IF NOT EXISTS idx_user_settings_user_id_unique ON user_settings(use
 -- コメントを追加
 COMMENT ON CONSTRAINT user_settings_user_id_key ON user_settings IS 'ユーザーIDの一意性を保証する制約。upsert操作で使用されます。';
 
+
+

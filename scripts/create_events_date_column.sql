@@ -56,3 +56,5 @@ GRANT USAGE ON SCHEMA public TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.events TO anon, authenticated;
 
 
+
+

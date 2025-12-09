@@ -3,13 +3,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Alert } from 'react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import Svg, { Rect, G, Line, Text as SvgText } from 'react-native-svg';
 import { supabase } from '@/lib/supabase';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { UI, DATA, STATISTICS } from '@/lib/constants';
 import { getPracticeSessionsByDateRange } from '@/repositories/practiceSessionRepository';
 import { formatMinutesToHours } from '@/lib/dateUtils';
+import { getInstrumentId } from '@/lib/instrumentUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -103,8 +104,8 @@ export default function StatisticsScreen() {
     try {
       setLoading(true);
       
-      // コンテキストから楽器IDを取得（DBアクセス不要）
-      const currentInstrumentId = selectedInstrument || null;
+      // 共通関数を使用して楽器IDを取得
+      const currentInstrumentId = getInstrumentId(selectedInstrument);
       
       // 最適化されたクエリ: 必要なカラムのみ取得、最近2年分を取得（年別統計のため24ヶ月分）
       // 2年分のデータで年別グラフ（12ヶ月）を表示可能
@@ -136,6 +137,98 @@ export default function StatisticsScreen() {
   useEffect(() => {
     fetchPracticeRecords();
   }, [user, selectedInstrument, fetchPracticeRecords]);
+
+  // 画面に戻ってきたときにデータを再読み込み
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!user) {
+        return;
+      }
+      
+      // 最近の練習記録がある場合は強制的にデータを更新（タイマー完了時の自動記録など）
+      if (typeof window !== 'undefined') {
+        try {
+          const lastTimestamp = window.localStorage.getItem('last_practice_record_timestamp');
+          const lastInstrumentId = window.localStorage.getItem('last_practice_record_instrument_id');
+          const currentInstrumentId = getInstrumentId(selectedInstrument);
+          
+          if (lastTimestamp && Date.now() - parseInt(lastTimestamp) < 60000) {
+            // 60秒以内に記録があった場合、楽器IDが一致する場合は強制更新
+            if (lastInstrumentId === (currentInstrumentId || 'null')) {
+              console.log('🔄 統計画面: 最近の記録を検出、データを強制更新します', {
+                lastTimestamp,
+                lastInstrumentId,
+                currentInstrumentId,
+                timeDiff: Date.now() - parseInt(lastTimestamp)
+              });
+              // データベースの反映を待つため、十分な遅延を設けてから更新
+              setTimeout(async () => {
+                try {
+                  await fetchPracticeRecords();
+                  console.log('✅ 統計画面: useFocusEffect データ更新完了');
+                } catch (error) {
+                  console.error('❌ 統計画面: useFocusEffect データ更新エラー:', error);
+                }
+              }, 1500);
+              return;
+            }
+          }
+        } catch (e) {
+          // localStorageへのアクセスエラーは無視
+        }
+      }
+      
+      // 通常のデータ読み込み
+      fetchPracticeRecords();
+    }, [user, selectedInstrument, fetchPracticeRecords])
+  );
+
+  // 練習記録更新イベントをリッスン（タイマー記録など）
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handlePracticeRecordUpdated = (event?: CustomEvent) => {
+      const detail = event?.detail;
+      console.log('📢 統計画面: 練習記録更新イベントを受信しました', detail);
+      
+      // verifiedフラグがtrueの場合は、データベースへの反映が確認済みなので即座に更新
+      // falseの場合は、データベース反映を待つ必要がある
+      const isVerified = detail?.verified === true;
+      const initialDelay = isVerified ? 200 : 1000;
+      
+      // データベースの反映を待つため、十分な遅延を設けてから更新
+      // 複数回試行して確実にデータを取得する
+      setTimeout(async () => {
+        try {
+          // まず1回目の更新を試行
+          await fetchPracticeRecords();
+          console.log('✅ 統計画面: 1回目のデータ更新完了', { isVerified });
+        } catch (error) {
+          console.error('❌ 統計画面: 1回目のデータ更新エラー:', error);
+        }
+        
+        // verifiedでない場合は、さらに待機してから2回目の更新を試行
+        if (!isVerified) {
+          setTimeout(async () => {
+            try {
+              await fetchPracticeRecords();
+              console.log('✅ 統計画面: 2回目のデータ更新完了');
+            } catch (error) {
+              console.error('❌ 統計画面: 2回目のデータ更新エラー:', error);
+            }
+          }, 1000);
+        }
+      }, initialDelay);
+    };
+
+    window.addEventListener('practiceRecordUpdated', handlePracticeRecordUpdated);
+
+    return () => {
+      window.removeEventListener('practiceRecordUpdated', handlePracticeRecordUpdated);
+    };
+  }, [fetchPracticeRecords]);
 
 
   // 日別（当週：月〜日）- メモ化で最適化

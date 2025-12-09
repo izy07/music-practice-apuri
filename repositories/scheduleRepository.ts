@@ -45,7 +45,13 @@ export const scheduleRepository = {
         throw error;
       }
 
-      return (data || []) as PracticeSchedule[];
+      // descriptionをnotesにマッピング
+      const schedules = (data || []).map((item: any) => ({
+        ...item,
+        notes: item.notes || item.description || undefined,
+      })) as PracticeSchedule[];
+
+      return schedules;
     }, 'getMonthlySchedules');
   },
 
@@ -65,7 +71,13 @@ export const scheduleRepository = {
         throw new Error('Practice schedule not found');
       }
 
-      return data as PracticeSchedule;
+      // descriptionをnotesにマッピング
+      const schedule: PracticeSchedule = {
+        ...data,
+        notes: data.notes || data.description || undefined,
+      } as PracticeSchedule;
+
+      return schedule;
     }, 'findById');
   },
 
@@ -76,9 +88,38 @@ export const scheduleRepository = {
     schedule: Omit<PracticeSchedule, 'id' | 'created_at'>
   ): Promise<RepositoryResult<PracticeSchedule>> {
     return safeExecute(async () => {
+      // 現在のユーザーIDを取得
+      const { data: { user }, error: authError } = await supabase.auth.getUser();
+      if (authError || !user) {
+        throw new Error('認証が必要です');
+      }
+
+      // notesとdescriptionの両方をサポート
+      // テーブルにはdescriptionとnotesの両方がある可能性がある
+      const insertData: Record<string, unknown> = {
+        organization_id: schedule.organization_id,
+        title: schedule.title,
+        practice_date: schedule.practice_date,
+        practice_type: schedule.practice_type,
+        created_by: user.id,
+      };
+
+      // オプショナルフィールドを追加
+      if (schedule.start_time) insertData.start_time = schedule.start_time;
+      if (schedule.end_time) insertData.end_time = schedule.end_time;
+      if (schedule.location) insertData.location = schedule.location;
+      
+      // notesとdescriptionの両方をサポート（notesを優先）
+      if (schedule.notes) {
+        insertData.notes = schedule.notes;
+        insertData.description = schedule.notes; // 後方互換性のため
+      } else if (schedule.description) {
+        insertData.description = schedule.description;
+      }
+
       const { data: result, error } = await supabase
         .from('practice_schedules')
-        .insert(schedule)
+        .insert(insertData)
         .select()
         .single();
 
@@ -87,7 +128,13 @@ export const scheduleRepository = {
         throw new Error('Failed to create practice schedule');
       }
 
-      return result as PracticeSchedule;
+      // 結果をPracticeSchedule型に変換（notesとdescriptionの両方をサポート）
+      const practiceSchedule: PracticeSchedule = {
+        ...result,
+        notes: result.notes || result.description || undefined,
+      } as PracticeSchedule;
+
+      return practiceSchedule;
     }, 'create');
   },
 
@@ -99,9 +146,20 @@ export const scheduleRepository = {
     data: Partial<Omit<PracticeSchedule, 'id' | 'created_at' | 'organization_id'>>
   ): Promise<RepositoryResult<PracticeSchedule>> {
     return safeExecute(async () => {
+      // notesとdescriptionの両方をサポート
+      const updateData: Record<string, unknown> = { ...data };
+      
+      // notesが指定されている場合、notesとdescriptionの両方を更新
+      if (data.notes !== undefined) {
+        updateData.notes = data.notes;
+        updateData.description = data.notes; // 後方互換性のため
+      } else if (data.description !== undefined) {
+        updateData.description = data.description;
+      }
+
       const { data: result, error } = await supabase
         .from('practice_schedules')
-        .update(data)
+        .update(updateData)
         .eq('id', id)
         .select()
         .single();
@@ -111,7 +169,13 @@ export const scheduleRepository = {
         throw new Error('Failed to update practice schedule');
       }
 
-      return result as PracticeSchedule;
+      // descriptionをnotesにマッピング
+      const schedule: PracticeSchedule = {
+        ...result,
+        notes: result.notes || result.description || undefined,
+      } as PracticeSchedule;
+
+      return schedule;
     }, 'update');
   },
 

@@ -28,3 +28,5 @@ COMMENT ON FUNCTION check_column_exists IS '指定されたテーブルのカラ
 GRANT EXECUTE ON FUNCTION check_column_exists TO anon;
 GRANT EXECUTE ON FUNCTION check_column_exists TO authenticated;
 
+
+

@@ -14,36 +14,37 @@ let isInitializing = false; // 初期化中フラグ
 let initializationPromise: Promise<void> | null = null; // 初期化のPromise
 
 // show_on_calendarカラムの存在を確認する関数
-// パフォーマンス最適化: localStorageを先に確認して、不要なDBクエリを避ける
-const checkShowOnCalendarSupport = async (): Promise<boolean> => {
-  // 既にチェック済みの場合は即座に返す
-  if (supportsShowOnCalendar !== null) {
+// 根本的解決: localStorageのフラグを無視して、常にDBクエリを実行して確認
+export const checkShowOnCalendarSupport = async (forceCheck: boolean = false): Promise<boolean> => {
+  // 強制チェックの場合は、キャッシュとlocalStorageのフラグを無視
+  if (forceCheck) {
+    supportsShowOnCalendar = null;
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem('disable_show_on_calendar');
+      } catch (e) {
+        // localStorageへのアクセスエラーは無視
+      }
+    }
+  }
+  
+  // 既にチェック済みの場合は即座に返す（強制チェックの場合は除く）
+  const isFirstCheck = supportsShowOnCalendar === null;
+  if (!isFirstCheck && !forceCheck) {
     return supportsShowOnCalendar;
   }
   
   // 初期化中の場合、初期化の完了を待つ
-  if (isInitializing && initializationPromise) {
+  if (isInitializing && initializationPromise && !forceCheck) {
     await initializationPromise;
     return supportsShowOnCalendar ?? true;
   }
 
-  // まずlocalStorageのフラグを確認（エラーを避けるため、同期処理）
-  if (typeof window !== 'undefined') {
-    try {
-      const flag = window.localStorage.getItem('disable_show_on_calendar');
-      if (flag === '1') {
-        supportsShowOnCalendar = false;
-        return false;
-      }
-      // フラグが'0'または存在しない場合は、カラムが存在する可能性がある
-      // ただし、一度もチェックしていない場合は、実際にチェックする必要がある
-    } catch (e) {
-      // localStorageへのアクセスエラーは無視
-    }
-  }
-
-  // 初回チェック時のみデータベースにクエリを送信
+  // 常にデータベースにクエリを送信して確認（localStorageのフラグは無視）
   try {
+    if (isFirstCheck || forceCheck) {
+      logger.debug('📅 show_on_calendarカラムの存在を確認中...');
+    }
     const { error } = await supabase
       .from('goals')
       .select('show_on_calendar')
@@ -55,37 +56,38 @@ const checkShowOnCalendarSupport = async (): Promise<boolean> => {
         error.code === '42703' || 
         error.code === 'PGRST116' ||
         error.status === 400 ||
-        error.message?.includes('show_on_calendar') ||
-        error.message?.includes('Could not find') ||
-        error.message?.includes('schema cache') ||
-        error.message?.includes('does not exist');
+        (error.message && (
+          error.message.includes('show_on_calendar') ||
+          error.message.includes('Could not find') ||
+          error.message.includes('schema cache') ||
+          error.message.includes('does not exist') ||
+          error.message.includes('column') ||
+          error.message.includes('not found')
+        ));
       
       if (isColumnError) {
-        // カラムが存在しない場合は、フラグを設定して以降のチェックをスキップ
-        supportsShowOnCalendar = false;
-        if (typeof window !== 'undefined') {
-          try {
-            window.localStorage.setItem('disable_show_on_calendar', '1');
-          } catch (e) {
-            // localStorageへの書き込みエラーは無視
-          }
+        // カラムが存在しない場合
+        if (isFirstCheck || forceCheck) {
+          logger.warn('⚠️ show_on_calendarカラムが存在しません');
         }
+        supportsShowOnCalendar = false;
+        // フラグは設定しない（次回も確認するため）
         return false;
       }
       
-      // カラムエラー以外のエラー（テーブルが存在しないなど）も無視
-      supportsShowOnCalendar = false;
-      if (typeof window !== 'undefined') {
-        try {
-          window.localStorage.setItem('disable_show_on_calendar', '1');
-        } catch (e) {
-          // localStorageへの書き込みエラーは無視
-        }
+      // カラムエラー以外のエラー（テーブルが存在しないなど）
+      if (isFirstCheck || forceCheck) {
+        logger.error('❌ goalsテーブルのクエリエラー:', error);
       }
+      supportsShowOnCalendar = false;
       return false;
     }
 
     // エラーがない場合はカラムが存在する
+    // 初回チェック時のみログを出力（重複ログを防ぐ）
+    if (isFirstCheck || forceCheck) {
+      logger.info('✅ show_on_calendarカラムが存在します');
+    }
     supportsShowOnCalendar = true;
     // フラグをクリア（カラムが存在する場合）
     if (typeof window !== 'undefined') {
@@ -97,21 +99,11 @@ const checkShowOnCalendarSupport = async (): Promise<boolean> => {
     }
     return true;
   } catch (error) {
-    // エラーが発生した場合は、localStorageのフラグを確認
-    try {
-      if (typeof window !== 'undefined') {
-        const flag = window.localStorage.getItem('disable_show_on_calendar');
-        supportsShowOnCalendar = flag !== '1';
-        if (flag === '1') {
-          return false;
-        }
-      } else {
-        supportsShowOnCalendar = true; // デフォルトはtrue
-      }
-    } catch {
-      supportsShowOnCalendar = true; // デフォルトはtrue
-    }
-    return supportsShowOnCalendar;
+    // エラーが発生した場合
+    logger.error('❌ show_on_calendarカラムの確認中にエラーが発生しました:', error);
+    // デフォルトはtrue（カラムが存在すると仮定）
+    supportsShowOnCalendar = true;
+    return true;
   }
 };
 
@@ -133,24 +125,85 @@ try {
  * カラム存在確認を初期化時に一度だけ実行する関数
  * アプリ起動時に呼び出すことで、パフォーマンスを向上
  */
-export const initializeGoalRepository = async (): Promise<void> => {
-  // 既に初期化済みの場合はスキップ
-  if (supportsShowOnCalendar !== null && !isInitializing) {
+// カラムを強制的に作成する関数（マイグレーションが実行されていない場合のフォールバック）
+const ensureShowOnCalendarColumn = async (): Promise<boolean> => {
+  try {
+    // RPC関数を使用してカラムを追加（存在しない場合のみ）
+    const { error: rpcError } = await supabase.rpc('exec_sql', {
+      sql: `
+        DO $$ 
+        BEGIN 
+          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'goals') THEN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'goals' AND column_name = 'show_on_calendar') THEN
+              ALTER TABLE goals ADD COLUMN show_on_calendar BOOLEAN DEFAULT false;
+              COMMENT ON COLUMN goals.show_on_calendar IS 'カレンダーに表示するかどうか（true: 表示, false: 非表示）';
+              UPDATE goals SET show_on_calendar = false WHERE show_on_calendar IS NULL;
+            END IF;
+          END IF;
+        END $$;
+      `
+    });
+
+    // RPC関数が存在しない場合は、直接SQLを実行（Supabaseの制限により通常は失敗する）
+    if (rpcError) {
+      logger.debug('RPC関数を使用したカラム追加を試みましたが失敗:', rpcError);
+      // フォールバック: カラムが存在するか確認して、存在しない場合は警告を出す
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    logger.error('カラム追加の試行中にエラーが発生しました:', error);
+    return false;
+  }
+};
+
+export const initializeGoalRepository = async (forceRecheck: boolean = false): Promise<void> => {
+  // 既に初期化済みの場合はスキップ（強制再チェックの場合は除く）
+  if (supportsShowOnCalendar !== null && !isInitializing && !forceRecheck) {
     return;
   }
   
-  // 初期化中の場合は既存のPromiseを返す
-  if (isInitializing && initializationPromise) {
+  // 初期化中の場合は既存のPromiseを返す（強制再チェックの場合は除く）
+  if (isInitializing && initializationPromise && !forceRecheck) {
     return initializationPromise;
+  }
+  
+  // 強制再チェックの場合は、localStorageのフラグをクリア
+  if (forceRecheck && typeof window !== 'undefined') {
+    try {
+      window.localStorage.removeItem('disable_show_on_calendar');
+      supportsShowOnCalendar = null; // キャッシュをクリア
+    } catch (e) {
+      // localStorageへのアクセスエラーは無視
+    }
   }
   
   // 初期化を開始
   isInitializing = true;
   initializationPromise = (async () => {
     try {
-      // show_on_calendarカラムの存在確認
-      if (supportsShowOnCalendar === null) {
-        await checkShowOnCalendarSupport();
+      // show_on_calendarカラムの存在確認（強制再チェックの場合はキャッシュを無視）
+      if (supportsShowOnCalendar === null || forceRecheck) {
+        // 強制再チェックの場合は、localStorageのフラグを無視してDBクエリを実行
+        if (forceRecheck) {
+          supportsShowOnCalendar = null;
+        }
+        const columnExists = await checkShowOnCalendarSupport();
+        
+        // カラムが存在しない場合、自動的に追加を試みる
+        if (!columnExists) {
+          logger.warn('⚠️ show_on_calendarカラムが存在しません。追加を試みます...');
+          const added = await ensureShowOnCalendarColumn();
+          if (added) {
+            logger.info('✅ show_on_calendarカラムを追加しました');
+            // 再度チェック
+            supportsShowOnCalendar = null;
+            await checkShowOnCalendarSupport(forceRecheck);
+          } else {
+            logger.warn('⚠️ show_on_calendarカラムの自動追加に失敗しました。マイグレーションを実行してください。');
+          }
+        }
       }
       
       // instrument_idカラムの存在確認（必要に応じて）
@@ -908,15 +961,24 @@ export const goalRepository = {
    * 目標を削除
    */
   async deleteGoal(goalId: string, userId: string): Promise<void> {
-    const { error } = await supabase
+    logger.debug('[goalRepository] deleteGoal called:', { goalId, userId });
+    console.log('[goalRepository] deleteGoal called:', { goalId, userId });
+    
+    const { data, error } = await supabase
       .from('goals')
       .delete()
       .eq('id', goalId)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .select();
     
     if (error) {
+      logger.error('[goalRepository] deleteGoal error:', error);
+      console.error('[goalRepository] deleteGoal error:', error);
       throw error;
     }
+    
+    logger.debug('[goalRepository] deleteGoal success:', { goalId, deletedCount: data?.length || 0 });
+    console.log('[goalRepository] deleteGoal success:', { goalId, deletedCount: data?.length || 0 });
   },
 
   /**

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Alert, ScrollView, Platform } from 'react-native';
 import { X, Save, Mic, Video, Trash2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -12,6 +12,7 @@ import { getPracticeSessionsByDate } from '@/repositories/practiceSessionReposit
 import { cleanContentFromTimeDetails } from '@/lib/utils/contentCleaner';
 import logger from '@/lib/logger';
 import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
+import { getInstrumentId } from '@/lib/instrumentUtils';
 
 interface PracticeRecordModalProps {
   visible: boolean;
@@ -19,6 +20,7 @@ interface PracticeRecordModalProps {
   selectedDate: Date | null;
   onSave?: (minutes: number, content?: string, audioUrl?: string, videoUrl?: string) => void | Promise<void>;
   onRecordingSaved?: () => void; // 録音保存後のコールバック
+  onRefresh?: number; // データ再読み込みのトリガー（数値が変更されると再読み込み）
 }
 
 export default function PracticeRecordModal({ 
@@ -26,7 +28,8 @@ export default function PracticeRecordModal({
   onClose, 
   selectedDate,
   onSave,
-  onRecordingSaved
+  onRecordingSaved,
+  onRefresh
 }: PracticeRecordModalProps) {
   const router = useRouter();
   const { selectedInstrument } = useInstrumentTheme();
@@ -59,6 +62,19 @@ export default function PracticeRecordModal({
     content: string;
     existingRecording: typeof existingRecording;
   } | null>(null); // 録音画面に移動する前のフォーム状態と録音状態
+  
+  // 無限ループを防ぐため、existingRecordingとisRecordingJustSavedの最新値を保持
+  const existingRecordingRef = useRef(existingRecording);
+  const isRecordingJustSavedRef = useRef(isRecordingJustSaved);
+  
+  // 最新値を更新
+  useEffect(() => {
+    existingRecordingRef.current = existingRecording;
+  }, [existingRecording]);
+  
+  useEffect(() => {
+    isRecordingJustSavedRef.current = isRecordingJustSaved;
+  }, [isRecordingJustSaved]);
 
   // 練習記録を読み込む（リポジトリを使用）
   const loadPracticeSessions = useCallback(async () => {
@@ -69,7 +85,7 @@ export default function PracticeRecordModal({
       const { data: sessions, error } = await getPracticeSessionsByDate(
         user.id,
         practiceDate,
-        selectedInstrument?.id || null
+        getInstrumentId(selectedInstrument)
       );
 
       logger.debug('読み込んだ練習セッション:', sessions);
@@ -146,21 +162,64 @@ export default function PracticeRecordModal({
   }, [user, selectedDate, selectedInstrument]);
 
   // 録音記録を読み込む（簡素化）
-  const loadRecording = useCallback(async (savedRecordingId?: string) => {
+  const loadRecording = useCallback(async (savedRecordingId?: string, currentExistingRecording?: typeof existingRecording, currentIsRecordingJustSaved?: boolean) => {
     if (!user || !selectedDate) return;
 
     try {
       const practiceDate = formatLocalDate(selectedDate);
 
       // 録音記録を取得（getRecordingsByDateを使用）
-      const { data: recordings, error: recordingError } = await getRecordingsByDate(
-        user.id,
-        practiceDate,
-        selectedInstrument || null
-      );
+      // savedRecordingIdが指定されている場合は、データベース反映を待つためリトライする
+      let recordings = null;
+      let recordingError = null;
+      
+      if (savedRecordingId) {
+        // 保存直後の場合は、データベース反映を待つため最大3回リトライ
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const result = await getRecordingsByDate(
+            user.id,
+            practiceDate,
+            getInstrumentId(selectedInstrument)
+          );
+          recordings = result.data;
+          recordingError = result.error;
+          
+          if (!recordingError && recordings && recordings.length > 0) {
+            // 指定されたIDの録音が見つかった場合は終了
+            const found = recordings.find(r => r.id === savedRecordingId);
+            if (found) {
+              logger.debug(`録音記録を読み込みました（試行${attempt + 1}/3）:`, {
+                id: found.id,
+                savedRecordingId
+              });
+              break;
+            }
+          }
+          
+          // 最後の試行でない場合は待機
+          if (attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+      } else {
+        const result = await getRecordingsByDate(
+          user.id,
+          practiceDate,
+          getInstrumentId(selectedInstrument)
+        );
+        recordings = result.data;
+        recordingError = result.error;
+      }
 
       if (recordingError) {
         // エラーは無視（既存録音の読み込み失敗は致命的ではない）
+        // ただし、savedRecordingIdが指定されている場合は、existingRecordingを保持
+        if (savedRecordingId && currentExistingRecording && currentExistingRecording.id === savedRecordingId) {
+          logger.debug('録音記録の読み込みエラーですが、既存の録音状態を保持します:', {
+            savedRecordingId,
+            existingRecordingId: currentExistingRecording.id
+          });
+        }
         return;
       }
 
@@ -174,7 +233,7 @@ export default function PracticeRecordModal({
           // ただし、IDが一致する場合は更新する（データベースから最新情報を取得）
           const shouldUpdate = savedRecordingId 
             ? matchingRecording.id === savedRecordingId
-            : (!existingRecording || existingRecording.id === matchingRecording.id);
+            : (!currentExistingRecording || currentExistingRecording.id === matchingRecording.id);
           
           if (shouldUpdate) {
             setExistingRecording({
@@ -187,29 +246,58 @@ export default function PracticeRecordModal({
               id: matchingRecording.id,
               savedRecordingId
             });
+          } else if (savedRecordingId && currentExistingRecording && currentExistingRecording.id === savedRecordingId) {
+            // savedRecordingIdが指定されているが、データベースから見つからない場合でも、
+            // 既にexistingRecordingが設定されている場合は保持する
+            logger.debug('録音記録が見つかりませんでしたが、既存の録音状態を保持します:', {
+              savedRecordingId,
+              existingRecordingId: currentExistingRecording.id,
+              foundRecordingId: matchingRecording.id
+            });
           }
-        } else if (!savedRecordingId && !isRecordingJustSaved) {
+        } else if (!savedRecordingId && !currentIsRecordingJustSaved) {
           // 日付が一致せず、保存直後でもない場合はクリア
           setExistingRecording(null);
           setAudioUrl('');
         }
-      } else if (!savedRecordingId && !isRecordingJustSaved) {
-        // 録音が見つからず、保存直後でもない場合はクリア
-        if (!existingRecording) {
+      } else {
+        // 録音が見つからない場合
+        if (savedRecordingId && currentExistingRecording && currentExistingRecording.id === savedRecordingId) {
+          // savedRecordingIdが指定されているが、データベースから見つからない場合でも、
+          // 既にexistingRecordingが設定されている場合は保持する（データベース反映の遅延を考慮）
+          logger.debug('録音記録が見つかりませんでしたが、既存の録音状態を保持します（データベース反映待ち）:', {
+            savedRecordingId,
+            existingRecordingId: currentExistingRecording.id
+          });
+        } else if (!savedRecordingId && !currentIsRecordingJustSaved) {
+          // 保存直後でもなく、savedRecordingIdも指定されていない場合はクリア
           setExistingRecording(null);
           setAudioUrl('');
         }
       }
     } catch (error) {
       // エラーは無視（録音記録の読み込み失敗は致命的ではない）
+      // ただし、savedRecordingIdが指定されている場合は、existingRecordingを保持
+      if (savedRecordingId && currentExistingRecording && currentExistingRecording.id === savedRecordingId) {
+        logger.debug('録音記録の読み込みエラーですが、既存の録音状態を保持します:', {
+          savedRecordingId,
+          existingRecordingId: currentExistingRecording.id,
+          error
+        });
+      }
     }
-  }, [user, selectedDate, selectedInstrument, existingRecording, isRecordingJustSaved]);
+  }, [user, selectedDate, selectedInstrument]);
 
   // 既存記録を読み込む（統合関数）
+  // 注意: existingRecordingとisRecordingJustSavedは依存配列に含めない（無限ループを防ぐため）
+  // 代わりに、useRefで最新の値を参照
   const loadExistingRecord = useCallback(async (savedRecordingId?: string) => {
+    // useRefで最新の値を取得
+    const currentExistingRecording = existingRecordingRef.current;
+    const currentIsRecordingJustSaved = isRecordingJustSavedRef.current;
     await Promise.all([
       loadPracticeSessions(),
-      loadRecording(savedRecordingId)
+      loadRecording(savedRecordingId, currentExistingRecording, currentIsRecordingJustSaved)
     ]);
   }, [loadPracticeSessions, loadRecording]);
 
@@ -244,6 +332,14 @@ export default function PracticeRecordModal({
       }
     }
   }, [visible, selectedDate, showAudioRecorder, loadExistingRecord, formStateBeforeRecording]);
+
+  // 外部からのリフレッシュ要求を処理（クイック記録保存後など）
+  useEffect(() => {
+    if (visible && selectedDate && onRefresh !== undefined && onRefresh > 0) {
+      logger.debug('PracticeRecordModal: 外部からのリフレッシュ要求を受信、データを再読み込みします', onRefresh);
+      loadExistingRecord();
+    }
+  }, [visible, selectedDate, onRefresh, loadExistingRecord]);
 
   // Webプラットフォームでのフォーカス管理
   useEffect(() => {
@@ -327,11 +423,18 @@ export default function PracticeRecordModal({
           // コールバックを呼び出す（カレンダーデータの更新はコールバック側で処理）
           onRecordingSaved?.();
           
-          // 録音保存後、データを再取得
+      // 録音保存後、データを再取得（データベース反映を待つため少し遅延）
+      if (visible && selectedDate) {
+        // データベース反映を待つため、少し遅延してから読み込む
+        // loadExistingRecordは既にloadRecordingを含んでいるので、loadRecordingを個別に呼ぶ必要はない
+        setTimeout(async () => {
+          await loadExistingRecord(savedRecording.id);
+          // 読み込み完了後にフラグをリセット
           setIsRecordingJustSaved(false);
-          if (visible && selectedDate) {
-            loadExistingRecord(savedRecording.id);
-          }
+        }, 500);
+      } else {
+        setIsRecordingJustSaved(false);
+      }
         } else {
           // 保存に失敗した場合は、フォームをリセットしない
           logger.warn('⚠️ 録音保存は成功しましたが、savedRecordingがnullです');
@@ -380,10 +483,17 @@ export default function PracticeRecordModal({
         willShow: true
       });
       
-      // 録音保存後、データを再取得
-      setIsRecordingJustSaved(false);
+      // 録音保存後、データを再取得（データベース反映を待つため少し遅延）
       if (visible && selectedDate) {
-        loadExistingRecord(audioData.recordingId);
+        // データベース反映を待つため、少し遅延してから読み込む
+        // loadExistingRecordは既にloadRecordingを含んでいるので、loadRecordingを個別に呼ぶ必要はない
+        setTimeout(async () => {
+          await loadExistingRecord(audioData.recordingId);
+          // 読み込み完了後にフラグをリセット
+          setIsRecordingJustSaved(false);
+        }, 500);
+      } else {
+        setIsRecordingJustSaved(false);
       }
     } else {
       // 録音IDがない場合（保存前の状態）は、録音情報を表示
@@ -738,12 +848,25 @@ export default function PracticeRecordModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={styles.container}>
+      <View 
+        style={styles.container}
+        {...(Platform.OS === 'web' ? { 
+          role: 'dialog',
+          'aria-modal': true,
+          'aria-labelledby': 'practice-record-modal-title',
+          'data-modal-content': true
+        } : {})}
+      >
         <View style={styles.header}>
           <TouchableOpacity onPress={onClose} style={styles.closeButton}>
             <X size={24} color="#666666" />
           </TouchableOpacity>
-          <Text style={styles.title}>練習記録</Text>
+          <Text 
+            id="practice-record-modal-title"
+            style={styles.title}
+          >
+            練習記録
+          </Text>
           <View style={styles.headerSpacer} />
         </View>
 
@@ -916,7 +1039,11 @@ export default function PracticeRecordModal({
 
           {/* 演奏記録（録音・動画） */}
           <View style={styles.inputGroup}>
-            <Text style={styles.label}>今日の演奏記録</Text>
+            <Text style={styles.label}>
+              {selectedDate && formatLocalDate(selectedDate) === formatLocalDate(new Date())
+                ? '今日の演奏記録'
+                : '演奏記録'}
+            </Text>
             
             {/* 録音済み情報がある場合：一つの枠に統合 */}
             {existingRecording && !audioUrl && !videoUrl ? (

@@ -258,3 +258,5 @@ INSTRUMENT_TUNINGS[selectedInstrument]
 
 これらの改善により、メモリリークの防止とコードの可読性向上が期待できる。
 
+
+

@@ -13,6 +13,9 @@ import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { savePracticeSessionWithIntegration } from '@/repositories/practiceSessionRepository';
 import { logger } from '@/lib/logger';
+import { ErrorHandler } from '@/lib/errorHandler';
+import { supabase } from '@/lib/supabase';
+import { getInstrumentId } from '@/lib/instrumentUtils';
 import Stopwatch from '@/components/timer/Stopwatch';
 import { styles } from '@/lib/tabs/timer/styles';
 
@@ -335,22 +338,10 @@ export default function TimerScreen() {
     setTimerPreset: originalSetTimerPreset,
   } = useTimer(() => {
     // タイマー完了時の処理（useTimerフックのコールバックで一元化）
-    console.log('🎯 タイマー完了コールバックが実行されました！');
-    
-    // 練習時間の計算: 30秒単位でカウント（30秒未満は0分、31秒以上は30秒単位で切り上げ）
-    // 例: 30秒未満→0分、31秒→1分、1分29秒→1分、1分45秒→2分
-    const practiceMinutes = timerPresetRef.current >= 30
-      ? Math.ceil(timerPresetRef.current / 30)
+    // 練習時間の計算: 秒数を分に変換（四捨五入で正確な時間を記録）
+    const practiceMinutes = timerPresetRef.current > 0 
+      ? Math.round(timerPresetRef.current / 60) 
       : 0;
-    
-    console.log('📊 タイマー完了コールバック実行', { 
-      practiceMinutes,
-      timerPreset: timerPresetRef.current,
-      completedPracticeTime: completedPracticeTimeRef.current,
-      soundOn: settings.soundOn, 
-      vibrateOn: VIBRATE_ON,
-      autoSave: settings.autoSave
-    });
     
     logger.debug('タイマー完了コールバック実行', { 
       practiceMinutes,
@@ -360,27 +351,20 @@ export default function TimerScreen() {
       autoSave: settings.autoSave
     });
     
-    // 練習時間が0の場合は処理しない
-    if (practiceMinutes === 0) {
-      console.log('⚠️ タイマー完了: 練習時間が0のため処理をスキップ');
-      logger.debug('タイマー完了: 練習時間が0のため処理をスキップ');
-      return;
-    }
-    
     // 重複実行を防ぐ（既に処理済みの場合はスキップ）
-    // 完了状態を先にチェックして、すぐに設定することで重複実行を防ぐ
-    if (completedPracticeTimeRef.current === practiceMinutes) {
-      console.log('⚠️ タイマー完了処理は既に実行済み - スキップ', { 
-        completedPracticeTime: completedPracticeTimeRef.current,
-        practiceMinutes
-      });
+    if (completedPracticeTimeRef.current === practiceMinutes && practiceMinutes > 0) {
       logger.debug('タイマー完了処理は既に実行済み - スキップ');
       return;
     }
     
-    // 完了状態を記録（重複実行を防ぐ）- 処理の最初に設定
+    // 練習時間が0の場合は処理しない
+    if (practiceMinutes === 0) {
+      logger.debug('タイマー完了: 練習時間が0のため処理をスキップ');
+      return;
+    }
+    
+    // 完了状態を記録（重複実行を防ぐ）
     completedPracticeTimeRef.current = practiceMinutes;
-    console.log('✅ 完了状態を記録', { practiceMinutes });
     
     // サウンド再生
     if (settings.soundOn) {
@@ -409,35 +393,24 @@ export default function TimerScreen() {
     }
     
     // 練習記録の保存処理
-    logger.debug('🔍 タイマー完了時の処理:', {
-      autoSave: settings.autoSave,
-      practiceMinutes
-    });
-    
     if (settings.autoSave) {
-      console.log('🔄 自動記録を開始:', practiceMinutes, '分');
-      logger.info('🔄 自動記録を開始:', practiceMinutes, '分');
-      // 非同期処理を実行（エラーハンドリング付き）
+      logger.debug('自動記録を開始:', practiceMinutes, '分');
+      // 保存処理を確実にawaitして、完了を待つ
       (async () => {
         try {
-          console.log('💾 練習記録を保存中...', { minutes: practiceMinutes });
-          const result = await savePracticeRecord(practiceMinutes);
-          if (result) {
-            console.log('✅ タイマー自動記録が正常に完了しました', { minutes: practiceMinutes });
-            logger.info('✅ タイマー自動記録が正常に完了しました', { minutes: practiceMinutes });
+          const saved = await savePracticeRecord(practiceMinutes);
+          if (saved) {
+            logger.debug('✅ タイマー自動記録が正常に完了しました', { minutes: practiceMinutes });
           } else {
-            console.warn('⚠️ タイマー自動記録が失敗しました（結果がfalse）', { minutes: practiceMinutes });
-            logger.warn('⚠️ タイマー自動記録が失敗しました（結果がfalse）', { minutes: practiceMinutes });
+            logger.warn('⚠️ タイマー自動記録が失敗しました', { minutes: practiceMinutes });
           }
         } catch (error) {
-          console.error('❌ タイマー自動記録エラー:', error);
           logger.error('❌ タイマー自動記録エラー:', error);
           // エラーは無視（自動記録なのでユーザーに通知しない）
         }
       })();
     } else {
-      console.log('📋 自動記録が無効 - 手動記録ダイアログを表示');
-      logger.debug('📋 自動記録が無効 - 手動記録ダイアログを表示');
+      logger.debug('手動記録ダイアログを表示');
       showPracticeRecordDialog(practiceMinutes);
     }
   });
@@ -487,17 +460,10 @@ export default function TimerScreen() {
         const soundValue = await AsyncStorage.getItem('timer_sound');
         const typeValue = await AsyncStorage.getItem('timer_sound_type');
         
-        logger.debug('🔍 タイマー設定を読み込み中...', {
-          autoSaveValue,
-          soundValue,
-          typeValue
-        });
-        
         if (autoSaveValue === '1') {
           setAutoSave(true);
-          logger.info('✅ 自動記録設定を読み込み: 有効');
+          logger.debug('自動記録設定を読み込み: 有効');
         } else {
-          setAutoSave(false);
           logger.debug('自動記録設定を読み込み: 無効');
         }
         
@@ -513,7 +479,8 @@ export default function TimerScreen() {
           setSoundType(typeValue);
         }
       } catch (error) {
-        // 設定の読み込みエラーは無視
+        ErrorHandler.handle(error, '設定の読み込み', false);
+        logger.error('設定の読み込みに失敗:', error);
       }
     })();
   }, [setAutoSave, setSoundOn, setSoundType]);
@@ -525,24 +492,29 @@ export default function TimerScreen() {
         throw new Error('ユーザーが認証されていません');
       }
 
-      // 今日の日付を明示的に指定
-      const today = new Date();
-      const practiceDate = formatLocalDate(today);
-
+      // 共通関数を使用して楽器IDを取得
+      const currentInstrumentId = getInstrumentId(selectedInstrument);
+      console.log('💾 タイマー記録保存: 楽器ID:', { selectedInstrument, currentInstrumentId });
+      
       const result = await savePracticeSessionWithIntegration(
         user.id,
         minutes,
         {
-          instrumentId: selectedInstrument?.id || null, // IDを明示的に指定
+          instrumentId: currentInstrumentId,
           content: 'タイマー',
           inputMethod: 'timer',
-          existingContentPrefix: 'タイマー',
-          practiceDate: practiceDate // 今日の日付を明示的に指定
+          existingContentPrefix: 'タイマー'
         }
       );
 
       if (!result.success) {
         const errorMessage = result.error?.message || '練習記録の保存に失敗しました';
+        
+        // recording_idカラムが存在しないエラーの場合は特別なメッセージ
+        if (result.error?.code === 'PGRST204' && errorMessage.includes('recording_id')) {
+          logger.error('recording_idカラムが存在しません。マイグレーションを実行してください。');
+          throw new Error('データベースの設定が不完全です。recording_idカラムが存在しません。管理者にお問い合わせください。');
+        }
         
         // テーブルが存在しないエラーの場合
         if (result.error?.code === 'PGRST205' || result.error?.code === 'PGRST116') {
@@ -554,31 +526,26 @@ export default function TimerScreen() {
       }
       
       logger.info(`✅ タイマー記録を保存: ${minutes}分`, {
-        practiceDate,
-        instrumentId: selectedInstrument?.id || null
+        practiceDate: formatLocalDate(new Date()),
+        instrumentId: currentInstrumentId
       });
       
-      // localStorageにタイムスタンプを保存（カレンダー画面でのデータ更新をトリガー）
+      // イベントを発火（保存処理の戻り値で成功を確認済みのため、検証処理は不要）
       if (typeof window !== 'undefined') {
-        try {
-          const timestamp = Date.now().toString();
-          window.localStorage.setItem('last_practice_record_timestamp', timestamp);
-          if (selectedInstrument?.id) {
-            window.localStorage.setItem('last_practice_record_instrument_id', selectedInstrument.id);
-          } else {
-            window.localStorage.setItem('last_practice_record_instrument_id', 'null');
+        window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
+          detail: {
+            action: 'saved',
+            date: new Date(),
+            source: 'timer',
+            minutes: minutes
           }
-          console.log('💾 タイマー記録のタイムスタンプを保存しました', {
-            timestamp,
-            instrumentId: selectedInstrument?.id || null
-          });
-        } catch (e) {
-          // localStorageへの書き込みエラーは無視
-        }
+        }));
       }
       
       return true;
     } catch (error) {
+      ErrorHandler.handle(error, 'タイマー記録の保存', false);
+      logger.error('タイマー記録の保存エラー:', error);
       throw error;
     }
   };
@@ -604,6 +571,9 @@ export default function TimerScreen() {
         throw new Error('練習記録の保存に失敗しました');
       }
     } catch (error) {
+      ErrorHandler.handle(error, '練習記録保存', true);
+      logger.error('練習記録保存エラー:', error);
+      
       const errorMessage = error instanceof Error ? error.message : '練習記録の保存に失敗しました';
       
       // 既にAlertが表示されている場合は、重複して表示しない
@@ -619,64 +589,24 @@ export default function TimerScreen() {
   };
 
   const showPracticeRecordDialog = (practiceMinutes: number) => {
-    console.log('📋 練習記録ダイアログを表示', { practiceMinutes });
     Alert.alert(
       '練習完了！',
       `${practiceMinutes}分間お疲れ様でした！\nこの練習時間をカレンダーに記録しますか？`,
       [
-        { 
-          text: 'いいえ', 
-          style: 'cancel',
-          onPress: () => {
-            console.log('❌ ユーザーが「いいえ」を選択');
-          }
-        },
+        { text: 'いいえ', style: 'cancel' },
         { 
           text: '次回から自動で記録', 
           onPress: async () => {
-            // 最初に確実にコンソールに表示
-            console.log('========================================');
-            console.log('🔄 「次回から自動で記録」ボタンが押されました！');
-            console.log('========================================');
-            console.log('📊 パラメータ:', { practiceMinutes });
-            
-            try {
-              console.log('💾 自動記録設定を保存中...');
-              // まず設定を保存（保存の失敗を防ぐため先に保存）
-              await AsyncStorage.setItem('timer_auto_save', '1');
-              console.log('✅ 自動記録設定を保存: 有効');
-              logger.debug('✅ 自動記録設定を保存: 有効');
-              
-              console.log('🔄 状態を更新中...');
-              // 状態を更新
-              dispatchSettings({ type: 'SET_AUTO_SAVE', payload: true });
-              console.log('✅ 状態を更新完了');
-              
-              console.log('💾 練習記録を保存中...', { practiceMinutes });
-              // 練習記録を保存
-              const saveResult = await savePracticeRecord(practiceMinutes);
-              console.log('📊 保存結果:', { saveResult });
-              
-              if (saveResult) {
-                console.log('✅ 保存成功 - 設定完了ダイアログを表示');
-                Alert.alert('設定完了', '次回から自動で記録されます');
-                logger.info('✅ 「次回から自動で記録」設定が有効になりました');
-              } else {
-                console.error('❌ 保存失敗');
-                Alert.alert('エラー', '記録の保存に失敗しました');
-              }
-            } catch (error) {
-              console.error('❌ エラーが発生しました:', error);
-              Alert.alert('エラー', '設定の保存に失敗しました');
-            }
+            await savePracticeRecord(practiceMinutes);
+            // 自動記録を有効化
+            setAutoSave(true);
+            await AsyncStorage.setItem('timer_auto_save', '1');
+            Alert.alert('設定完了', '次回から自動で記録されます');
           }
         },
         { 
           text: 'はい', 
-          onPress: async () => {
-            console.log('✅ ユーザーが「はい」を選択', { practiceMinutes });
-            await savePracticeRecord(practiceMinutes);
-          }
+          onPress: () => savePracticeRecord(practiceMinutes)
         }
       ]
     );
@@ -1116,6 +1046,25 @@ export default function TimerScreen() {
     }
   }, [settings.soundType]);
 
+  // カレンダー更新の通知を送信
+  const notifyCalendarUpdate = () => {
+    try {
+      // カスタムイベントを発火してカレンダー画面に通知
+      if (typeof window !== 'undefined') {
+        const event = new CustomEvent('practiceRecordUpdated', {
+          detail: {
+            timestamp: Date.now(),
+            source: 'timer'
+          }
+        });
+        window.dispatchEvent(event);
+        logger.debug('カレンダー更新通知を送信');
+      }
+    } catch (error) {
+      ErrorHandler.handle(error, 'カレンダー更新通知の送信', false);
+      logger.error('カレンダー更新通知の送信に失敗:', error);
+    }
+  };
 
   const handleStartPause = () => {
     if (timerSeconds === 0 && !isTimerRunning) {
@@ -1266,11 +1215,7 @@ export default function TimerScreen() {
         </View>
 
         {/* Timer Display with Animated Circular Progress */}
-        <View style={[
-          styles.timerContainer, 
-          { backgroundColor: '#FFFFFF' },
-          mode === 'stopwatch' && { borderWidth: 0, paddingVertical: 0, paddingHorizontal: 0 }
-        ]}>
+        <View style={[styles.timerContainer, { backgroundColor: '#FFFFFF' }]}>
           {/* タイマーモード：アニメーション付き円形プログレスバー */}
           {mode === 'timer' && (
             <View style={styles.circularProgressContainer}>
@@ -1423,9 +1368,6 @@ export default function TimerScreen() {
                   <Text style={[styles.settingDescription, { color: currentTheme.textSecondary }]}>
                     {t('autoRecordDescription') || 'タイマー完了時に自動で練習記録を保存'}
                   </Text>
-                  <Text style={[styles.settingDescription, { color: currentTheme.textSecondary, fontSize: 12, marginTop: 4 }]}>
-                    ※ 30秒未満は記録されません。30秒単位で切り上げ（例: 31秒→1分、1分45秒→2分）
-                  </Text>
                 </View>
                   <Switch
                     value={settings.autoSave}
@@ -1436,7 +1378,8 @@ export default function TimerScreen() {
                         await AsyncStorage.setItem('timer_auto_save', v ? '1' : '0');
                         logger.debug('自動記録設定を保存:', v ? '有効' : '無効');
                       } catch (error) {
-                        // 設定の保存エラーは無視
+                        ErrorHandler.handle(error, '自動記録設定の保存', false);
+                        logger.error('自動記録設定の保存に失敗:', error);
                       }
                     }}
                     thumbColor={settings.autoSave ? currentTheme.primary : '#f4f3f4'}
@@ -1471,7 +1414,8 @@ export default function TimerScreen() {
                         await AsyncStorage.setItem('timer_sound', v ? '1' : '0');
                         logger.debug('サウンド設定を保存:', v ? '有効' : '無効');
                       } catch (error) {
-                        // 設定の保存エラーは無視
+                        ErrorHandler.handle(error, 'サウンド設定の保存', false);
+                        logger.error('サウンド設定の保存に失敗:', error);
                       }
                     }}
                     thumbColor={settings.soundOn ? currentTheme.primary : '#f4f3f4'}

@@ -97,3 +97,5 @@ COMMENT ON FUNCTION save_practice_session_with_integration IS
 GRANT EXECUTE ON FUNCTION save_practice_session_with_integration TO anon;
 GRANT EXECUTE ON FUNCTION save_practice_session_with_integration TO authenticated;
 
+
+

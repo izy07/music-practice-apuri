@@ -124,16 +124,34 @@ function RootLayoutContent() {
       checkDatabaseSchema().then((result) => {
         if (result.errors.length > 0) {
           logger.error('データベーススキーマに問題があります:', result.errors);
+          
+          // attendance_recordsテーブルが存在しない場合は特別なメッセージを表示
+          if (!result.attendanceRecordsTableExists) {
+            logger.error('❌ attendance_recordsテーブルが存在しません。');
+            console.error('========================================');
+            console.error('❌ attendance_recordsテーブルが存在しません');
+            console.error('解決方法: Supabaseダッシュボードでマイグレーションを実行してください');
+            console.error('');
+            console.error('【推奨】最初からテーブルを作成する場合:');
+            console.error('  マイグレーションファイル: 20251209000000_create_practice_schedules_and_tasks.sql');
+            console.error('  （practice_schedules、tasks、attendance_recordsを一緒に作成）');
+            console.error('');
+            console.error('【既存環境用】attendance_recordsのみ作成する場合:');
+            console.error('  マイグレーションファイル: 20251209000002_ensure_attendance_records_table_final.sql');
+            console.error('========================================');
+          }
+          
           // エラーハンドラーでユーザーに通知（既にnotificationServiceで処理される）
         } else {
-          logger.debug('データベーススキーマのチェックが完了しました。すべてのカラムが存在します。');
+          logger.debug('データベーススキーマのチェックが完了しました。すべてのテーブルとカラムが存在します。');
         }
       }).catch((error: unknown) => {
         logger.error('データベーススキーマのチェック中にエラーが発生しました:', error);
       });
       
       // 目標リポジトリのカラム存在確認を初期化（一度だけ実行）
-      initializeGoalRepository().catch((error: unknown) => {
+      // 強制再チェックを有効にして、localStorageのフラグを無視してDBクエリを実行
+      initializeGoalRepository(true).catch((error: unknown) => {
         logger.error('目標リポジトリの初期化中にエラーが発生しました:', error);
       });
     }
@@ -158,6 +176,7 @@ function RootLayoutContent() {
         const originalWarn = console.warn;
         const originalError = console.error;
         const originalLog = console.log;
+        const originalInfo = console.info;
         
         // console.warnの抑制
         console.warn = (...args: unknown[]) => {
@@ -177,6 +196,11 @@ function RootLayoutContent() {
               message.includes('assistive technology') ||
               message.includes('The focus must not be hidden') ||
               message.includes('WAI-ARIA')) {
+            return;
+          }
+          // React DevToolsのダウンロード案内を抑制
+          if (fullMessage.includes('Download the React DevTools') ||
+              fullMessage.includes('react.dev/link/react-devtools')) {
             return;
           }
           originalWarn.apply(console, args);
@@ -223,9 +247,10 @@ function RootLayoutContent() {
           originalError.apply(console, args);
         };
         
-        // console.logの抑制（aria-hidden警告がlogとして表示される場合がある）
+        // console.logの抑制（開発時の情報メッセージを抑制）
         console.log = (...args: unknown[]) => {
           const message = args[0]?.toString() || '';
+          const fullMessage = args.map(arg => String(arg)).join(' ');
           // aria-hidden警告を無視
           if (message.includes('Blocked aria-hidden') || 
               message.includes('aria-hidden') || 
@@ -235,7 +260,36 @@ function RootLayoutContent() {
               message.includes('WAI-ARIA')) {
             return;
           }
+          // React/Expo開発時の標準メッセージを抑制
+          if (fullMessage.includes('Running application') ||
+              fullMessage.includes('with appParams') ||
+              fullMessage.includes('Development-level warnings') ||
+              fullMessage.includes('Performance optimizations') ||
+              fullMessage.includes('Development-level warnings: ON') ||
+              fullMessage.includes('Performance optimizations: OFF')) {
+            return;
+          }
           originalLog.apply(console, args);
+        };
+        
+        // console.infoの抑制（React DevToolsなどの情報メッセージを抑制）
+        console.info = (...args: unknown[]) => {
+          const message = args[0]?.toString() || '';
+          const fullMessage = args.map(arg => String(arg)).join(' ');
+          // React DevToolsのダウンロード案内を抑制
+          if (fullMessage.includes('Download the React DevTools') ||
+              fullMessage.includes('react.dev/link/react-devtools') ||
+              fullMessage.includes('React DevTools')) {
+            return;
+          }
+          // Expo/React開発時の標準メッセージを抑制
+          if (fullMessage.includes('Running application') ||
+              fullMessage.includes('with appParams') ||
+              fullMessage.includes('Development-level warnings') ||
+              fullMessage.includes('Performance optimizations')) {
+            return;
+          }
+          originalInfo.apply(console, args);
         };
         
         // エラーイベントリスナーでaria-hidden警告を抑制

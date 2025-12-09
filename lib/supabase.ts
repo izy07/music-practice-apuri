@@ -130,7 +130,7 @@ const getSupabaseClient = () => {
           const pathname = urlObj.pathname;
           
           // RPC関数の404エラーは、フォールバック方法で処理されるため無視
-          if (pathname.includes('/rpc/check_column_exists')) {
+          if (pathname.includes('/rpc/check_column_exists') || pathname.includes('/rpc/get_total_practice_time')) {
             // エラーレスポンスをそのまま返す（呼び出し側で処理される）
             return response;
           }
