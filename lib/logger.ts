@@ -1,6 +1,6 @@
 /**
  * 環境対応ロガー
- * 本番環境ではinfoレベル以上のみ出力、開発環境では全レベル出力
+ * 本番環境ではerrorレベルのみ出力、開発環境では全レベル出力
  * Usage: logger.debug('message', data)
  */
 
@@ -31,7 +31,8 @@ const getCurrentLogLevel = (): LogLevel => {
     (typeof process !== 'undefined' && process.env.NODE_ENV === 'production') ||
     (typeof __DEV__ !== 'undefined' && !__DEV__);
 
-  return isProduction ? 'info' : 'debug';
+  // 本番環境ではerrorレベルのみ出力（テスターに詳細情報を見せないため）
+  return isProduction ? 'error' : 'debug';
 };
 
 const currentLevel = LEVEL_ORDER[getCurrentLogLevel()];
