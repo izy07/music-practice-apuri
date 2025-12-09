@@ -34,14 +34,6 @@ export function useTimer(onTimerComplete?: () => void) {
       const prevTimerSeconds = timerSecondsRef.current;
       const prevIsTimerRunning = isTimerRunningRef.current;
       
-      console.log('🔄 タイマー状態更新', {
-        prevTimerSeconds,
-        newTimerSeconds,
-        prevIsTimerRunning,
-        newIsTimerRunning,
-        hasCallback: !!onTimerCompleteRef.current
-      });
-      
       setTimerSeconds(newTimerSeconds);
       setStopwatchSeconds(newStopwatchSeconds);
       setIsTimerRunning(newIsTimerRunning);
@@ -49,16 +41,8 @@ export function useTimer(onTimerComplete?: () => void) {
       
       // タイマー完了の検出
       const isTimerComplete = prevIsTimerRunning && !newIsTimerRunning && newTimerSeconds === 0 && onTimerCompleteRef.current;
-      console.log('🔍 タイマー完了チェック', {
-        prevIsTimerRunning,
-        newIsTimerRunning,
-        newTimerSeconds,
-        hasCallback: !!onTimerCompleteRef.current,
-        isTimerComplete
-      });
       
       if (isTimerComplete) {
-        console.log('✅ タイマー完了検出 - コールバックを実行');
         logger.debug('useTimer: タイマー完了検出');
         onTimerCompleteRef.current();
       }

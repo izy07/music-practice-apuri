@@ -155,19 +155,12 @@ export default function StatisticsScreen() {
           if (lastTimestamp && Date.now() - parseInt(lastTimestamp) < 60000) {
             // 60秒以内に記録があった場合、楽器IDが一致する場合は強制更新
             if (lastInstrumentId === (currentInstrumentId || 'null')) {
-              console.log('🔄 統計画面: 最近の記録を検出、データを強制更新します', {
-                lastTimestamp,
-                lastInstrumentId,
-                currentInstrumentId,
-                timeDiff: Date.now() - parseInt(lastTimestamp)
-              });
               // データベースの反映を待つため、十分な遅延を設けてから更新
               setTimeout(async () => {
                 try {
                   await fetchPracticeRecords();
-                  console.log('✅ 統計画面: useFocusEffect データ更新完了');
                 } catch (error) {
-                  console.error('❌ 統計画面: useFocusEffect データ更新エラー:', error);
+                  logger.error('統計画面: useFocusEffect データ更新エラー:', error);
                 }
               }, 1500);
               return;
@@ -191,7 +184,6 @@ export default function StatisticsScreen() {
 
     const handlePracticeRecordUpdated = (event?: CustomEvent) => {
       const detail = event?.detail;
-      console.log('📢 統計画面: 練習記録更新イベントを受信しました', detail);
       
       // verifiedフラグがtrueの場合は、データベースへの反映が確認済みなので即座に更新
       // falseの場合は、データベース反映を待つ必要がある
@@ -204,9 +196,8 @@ export default function StatisticsScreen() {
         try {
           // まず1回目の更新を試行
           await fetchPracticeRecords();
-          console.log('✅ 統計画面: 1回目のデータ更新完了', { isVerified });
         } catch (error) {
-          console.error('❌ 統計画面: 1回目のデータ更新エラー:', error);
+          logger.error('統計画面: 1回目のデータ更新エラー:', error);
         }
         
         // verifiedでない場合は、さらに待機してから2回目の更新を試行
@@ -214,9 +205,8 @@ export default function StatisticsScreen() {
           setTimeout(async () => {
             try {
               await fetchPracticeRecords();
-              console.log('✅ 統計画面: 2回目のデータ更新完了');
             } catch (error) {
-              console.error('❌ 統計画面: 2回目のデータ更新エラー:', error);
+              logger.error('統計画面: 2回目のデータ更新エラー:', error);
             }
           }, 1000);
         }
@@ -364,23 +354,6 @@ export default function StatisticsScreen() {
     return arr;
   }, [practiceRecords]);
 
-  // 練習方法別統計を計算 - メモ化で最適化
-  const getInputMethodStats = useMemo(() => {
-    const methodStats: { [key: string]: { count: number; totalMinutes: number } } = {};
-    
-    practiceRecords.forEach(record => {
-      const method = record.input_method || 'その他';
-      if (!methodStats[method]) {
-        methodStats[method] = { count: 0, totalMinutes: 0 };
-      }
-      methodStats[method].count++;
-      methodStats[method].totalMinutes += record.duration_minutes;
-    });
-
-    return Object.entries(methodStats)
-      .map(([method, stats]) => ({ method, ...stats }))
-      .sort((a, b) => b.totalMinutes - a.totalMinutes);
-  }, [practiceRecords]);
 
   // 最近の練習記録を取得 - メモ化で最適化
   const getRecentRecords = useMemo(() => {
@@ -739,19 +712,6 @@ export default function StatisticsScreen() {
         <View style={[styles.detailAnalysisCard, { backgroundColor: Surface }]}>
           <Text style={[styles.detailAnalysisTitle, { color: TextColor }]}>詳細分析</Text>
           
-          {/* 練習方法別統計 */}
-          <View style={styles.analysisSection}>
-            <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>練習方法別</Text>
-            {getInputMethodStats.map((stat, index) => (
-              <View style={styles.analysisRow} key={index}>
-                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{stat.method}</Text>
-                <Text style={[styles.analysisValue, { color: TextColor }]}>
-                  {stat.count}回 ({formatMinutesToHours(stat.totalMinutes)})
-                </Text>
-              </View>
-            ))}
-          </View>
-
           {/* 基礎統計 */}
           {getAdditionalStats && (
             <View style={styles.analysisSection}>

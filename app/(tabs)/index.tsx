@@ -409,7 +409,6 @@ export default function CalendarScreen() {
     const handlePracticeRecordUpdated = (event?: CustomEvent) => {
       const detail = event?.detail;
       logger.debug('📅 練習記録更新イベントを受信、データを再読み込みします', detail);
-      console.log('📢 練習記録更新イベントを受信しました', detail);
       
       // verifiedフラグがtrueの場合は、データベースへの反映が確認済みなので即座に更新
       // falseの場合は、データベース反映を待つ必要がある
@@ -468,7 +467,6 @@ export default function CalendarScreen() {
 
       // 共通関数を使用して楽器IDを取得
       const currentInstrumentId = getInstrumentId(selectedInstrument);
-      console.log('💾 練習記録保存: 楽器ID:', { selectedInstrument, currentInstrumentId });
 
       const practiceDate = date || new Date();
       const practiceRecord = {
@@ -949,11 +947,30 @@ export default function CalendarScreen() {
         } : undefined}
         onEventSaved={async () => {
           logger.debug('🔄 onEventSavedコールバックが呼ばれました');
-          await loadEvents();
-          logger.debug('✅ loadEvents完了');
           setSelectedEvent(null);
-          setSuccessMessage('イベントを保存しました！');
-          setTimeout(() => setSuccessMessage(''), 3000);
+          
+          // データベースへの反映を待つため、少し遅延を設けてから更新
+          // 複数回試行して確実にデータを取得する
+          setTimeout(async () => {
+            try {
+              await loadEvents();
+              logger.debug('✅ loadEvents完了（1回目）');
+            } catch (error) {
+              logger.error('❌ イベント読み込みエラー（1回目）:', error);
+            }
+            
+            // さらに待機してから2回目の更新を試行（データベース反映の遅延に対応）
+            setTimeout(async () => {
+              try {
+                await loadEvents();
+                logger.debug('✅ loadEvents完了（2回目）');
+                setSuccessMessage('イベントを保存しました！');
+                setTimeout(() => setSuccessMessage(''), 3000);
+              } catch (error) {
+                logger.error('❌ イベント読み込みエラー（2回目）:', error);
+              }
+            }, 500);
+          }, 300);
         }}
       />
 

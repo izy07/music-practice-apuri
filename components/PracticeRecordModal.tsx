@@ -96,22 +96,21 @@ export default function PracticeRecordModal({
       }
 
       if (sessions && sessions.length > 0) {
+        // 基礎練（preset）を除外して、時間記録（manual, voice, timer）のみを取得
+        const timeRecords = sessions.filter(s => s.input_method !== 'preset');
+        
         // タイマー記録とその他の記録を分離
-        const timerSessions = sessions.filter(s => s.input_method === 'timer');
-        const otherSessions = sessions.filter(s => s.input_method !== 'timer');
+        const timerSessions = timeRecords.filter(s => s.input_method === 'timer');
+        const otherSessions = timeRecords.filter(s => s.input_method !== 'timer');
         
         // タイマー記録の合計時間を計算
         const totalTimerMinutes = timerSessions.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
         setTimerMinutes(totalTimerMinutes);
         
-        // 練習時間の内訳を計算（基礎練は時間を追加しないため除外）
+        // 練習時間の内訳を計算（基礎練は既に除外済み）
         const breakdown: { [key: string]: number } = {};
-        sessions.forEach(session => {
+        timeRecords.forEach(session => {
           const method = session.input_method || 'manual';
-          // 基礎練（preset）は時間を追加しないため、内訳から除外
-          if (method === 'preset') {
-            return;
-          }
           const methodLabel = 
             method === 'timer' ? 'タイマー' :
             method === 'voice' ? 'クイック記録' :
@@ -125,24 +124,30 @@ export default function PracticeRecordModal({
         logger.debug('練習時間の内訳:', breakdownArray);
         setPracticeBreakdown(breakdownArray);
         
-        if (otherSessions.length > 0) {
-          // その他の記録がある場合
-          const session = otherSessions[0];
+        if (timeRecords.length > 0) {
+          // 時間記録がある場合（タイマー、クイック、手動入力）
+          // すべての時間記録の合計を計算
+          const totalMinutes = timeRecords.reduce((sum, s) => sum + (s.duration_minutes || 0), 0);
+          
+          // 既存の記録を設定（合計時間を使用）
+          // otherSessionsがある場合は最初のセッションのIDとcontentを使用
+          const primarySession = otherSessions.length > 0 ? otherSessions[0] : timerSessions[0];
+          
           setExistingRecord({
-            id: session.id!,
-            minutes: session.duration_minutes,
-            content: session.content
+            id: primarySession.id!,
+            minutes: totalMinutes, // すべての時間記録の合計
+            content: primarySession.content
           });
           
-          // 既存の記録をフォームに設定
-          setMinutes(session.duration_minutes.toString());
-          if (session.content) {
+          // 既存の記録をフォームに設定（合計時間を表示）
+          setMinutes(totalMinutes.toString());
+          if (primarySession.content) {
             // contentから時間詳細（経由情報）を削除して設定（共通関数を使用）
-            const cleanedContent = cleanContentFromTimeDetails(session.content);
+            const cleanedContent = cleanContentFromTimeDetails(primarySession.content);
             setContent(cleanedContent);
           }
         } else {
-          // タイマー記録のみの場合
+          // 時間記録がない場合（基礎練のみ、または記録なし）
           setExistingRecord(null);
           setMinutes('');
           setContent('');
@@ -509,8 +514,6 @@ export default function PracticeRecordModal({
     
     // コールバックを呼び出してデータを更新
     onRecordingSaved?.();
-    
-    console.log('✅ 録音情報を「今日の演奏記録」セクションに表示しました');
   };
 
   const handleVideoUrlChange = (url: string) => {

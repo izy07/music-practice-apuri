@@ -124,7 +124,6 @@ const CompletedGoalCard = memo<{
             style={[styles.deleteButton, { backgroundColor: '#FF4444', zIndex: 10 }]}
             onPress={(e) => {
               e.stopPropagation();
-              console.log('達成済み目標の削除ボタンが押されました', goal.id);
               if (onDeleteGoal) {
                 onDeleteGoal(goal.id).catch((error) => {
                   console.error('削除エラー:', error);

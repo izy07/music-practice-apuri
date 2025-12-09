@@ -43,8 +43,6 @@ const colors = {
 };
 
 export default function ResetPasswordScreen() {
-  console.log('🔐 ResetPasswordScreen component initialized');
-  
   const router = useRouter();
   
   // フォーム状態
@@ -90,7 +88,6 @@ export default function ResetPasswordScreen() {
       const { data: { session }, error } = await supabase.auth.getSession();
       
       if (error || !session) {
-        console.log('❌ 有効なセッションがありません');
         Alert.alert(
           'セッションエラー',
           'パスワードリセットリンクが無効または期限切れです。',
@@ -104,7 +101,6 @@ export default function ResetPasswordScreen() {
         return;
       }
 
-      console.log('✅ 有効なセッション確認済み');
       setIsValidSession(true);
     } catch (error) {
       console.error('💥 セッション確認エラー:', error);
@@ -143,8 +139,6 @@ export default function ResetPasswordScreen() {
     setIsLoading(true);
     
     try {
-      console.log('🔐 パスワードリセット処理開始');
-      
       const { error } = await supabase.auth.updateUser({
         password: formData.password,
       });
@@ -153,8 +147,6 @@ export default function ResetPasswordScreen() {
         console.error('❌ パスワード更新エラー:', error);
         throw error;
       }
-
-      console.log('✅ パスワード更新成功');
       
       // 成功アニメーション
       Animated.timing(successAnim, {

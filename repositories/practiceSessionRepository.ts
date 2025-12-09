@@ -128,7 +128,7 @@ export const createPracticeSession = async (
     }
     
     // デバッグログ: 実際に送信される値を確認
-    console.log('💾 createPracticeSession: instrument_id保存状況', {
+    logger.debug('💾 createPracticeSession: instrument_id保存状況', {
       session_instrument_id: session.instrument_id,
       insertPayload_instrument_id: insertPayload.instrument_id,
       instrument_id_type: typeof insertPayload.instrument_id
@@ -150,7 +150,7 @@ export const createPracticeSession = async (
     
     // 保存後のデータを確認
     if (data) {
-      console.log('✅ createPracticeSession: 保存成功', {
+      logger.debug('✅ createPracticeSession: 保存成功', {
         saved_instrument_id: data.instrument_id,
         requested_instrument_id: insertPayload.instrument_id,
         record_id: data.id
@@ -461,7 +461,7 @@ export const savePracticeSessionWithIntegration = async (
           input_method: inputMethod, // 既に検証済みの値を使用
         };
         
-        console.log('💾 既存記録更新:', {
+        logger.debug('💾 既存記録更新:', {
           existingInstrumentId: existing.instrument_id,
           newInstrumentId: instrumentId,
           updateInstrumentId: updateData.instrument_id
@@ -569,7 +569,7 @@ export const savePracticeSessionWithIntegration = async (
         instrument_id: instrumentId || null,
       };
       
-      console.log('💾 savePracticeSessionWithIntegration: 新規記録作成開始', {
+      logger.debug('💾 savePracticeSessionWithIntegration: 新規記録作成開始', {
         practice_date: targetDate,
         duration_minutes: minutes,
         input_method: inputMethod,
@@ -593,7 +593,7 @@ export const savePracticeSessionWithIntegration = async (
       const insertError = result.error;
       const newRecord = result.data;
       
-      console.log('💾 savePracticeSessionWithIntegration: 新規記録作成結果', {
+      logger.debug('💾 savePracticeSessionWithIntegration: 新規記録作成結果', {
         success: !insertError,
         error: insertError?.message,
         recordId: newRecord?.id,

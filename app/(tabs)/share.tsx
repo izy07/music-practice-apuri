@@ -130,15 +130,23 @@ export default function ShareScreen() {
       return;
     }
 
-    const organization = await joinOrg({
-      organizationId: joinForm.selectedOrg.id,
-      password: joinForm.password.trim(),
-    });
+    try {
+      const organization = await joinOrg({
+        organizationId: joinForm.selectedOrg.id,
+        password: joinForm.password.trim(),
+      });
 
-    if (organization) {
-      Alert.alert(t('success'), t('joinedOrganization'));
-      setShowJoinOrg(false);
-      setJoinForm({ searchName: '', selectedOrg: null, password: '' });
+      if (organization) {
+        Alert.alert(t('success'), t('joinedOrganization'));
+        setShowJoinOrg(false);
+        setJoinForm({ searchName: '', selectedOrg: null, password: '' });
+      } else {
+        // joinOrgがnullを返した場合（エラーは既にuseOrganizationフック内で表示されている）
+        // 追加のエラーメッセージは不要（重複を避けるため）
+      }
+    } catch (error) {
+      // 予期しないエラーの場合のみ追加のエラーメッセージを表示
+      ErrorHandler.handle(error, '組織参加', true);
     }
   };
 

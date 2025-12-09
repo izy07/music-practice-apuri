@@ -60,8 +60,13 @@ export default function EventModal({
       setTitle('');
       setDate(formatLocalDate(selectedDate));
       setDescription('');
+    } else if (visible && !event && !selectedDate) {
+      // 新規イベント作成時でselectedDateがない場合は、今日の日付を初期値として設定
+      setTitle('');
+      setDate(formatLocalDate(new Date()));
+      setDescription('');
     }
-  }, [event, selectedDate]);
+  }, [event, selectedDate, visible]);
 
   // Webプラットフォームでのフォーカス管理
   useEffect(() => {
@@ -125,7 +130,7 @@ export default function EventModal({
           .eq('id', event.id);
 
         if (error) throw error;
-        Alert.alert('成功', 'イベントを更新しました');
+        logger.debug('✅ イベントを更新しました', { eventId: event.id, date });
       } else {
         // 新規イベントの作成
         const { error } = await supabase
@@ -138,10 +143,15 @@ export default function EventModal({
           });
 
         if (error) throw error;
-        Alert.alert('成功', 'イベントを登録しました');
+        logger.debug('✅ イベントを登録しました', { date });
       }
 
+      // コールバックを先に実行してからモーダルを閉じる（データベース反映を待つため）
+      // 保存された日付をコールバックに渡す（カレンダーの表示月を調整するため）
       onEventSaved();
+      
+      // モーダルを閉じる前に少し待機（データベース反映を確実にするため）
+      await new Promise(resolve => setTimeout(resolve, 200));
       onClose();
     } catch (error) {
       ErrorHandler.handle(error, 'イベント保存', true);

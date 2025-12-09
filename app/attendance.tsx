@@ -155,7 +155,6 @@ export default function AttendanceScreen() {
           return dateA.getTime() - dateB.getTime();
         });
         
-        console.log(`📋 出欠管理（全組織）: ${allSchedules.length}件の予定を表示`);
         setSchedules(allSchedules);
       } else {
         // 単一組織の練習日程を取得
@@ -172,7 +171,6 @@ export default function AttendanceScreen() {
                 organization_id: orgId as string,
                 organization_name: org?.name || '（名称なし）',
               }));
-            console.log(`📋 出欠管理（単一組織）: 全${result.schedules.length}件中、${schedulesWithOrg.length}件を表示`);
             setSchedules(schedulesWithOrg);
           }
         }

@@ -344,7 +344,16 @@ export function useCalendarData(currentDate: Date) {
           });
         });
         
+        logger.debug('📅 イベントデータを設定:', {
+          count: eventsData.length,
+          eventsByDay: Object.keys(newEvents).length,
+          newEvents
+        });
         setEvents(newEvents);
+      } else {
+        // イベントデータが空の場合も状態をクリア
+        logger.debug('📅 イベントデータが空です');
+        setEvents({});
       }
     } catch (error) {
       ErrorHandler.handle(error, 'イベントデータの読み込み', false);

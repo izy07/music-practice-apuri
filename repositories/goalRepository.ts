@@ -962,7 +962,6 @@ export const goalRepository = {
    */
   async deleteGoal(goalId: string, userId: string): Promise<void> {
     logger.debug('[goalRepository] deleteGoal called:', { goalId, userId });
-    console.log('[goalRepository] deleteGoal called:', { goalId, userId });
     
     const { data, error } = await supabase
       .from('goals')
@@ -978,7 +977,6 @@ export const goalRepository = {
     }
     
     logger.debug('[goalRepository] deleteGoal success:', { goalId, deletedCount: data?.length || 0 });
-    console.log('[goalRepository] deleteGoal success:', { goalId, deletedCount: data?.length || 0 });
   },
 
   /**

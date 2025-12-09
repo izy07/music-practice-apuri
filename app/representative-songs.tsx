@@ -301,7 +301,6 @@ export default function RepresentativeSongsScreen() {
       {/* ヘッダー */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => {
-          console.log('戻るボタン押下');
           router.back();
         }} style={styles.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <ArrowLeft size={24} color={currentTheme.text} />

@@ -46,14 +46,30 @@ export const membershipRepository = {
     organizationId: string
   ): Promise<RepositoryResult<UserGroupMembership | null>> {
     return safeExecute(async () => {
+      // sub_group_idカラムは削除されているため、user_idとorganization_idのみで検索
       const { data, error } = await supabase
         .from('user_group_memberships')
         .select('*')
         .eq('user_id', userId)
         .eq('organization_id', organizationId)
+        .is('sub_group_id', null) // sub_group_idがnullのもののみ（互換性のため、カラムが存在しない場合は無視される）
         .maybeSingle();
 
-      if (error) throw error;
+      if (error) {
+        // sub_group_idカラムが存在しない場合（エラーコード: 42703）は、カラムを除外して再試行
+        if (error.code === '42703') {
+          const { data: retryData, error: retryError } = await supabase
+            .from('user_group_memberships')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('organization_id', organizationId)
+            .maybeSingle();
+          
+          if (retryError) throw retryError;
+          return (retryData as UserGroupMembership) || null;
+        }
+        throw error;
+      }
 
       return (data as UserGroupMembership) || null;
     }, 'getByUserAndOrganization');
@@ -79,9 +95,20 @@ export const membershipRepository = {
         return { data: existing.data, error: null };
       }
       
+      // sub_group_idカラムは削除されているため、user_id, organization_id, roleのみを挿入
+      const insertData: {
+        user_id: string;
+        organization_id: string;
+        role: OrganizationRole;
+      } = {
+        user_id: data.user_id,
+        organization_id: data.organization_id,
+        role: data.role,
+      };
+      
       const { data: result, error } = await supabase
         .from('user_group_memberships')
-        .insert(data)
+        .insert(insertData)
         .select()
         .single();
 

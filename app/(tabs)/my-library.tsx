@@ -17,7 +17,7 @@ import { safeGoBack } from '@/lib/navigationUtils';
 interface Song {
   id: string;
   title: string;
-  composer: string;
+  artist: string;
   genre: string;
   difficulty: 'beginner' | 'intermediate' | 'advanced';
   status: 'want_to_play' | 'learning' | 'played' | 'mastered';
@@ -40,11 +40,12 @@ export default function MyLibraryScreen() {
   const [editingSong, setEditingSong] = useState<Song | null>(null);
   const [filterStatus, setFilterStatus] = useState<'want_to_play' | 'learning' | 'played' | 'mastered'>('want_to_play');
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [isSaving, setIsSaving] = useState(false); // 保存中の二重クリック防止
   
   // 新規追加・編集用の状態
   const [formData, setFormData] = useState({
     title: '',
-    composer: '',
+    artist: '',
     genre: '',
     difficulty: 'beginner' as 'beginner' | 'intermediate' | 'advanced',
     status: 'want_to_play' as 'want_to_play' | 'learning' | 'played' | 'mastered',
@@ -62,19 +63,44 @@ export default function MyLibraryScreen() {
     try {
       // ペイウォール: 未購読かつトライアル外はデータ非表示
       if (!canAccessFeature('my-library', entitlement)) {
+        logger.debug('楽曲読み込み: 機能アクセス不可（ペイウォール）');
         setSongs([]);
         return;
       }
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        logger.debug('楽曲読み込み開始:', { userId: user.id, filterStatus });
         const { data, error } = await supabase
           .from('my_songs')
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false });
 
-        if (error) throw error;
-        setSongs(data || []);
+        if (error) {
+          logger.error('楽曲読み込みエラー:', error);
+          throw error;
+        }
+        
+        logger.debug('楽曲読み込み成功:', { 
+          totalCount: data?.length || 0, 
+          filteredByStatus: filterStatus,
+          songs: data?.map(s => ({ id: s.id, title: s.title, status: s.status }))
+        });
+        
+        // データを設定
+        const loadedSongs = data || [];
+        setSongs(loadedSongs);
+        
+        // フィルターされた結果もログに記録
+        const filtered = loadedSongs.filter(song => song.status === filterStatus);
+        logger.debug('フィルター後の楽曲数:', { 
+          filterStatus, 
+          count: filtered.length,
+          allStatuses: loadedSongs.map(s => s.status)
+        });
+      } else {
+        logger.debug('楽曲読み込み: ユーザー未認証');
+        setSongs([]);
       }
     } catch (error) {
       // 曲の読み込みエラー
@@ -87,10 +113,18 @@ export default function MyLibraryScreen() {
 
   // 曲の保存
   const saveSong = async () => {
+    // 二重クリック防止
+    if (isSaving) {
+      logger.debug('保存処理中です。重複実行を防止します。');
+      return;
+    }
+
     if (!formData.title.trim()) {
       Alert.alert('エラー', '曲名を入力してください');
       return;
     }
+
+    setIsSaving(true);
 
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -105,12 +139,20 @@ export default function MyLibraryScreen() {
 
       if (editingSong) {
         // 編集
-        logger.debug('曲を更新:', editingSong.id, formData);
+        // artistが空の場合は空文字列を設定（NOT NULL制約のため）
+        const updateData = {
+          title: formData.title.trim(),
+          artist: formData.artist.trim() || '', // NOT NULL制約のため空文字列をデフォルトに
+          genre: formData.genre || null,
+          difficulty: formData.difficulty,
+          status: formData.status,
+          notes: formData.notes || null,
+          target_date: formData.target_date || null
+        };
+        logger.debug('曲を更新:', editingSong.id, updateData);
         const { error } = await supabase
           .from('my_songs')
-          .update({
-            ...formData
-          })
+          .update(updateData)
           .eq('id', editingSong.id);
 
         if (error) {
@@ -119,22 +161,31 @@ export default function MyLibraryScreen() {
         }
         
         logger.debug('更新成功');
-        Alert.alert('成功', '曲の情報を更新しました', [
-          {
-            text: 'OK',
-            onPress: () => {
-              setShowAddModal(false);
-              setEditingSong(null);
-              resetForm();
-              loadSongs();
-            }
-          }
-        ]);
+        
+        // 更新されたステータスに合わせてフィルターを自動調整
+        setFilterStatus(formData.status);
+        
+        // リストを再読み込み（モーダルを閉じる前に実行してデータを確実に取得）
+        await loadSongs();
+        
+        // モーダルを閉じてフォームをリセット
+        setShowAddModal(false);
+        setEditingSong(null);
+        resetForm();
+        
+        Alert.alert('成功', '曲の情報を更新しました');
       } else {
         // 新規追加
+        // artistが空の場合は空文字列を設定（NOT NULL制約のため）
         const songData = {
           user_id: user.id,
-          ...formData
+          title: formData.title.trim(),
+          artist: formData.artist.trim() || '', // NOT NULL制約のため空文字列をデフォルトに
+          genre: formData.genre || null,
+          difficulty: formData.difficulty,
+          status: formData.status,
+          notes: formData.notes || null,
+          target_date: formData.target_date || null
         };
         logger.debug('新規追加:', songData);
         
@@ -149,22 +200,23 @@ export default function MyLibraryScreen() {
         
         logger.debug('追加成功');
         
+        // 保存されたステータスに合わせてフィルターを自動調整
+        setFilterStatus(formData.status);
+        
+        // リストを再読み込み（モーダルを閉じる前に実行してデータを確実に取得）
+        await loadSongs();
+        
+        // モーダルを閉じてフォームをリセット
+        setShowAddModal(false);
+        setEditingSong(null);
+        resetForm();
+        
         // 保存成功のメッセージを表示
         const statusText = formData.status === 'learning' ? '練習中の曲' : 
                           formData.status === 'played' ? '演奏済みの曲' :
                           formData.status === 'mastered' ? 'マスター済みの曲' : 
                           '弾きたい曲';
-        Alert.alert('保存完了！', `${statusText}を追加しました`, [
-          {
-            text: 'OK',
-            onPress: () => {
-              setShowAddModal(false);
-              setEditingSong(null);
-              resetForm();
-              loadSongs();
-            }
-          }
-        ]);
+        Alert.alert('保存完了！', `${statusText}を追加しました`);
       }
     } catch (error: unknown) {
       ErrorHandler.handle(error, '曲保存', true);
@@ -172,6 +224,8 @@ export default function MyLibraryScreen() {
                           (error as { error_description?: string })?.error_description || 
                           '曲の保存に失敗しました';
       Alert.alert('エラー', `保存できませんでした\n\n詳細: ${errorMessage}`);
+    } finally {
+      setIsSaving(false); // 保存処理完了
     }
   };
 
@@ -208,7 +262,7 @@ export default function MyLibraryScreen() {
   const resetForm = () => {
     setFormData({
       title: '',
-      composer: '',
+      artist: '',
       genre: '',
       difficulty: 'beginner' as 'beginner' | 'intermediate' | 'advanced',
       status: 'want_to_play' as 'want_to_play' | 'learning' | 'mastered',
@@ -222,7 +276,7 @@ export default function MyLibraryScreen() {
     setEditingSong(song);
     setFormData({
       title: song.title,
-      composer: song.composer,
+      artist: song.artist,
       genre: song.genre,
       difficulty: song.difficulty as 'beginner' | 'intermediate' | 'advanced',
       status: song.status as 'want_to_play' | 'learning' | 'mastered',
@@ -379,14 +433,14 @@ export default function MyLibraryScreen() {
             </View>
           ) : (
             filteredSongs.map(song => (
-              <View style={[styles.songCard, { backgroundColor: currentTheme.surface }]}>
+              <View key={song.id} style={[styles.songCard, { backgroundColor: currentTheme.surface }]}>
                 <View style={styles.songHeader}>
                   <View style={styles.songInfo}>
                     <Text style={[styles.songTitle, { color: currentTheme.text }]}>
                       {song.title}
                     </Text>
                     <Text style={[styles.songComposer, { color: currentTheme.textSecondary }]}>
-                      {song.composer}
+                      {song.artist}
                     </Text>
                   </View>
                   <View style={styles.songActions}>
@@ -469,176 +523,201 @@ export default function MyLibraryScreen() {
         onRequestClose={() => setShowAddModal(false)}
       >
         <SafeAreaView style={[styles.modalContainer, { backgroundColor: currentTheme.background }]}>
-                    <View style={[styles.modalHeader, { borderBottomColor: currentTheme.secondary }]}>
-            <TouchableOpacity
-              onPress={() => setShowAddModal(false)}
-              style={styles.modalCloseButton}
-            >
-              <Text style={[styles.modalCloseText, { color: currentTheme.textSecondary }]}>
-                キャンセル
-              </Text>
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
-              {editingSong ? '曲を編集' : (
-                formData.status === 'learning' ? '練習中の曲を追加' : 
-                formData.status === 'mastered' ? 'マスター済みの曲を追加' : 
-                '弾きたい曲を追加'
-              )}
-            </Text>
-            <View style={styles.modalHeaderSpacer} />
-          </View>
-
-          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-            <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, { color: currentTheme.text }]}>曲名 *</Text>
-              <TextInput
-                style={[styles.formInput, { 
-                  backgroundColor: currentTheme.surface,
-                  color: currentTheme.text,
-                  borderColor: currentTheme.secondary
-                }]}
-                value={formData.title}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, title: text }))}
-                placeholder="曲名を入力"
-                placeholderTextColor={currentTheme.textSecondary}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, { color: currentTheme.text }]}>アーティスト</Text>
-              <TextInput
-                style={[styles.formInput, { 
-                  backgroundColor: currentTheme.surface,
-                  color: currentTheme.text,
-                  borderColor: currentTheme.secondary
-                }]}
-                value={formData.composer}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, composer: text }))}
-                placeholder="作曲者名を入力（任意）"
-                placeholderTextColor={currentTheme.textSecondary}
-              />
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, { color: currentTheme.text }]}>ジャンル</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.genreContainer}>
-                  {['クラシック', 'ポップス', 'ジャズ', 'ロック', 'アニメ', 'ゲーム', 'その他'].map(genre => 
-                    React.createElement(TouchableOpacity, {
-                      key: genre,
-                      style: [
-                        styles.genreChip,
-                        formData.genre === genre && { backgroundColor: currentTheme.primary }
-                      ],
-                      onPress: () => setFormData(prev => ({ ...prev, genre }))
-                    },
-                      React.createElement(Text, {
-                        style: [
-                          styles.genreChipText,
-                          { color: formData.genre === genre ? '#FFFFFF' : currentTheme.text }
-                        ]
-                      }, genre)
-                    )
-                  )}
-                </View>
-              </ScrollView>
-            </View>
-
-            <View style={styles.formRow}>
-              <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
-                <Text style={[styles.formLabel, { color: currentTheme.text }]}>難易度</Text>
-                <View style={styles.pickerContainer}>
-                  {['beginner', 'intermediate', 'advanced'].map(difficulty => (
-                    <TouchableOpacity
-                      style={[
-                        styles.pickerOption,
-                        formData.difficulty === difficulty && { backgroundColor: currentTheme.primary }
-                      ]}
-                      onPress={() => setFormData(prev => ({ ...prev, difficulty: difficulty as any }))}
-                    >
-                      <Text style={[
-                        styles.pickerOptionText,
-                        { color: formData.difficulty === difficulty ? '#FFFFFF' : currentTheme.text }
-                      ]}>
-                        {getDifficultyText(difficulty)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
-                <Text style={[styles.formLabel, { color: currentTheme.text }]}>ステータス</Text>
-                <View style={styles.pickerContainer}>
-                  {['want_to_play', 'learning', 'played', 'mastered'].map(status => (
-                    <TouchableOpacity
-                      style={[
-                        styles.pickerOption,
-                        formData.status === status && { backgroundColor: currentTheme.primary }
-                      ]}
-                      onPress={() => setFormData(prev => ({ ...prev, status: status as any }))}
-                    >
-                      <Text style={[
-                        styles.pickerOptionText,
-                        { color: formData.status === status ? '#FFFFFF' : currentTheme.text }
-                      ]}>
-                        {getStatusText(status)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            </View>
-
-            <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, { color: currentTheme.text }]}>目標日</Text>
+          <View 
+            role="dialog"
+            aria-modal={true}
+            aria-labelledby="my-library-modal-title"
+            data-modal-content={true}
+            style={{ flex: 1 }}
+          >
+            <View style={[styles.modalHeader, { borderBottomColor: currentTheme.secondary }]}>
               <TouchableOpacity
-                style={[styles.datePickerButton, { 
-                  backgroundColor: currentTheme.surface,
-                  borderColor: currentTheme.secondary
-                }]}
-                onPress={() => setShowDatePicker(true)}
+                onPress={() => setShowAddModal(false)}
+                style={styles.modalCloseButton}
               >
-                <Calendar size={18} color={currentTheme.textSecondary} />
-                <Text style={[styles.datePickerText, { 
-                  color: formData.target_date ? currentTheme.text : currentTheme.textSecondary 
-                }]}>
-                  {formData.target_date || '目標日を選択'}
+                <Text style={[styles.modalCloseText, { color: currentTheme.textSecondary }]}>
+                  キャンセル
                 </Text>
               </TouchableOpacity>
+              <Text id="my-library-modal-title" style={[styles.modalTitle, { color: currentTheme.text }]}>
+                {editingSong ? '曲を編集' : (
+                  formData.status === 'learning' ? '練習中の曲を追加' : 
+                  formData.status === 'mastered' ? 'マスター済みの曲を追加' : 
+                  '弾きたい曲を追加'
+                )}
+              </Text>
+              <View style={styles.modalHeaderSpacer} />
             </View>
 
-            <View style={styles.formGroup}>
-              <Text style={[styles.formLabel, { color: currentTheme.text }]}>メモ</Text>
-              <TextInput
-                style={[styles.formTextArea, { 
-                  backgroundColor: currentTheme.surface,
-                  color: currentTheme.text,
-                  borderColor: currentTheme.secondary
-                }]}
-                value={formData.notes}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, notes: text }))}
-                placeholder="練習のポイントやメモを入力"
-                placeholderTextColor={currentTheme.textSecondary}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-            </View>
+            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.formGroup}>
+                <Text style={[styles.formLabel, { color: currentTheme.text }]}>曲名 *</Text>
+                <TextInput
+                  id="song-title-input"
+                  name="song-title"
+                  style={[styles.formInput, { 
+                    backgroundColor: currentTheme.surface,
+                    color: currentTheme.text,
+                    borderColor: currentTheme.secondary
+                  }]}
+                  value={formData.title}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, title: text }))}
+                  placeholder="曲名を入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
 
-            {/* 保存ボタン */}
-            <View style={styles.saveButtonContainer}>
-              <TouchableOpacity 
-                onPress={saveSong} 
-                style={[styles.modalSaveButton, { backgroundColor: currentTheme.primary }]}
-              >
-                <CheckCircle2 size={20} color="#FFFFFF" />
-                <Text style={styles.modalSaveText}>
-                  保存
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </ScrollView>
+              <View style={styles.formGroup}>
+                <Text style={[styles.formLabel, { color: currentTheme.text }]}>アーティスト</Text>
+                <TextInput
+                  id="song-artist-input"
+                  name="song-artist"
+                  style={[styles.formInput, { 
+                    backgroundColor: currentTheme.surface,
+                    color: currentTheme.text,
+                    borderColor: currentTheme.secondary
+                  }]}
+                  value={formData.artist}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, artist: text }))}
+                  placeholder="アーティスト名を入力（任意）"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={[styles.formLabel, { color: currentTheme.text }]}>ジャンル</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View style={styles.genreContainer}>
+                    {['クラシック', 'ポップス', 'ジャズ', 'ロック', 'アニメ', 'ゲーム', 'その他'].map(genre => (
+                      <TouchableOpacity
+                        key={genre}
+                        style={[
+                          styles.genreChip,
+                          formData.genre === genre && { backgroundColor: currentTheme.primary }
+                        ]}
+                        onPress={() => setFormData(prev => ({ ...prev, genre }))}
+                      >
+                        <Text
+                          style={[
+                            styles.genreChipText,
+                            { color: formData.genre === genre ? '#FFFFFF' : currentTheme.text }
+                          ]}
+                        >
+                          {genre}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+
+              <View style={styles.formRow}>
+                <View style={[styles.formGroup, { flex: 1, marginRight: 8 }]}>
+                  <Text style={[styles.formLabel, { color: currentTheme.text }]}>難易度</Text>
+                  <View style={styles.pickerContainer}>
+                    {['beginner', 'intermediate', 'advanced'].map(difficulty => (
+                      <TouchableOpacity
+                        key={difficulty}
+                        style={[
+                          styles.pickerOption,
+                          formData.difficulty === difficulty && { backgroundColor: currentTheme.primary }
+                        ]}
+                        onPress={() => setFormData(prev => ({ ...prev, difficulty: difficulty as any }))}
+                      >
+                        <Text style={[
+                          styles.pickerOptionText,
+                          { color: formData.difficulty === difficulty ? '#FFFFFF' : currentTheme.text }
+                        ]}>
+                          {getDifficultyText(difficulty)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={[styles.formGroup, { flex: 1, marginLeft: 8 }]}>
+                  <Text style={[styles.formLabel, { color: currentTheme.text }]}>ステータス</Text>
+                  <View style={styles.pickerContainer}>
+                    {['want_to_play', 'learning', 'played', 'mastered'].map(status => (
+                      <TouchableOpacity
+                        key={status}
+                        style={[
+                          styles.pickerOption,
+                          formData.status === status && { backgroundColor: currentTheme.primary }
+                        ]}
+                        onPress={() => setFormData(prev => ({ ...prev, status: status as any }))}
+                      >
+                        <Text style={[
+                          styles.pickerOptionText,
+                          { color: formData.status === status ? '#FFFFFF' : currentTheme.text }
+                        ]}>
+                          {getStatusText(status)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={[styles.formLabel, { color: currentTheme.text }]}>目標日</Text>
+                <TouchableOpacity
+                  style={[styles.datePickerButton, { 
+                    backgroundColor: currentTheme.surface,
+                    borderColor: currentTheme.secondary
+                  }]}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Calendar size={18} color={currentTheme.textSecondary} />
+                  <Text style={[styles.datePickerText, { 
+                    color: formData.target_date ? currentTheme.text : currentTheme.textSecondary 
+                  }]}>
+                    {formData.target_date || '目標日を選択'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={[styles.formLabel, { color: currentTheme.text }]}>メモ</Text>
+                <TextInput
+                  id="song-notes-input"
+                  name="song-notes"
+                  style={[styles.formTextArea, { 
+                    backgroundColor: currentTheme.surface,
+                    color: currentTheme.text,
+                    borderColor: currentTheme.secondary
+                  }]}
+                  value={formData.notes}
+                  onChangeText={(text) => setFormData(prev => ({ ...prev, notes: text }))}
+                  placeholder="練習のポイントやメモを入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                  multiline
+                  numberOfLines={4}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              {/* 保存ボタン */}
+              <View style={styles.saveButtonContainer}>
+                <TouchableOpacity 
+                  onPress={saveSong}
+                  disabled={isSaving}
+                  style={[
+                    styles.modalSaveButton, 
+                    { 
+                      backgroundColor: currentTheme.primary,
+                      opacity: isSaving ? 0.6 : 1
+                    }
+                  ]}
+                >
+                  <CheckCircle2 size={20} color="#FFFFFF" />
+                  <Text style={styles.modalSaveText}>
+                    {isSaving ? '保存中...' : '保存'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
         </SafeAreaView>
       </Modal>
 
@@ -650,32 +729,40 @@ export default function MyLibraryScreen() {
         onRequestClose={() => setShowDatePicker(false)}
       >
         <SafeAreaView style={[styles.modalContainer, { backgroundColor: currentTheme.background }]}>
-          <View style={[styles.modalHeader, { borderBottomColor: currentTheme.secondary }]}>
-            <TouchableOpacity
-              onPress={() => setShowDatePicker(false)}
-              style={styles.modalCloseButton}
-            >
-              <Text style={[styles.modalCloseText, { color: currentTheme.textSecondary }]}>
-                キャンセル
+          <View 
+            role="dialog"
+            aria-modal={true}
+            aria-labelledby="date-picker-modal-title"
+            data-modal-content={true}
+            style={{ flex: 1 }}
+          >
+            <View style={[styles.modalHeader, { borderBottomColor: currentTheme.secondary }]}>
+              <TouchableOpacity
+                onPress={() => setShowDatePicker(false)}
+                style={styles.modalCloseButton}
+              >
+                <Text style={[styles.modalCloseText, { color: currentTheme.textSecondary }]}>
+                  キャンセル
+                </Text>
+              </TouchableOpacity>
+              <Text id="date-picker-modal-title" style={[styles.modalTitle, { color: currentTheme.text }]}>
+                目標日を選択
               </Text>
-            </TouchableOpacity>
-            <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
-              目標日を選択
-            </Text>
-            <View style={styles.modalHeaderSpacer} />
-          </View>
-          
-          <View style={{ flex: 1, padding: 16 }}>
-            <EventCalendar
-              onDateSelect={(date) => {
-                const year = date.getFullYear();
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const day = String(date.getDate()).padStart(2, '0');
-                const dateString = `${year}-${month}-${day}`;
-                setFormData(prev => ({ ...prev, target_date: dateString }));
-                setShowDatePicker(false);
-              }}
-            />
+              <View style={styles.modalHeaderSpacer} />
+            </View>
+            
+            <View style={{ flex: 1, padding: 16 }}>
+              <EventCalendar
+                onDateSelect={(date) => {
+                  const year = date.getFullYear();
+                  const month = String(date.getMonth() + 1).padStart(2, '0');
+                  const day = String(date.getDate()).padStart(2, '0');
+                  const dateString = `${year}-${month}-${day}`;
+                  setFormData(prev => ({ ...prev, target_date: dateString }));
+                  setShowDatePicker(false);
+                }}
+              />
+            </View>
           </View>
         </SafeAreaView>
       </Modal>

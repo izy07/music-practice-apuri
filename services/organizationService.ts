@@ -397,11 +397,43 @@ export class OrganizationService {
         });
 
         if (membershipResult.error) {
-          // 既にメンバーの場合は成功として扱う
-          const errorCode = (membershipResult.error as any).code;
-          if (errorCode !== '23505') {
+          // メンバーシップリポジトリは既に重複チェックを行っているため、
+          // エラーが返される場合は重大なエラー（RLSポリシーエラーなど）の可能性が高い
+          logger.error(`[${SERVICE_CONTEXT}] joinOrganization:membership creation failed`, {
+            organizationId: input.organizationId,
+            userId: user.id,
+            error: membershipResult.error,
+            errorCode: (membershipResult.error as any)?.code,
+            errorStatus: (membershipResult.error as any)?.status,
+            errorMessage: (membershipResult.error as any)?.message,
+          });
+          
+          // 既にメンバーの場合は成功として扱う（エラーコード23505は一意制約違反）
+          const errorCode = (membershipResult.error as any)?.code;
+          if (errorCode === '23505') {
+            // 一意制約違反の場合は既存のメンバーシップを取得
+            const existingCheck = await membershipRepository.getByUserAndOrganization(
+              user.id,
+              input.organizationId
+            );
+            if (existingCheck.data) {
+              logger.info(`[${SERVICE_CONTEXT}] joinOrganization:user already member, continuing`, {
+                organizationId: input.organizationId,
+                userId: user.id,
+              });
+            } else {
+              throw membershipResult.error;
+            }
+          } else {
+            // その他のエラー（RLSポリシーエラーなど）は例外として投げる
             throw membershipResult.error;
           }
+        } else if (membershipResult.data) {
+          logger.info(`[${SERVICE_CONTEXT}] joinOrganization:membership created`, {
+            organizationId: input.organizationId,
+            userId: user.id,
+            membershipId: membershipResult.data.id,
+          });
         }
 
         logger.info(`[${SERVICE_CONTEXT}] joinOrganization:success`, {

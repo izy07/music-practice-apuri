@@ -494,7 +494,6 @@ export default function TimerScreen() {
 
       // 共通関数を使用して楽器IDを取得
       const currentInstrumentId = getInstrumentId(selectedInstrument);
-      console.log('💾 タイマー記録保存: 楽器ID:', { selectedInstrument, currentInstrumentId });
       
       const result = await savePracticeSessionWithIntegration(
         user.id,

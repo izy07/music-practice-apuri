@@ -476,7 +476,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
             recordingId: savedRecording?.id 
           }
         }));
-        console.log('📢 カレンダーデータ更新イベントを発火しました');
       }
 
       // 4. 録音データをonSaveコールバックに渡す（モーダル内に表示するため）
@@ -515,7 +514,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       ErrorHandler.handle(error, 'recording_save');
     } finally {
       // 保存状態を必ずリセット
-      console.log('🔄 保存状態をリセット');
       setIsSaving(false);
       isSavingRef.current = false;
     }

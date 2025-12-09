@@ -585,16 +585,13 @@ export default function GoalsScreen() {
   // 実際の削除処理を実行する関数
   const executeDeleteGoal = async (goalId: string) => {
     logger.debug('executeDeleteGoal関数が呼ばれました', goalId);
-    console.log('executeDeleteGoal関数が呼ばれました', goalId);
     if (isDeleting) {
       logger.debug('削除処理が既に実行中です');
-      console.log('削除処理が既に実行中です');
       return;
     }
     
     setIsDeleting(true);
     logger.debug('削除処理を開始します', goalId);
-    console.log('削除処理を開始します', goalId);
     
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
@@ -640,11 +637,9 @@ export default function GoalsScreen() {
 
   const deleteGoal = async (goalId: string) => {
     logger.debug('deleteGoal関数が呼ばれました', goalId);
-    console.log('deleteGoal関数が呼ばれました', goalId);
     // 削除処理の重複実行を防ぐ
     if (isDeleting) {
       logger.debug('削除処理が既に実行中です');
-      console.log('削除処理が既に実行中です');
       return;
     }
     
@@ -658,7 +653,6 @@ export default function GoalsScreen() {
           style: 'cancel',
           onPress: () => {
             logger.debug('削除がキャンセルされました');
-            console.log('削除がキャンセルされました');
           }
         },
         {
@@ -666,7 +660,6 @@ export default function GoalsScreen() {
           style: 'destructive',
           onPress: async () => {
             logger.debug('削除が確認されました、executeDeleteGoalを実行します', goalId);
-            console.log('削除が確認されました、executeDeleteGoalを実行します', goalId);
             try {
               await executeDeleteGoal(goalId);
             } catch (error) {
@@ -1046,15 +1039,11 @@ export default function GoalsScreen() {
                         onPress={(e) => {
                           e.stopPropagation();
                           logger.debug('削除ボタンが押されました', goal.id);
-                          console.log('削除ボタンが押されました', goal.id);
-                          console.log('isDeletingの状態:', isDeleting);
                           if (!isDeleting) {
                             logger.debug('deleteGoal関数を呼び出します', goal.id);
-                            console.log('deleteGoal関数を呼び出します', goal.id);
                             deleteGoal(goal.id);
                           } else {
                             logger.debug('削除処理が既に実行中のため、処理をスキップします');
-                            console.log('削除処理が既に実行中のため、処理をスキップします');
                           }
                         }}
                         activeOpacity={0.7}
