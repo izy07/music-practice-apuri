@@ -454,6 +454,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       mediaRecorder.addEventListener('error', handleError);
 
       // 録音開始
+<<<<<<< Updated upstream
       logger.debug('MediaRecorderを開始します...', {
         recorderState: mediaRecorder.state,
         streamActive: stream.active,
@@ -461,6 +462,18 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       });
       try {
         mediaRecorder.start(100); // 100ms間隔でデータを取得
+=======
+      mediaRecorder.start(200); // 200ms間隔でデータを取得（軽量化）
+      setIsRecording(true);
+      setRecordingTime(0);
+      setRecordingDuration(0);
+      audioChunksRef.current = [];
+
+      // より正確な録音時間のカウント（Date.now()ベース）: 更新頻度を緩和
+      recordingIntervalRef.current = window.setInterval(() => {
+        const elapsedTime = Math.round((Date.now() - startTime) / 1000);
+        setRecordingTime(elapsedTime);
+>>>>>>> Stashed changes
         
         // 状態を更新（refも更新）
         setIsRecording(true);

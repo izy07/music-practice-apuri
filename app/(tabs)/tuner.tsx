@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -241,8 +241,8 @@ export default function TunerScreen() {
   const [a4Frequency, setA4Frequency] = useState<number>(DEFAULT_A4_FREQUENCY);
   
   // プロ仕様設定
-  // データベースの楽器IDとチューナー楽器キーのマッピング
-  const instrumentIdToTunerKey: Record<string, keyof typeof INSTRUMENT_TUNINGS> = {
+  // データベースの楽器IDとチューナー楽器キーのマッピング（useMemoでメモ化）
+  const instrumentIdToTunerKey: Record<string, keyof typeof INSTRUMENT_TUNINGS> = useMemo(() => ({
     '550e8400-e29b-41d4-a716-446655440001': 'piano',     // ピアノ
     '550e8400-e29b-41d4-a716-446655440002': 'guitar',    // ギター
     '550e8400-e29b-41d4-a716-446655440005': 'trumpet',   // トランペット
@@ -264,9 +264,12 @@ export default function TunerScreen() {
     '550e8400-e29b-41d4-a716-446655440021': 'guitar',    // 太鼓（フォールバック）
     '550e8400-e29b-41d4-a716-446655440019': 'guitar',    // 琴（フォールバック）
     '550e8400-e29b-41d4-a716-446655440016': 'guitar'     // その他（フォールバック）
-  };
+  }), []);
   
-  const selectedInstrument = instrumentIdToTunerKey[contextSelectedInstrument || ''] || 'guitar';
+  const selectedInstrument = useMemo(() => 
+    instrumentIdToTunerKey[contextSelectedInstrument || ''] || 'guitar',
+    [instrumentIdToTunerKey, contextSelectedInstrument]
+  );
   
   // 開放弦の音の連続再生用の状態
   const [playingOpenString, setPlayingOpenString] = useState<string | null>(null);
@@ -309,17 +312,18 @@ export default function TunerScreen() {
     loadSettings();
   }, []);
 
-  // 音名表示モードを保存する
-  const saveNoteDisplayMode = async (mode: 'en' | 'ja') => {
+  // 音名表示モードを保存する（useCallbackでメモ化）
+  const saveNoteDisplayMode = useCallback(async (mode: 'en' | 'ja') => {
     try {
       await AsyncStorage.setItem(NOTE_DISPLAY_MODE_KEY, mode);
       setNoteDisplayMode(mode);
     } catch (error) {
       ErrorHandler.handle(error, '音名表示モードの保存', false);
     }
-  };
+  }, []);
 
 
+<<<<<<< Updated upstream
   // チューナー機能：音程検出を開始
   const startListening = async () => {
     try {
@@ -514,6 +518,16 @@ export default function TunerScreen() {
 
     logger.debug('チューナー機能を停止しました');
   };
+=======
+  // チューナー機能は削除済み（UIのみ表示）（useCallbackでメモ化）
+  const startListening = useCallback(() => {
+    Alert.alert(t('featureUnavailable'), t('tunerUnavailable'));
+  }, [t]);
+
+  const stopListening = useCallback(() => {
+    // 何もしない（UI表示のみ）
+  }, []);
+>>>>>>> Stashed changes
 
 
   // 開放弦の音を連続再生する関数

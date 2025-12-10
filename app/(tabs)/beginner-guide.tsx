@@ -7,7 +7,15 @@ import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
 import PostureCameraModal from '@/components/PostureCameraModal';
-import { instrumentGuides } from '@/data/instrumentGuides';
+// 動的インポートで遅延読み込み（軽量化）
+let instrumentGuides: any = null;
+const loadInstrumentGuides = async () => {
+  if (!instrumentGuides) {
+    const module = await import('@/data/instrumentGuides');
+    instrumentGuides = module.instrumentGuides;
+  }
+  return instrumentGuides;
+};
 import { styles } from '@/lib/tabs/beginner-guide/styles';
 import { createShadowStyle } from '@/lib/shadowStyles';
 
@@ -19,6 +27,14 @@ export default function BeginnerGuideScreen() {
   const [showFingeringChart, setShowFingeringChart] = useState(false);
   const [showMaintenanceTips, setShowMaintenanceTips] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
+  const [guidesLoaded, setGuidesLoaded] = useState(false);
+
+  // 楽器データを動的インポートで読み込み
+  useEffect(() => {
+    loadInstrumentGuides().then(() => {
+      setGuidesLoaded(true);
+    });
+  }, []);
 
   // 楽器ID(選択ID) → 楽器キーへの変換
   const getInstrumentKey = () => {
@@ -49,7 +65,9 @@ export default function BeginnerGuideScreen() {
     return map[id] || 'violin';
   };
 
-  const currentGuide = instrumentGuides[getInstrumentKey() as keyof typeof instrumentGuides] || instrumentGuides.violin;
+  const currentGuide = guidesLoaded && instrumentGuides 
+    ? (instrumentGuides[getInstrumentKey() as keyof typeof instrumentGuides] || instrumentGuides.violin)
+    : null;
   
 
   const goBack = () => {
@@ -560,7 +578,7 @@ export default function BeginnerGuideScreen() {
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
-            {currentGuide.name}ガイド
+            {currentGuide?.name || '楽器'}ガイド
           </Text>
         <View style={styles.placeholder} />
       </View>
@@ -583,7 +601,7 @@ export default function BeginnerGuideScreen() {
               key={item.id}
               style={[
                 styles.navItem,
-                activeSection === item.id && { 
+                activeSection === item.id && currentGuide && { 
                   backgroundColor: currentGuide.color,
                   borderColor: currentGuide.color,
 
@@ -605,13 +623,19 @@ export default function BeginnerGuideScreen() {
         </ScrollView>
       </View>
 
-      <ScrollView 
-        style={styles.content} 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {renderSection()}
-      </ScrollView>
+      {!guidesLoaded || !currentGuide ? (
+        <View style={[styles.content, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+          <Text style={[styles.loadingText, { color: currentTheme.text }]}>読み込み中...</Text>
+        </View>
+      ) : (
+        <ScrollView 
+          style={styles.content} 
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+        >
+          {renderSection()}
+        </ScrollView>
+      )}
 
       {/* カメラモーダル */}
       <PostureCameraModal

@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { instrumentGuides } from '@/data/instrumentGuides';
 import logger from '@/lib/logger';
+import { getCached, setCached, createCacheKey } from '@/lib/simpleCache';
 
 const { width } = Dimensions.get('window');
 
@@ -81,6 +82,15 @@ export default function RepresentativeSongsScreen() {
       logger.debug('[代表曲画面] 楽器情報取得成功:', instrumentData.name);
       setInstrument(instrumentData);
       
+      // キャッシュから代表曲データを取得を試行
+      const cacheKey = createCacheKey('representative_songs', instrumentId);
+      const cachedSongs = getCached<RepresentativeSong[]>(cacheKey);
+      if (cachedSongs) {
+        logger.debug('[代表曲画面] キャッシュから代表曲を取得:', cachedSongs.length, '曲');
+        setSongs(cachedSongs);
+        return;
+      }
+      
       // 代表曲を取得（エラーを静かに処理）
       let songsData: RepresentativeSong[] | null = null;
       try {
@@ -128,6 +138,8 @@ export default function RepresentativeSongsScreen() {
       // データベースから代表曲が取得できた場合はそれを使用
       if (songsData && songsData.length > 0) {
         logger.debug('[代表曲画面] データベースから代表曲を取得:', songsData.length, '曲');
+        // キャッシュに保存
+        setCached(cacheKey, songsData);
         setSongs(songsData);
         return;
       }

@@ -35,12 +35,17 @@ class WebAudioRecorderImpl implements WebAudioRecorder {
 
   async start(): Promise<void> {
     try {
+<<<<<<< Updated upstream
       // リソース管理サービスからマイクアクセスを取得（排他制御）
       this.stream = await audioResourceManager.acquireMicrophone(this.OWNER_NAME, {
+=======
+      // マイクアクセスの要求（STT用に16000Hzに最適化）
+      this.stream = await navigator.mediaDevices.getUserMedia({ 
+>>>>>>> Stashed changes
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 44100,
+          sampleRate: 16000, // STT用に16000Hzに変更
         } 
       });
 
@@ -66,7 +71,7 @@ class WebAudioRecorderImpl implements WebAudioRecorder {
         }
       };
 
-      this.mediaRecorder.start(100); // 100ms間隔でデータを収集
+      this.mediaRecorder.start(200); // 200ms間隔でデータを収集（軽量化）
     } catch (error) {
       ErrorHandler.handle(error, 'Web音声録音開始', true);
       throw new Error('マイクアクセスが拒否されました。ブラウザの設定でマイクの許可を確認してください。');

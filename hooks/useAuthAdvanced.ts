@@ -238,7 +238,33 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       }
       
       if (sessionData.session?.user) {
-        await handleAuthenticatedUser(sessionData.session.user);
+        // セッションの有効期限を確認
+        const session = sessionData.session;
+        const now = Math.floor(Date.now() / 1000);
+        
+        // セッションが期限切れの場合は強制的にログアウト
+        if (session.expires_at && session.expires_at < now) {
+          logger.debug('[useAuthAdvanced] セッションが期限切れ - 強制ログアウト', {
+            expires_at: session.expires_at,
+            now,
+            diff: now - session.expires_at,
+          });
+          
+          // 期限切れセッションをクリア
+          await supabase.auth.signOut();
+          
+          // 未認証状態として処理
+          updateAuthState({
+            isAuthenticated: false,
+            isLoading: false,
+            isInitialized: true,
+            error: null,
+          });
+          return;
+        }
+        
+        // セッションが有効な場合のみ認証状態を更新
+        await handleAuthenticatedUser(session.user);
         return;
       }
       
