@@ -19,6 +19,7 @@ import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
 import { navigateWithBasePath } from '@/lib/navigationUtils';
 import NotificationService from '@/lib/notificationService';
+import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -30,6 +31,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
  */
 export default function TutorialScreen() {
   const router = useRouter();
+  const { currentTheme } = useInstrumentTheme();
   const [currentStep, setCurrentStep] = useState(0);
   const [isNavigating, setIsNavigating] = useState(false);
   const [notificationEnabled, setNotificationEnabled] = useState(false);
@@ -50,7 +52,7 @@ export default function TutorialScreen() {
     {
       icon: '📊',
       title: '練習を「見える化」',
-      description: '確かな上達へ。記録はワンタップで完了。\n\n練習時間や内容をカレンダーで簡単に記録できます。クイック記録機能で、今日から練習を習慣化しましょう。目標を設定すれば、達成までの進捗を可視化でき、モチベーションを維持しながら確かな上達へ。',
+      description: '確かな上達へ。記録はワンタップで完了。\n\n練習時間や内容をカレンダーで簡単に記録できます。クイック記録機能で、今日から練習を習慣化しましょう。目標を設定すれば、達成までの進捗を可視化でき、モチベーションを維持しながら確かな上達へ。\n\n🎨 カレンダー上のマークについて：\n• 練習時間のみの記録：濃いカスタムカラー\n• 録音のみの記録：赤\n• 両方記録：薄いカスタムカラー',
       gradientColors: ['#f093fb', '#f5576c'],
     },
     {
@@ -66,9 +68,9 @@ export default function TutorialScreen() {
       gradientColors: ['#43e97b', '#38f9d7'],
     },
     {
-      icon: '📈',
-      title: '成長を実感',
-      description: '過去の自分と聴き比べ。\n\n毎日1分間の演奏を録音し、時系列で確認可能。録音ライブラリの聴き比べモードで、確かな成長を実感できます。',
+      icon: '🎤',
+      title: '演奏録音機能',
+      description: '毎日の演奏を録音して、成長を記録しましょう。\n\nカレンダー画面や練習記録画面から、簡単に演奏を録音できます。録音した演奏は録音ライブラリで一覧表示され、過去の自分と聴き比べることで、確かな成長を実感できます。',
       gradientColors: ['#fa709a', '#fee140'],
     },
     {
@@ -168,6 +170,20 @@ export default function TutorialScreen() {
           return;
         }
 
+        // 現在の権限状態を確認
+        const currentPermission = Notification.permission;
+        
+        // 既に拒否されている場合は、設定から許可する必要があることを伝える
+        if (currentPermission === 'denied') {
+          Alert.alert(
+            '通知が拒否されています',
+            'ブラウザの設定から通知を許可してください。\n\n設定方法:\n1. ブラウザのアドレスバー左側の🔒アイコンをクリック\n2. 「通知」を「許可」に変更\n3. ページをリロードしてください'
+          );
+          setIsRequestingPermission(false);
+          return;
+        }
+
+        // 権限をリクエスト（default状態の場合のみ有効）
         const permission = await notificationService.requestPermission();
         
         if (permission === 'granted') {
@@ -188,10 +204,11 @@ export default function TutorialScreen() {
         } else if (permission === 'denied') {
           Alert.alert(
             '通知が拒否されました',
-            'ブラウザの設定から通知を許可してください。\n\n設定方法:\n1. ブラウザの設定を開く\n2. サイトの設定 > 通知\n3. このサイトの通知を許可する'
+            'ブラウザの設定から通知を許可してください。\n\n設定方法:\n1. ブラウザのアドレスバー左側の🔒アイコンをクリック\n2. 「通知」を「許可」に変更\n3. ページをリロードしてください'
           );
         } else {
-          Alert.alert('通知が許可されていません', 'ブラウザの設定で通知を許可してください');
+          // default状態で許可されなかった場合
+          Alert.alert('通知が許可されていません', '通知を受け取るには、ブラウザの設定で通知を許可してください');
         }
       } else {
         const permission = await notificationService.requestPermission();
@@ -441,6 +458,35 @@ export default function TutorialScreen() {
           {/* 説明文 */}
           <Text style={styles.stepDescription}>{currentStepData.description}</Text>
 
+          {/* カレンダーマークの説明（ステップ1の場合のみ） */}
+          {currentStep === 1 && (
+            <Animated.View
+              style={[
+                styles.calendarMarkCard,
+                {
+                  opacity: fadeAnim,
+                  transform: [{ translateY: slideAnim }],
+                },
+              ]}
+            >
+              <Text style={styles.calendarMarkTitle}>カレンダー上のマーク</Text>
+              <View style={styles.markExamplesContainer}>
+                <View style={styles.markExample}>
+                  <View style={[styles.markDot, { backgroundColor: currentTheme.primary }]} />
+                  <Text style={styles.markLabel}>練習時間のみ</Text>
+                </View>
+                <View style={styles.markExample}>
+                  <View style={[styles.markDot, { backgroundColor: '#FF4444' }]} />
+                  <Text style={styles.markLabel}>録音のみ</Text>
+                </View>
+                <View style={styles.markExample}>
+                  <View style={[styles.markDot, { backgroundColor: currentTheme.accent }]} />
+                  <Text style={styles.markLabel}>両方記録</Text>
+                </View>
+              </View>
+            </Animated.View>
+          )}
+
           {/* 通知設定（ステップ5の場合のみ） */}
           {currentStep === 5 && (
             <Animated.View
@@ -667,6 +713,55 @@ const styles = StyleSheet.create({
     lineHeight: 26,
     color: '#666666',
     marginBottom: 8,
+  },
+  calendarMarkCard: {
+    width: '100%',
+    marginTop: 20,
+    padding: 20,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  calendarMarkTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333333',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  markExamplesContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    gap: 12,
+  },
+  markExample: {
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  markDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 3,
+        elevation: 3,
+      },
+    }),
+  },
+  markLabel: {
+    fontSize: 12,
+    color: '#666666',
+    textAlign: 'center',
   },
   notificationCard: {
     width: '100%',
