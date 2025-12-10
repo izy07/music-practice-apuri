@@ -8,8 +8,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
 import InstrumentHeader from '@/components/InstrumentHeader';
@@ -204,7 +203,7 @@ export default function MainSettingsScreen() {
     return () => {
       cancelled = true;
     };
-  }, [selectedInstrument?.id]);
+  }, [selectedInstrument]);
 
   // 設定保存
   useEffect(() => {
@@ -302,27 +301,6 @@ export default function MainSettingsScreen() {
             style={[
               styles.tabButton,
               { 
-                backgroundColor: mode === 'level' ? currentTheme?.primary || '#4A5568' : currentTheme?.surface || '#FFFFFF',
-                borderColor: currentTheme?.primary || '#4A5568'
-              }
-            ]}
-            onPress={() => setMode('level')}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={t('practiceLevel')}
-          >
-            <Text style={[
-              styles.tabButtonText,
-              { color: mode === 'level' ? currentTheme?.surface || '#FFFFFF' : currentTheme?.text || '#2D3748' }
-            ]}>
-              {t('practiceLevel')}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              { 
                 backgroundColor: mode === 'appearance' ? currentTheme?.primary || '#4A5568' : currentTheme?.surface || '#FFFFFF',
                 borderColor: currentTheme?.primary || '#4A5568'
               }
@@ -337,6 +315,27 @@ export default function MainSettingsScreen() {
               { color: mode === 'appearance' ? currentTheme?.surface || '#FFFFFF' : currentTheme?.text || '#2D3748' }
             ]}>
               {t('appearanceSettings')}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.tabButton,
+              { 
+                backgroundColor: mode === 'level' ? currentTheme?.primary || '#4A5568' : currentTheme?.surface || '#FFFFFF',
+                borderColor: currentTheme?.primary || '#4A5568'
+              }
+            ]}
+            onPress={() => setMode('level')}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={t('practiceLevel')}
+          >
+            <Text style={[
+              styles.tabButtonText,
+              { color: mode === 'level' ? currentTheme?.surface || '#FFFFFF' : currentTheme?.text || '#2D3748' }
+            ]}>
+              {t('practiceLevel')}
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -363,14 +362,6 @@ export default function MainSettingsScreen() {
           <InstrumentSettings currentTheme={currentTheme} />
         )}
 
-        {mode === 'level' && (
-          <LevelSettings
-            currentTheme={currentTheme}
-            practiceLevel={practiceLevel}
-            setPracticeLevel={setPracticeLevel}
-          />
-        )}
-
         {mode === 'appearance' && (
           <AppearanceSettings
             currentTheme={currentTheme}
@@ -381,6 +372,14 @@ export default function MainSettingsScreen() {
             selectedInstrument={selectedInstrument}
             setCustomTheme={setCustomTheme}
             resetToInstrumentTheme={resetToInstrumentTheme}
+          />
+        )}
+
+        {mode === 'level' && (
+          <LevelSettings
+            currentTheme={currentTheme}
+            practiceLevel={practiceLevel}
+            setPracticeLevel={setPracticeLevel}
           />
         )}
       </ScrollView>

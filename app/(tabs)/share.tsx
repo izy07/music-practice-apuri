@@ -110,16 +110,37 @@ export default function ShareScreen() {
       return;
     }
 
-    const foundOrgs = await searchOrgs(joinForm.searchName.trim());
-    
-    if (foundOrgs.length === 0) {
-      Alert.alert(t('searchResult'), t('noOrganizationsFound'));
-    } else if (foundOrgs.length === 1) {
-      setJoinForm(prev => ({ ...prev, selectedOrg: foundOrgs[0] }));
-    } else {
-      // 複数の組織が見つかった場合の選択処理
-      const orgNames = foundOrgs.map(org => org.name);
-      Alert.alert(t('multipleOrganizationsFound'), orgNames.join('\n'));
+    try {
+      logger.debug('組織検索開始:', { searchName: joinForm.searchName.trim() });
+      const foundOrgs = await searchOrgs(joinForm.searchName.trim());
+      logger.debug('組織検索結果:', { count: foundOrgs.length, orgs: foundOrgs });
+      
+      if (foundOrgs.length === 0) {
+        Alert.alert(t('searchResult'), t('noOrganizationsFound'));
+      } else if (foundOrgs.length === 1) {
+        logger.debug('組織を選択:', { orgId: foundOrgs[0].id, orgName: foundOrgs[0].name });
+        setJoinForm(prev => ({ ...prev, selectedOrg: foundOrgs[0] }));
+      } else {
+        // 複数の組織が見つかった場合の選択処理
+        const orgNames = foundOrgs.map(org => org.name);
+        Alert.alert(
+          t('multipleOrganizationsFound') || '複数の組織が見つかりました',
+          orgNames.join('\n') + '\n\n最初の組織を選択しますか？',
+          [
+            { text: t('cancel') || 'キャンセル', style: 'cancel' },
+            {
+              text: t('select') || '選択',
+              onPress: () => {
+                logger.debug('最初の組織を選択:', { orgId: foundOrgs[0].id });
+                setJoinForm(prev => ({ ...prev, selectedOrg: foundOrgs[0] }));
+              },
+            },
+          ]
+        );
+      }
+    } catch (error) {
+      logger.error('組織検索エラー:', error);
+      ErrorHandler.handle(error, '組織検索', true);
     }
   };
 
@@ -131,21 +152,30 @@ export default function ShareScreen() {
     }
 
     try {
+      logger.debug('組織参加を試行:', {
+        organizationId: joinForm.selectedOrg.id,
+        organizationName: joinForm.selectedOrg.name,
+        passwordLength: joinForm.password.trim().length,
+      });
+
       const organization = await joinOrg({
         organizationId: joinForm.selectedOrg.id,
         password: joinForm.password.trim(),
       });
 
       if (organization) {
+        logger.debug('組織参加成功:', { organizationId: organization.id });
         Alert.alert(t('success'), t('joinedOrganization'));
         setShowJoinOrg(false);
         setJoinForm({ searchName: '', selectedOrg: null, password: '' });
       } else {
         // joinOrgがnullを返した場合（エラーは既にuseOrganizationフック内で表示されている）
         // 追加のエラーメッセージは不要（重複を避けるため）
+        logger.warn('組織参加がnullを返しました');
       }
     } catch (error) {
       // 予期しないエラーの場合のみ追加のエラーメッセージを表示
+      logger.error('組織参加エラー:', error);
       ErrorHandler.handle(error, '組織参加', true);
     }
   };

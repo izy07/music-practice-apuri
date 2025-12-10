@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useReducer, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, ScrollView, Alert, Switch, Vibration, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Play, Pause, Square, RotateCcw, Plus, Minus, Timer as TimerIcon, Clock } from 'lucide-react-native';
+import { Play, Pause, Square, RotateCcw, Plus, Minus, Timer as TimerIcon, Clock, X } from 'lucide-react-native';
+import { Modal } from 'react-native';
 import { Svg, Circle } from 'react-native-svg';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
@@ -282,6 +283,8 @@ export default function TimerScreen() {
   
   // カスタム時間の状態（useReducerで集約）
   const [customTime, dispatchCustomTime] = useReducer(customTimeReducer, { hours: 0, minutes: 0, seconds: 0 });
+  const [showTimerInputModal, setShowTimerInputModal] = useState(false); // タイマー入力モーダルの表示状態
+  const [timerInputValue, setTimerInputValue] = useState<string>(''); // タイマー入力の文字列（hhmmss形式）
 
   // カスタム時間の状態変更をログ出力（デバッグ時のみ）
   useEffect(() => {
@@ -400,12 +403,12 @@ export default function TimerScreen() {
         try {
           const saved = await savePracticeRecord(practiceMinutes);
           if (saved) {
-            logger.debug('✅ タイマー自動記録が正常に完了しました', { minutes: practiceMinutes });
+            logger.debug('タイマー自動記録が正常に完了しました', { minutes: practiceMinutes });
           } else {
-            logger.warn('⚠️ タイマー自動記録が失敗しました', { minutes: practiceMinutes });
+            logger.warn('タイマー自動記録が失敗しました', { minutes: practiceMinutes });
           }
         } catch (error) {
-          logger.error('❌ タイマー自動記録エラー:', error);
+          logger.error('タイマー自動記録エラー:', error);
           // エラーは無視（自動記録なのでユーザーに通知しない）
         }
       })();
@@ -438,12 +441,22 @@ export default function TimerScreen() {
     originalClearTimer();
   };
 
-  // setTimerPresetをラップしてtimerPresetRefも更新
-  const setTimerPreset = (seconds: number) => {
+  // setTimerPresetをラップしてtimerPresetRefも更新し、AsyncStorageに保存
+  const setTimerPreset = useCallback((seconds: number) => {
     logger.debug('setTimerPreset called with:', seconds);
     timerPresetRef.current = seconds;
     originalSetTimerPreset(seconds);
-  };
+    
+    // AsyncStorageに保存（非同期で実行、エラーは無視）
+    (async () => {
+      try {
+        await AsyncStorage.setItem('timer_preset_seconds', seconds.toString());
+        logger.debug('タイマー設定時間を保存しました:', seconds);
+      } catch (error) {
+        logger.error('タイマー設定時間の保存に失敗:', error);
+      }
+    })();
+  }, [originalSetTimerPreset]);
   
   // 認証チェック
   useEffect(() => {
@@ -452,10 +465,14 @@ export default function TimerScreen() {
     }
   }, [isLoading, isAuthenticated]);
 
-  // 自動保存設定の読み込み
+  // 設定とタイマー設定時間の読み込み（初回マウント時のみ）
+  const hasLoadedSettingsRef = useRef(false);
   useEffect(() => {
+    if (hasLoadedSettingsRef.current) return;
+    
     (async () => {
       try {
+        // 設定の読み込み
         const autoSaveValue = await AsyncStorage.getItem('timer_auto_save');
         const soundValue = await AsyncStorage.getItem('timer_sound');
         const typeValue = await AsyncStorage.getItem('timer_sound_type');
@@ -478,12 +495,37 @@ export default function TimerScreen() {
         if (typeValue === 'beep' || typeValue === 'chime' || typeValue === 'bell') {
           setSoundType(typeValue);
         }
+
+        // タイマー設定時間の読み込み
+        const savedPresetSeconds = await AsyncStorage.getItem('timer_preset_seconds');
+        if (savedPresetSeconds !== null) {
+          const seconds = parseInt(savedPresetSeconds, 10);
+          if (!isNaN(seconds) && seconds > 0) {
+            logger.debug('保存されたタイマー設定時間を読み込み:', seconds);
+            timerPresetRef.current = seconds;
+            
+            // 時間・分・秒に分解してcustomTimeに設定
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            dispatchCustomTime({ type: 'SET_HOURS', payload: hours });
+            dispatchCustomTime({ type: 'SET_MINUTES', payload: minutes });
+            dispatchCustomTime({ type: 'SET_SECONDS', payload: secs });
+            
+            // タイマーが実行中でない場合のみタイマーに設定
+            if (!isTimerRunning) {
+              originalSetTimerPreset(seconds);
+            }
+          }
+        }
+        
+        hasLoadedSettingsRef.current = true;
       } catch (error) {
         ErrorHandler.handle(error, '設定の読み込み', false);
         logger.error('設定の読み込みに失敗:', error);
       }
     })();
-  }, [setAutoSave, setSoundOn, setSoundType]);
+  }, [setAutoSave, setSoundOn, setSoundType, originalSetTimerPreset]);
 
   // 既存記録との統合処理
   const savePracticeRecordWithIntegration = async (minutes: number) => {
@@ -524,21 +566,21 @@ export default function TimerScreen() {
         throw new Error(errorMessage);
       }
       
-      logger.info(`✅ タイマー記録を保存: ${minutes}分`, {
+      logger.info(`タイマー記録を保存: ${minutes}分`, {
         practiceDate: formatLocalDate(new Date()),
         instrumentId: currentInstrumentId
       });
       
       // イベントを発火（保存処理の戻り値で成功を確認済みのため、検証処理は不要）
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
-          detail: {
-            action: 'saved',
-            date: new Date(),
-            source: 'timer',
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
+                detail: { 
+                  action: 'saved', 
+                  date: new Date(), 
+                  source: 'timer',
             minutes: minutes
-          }
-        }));
+                }
+              }));
       }
       
       return true;
@@ -1141,6 +1183,66 @@ export default function TimerScreen() {
     }
   };
 
+  // タイマー入力モーダル用の関数
+  const handleTimerInputNumber = (num: string) => {
+    if (num === '00') {
+      // 00ボタン: 現在の入力に00を追加（最大6桁まで）
+      if (timerInputValue.length <= 4) {
+        setTimerInputValue(prev => prev + '00');
+      }
+    } else {
+      // 数字ボタン: 数字を追加（最大6桁まで）
+      if (timerInputValue.length < 6) {
+        setTimerInputValue(prev => prev + num);
+      }
+    }
+  };
+
+  const handleTimerInputBackspace = () => {
+    setTimerInputValue(prev => prev.slice(0, -1));
+  };
+
+  const handleTimerInputApply = () => {
+    // 入力値をhhmmss形式から時間・分・秒に変換
+    let inputStr = timerInputValue.padStart(6, '0'); // 6桁になるように0埋め
+    const hours = parseInt(inputStr.substring(0, 2), 10);
+    const minutes = parseInt(inputStr.substring(2, 4), 10);
+    const seconds = parseInt(inputStr.substring(4, 6), 10);
+
+    if (hours > 0 || minutes > 0 || seconds > 0) {
+      const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+      
+      // カスタム時間の状態を更新
+      dispatchCustomTime({ type: 'SET_HOURS', payload: hours });
+      dispatchCustomTime({ type: 'SET_MINUTES', payload: minutes });
+      dispatchCustomTime({ type: 'SET_SECONDS', payload: seconds });
+      
+      // タイマーに設定（setTimerPresetはタイマーの秒数を直接更新する）
+      logger.debug('タイマー入力から設定:', { hours, minutes, seconds, totalSeconds });
+      timerPresetRef.current = totalSeconds;
+      setTimerPreset(totalSeconds); // これでtimerSecondsが更新される
+      
+      setShowTimerInputModal(false);
+      setTimerInputValue('');
+    } else {
+      Alert.alert(t('error'), t('pleaseSetValidTime'));
+    }
+  };
+
+  const handleTimerInputCancel = () => {
+    setShowTimerInputModal(false);
+    setTimerInputValue('');
+  };
+
+  // 入力値を時間表示に変換（00h 00m 00s形式）
+  const formatTimerInput = (value: string): string => {
+    const padded = value.padStart(6, '0');
+    const hours = parseInt(padded.substring(0, 2), 10);
+    const minutes = parseInt(padded.substring(2, 4), 10);
+    const seconds = parseInt(padded.substring(4, 6), 10);
+    return `${hours.toString().padStart(2, '0')}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
+  };
+
   const currentSeconds = timerSeconds;
   const isRunning = isTimerRunning;
 
@@ -1303,58 +1405,41 @@ export default function TimerScreen() {
         {/* Timer Settings（タイマー時のみ） */}
         {mode === 'timer' && (
           <View style={styles.timerSettings}>
-            {/* Custom Time - ドラムロール式ホイールピッカー */}
-            <View style={[styles.customTimeContainer, { backgroundColor: currentTheme.surface }]}>
-              <View style={styles.wheelsRow}>
-                <View style={styles.wheelBlock}>
-                  <Text style={[styles.wheelLabel, { color: currentTheme.textSecondary }]}>{t('hours') || '時間'}</Text>
-                  <WheelPicker
-                    value={customTime.hours}
-                    onChange={(value) => {
-                      if (process.env.NODE_ENV === 'development') {
-                        logger.debug('Hours changed to:', value);
-                      }
-                      setCustomHours(value);
-                    }}
-                    max={99}
-                    highlightColor={currentTheme.secondary}
-                  />
-                </View>
-                <Text style={[styles.wheelColon, { color: currentTheme.textSecondary }]}>:</Text>
-                <View style={styles.wheelBlock}>
-                  <Text style={[styles.wheelLabel, { color: currentTheme.textSecondary }]}>{t('minutes') || '分'}</Text>
-                  <WheelPicker
-                    value={customTime.minutes}
-                    onChange={(value) => {
-                      if (process.env.NODE_ENV === 'development') {
-                        logger.debug('Minutes changed to:', value);
-                      }
-                      setCustomMinutes(value);
-                    }}
-                    max={59}
-                    highlightColor={currentTheme.secondary}
-                  />
-                </View>
-                <Text style={[styles.wheelColon, { color: currentTheme.textSecondary }]}>:</Text>
-                <View style={styles.wheelBlock}>
-                  <Text style={[styles.wheelLabel, { color: currentTheme.textSecondary }]}>{t('seconds') || '秒'}</Text>
-                  <WheelPicker
-                    value={customTime.seconds}
-                    onChange={(value) => {
-                      if (process.env.NODE_ENV === 'development') {
-                        logger.debug('Seconds changed to:', value);
-                      }
-                      setCustomSeconds(value);
-                    }}
-                    max={59}
-                    highlightColor={currentTheme.secondary}
-                  />
-                </View>
-              </View>
-              <TouchableOpacity style={[styles.applyButton, { backgroundColor: currentTheme.primary, marginTop: 4 }]} onPress={applyCustomTime}>
-                <Text style={[styles.applyButtonText, { color: currentTheme.surface }]}>{t('apply') || '適用'}</Text>
-              </TouchableOpacity>
-            </View>
+            {/* プラスボタンでタイマー入力モーダルを開く */}
+            <TouchableOpacity
+              style={[
+                {
+                  backgroundColor: currentTheme.primary,
+                  width: 60,
+                  height: 60,
+                  borderRadius: 30,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  alignSelf: 'center',
+                  marginVertical: 20,
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.25,
+                  shadowRadius: 3.84,
+                  elevation: 5,
+                }
+              ]}
+              onPress={() => {
+                // モーダルを開く前に現在のタイマー設定値を入力欄に反映
+                if (timerPresetRef.current > 0) {
+                  const hours = Math.floor(timerPresetRef.current / 3600);
+                  const minutes = Math.floor((timerPresetRef.current % 3600) / 60);
+                  const seconds = timerPresetRef.current % 60;
+                  const inputStr = `${hours.toString().padStart(2, '0')}${minutes.toString().padStart(2, '0')}${seconds.toString().padStart(2, '0')}`;
+                  setTimerInputValue(inputStr);
+                } else {
+                  setTimerInputValue('');
+                }
+                setShowTimerInputModal(true);
+              }}
+            >
+              <Plus size={32} color={currentTheme.surface} />
+            </TouchableOpacity>
 
             {/* 設定オプション */}
             <View style={[styles.settingsContainer, { backgroundColor: currentTheme.surface }]}>
@@ -1457,6 +1542,195 @@ export default function TimerScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* タイマー入力モーダル */}
+      <Modal
+        visible={showTimerInputModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleTimerInputCancel}
+      >
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}>
+          <View style={{
+            backgroundColor: '#1A1A1A',
+            borderRadius: 20,
+            width: width * 0.85,
+            maxWidth: 400,
+            padding: 30,
+            alignItems: 'center',
+          }}>
+            {/* 時間表示 */}
+            <Text style={{
+              fontSize: 48,
+              fontWeight: 'bold',
+              color: '#E0E0E0',
+              marginBottom: 30,
+              letterSpacing: 2,
+            }}>
+              {formatTimerInput(timerInputValue)}
+            </Text>
+
+            {/* 数字キーパッド */}
+            <View style={{ width: '100%' }}>
+              {/* 1行目: 1, 2, 3 */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
+                {[1, 2, 3].map((num) => (
+                  <TouchableOpacity
+                    key={num}
+                    onPress={() => handleTimerInputNumber(num.toString())}
+                    style={{
+                      width: (width * 0.85 - 120) / 3,
+                      height: (width * 0.85 - 120) / 3,
+                      maxWidth: 80,
+                      maxHeight: 80,
+                      borderRadius: 40,
+                      backgroundColor: '#2A2A2A',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 24, color: '#FFFFFF', fontWeight: '600' }}>{num}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* 2行目: 4, 5, 6 */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
+                {[4, 5, 6].map((num) => (
+                  <TouchableOpacity
+                    key={num}
+                    onPress={() => handleTimerInputNumber(num.toString())}
+                    style={{
+                      width: (width * 0.85 - 120) / 3,
+                      height: (width * 0.85 - 120) / 3,
+                      maxWidth: 80,
+                      maxHeight: 80,
+                      borderRadius: 40,
+                      backgroundColor: '#2A2A2A',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 24, color: '#FFFFFF', fontWeight: '600' }}>{num}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* 3行目: 7, 8, 9 */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
+                {[7, 8, 9].map((num) => (
+                  <TouchableOpacity
+                    key={num}
+                    onPress={() => handleTimerInputNumber(num.toString())}
+                    style={{
+                      width: (width * 0.85 - 120) / 3,
+                      height: (width * 0.85 - 120) / 3,
+                      maxWidth: 80,
+                      maxHeight: 80,
+                      borderRadius: 40,
+                      backgroundColor: '#2A2A2A',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <Text style={{ fontSize: 24, color: '#FFFFFF', fontWeight: '600' }}>{num}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* 4行目: 00, 0, バックスペース */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                <TouchableOpacity
+                  onPress={() => handleTimerInputNumber('00')}
+                  style={{
+                    width: (width * 0.85 - 120) / 3,
+                    height: (width * 0.85 - 120) / 3,
+                    maxWidth: 80,
+                    maxHeight: 80,
+                    borderRadius: 40,
+                    backgroundColor: '#2A2A2A',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ fontSize: 20, color: '#FFFFFF', fontWeight: '600' }}>00</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => handleTimerInputNumber('0')}
+                  style={{
+                    width: (width * 0.85 - 120) / 3,
+                    height: (width * 0.85 - 120) / 3,
+                    maxWidth: 80,
+                    maxHeight: 80,
+                    borderRadius: 40,
+                    backgroundColor: '#2A2A2A',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                >
+                  <Text style={{ fontSize: 24, color: '#FFFFFF', fontWeight: '600' }}>0</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleTimerInputBackspace}
+                  style={{
+                    width: (width * 0.85 - 120) / 3,
+                    height: (width * 0.85 - 120) / 3,
+                    maxWidth: 80,
+                    maxHeight: 80,
+                    borderRadius: 40,
+                    backgroundColor: '#2A2A2A',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <X size={20} color="#FFFFFF" style={{ marginRight: 4 }} />
+                    <Text style={{ fontSize: 20, color: '#FFFFFF', fontWeight: '600' }}>←</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* コントロールボタン */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 30 }}>
+              <TouchableOpacity
+                onPress={handleTimerInputCancel}
+                style={{
+                  width: 60,
+                  height: 60,
+                  borderRadius: 30,
+                  backgroundColor: '#2A2A2A',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+              >
+                <X size={28} color="#FFFFFF" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={handleTimerInputApply}
+                style={{
+                  width: 80,
+                  height: 80,
+                  borderRadius: 40,
+                  backgroundColor: currentTheme.primary,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+              >
+                <Play size={32} color="#FFFFFF" fill="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

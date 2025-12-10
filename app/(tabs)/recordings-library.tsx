@@ -225,12 +225,12 @@ export default function RecordingsLibraryScreen() {
 
       const audio = new Audio(publicUrl);
       audio.onended = () => {
-        logger.debug('✅ 録音再生終了');
+        logger.debug('録音再生終了');
         setPlayingRecording(null);
         setAudioElement(null);
       };
       audio.onerror = (e) => {
-        logger.error('❌ 録音再生エラー:', e);
+        logger.error('録音再生エラー:', e);
         ErrorHandler.handle(e, '録音再生', false);
         Alert.alert('エラー', '録音の再生に失敗しました。ファイルが見つからない可能性があります。');
         setPlayingRecording(null);
@@ -238,11 +238,11 @@ export default function RecordingsLibraryScreen() {
       };
 
       await audio.play();
-      logger.debug('▶️ 録音再生中');
+      logger.debug('録音再生中');
       setPlayingRecording(recording.id);
       setAudioElement(audio);
     } catch (error) {
-      logger.error('💥 録音再生エラー:', error);
+      logger.error('録音再生エラー:', error);
       ErrorHandler.handle(error, '録音再生', false);
       Alert.alert('エラー', '録音の再生に失敗しました');
     }
@@ -627,7 +627,7 @@ export default function RecordingsLibraryScreen() {
                       <TouchableOpacity
                         style={[styles.actionButton, { backgroundColor: 'rgba(255, 68, 68, 0.1)' }]}
                         onPress={() => {
-                          logger.debug('🗑️ 削除ボタンタッチイベント発生:', recording.id);
+                          logger.debug('削除ボタンタッチイベント発生:', recording.id);
                           deleteRecordingItem(recording.id);
                         }}
                         activeOpacity={0.7}

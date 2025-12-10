@@ -20,6 +20,12 @@ import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import Metronome from '@/components/metronome/Metronome';
 import { styles } from '@/lib/tabs/tuner/styles';
+import audioResourceManager from '@/lib/audioResourceManager';
+import { useFocusEffect } from 'expo-router';
+import { autoCorrelate, getNoteFromFrequency, smoothValue, getTuningColor } from '@/lib/tunerAudioProcessor';
+import { getUserSettings } from '@/repositories/userSettingsRepository';
+import { getCurrentUser } from '@/lib/authService';
+import { DEFAULT_A4_FREQUENCY } from '@/lib/tunerUtils';
 
 // プロ仕様の音名と周波数対応
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -211,18 +217,28 @@ export default function TunerScreen() {
   const { t } = useLanguage();
   const [mode, setMode] = useState<'tuner' | 'metronome'>('tuner');
   
-  // チューナーUI表示用の状態（機能は削除済み、UIのみ表示）
-  const [isListening] = useState(false);
-  const [currentFrequency] = useState<number>(0);
-  const [currentNote] = useState<string>('--');
-  const [currentNoteJa] = useState<string>('--');
-  const [currentOctave] = useState<number>(0);
-  const [currentCents] = useState<number>(0);
-  const [indicatorColor] = useState<string>('#9E9E9E');
+  // チューナー機能の状態
+  const [isListening, setIsListening] = useState(false);
+  const [currentFrequency, setCurrentFrequency] = useState<number>(0);
+  const [currentNote, setCurrentNote] = useState<string>('--');
+  const [currentNoteJa, setCurrentNoteJa] = useState<string>('--');
+  const [currentOctave, setCurrentOctave] = useState<number>(0);
+  const [currentCents, setCurrentCents] = useState<number>(0);
+  const [indicatorColor, setIndicatorColor] = useState<string>('#9E9E9E');
+  
+  // 音程検出用の参照
+  const microphoneStreamRef = useRef<MediaStream | null>(null);
+  const analyserNodeRef = useRef<AnalyserNode | null>(null);
+  const audioProcessingIntervalRef = useRef<number | null>(null);
+  const smoothedFrequencyRef = useRef<number>(0);
+  const frequencyHistoryRef = useRef<number[]>([]); // 周波数履歴をrefで保持
   
   // 音名表示モード（CDEかドレミか）- 開放弦の音を聞く機能で使用
   const [noteDisplayMode, setNoteDisplayMode] = useState<'en' | 'ja'>('en');
   const NOTE_DISPLAY_MODE_KEY = '@tuner_note_display_mode';
+  
+  // A4周波数の設定（デフォルト440Hz）
+  const [a4Frequency, setA4Frequency] = useState<number>(DEFAULT_A4_FREQUENCY);
   
   // プロ仕様設定
   // データベースの楽器IDとチューナー楽器キーのマッピング
@@ -261,21 +277,36 @@ export default function TunerScreen() {
   const tuningBarAnimation = useRef(new Animated.Value(0)).current;
 
   // Web Audio API 用参照（開放弦の音とメトロノーム用）
+  // リソース管理サービスを使用するため、refはメトロノームとの共有用に保持
   const audioContextRef = useRef<AudioContext | null>(null);
+  const OWNER_NAME = 'TunerScreen';
 
-  // 音名表示モードをAsyncStorageから読み込む
+  // 音名表示モードとA4周波数を読み込む
   useEffect(() => {
-    const loadNoteDisplayMode = async () => {
+    const loadSettings = async () => {
       try {
+        // 音名表示モードを読み込み
         const savedMode = await AsyncStorage.getItem(NOTE_DISPLAY_MODE_KEY);
         if (savedMode === 'en' || savedMode === 'ja') {
           setNoteDisplayMode(savedMode);
         }
+        
+        // A4周波数を設定から読み込み
+        const { user, error: userError } = await getCurrentUser();
+        if (!userError && user) {
+          const settingsResult = await getUserSettings(user.id);
+          if (!settingsResult.error && settingsResult.data?.tuner_settings) {
+            const settings = settingsResult.data.tuner_settings;
+            const a4Freq = settings.a4Frequency || settings.reference_pitch || DEFAULT_A4_FREQUENCY;
+            setA4Frequency(a4Freq);
+            logger.debug('A4周波数を設定から読み込みました', { a4Freq });
+          }
+        }
       } catch (error) {
-        ErrorHandler.handle(error, '音名表示モードの読み込み', false);
+        ErrorHandler.handle(error, '設定の読み込み', false);
       }
     };
-    loadNoteDisplayMode();
+    loadSettings();
   }, []);
 
   // 音名表示モードを保存する
@@ -289,13 +320,199 @@ export default function TunerScreen() {
   };
 
 
-  // チューナー機能は削除済み（UIのみ表示）
-  const startListening = () => {
-    Alert.alert(t('featureUnavailable'), t('tunerUnavailable'));
+  // チューナー機能：音程検出を開始
+  const startListening = async () => {
+    try {
+      if (Platform.OS !== 'web') {
+        Alert.alert(t('notSupported'), 'チューナー機能はWeb環境でのみ利用できます');
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        Alert.alert('エラー', 'このブラウザではチューナー機能を利用できません');
+        return;
+      }
+
+      // リソース管理サービスからマイクアクセスを取得（排他制御）
+      let stream: MediaStream;
+      try {
+        stream = await audioResourceManager.acquireMicrophone(OWNER_NAME, {
+          audio: {
+            echoCancellation: false, // チューナーではエコーキャンセルを無効化（精度向上のため）
+            noiseSuppression: false,  // ノイズサプレッションも無効化
+            autoGainControl: false,   // 自動ゲインコントロールも無効化
+            sampleRate: 44100,
+          }
+        });
+        microphoneStreamRef.current = stream;
+      } catch (error: any) {
+        const errorMessage = error?.message || 'マイクアクセスの取得に失敗しました';
+        if (errorMessage.includes('既に')) {
+          Alert.alert('マイク使用中', errorMessage + '\n\n他の機能（録音、クイック記録など）がマイクを使用している可能性があります。');
+        } else {
+          Alert.alert('エラー', errorMessage);
+        }
+        return;
+      }
+
+      // AudioContextを取得
+      const audioCtx = await audioResourceManager.acquireAudioContext(OWNER_NAME);
+      if (!audioCtx) {
+        Alert.alert('エラー', 'オーディオリソースを取得できませんでした');
+        audioResourceManager.releaseMicrophone(OWNER_NAME);
+        return;
+      }
+      audioContextRef.current = audioCtx;
+
+      // マイク入力をAudioContextに接続
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 4096; // 高精度な周波数検出のため大きなFFTサイズ
+      analyser.smoothingTimeConstant = 0.3;
+      source.connect(analyser);
+      analyserNodeRef.current = analyser;
+
+      // 音程検出を開始
+      setIsListening(true);
+      smoothedFrequencyRef.current = 0;
+
+      // 定期的に音程を検出（60fps相当）
+      // 周波数検出の信頼性を向上させるため、複数フレームの平均を使用
+      const HISTORY_SIZE = 5; // 5フレームの履歴を使用
+      frequencyHistoryRef.current = []; // 履歴をリセット
+
+      const processAudio = () => {
+        if (!analyserNodeRef.current || !audioContextRef.current) return;
+
+        const bufferLength = analyserNodeRef.current.frequencyBinCount;
+        const dataArray = new Float32Array(bufferLength);
+        analyserNodeRef.current.getFloatTimeDomainData(dataArray);
+
+        // 周波数を検出
+        const detectedFrequency = autoCorrelate(dataArray, audioContextRef.current.sampleRate);
+
+        if (detectedFrequency > 0 && detectedFrequency < 10000) {
+          // 履歴に追加
+          frequencyHistoryRef.current.push(detectedFrequency);
+          if (frequencyHistoryRef.current.length > HISTORY_SIZE) {
+            frequencyHistoryRef.current.shift(); // 古い値を削除
+          }
+
+          // 履歴が十分にたまったら中央値を使用（外れ値の影響を減らす）
+          let medianFreq = detectedFrequency;
+          if (frequencyHistoryRef.current.length >= 3) {
+            const sortedFreqs = [...frequencyHistoryRef.current].sort((a, b) => a - b);
+            medianFreq = sortedFreqs[Math.floor(sortedFreqs.length / 2)];
+          }
+
+          // 平滑化処理（中央値を使用）
+          const smoothedFreq = smoothValue(
+            smoothedFrequencyRef.current,
+            medianFreq,
+            0.2, // alpha（より保守的に）
+            30   // maxChange (Hz)（より厳しく）
+          );
+          smoothedFrequencyRef.current = smoothedFreq;
+
+          // 音名を取得（設定されたA4周波数を使用）
+          const noteInfo = getNoteFromFrequency(smoothedFreq, a4Frequency);
+          
+          // デバッグ情報（開発時のみ）
+          if (__DEV__) {
+            logger.debug('チューナー検出', {
+              detectedFreq: detectedFrequency.toFixed(2),
+              medianFreq: medianFreq.toFixed(2),
+              smoothedFreq: smoothedFreq.toFixed(2),
+              note: noteInfo.note,
+              noteJa: noteInfo.noteJa,
+              octave: noteInfo.octave,
+              cents: noteInfo.cents.toFixed(1),
+              a4Freq: a4Frequency
+            });
+          }
+          
+          // UIを更新
+          setCurrentFrequency(smoothedFreq);
+          setCurrentNote(noteInfo.note);
+          setCurrentNoteJa(noteInfo.noteJa);
+          setCurrentOctave(noteInfo.octave);
+          setCurrentCents(noteInfo.cents);
+
+          // チューニングバーの位置を更新
+          const position = ((noteInfo.cents + 50) / 100) * 100; // -50から+50セントを0-100%に変換
+          Animated.timing(tuningBarAnimation, {
+            toValue: noteInfo.cents,
+            duration: 100,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: false,
+          }).start();
+
+          // インジケーターの色を更新
+          const { color } = getTuningColor(Math.abs(noteInfo.cents));
+          setIndicatorColor(color);
+        } else {
+          // 音が検出されない場合、履歴をクリア
+          frequencyHistoryRef.current = [];
+          
+          if (smoothedFrequencyRef.current > 0) {
+            // フェードアウト
+            smoothedFrequencyRef.current = smoothValue(smoothedFrequencyRef.current, 0, 0.1, 10);
+            if (smoothedFrequencyRef.current < 1) {
+              smoothedFrequencyRef.current = 0;
+              setCurrentFrequency(0);
+              setCurrentNote('--');
+              setCurrentNoteJa('--');
+              setCurrentOctave(0);
+              setCurrentCents(0);
+              setIndicatorColor('#9E9E9E');
+            }
+          }
+        }
+      };
+
+      // 16.67ms間隔（約60fps）で処理
+      audioProcessingIntervalRef.current = window.setInterval(processAudio, 16.67);
+
+      logger.debug('チューナー機能を開始しました');
+    } catch (error) {
+      ErrorHandler.handle(error, 'チューナー開始', true);
+      Alert.alert('エラー', 'チューナー機能を開始できませんでした');
+      setIsListening(false);
+    }
   };
 
+  // チューナー機能：音程検出を停止
   const stopListening = () => {
-    // 何もしない（UI表示のみ）
+    // インターバルをクリア
+    if (audioProcessingIntervalRef.current) {
+      clearInterval(audioProcessingIntervalRef.current);
+      audioProcessingIntervalRef.current = null;
+    }
+
+    // マイクストリームを解放
+    if (microphoneStreamRef.current) {
+      microphoneStreamRef.current.getTracks().forEach(track => {
+        track.stop();
+        track.enabled = false;
+      });
+      microphoneStreamRef.current = null;
+    }
+
+    // リソース管理サービスからマイクを解放
+    audioResourceManager.releaseMicrophone(OWNER_NAME);
+
+    // 状態をリセット
+    setIsListening(false);
+    setCurrentFrequency(0);
+    setCurrentNote('--');
+    setCurrentNoteJa('--');
+    setCurrentOctave(0);
+    setCurrentCents(0);
+    setIndicatorColor('#9E9E9E');
+    smoothedFrequencyRef.current = 0;
+    analyserNodeRef.current = null;
+
+    logger.debug('チューナー機能を停止しました');
   };
 
 
@@ -308,17 +525,15 @@ export default function TunerScreen() {
         return;
       }
 
-      // AudioContextが存在しない場合は作成
-      let audioCtx = audioContextRef.current;
-      if (!audioCtx || audioCtx.state === 'closed') {
-        audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        audioContextRef.current = audioCtx;
+      // リソース管理サービスからAudioContextを取得
+      const audioCtx = await audioResourceManager.acquireAudioContext(OWNER_NAME);
+      if (!audioCtx) {
+        Alert.alert('エラー', 'オーディオリソースを取得できませんでした。他の機能が使用中かもしれません。');
+        return;
       }
 
-      // AudioContextが停止している場合は再開
-      if (audioCtx.state === 'suspended') {
-        await audioCtx.resume();
-      }
+      // refを更新（メトロノームとの共有のため）
+      audioContextRef.current = audioCtx;
       
       // 既に再生中の場合は停止してから新しい音を再生
       stopOpenString();
@@ -328,6 +543,9 @@ export default function TunerScreen() {
       
       const oscillator = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
+      
+      // オシレーターをリソース管理サービスに登録
+      audioResourceManager.registerOscillator(OWNER_NAME, oscillator);
       
       // 参照を保存
       openStringOscillatorRef.current = oscillator;
@@ -393,10 +611,31 @@ export default function TunerScreen() {
     }
   };
 
+  // 画面にフォーカスが当たった時にリソースを取得
+  useFocusEffect(
+    React.useCallback(() => {
+      // 画面が表示された時にAudioContextを取得
+      audioResourceManager.acquireAudioContext(OWNER_NAME).then(ctx => {
+        if (ctx) {
+          audioContextRef.current = ctx;
+        }
+      });
+
+      return () => {
+        // 画面から離れる時にリソースを解放
+        stopListening(); // チューナーを停止
+        stopOpenString(); // 開放弦の音を停止
+        audioResourceManager.releaseAllResources(OWNER_NAME);
+      };
+    }, [])
+  );
+
   // コンポーネントがアンマウントされる際に音を停止
   useEffect(() => {
     return () => {
-      stopOpenString();
+      stopListening(); // チューナーを停止
+      stopOpenString(); // 開放弦の音を停止
+      audioResourceManager.releaseAllResources(OWNER_NAME);
     };
   }, []);
 

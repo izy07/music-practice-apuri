@@ -1,6 +1,6 @@
 // メインのレイアウトファイル - アプリ全体の構造と認証ルーティングを管理
 import React, { useRef, useEffect } from 'react';
-import { View, LogBox } from 'react-native';
+import { View, LogBox, AppState } from 'react-native';
 import { Stack } from 'expo-router'; // 画面遷移のスタックナビゲーター
 import { Platform } from 'react-native';
 import { useRouter, useSegments } from 'expo-router'; // ルーティング関連のフック
@@ -18,6 +18,7 @@ import { ErrorHandler } from '@/lib/errorHandler'; // エラーハンドラー
 import { getBasePath, navigateWithBasePath } from '@/lib/navigationUtils'; // ベースパス取得関数とナビゲーション関数
 import { checkDatabaseSchema } from '@/lib/databaseSchemaChecker'; // データベーススキーマチェック
 import { initializeGoalRepository } from '@/repositories/goalRepository'; // 目標リポジトリの初期化
+import audioResourceManager from '@/lib/audioResourceManager'; // オーディオリソース管理
 
 // Web環境ではexpo-status-barをインポートしない
 type StatusBarComponent = React.ComponentType<{ style: 'dark' | 'light' | 'auto' }>;
@@ -109,6 +110,21 @@ function RootLayoutContent() {
     timeoutMs: TIMEOUT.IDLE_MS,
     enabled: isAuthenticated && !isLoading && isInitialized, // 認証済みで初期化完了時のみ有効
   });
+
+  // アプリのライフサイクル管理：バックグラウンド移行時にオーディオリソースを解放
+  React.useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        // アプリがバックグラウンドに移行した時にすべてのオーディオリソースを強制解放
+        logger.debug('アプリがバックグラウンドに移行: オーディオリソースを解放');
+        audioResourceManager.forceReleaseAll();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
   
   // すべてのuseRefを条件分岐の前に配置（Hooksの順序を保持）
   const segmentsRef = useRef(segments); // segmentsをrefで保持（Web環境での強制遷移を防ぐため）
@@ -129,7 +145,7 @@ function RootLayoutContent() {
           if (!result.attendanceRecordsTableExists) {
             logger.error('❌ attendance_recordsテーブルが存在しません。');
             console.error('========================================');
-            console.error('❌ attendance_recordsテーブルが存在しません');
+            console.error('attendance_recordsテーブルが存在しません');
             console.error('解決方法: Supabaseダッシュボードでマイグレーションを実行してください');
             console.error('');
             console.error('【推奨】最初からテーブルを作成する場合:');
@@ -229,8 +245,13 @@ function RootLayoutContent() {
           }
           
           // representative_songsテーブルの404エラーを抑制（フォールバックデータを使用するため）
-          if ((fullMessage.includes('representative_songs') || fullMessage.includes('representative-songs')) && 
-              (fullMessage.includes('404') || fullMessage.includes('Not Found') || fullMessage.includes('PGRST205'))) {
+          if ((fullMessage.includes('representative_songs') || 
+               fullMessage.includes('representative-songs') ||
+               fullMessage.includes('/rest/v1/representative_songs')) && 
+              (fullMessage.includes('404') || 
+               fullMessage.includes('Not Found') || 
+               fullMessage.includes('PGRST205') ||
+               fullMessage.includes('Not Found)'))) {
             // テーブルが存在しない場合の404エラーは、フォールバックデータを使用するため無視
             return;
           }
@@ -297,17 +318,57 @@ function RootLayoutContent() {
           window.addEventListener('error', (event: Event) => {
             const errorEvent = event as ErrorEvent;
             const message = errorEvent.message || '';
+            const errorString = errorEvent.error?.toString() || '';
+            const filename = errorEvent.filename || '';
+            const fullErrorString = `${message} ${errorString} ${filename}`;
+            
+            // aria-hidden警告を抑制
             if (message.includes('Blocked aria-hidden') || 
                 message.includes('aria-hidden') || 
                 message.includes('descendant retained focus') ||
                 message.includes('assistive technology') ||
                 message.includes('The focus must not be hidden') ||
-                message.includes('WAI-ARIA')) {
+                message.includes('WAI-ARIA') ||
+                errorString.includes('aria-hidden') ||
+                errorString.includes('Blocked aria-hidden')) {
               event.preventDefault();
               event.stopPropagation();
               event.stopImmediatePropagation();
+              return;
+            }
+            
+            // representative_songsテーブルの404エラーを抑制
+            if ((fullErrorString.includes('representative_songs') || 
+                 fullErrorString.includes('representative-songs') ||
+                 fullErrorString.includes('/rest/v1/representative_songs')) && 
+                (fullErrorString.includes('404') || 
+                 fullErrorString.includes('Not Found') || 
+                 fullErrorString.includes('PGRST205'))) {
+              event.preventDefault();
+              event.stopPropagation();
+              event.stopImmediatePropagation();
+              return;
             }
           }, true); // capture phaseで実行
+        }
+        
+        // Metro接続切断警告を抑制（開発環境のみ）
+        if (process.env.NODE_ENV === 'development') {
+          const originalWarn = console.warn;
+          console.warn = (...args: unknown[]) => {
+            const message = args[0]?.toString() || '';
+            const fullMessage = args.map(arg => String(arg)).join(' ');
+            // Metro接続切断警告を無視
+            if (message.includes('Disconnected from Metro') ||
+                message.includes('Metro') ||
+                fullMessage.includes('Disconnected from Metro') ||
+                fullMessage.includes('HMR') ||
+                fullMessage.includes('Hot Module Replacement') ||
+                fullMessage.includes('reconnect')) {
+              return;
+            }
+            originalWarn.apply(console, args);
+          };
         }
       }
     }

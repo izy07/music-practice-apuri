@@ -355,45 +355,93 @@ export class OrganizationService {
       async () => {
         logger.debug(`[${SERVICE_CONTEXT}] joinOrganization:start`, {
           organizationId: input.organizationId,
+          passwordLength: input.password.length,
         });
 
         // 現在のユーザーを取得
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
+          logger.error(`[${SERVICE_CONTEXT}] joinOrganization:no user authenticated`);
           throw new Error('認証が必要です');
         }
+
+        logger.debug(`[${SERVICE_CONTEXT}] joinOrganization:user authenticated`, { userId: user.id });
 
         // 組織を取得
         const orgResult = await organizationRepository.findById(input.organizationId);
         if (orgResult.error) {
+          logger.error(`[${SERVICE_CONTEXT}] joinOrganization:organization fetch failed`, {
+            organizationId: input.organizationId,
+            error: orgResult.error,
+          });
           throw orgResult.error;
         }
         if (!orgResult.data) {
+          logger.error(`[${SERVICE_CONTEXT}] joinOrganization:organization not found`, {
+            organizationId: input.organizationId,
+          });
           throw new Error('組織が見つかりません');
         }
 
         const organization = orgResult.data;
+        logger.debug(`[${SERVICE_CONTEXT}] joinOrganization:organization found`, {
+          organizationId: organization.id,
+          organizationName: organization.name,
+          isSolo: organization.is_solo,
+          hasPasswordHash: !!organization.password_hash,
+        });
 
-        // パスワードを検証
-        if (!organization.password_hash) {
+        // パスワードを検証（ソロモードの組織にはパスワードがないため、スキップ）
+        if (!organization.is_solo && !organization.password_hash) {
+          logger.error(`[${SERVICE_CONTEXT}] joinOrganization:no password set`, {
+            organizationId: input.organizationId,
+            isSolo: organization.is_solo,
+          });
           throw new Error('この組織にはパスワードが設定されていません');
         }
 
-        const { verifyPassword } = await import('@/lib/security/passwordHasher');
-        const isValidPassword = await verifyPassword(
-          input.password,
-          organization.password_hash
-        );
+        // ソロモードでない場合のみパスワードを検証
+        if (!organization.is_solo) {
+          logger.debug(`[${SERVICE_CONTEXT}] joinOrganization:verifying password`);
+          const { verifyPassword } = await import('@/lib/security/passwordHasher');
+          const isValidPassword = await verifyPassword(
+            input.password,
+            organization.password_hash!
+          );
 
-        if (!isValidPassword) {
-          throw new Error('パスワードが正しくありません');
+          logger.debug(`[${SERVICE_CONTEXT}] joinOrganization:password verification result`, {
+            isValid: isValidPassword,
+          });
+
+          if (!isValidPassword) {
+            logger.warn(`[${SERVICE_CONTEXT}] joinOrganization:invalid password`, {
+              organizationId: input.organizationId,
+              userId: user.id,
+              providedPasswordLength: input.password.length,
+            });
+            throw new Error('パスワードが正しくありません');
+          }
+        } else {
+          logger.debug(`[${SERVICE_CONTEXT}] joinOrganization:skipping password check (solo mode)`);
         }
 
         // メンバーシップを作成（既にメンバーの場合はエラーを無視）
+        logger.debug(`[${SERVICE_CONTEXT}] joinOrganization:creating membership`, {
+          userId: user.id,
+          organizationId: input.organizationId,
+          role: 'member',
+        });
+        
         const membershipResult = await membershipRepository.create({
           user_id: user.id,
           organization_id: input.organizationId,
           role: 'member',
+        });
+        
+        logger.debug(`[${SERVICE_CONTEXT}] joinOrganization:membership creation result`, {
+          hasData: !!membershipResult.data,
+          hasError: !!membershipResult.error,
+          errorCode: (membershipResult.error as any)?.code,
         });
 
         if (membershipResult.error) {
@@ -420,12 +468,20 @@ export class OrganizationService {
               logger.info(`[${SERVICE_CONTEXT}] joinOrganization:user already member, continuing`, {
                 organizationId: input.organizationId,
                 userId: user.id,
+                membershipId: existingCheck.data.id,
               });
+              // 既にメンバーの場合でも、組織を返す（成功として扱う）
+              return organization;
             } else {
+              // 既存メンバーシップが見つからない場合はエラー
               throw membershipResult.error;
             }
           } else {
             // その他のエラー（RLSポリシーエラーなど）は例外として投げる
+            // RLSポリシーエラーの場合は、より詳細なエラーメッセージを提供
+            if ((membershipResult.error as any)?.code === '42501' || (membershipResult.error as any)?.status === 403) {
+              throw new Error('メンバーシップの作成が拒否されました。RLSポリシーを確認してください。');
+            }
             throw membershipResult.error;
           }
         } else if (membershipResult.data) {

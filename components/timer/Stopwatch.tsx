@@ -75,15 +75,25 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
             <Text style={[styles.lapTimesTitle, { color: currentTheme.text }]}>
               ラップ ({lapTimes.length})
             </Text>
-            <TouchableOpacity
-              onPress={() => {
-                setLapTimes([]);
-                lapIdRef.current = 0;
-                previousLapTimeRef.current = 0;
-              }}
-            >
-              <Text style={[styles.clearLapsButton, { color: currentTheme.primary }]}>クリア</Text>
-            </TouchableOpacity>
+            <View style={styles.lapTimesHeaderRight}>
+              {isStopwatchRunning && (
+                <TouchableOpacity
+                  style={[styles.lapButtonInHeader, { backgroundColor: currentTheme.secondary }]}
+                  onPress={handleLap}
+                >
+                  <Text style={[styles.lapButtonText, { color: currentTheme.text }]}>ラップ</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => {
+                  setLapTimes([]);
+                  lapIdRef.current = 0;
+                  previousLapTimeRef.current = 0;
+                }}
+              >
+                <Text style={[styles.clearLapsButton, { color: currentTheme.primary }]}>クリア</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           <ScrollView 
             style={styles.lapTimesList} 
@@ -108,26 +118,18 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
         </View>
       )}
 
-      {/* コントロールボタン */}
+      {/* コントロールボタン（固定位置） */}
       <View style={styles.stopwatchControls}>
         {isStopwatchRunning ? (
-          // 計測中：ラップボタンと一時停止ボタン
-          <>
-            <TouchableOpacity
-              style={[styles.stopwatchButton, { backgroundColor: currentTheme.secondary }]}
-              onPress={handleLap}
-            >
-              <Text style={[styles.stopwatchButtonText, { color: currentTheme.text }]}>ラップ</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.stopwatchButton, styles.stopwatchMainButton, { 
-                backgroundColor: currentTheme.primary
-              }]}
-              onPress={pauseStopwatch}
-            >
-              <Pause size={22} color={currentTheme.surface} />
-            </TouchableOpacity>
-          </>
+          // 計測中：一時停止ボタン
+          <TouchableOpacity
+            style={[styles.stopwatchButton, styles.stopwatchMainButton, { 
+              backgroundColor: currentTheme.primary
+            }]}
+            onPress={pauseStopwatch}
+          >
+            <Pause size={22} color={currentTheme.surface} />
+          </TouchableOpacity>
         ) : (
           // 停止中：開始ボタンとリセットボタン
           <>
@@ -233,8 +235,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
+  lapTimesHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   lapTimesTitle: {
     fontSize: 14,
+    fontWeight: '600',
+  },
+  lapButtonInHeader: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lapButtonText: {
+    fontSize: 12,
     fontWeight: '600',
   },
   clearLapsButton: {

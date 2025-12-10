@@ -130,7 +130,7 @@ export default function EventModal({
           .eq('id', event.id);
 
         if (error) throw error;
-        logger.debug('✅ イベントを更新しました', { eventId: event.id, date });
+        logger.debug('イベントを更新しました', { eventId: event.id, date });
       } else {
         // 新規イベントの作成
         const { error } = await supabase
@@ -143,7 +143,7 @@ export default function EventModal({
           });
 
         if (error) throw error;
-        logger.debug('✅ イベントを登録しました', { date });
+        logger.debug('イベントを登録しました', { date });
       }
 
       // コールバックを先に実行してからモーダルを閉じる（データベース反映を待つため）

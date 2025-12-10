@@ -213,7 +213,7 @@ export default function CalendarScreen() {
     
     // 初回データ読み込みを実行（一度だけ）
     if (!hasInitialLoadRef.current) {
-      logger.debug('🔄 初回データ読み込みを開始します', { 
+      logger.debug('初回データ読み込みを開始します', { 
         selectedInstrument, 
         isInitialized, 
         isInstrumentInitializing,
@@ -232,14 +232,14 @@ export default function CalendarScreen() {
     
     // 初回ロード後の月変更のみを処理（初回ロードは別のuseEffectで処理）
     if (hasInitialLoadRef.current) {
-      // 月が変わった時は即座にデータを読み込む
-      logger.debug('🔄 月が変更されました、データを再読み込みします', { 
+    // 月が変わった時は即座にデータを読み込む
+      logger.debug('月が変更されました、データを再読み込みします', { 
         year: currentDate.getFullYear(), 
         month: currentDate.getMonth() + 1,
         selectedInstrument,
         instrumentId: getInstrumentId(selectedInstrument)
       });
-      loadAllData();
+    loadAllData();
     }
   }, [currentDate, isLoading, isInitialized, isAuthenticated, isInstrumentInitializing, selectedInstrument, loadAllData]);
 
@@ -251,12 +251,12 @@ export default function CalendarScreen() {
     
     // 初回ロード後の楽器変更のみを処理（初回ロードは別のuseEffectで処理）
     if (hasInitialLoadRef.current) {
-      // 楽器が変更された時は即座にデータを読み込む
-      logger.debug('🔄 楽器が変更されました、データを再読み込みします', { 
+    // 楽器が変更された時は即座にデータを読み込む
+      logger.debug('楽器が変更されました、データを再読み込みします', { 
         selectedInstrument,
         instrumentId: getInstrumentId(selectedInstrument)
       });
-      loadAllData();
+    loadAllData();
     }
   }, [selectedInstrument, isLoading, isInitialized, isAuthenticated, isInstrumentInitializing, loadAllData]);
 
@@ -278,7 +278,7 @@ export default function CalendarScreen() {
           if (lastTimestamp && Date.now() - parseInt(lastTimestamp) < 60000) {
             // 60秒以内に記録があった場合、楽器IDが一致する場合は強制更新
             if (lastInstrumentId === (currentInstrumentId || 'null')) {
-              logger.debug('🔄 最近の記録を検出、データを強制更新します', {
+              logger.debug('最近の記録を検出、データを強制更新します', {
                 lastTimestamp,
                 lastInstrumentId,
                 currentInstrumentId,
@@ -289,18 +289,18 @@ export default function CalendarScreen() {
               setTimeout(async () => {
                 try {
                   await loadAllData();
-                  logger.debug('✅ useFocusEffect: 1回目のデータ更新完了');
+                  logger.debug('useFocusEffect: 1回目のデータ更新完了');
                 } catch (error) {
-                  logger.error('❌ useFocusEffect: 1回目のデータ更新エラー:', error);
+                  logger.error('useFocusEffect: 1回目のデータ更新エラー:', error);
                 }
                 
                 // さらに待機してから2回目の更新を試行
                 setTimeout(async () => {
                   try {
                     await loadAllData();
-                    logger.debug('✅ useFocusEffect: 2回目のデータ更新完了');
+                    logger.debug('useFocusEffect: 2回目のデータ更新完了');
                   } catch (error) {
-                    logger.error('❌ useFocusEffect: 2回目のデータ更新エラー:', error);
+                    logger.error('useFocusEffect: 2回目のデータ更新エラー:', error);
                   }
                 }, 1000);
               }, 1500);
@@ -312,7 +312,7 @@ export default function CalendarScreen() {
         }
       }
       
-      logger.debug('🔄 画面にフォーカス、データを再読み込みします', { 
+      logger.debug('画面にフォーカス、データを再読み込みします', { 
         isInitialized, 
         selectedInstrument 
       });
@@ -325,7 +325,7 @@ export default function CalendarScreen() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        logger.debug('🔄 refreshPracticeData開始', { includeRecordings, userId: user.id });
+        logger.debug('refreshPracticeData開始', { includeRecordings, userId: user.id });
         if (includeRecordings) {
           await Promise.all([
             loadPracticeData(user),
@@ -338,12 +338,12 @@ export default function CalendarScreen() {
             loadTotalPracticeTime(user)
           ]);
         }
-        logger.debug('✅ refreshPracticeData完了');
+        logger.debug('refreshPracticeData完了');
       }
     } catch (error) {
       // エラーは無視（データ読み込み失敗は致命的ではない）
-      console.error('❌ カレンダーデータ読み込みエラー:', error);
-      logger.error('❌ カレンダーデータ読み込みエラー:', error);
+      console.error('カレンダーデータ読み込みエラー:', error);
+      logger.error('カレンダーデータ読み込みエラー:', error);
     }
   }, [loadPracticeData, loadTotalPracticeTime, loadRecordingsData]);
 
@@ -355,9 +355,9 @@ export default function CalendarScreen() {
         setTimeout(async () => {
           try {
             await loadShortTermGoal();
-            logger.debug('✅ 目標表示を即時再読み込みしました');
+            logger.debug('目標表示を即時再読み込みしました');
           } catch (error) {
-            logger.error('❌ 目標表示即時再読み込みエラー:', error);
+            logger.error('目標表示即時再読み込みエラー:', error);
           }
         }, 300); // データベース反映を待つため300ms待機
       } else {
@@ -369,15 +369,15 @@ export default function CalendarScreen() {
         setTimeout(async () => {
           try {
             await loadShortTermGoal();
-            logger.debug('✅ 目標表示を再読み込みしました');
+            logger.debug('目標表示を再読み込みしました');
           } catch (error) {
-            logger.error('❌ 目標表示再読み込みエラー:', error);
+            logger.error('目標表示再読み込みエラー:', error);
           }
         }, 500);
       }
     } catch (error) {
       // エラーは無視（目標表示更新失敗は致命的ではない）
-      logger.error('❌ 目標表示更新エラー:', error);
+      logger.error('目標表示更新エラー:', error);
     }
   }, [loadShortTermGoal]);
 
@@ -421,9 +421,9 @@ export default function CalendarScreen() {
         try {
           // まず1回目の更新を試行
           await loadAllData();
-          logger.debug('✅ 1回目のデータ更新完了', { isVerified });
+          logger.debug('1回目のデータ更新完了', { isVerified });
         } catch (error) {
-          logger.error('❌ 1回目のデータ更新エラー:', error);
+          logger.error('1回目のデータ更新エラー:', error);
         }
         
         // verifiedでない場合は、さらに待機してから2回目の更新を試行
@@ -431,9 +431,9 @@ export default function CalendarScreen() {
           setTimeout(async () => {
             try {
               await loadAllData();
-              logger.debug('✅ 2回目のデータ更新完了');
+              logger.debug('2回目のデータ更新完了');
             } catch (error) {
-              logger.error('❌ 2回目のデータ更新エラー:', error);
+              logger.error('2回目のデータ更新エラー:', error);
             }
           }, 1000);
         }
@@ -536,7 +536,7 @@ export default function CalendarScreen() {
           const hasMedia = !!(audioUrl || videoUrl);
           const mediaMessage = hasMedia ? '録音・動画ライブラリにも保存されました！' : '';
           
-          setSuccessMessage(`${minutes}分の練習記録を保存しました！${mediaMessage}`);
+            setSuccessMessage(`${minutes}分の練習記録を保存しました！${mediaMessage}`);
           setTimeout(() => setSuccessMessage(''), 3000);
           
           // 保存完了後にlocalStorageにタイムスタンプを保存
@@ -553,7 +553,7 @@ export default function CalendarScreen() {
             }
           }
           
-          logger.debug('💾 練習記録を保存しました', {
+          logger.debug('練習記録を保存しました', {
             minutes,
             practiceDate: practiceRecord.practice_date,
             instrumentId: currentInstrumentId,
@@ -565,11 +565,11 @@ export default function CalendarScreen() {
           
           // データ更新を確実に実行（refreshPracticeDataのみで十分）
           try {
-            logger.debug('🔄 データ更新を開始...');
+            logger.debug('データ更新を開始...');
             await refreshPracticeData(false);
-            logger.debug('✅ データ更新完了');
+            logger.debug('データ更新完了');
           } catch (refreshError) {
-            console.error('❌ データ更新エラー:', refreshError);
+            console.error('データ更新エラー:', refreshError);
             // エラーが発生しても続行
           }
           
@@ -893,7 +893,7 @@ export default function CalendarScreen() {
         onRecord={async (minutes) => {
           // QuickRecordModal内で既に保存処理が完了しているため、
           // データ更新のみを実行（保存処理はスキップ）
-          logger.info('🔄 クイック記録のデータ更新を開始...', { minutes });
+          logger.info('クイック記録のデータ更新を開始...', { minutes });
           
           // データベースへの反映を確実にするため、少し待機してから更新
           await new Promise(resolve => setTimeout(resolve, 300));
@@ -901,11 +901,11 @@ export default function CalendarScreen() {
           
           // PracticeRecordModalが開いている場合は、そのモーダル内のデータも再読み込み
           if (uiState.showPracticeRecord) {
-            logger.info('🔄 PracticeRecordModalが開いているため、モーダル内のデータを再読み込みします');
+            logger.info('PracticeRecordModalが開いているため、モーダル内のデータを再読み込みします');
             setPracticeRecordRefreshKey(prev => prev + 1);
           }
           
-          logger.info('✅ クイック記録のデータ更新が完了しました', { minutes });
+          logger.info('クイック記録のデータ更新が完了しました', { minutes });
           setShowQuickRecord(false);
         }}
       />
@@ -946,7 +946,7 @@ export default function CalendarScreen() {
           is_completed: false
         } : undefined}
         onEventSaved={async () => {
-          logger.debug('🔄 onEventSavedコールバックが呼ばれました');
+          logger.debug('onEventSavedコールバックが呼ばれました');
           setSelectedEvent(null);
           
           // データベースへの反映を待つため、少し遅延を設けてから更新
@@ -954,20 +954,20 @@ export default function CalendarScreen() {
           setTimeout(async () => {
             try {
               await loadEvents();
-              logger.debug('✅ loadEvents完了（1回目）');
+              logger.debug('loadEvents完了（1回目）');
             } catch (error) {
-              logger.error('❌ イベント読み込みエラー（1回目）:', error);
+              logger.error('イベント読み込みエラー（1回目）:', error);
             }
             
             // さらに待機してから2回目の更新を試行（データベース反映の遅延に対応）
             setTimeout(async () => {
               try {
                 await loadEvents();
-                logger.debug('✅ loadEvents完了（2回目）');
-                setSuccessMessage('イベントを保存しました！');
-                setTimeout(() => setSuccessMessage(''), 3000);
+                logger.debug('loadEvents完了（2回目）');
+          setSuccessMessage('イベントを保存しました！');
+          setTimeout(() => setSuccessMessage(''), 3000);
               } catch (error) {
-                logger.error('❌ イベント読み込みエラー（2回目）:', error);
+                logger.error('イベント読み込みエラー（2回目）:', error);
               }
             }, 500);
           }, 300);

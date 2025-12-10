@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform } from 'react-native';
 import { Palette, Check } from 'lucide-react-native';
 import { Instrument } from '@/services';
 
@@ -20,28 +20,92 @@ interface PresetPalette {
 interface ColorPickerProps {
   label: string;
   color: string;
-  onColorChange: (color: string) => void;
+  onColorChange: (color: string) => void | Promise<void>;
   colorType: string;
   currentTheme: Instrument;
 }
 
-const ColorPicker: React.FC<ColorPickerProps> = ({ label, color, onColorChange, colorType, currentTheme }) => (
-  <View style={styles.colorPickerContainer}>
-    <Text style={[styles.colorPickerLabel, { color: currentTheme?.text || '#2D3748' }]}>{label}</Text>
-    <View style={styles.colorPickerRow}>
-      <View style={[styles.colorPreview, { backgroundColor: color }]} />
-      <TouchableOpacity
-        style={[styles.colorButton, { backgroundColor: color }]}
-        onPress={() => {
-          Alert.alert('カラーピッカー', 'カラーピッカー機能は準備中です');
-        }}
-        activeOpacity={0.7}
-      >
-        <Text style={styles.colorButtonText}>変更</Text>
-      </TouchableOpacity>
+const ColorPicker: React.FC<ColorPickerProps> = ({ label, color, onColorChange, colorType, currentTheme }) => {
+  const colorInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleColorChange = async (newColor: string) => {
+    try {
+      await onColorChange(newColor);
+    } catch (error) {
+      console.error('色の変更エラー:', error);
+      Alert.alert('エラー', '色の変更に失敗しました');
+    }
+  };
+
+  const openColorPicker = () => {
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      // Web環境ではHTML5のカラーピッカーを使用
+      const input = document.createElement('input');
+      input.type = 'color';
+      input.value = color;
+      input.style.position = 'fixed';
+      input.style.opacity = '0';
+      input.style.pointerEvents = 'none';
+      input.style.width = '0';
+      input.style.height = '0';
+      document.body.appendChild(input);
+      
+      const handleChange = (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        if (target.value) {
+          handleColorChange(target.value);
+        }
+        document.body.removeChild(input);
+        input.removeEventListener('change', handleChange);
+      };
+      
+      input.addEventListener('change', handleChange);
+      
+      // カラーピッカーを開く
+      input.click();
+    } else {
+      // モバイル環境ではアラートで色コードを入力
+      // Alert.promptは一部のプラットフォームで利用できないため、代替方法を使用
+      Alert.alert(
+        '色を選択',
+        '16進数の色コードを入力してください（例: #FF0000）\n\n現在の色: ' + color,
+        [
+          {
+            text: 'キャンセル',
+            style: 'cancel',
+          },
+          {
+            text: '色コードを入力',
+            onPress: () => {
+              // モバイル環境では、色コード入力用のモーダルを表示するか、
+              // またはWeb環境でのみカラーピッカーを使用することを推奨
+              Alert.alert(
+                'モバイル環境',
+                'カラーピッカーはWeb環境でのみ利用できます。\n色コードを直接入力する場合は、設定画面から手動で変更してください。'
+              );
+            },
+          },
+        ]
+      );
+    }
+  };
+
+  return (
+    <View style={styles.colorPickerContainer}>
+      <Text style={[styles.colorPickerLabel, { color: currentTheme?.text || '#2D3748' }]}>{label}</Text>
+      <View style={styles.colorPickerRow}>
+        <View style={[styles.colorPreview, { backgroundColor: color, borderColor: currentTheme?.secondary || '#E2E8F0' }]} />
+        <TouchableOpacity
+          style={[styles.colorButton, { backgroundColor: currentTheme?.primary || '#4A5568' }]}
+          onPress={openColorPicker}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.colorButtonText, { color: currentTheme?.surface || '#FFFFFF' }]}>変更</Text>
+        </TouchableOpacity>
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
 interface AppearanceSettingsProps {
   currentTheme: Instrument;
@@ -508,11 +572,15 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
             color={customColors.background} 
             colorType="background" 
             currentTheme={currentTheme} 
-            onColorChange={(color) => {
-              const updatedColors = { ...customColors, background: color };
-              setCustomColors(updatedColors);
-              // 即座に反映
-              setCustomTheme(updatedColors);
+            onColorChange={async (color) => {
+              try {
+                const updatedColors = { ...customColors, background: color };
+                setCustomColors(updatedColors);
+                // 即座に反映
+                await setCustomTheme(updatedColors);
+              } catch (error) {
+                console.error('背景色の更新エラー:', error);
+              }
             }} 
           />
           <ColorPicker 
@@ -520,10 +588,14 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
             color={customColors.surface} 
             colorType="surface" 
             currentTheme={currentTheme} 
-            onColorChange={(color) => {
-              const updatedColors = { ...customColors, surface: color };
-              setCustomColors(updatedColors);
-              setCustomTheme(updatedColors);
+            onColorChange={async (color) => {
+              try {
+                const updatedColors = { ...customColors, surface: color };
+                setCustomColors(updatedColors);
+                await setCustomTheme(updatedColors);
+              } catch (error) {
+                console.error('表面色の更新エラー:', error);
+              }
             }} 
           />
           <ColorPicker 
@@ -531,10 +603,14 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
             color={customColors.primary} 
             colorType="primary" 
             currentTheme={currentTheme} 
-            onColorChange={(color) => {
-              const updatedColors = { ...customColors, primary: color };
-              setCustomColors(updatedColors);
-              setCustomTheme(updatedColors);
+            onColorChange={async (color) => {
+              try {
+                const updatedColors = { ...customColors, primary: color };
+                setCustomColors(updatedColors);
+                await setCustomTheme(updatedColors);
+              } catch (error) {
+                console.error('プライマリ色の更新エラー:', error);
+              }
             }} 
           />
           <ColorPicker 
@@ -542,10 +618,14 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
             color={customColors.secondary} 
             colorType="secondary" 
             currentTheme={currentTheme} 
-            onColorChange={(color) => {
-              const updatedColors = { ...customColors, secondary: color };
-              setCustomColors(updatedColors);
-              setCustomTheme(updatedColors);
+            onColorChange={async (color) => {
+              try {
+                const updatedColors = { ...customColors, secondary: color };
+                setCustomColors(updatedColors);
+                await setCustomTheme(updatedColors);
+              } catch (error) {
+                console.error('セカンダリ色の更新エラー:', error);
+              }
             }} 
           />
           <ColorPicker 
@@ -553,10 +633,14 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
             color={customColors.accent} 
             colorType="accent" 
             currentTheme={currentTheme} 
-            onColorChange={(color) => {
-              const updatedColors = { ...customColors, accent: color };
-              setCustomColors(updatedColors);
-              setCustomTheme(updatedColors);
+            onColorChange={async (color) => {
+              try {
+                const updatedColors = { ...customColors, accent: color };
+                setCustomColors(updatedColors);
+                await setCustomTheme(updatedColors);
+              } catch (error) {
+                console.error('アクセント色の更新エラー:', error);
+              }
             }} 
           />
           <ColorPicker 
@@ -564,10 +648,14 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
             color={customColors.text} 
             colorType="text" 
             currentTheme={currentTheme} 
-            onColorChange={(color) => {
-              const updatedColors = { ...customColors, text: color };
-              setCustomColors(updatedColors);
-              setCustomTheme(updatedColors);
+            onColorChange={async (color) => {
+              try {
+                const updatedColors = { ...customColors, text: color };
+                setCustomColors(updatedColors);
+                await setCustomTheme(updatedColors);
+              } catch (error) {
+                console.error('テキスト色の更新エラー:', error);
+              }
             }} 
           />
           <ColorPicker 
@@ -575,10 +663,14 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
             color={customColors.textSecondary} 
             colorType="textSecondary" 
             currentTheme={currentTheme} 
-            onColorChange={(color) => {
-              const updatedColors = { ...customColors, textSecondary: color };
-              setCustomColors(updatedColors);
-              setCustomTheme(updatedColors);
+            onColorChange={async (color) => {
+              try {
+                const updatedColors = { ...customColors, textSecondary: color };
+                setCustomColors(updatedColors);
+                await setCustomTheme(updatedColors);
+              } catch (error) {
+                console.error('サブテキスト色の更新エラー:', error);
+              }
             }} 
           />
           

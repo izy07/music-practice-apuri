@@ -582,7 +582,7 @@ export const updateUserProfile = async (
         // 400エラーの場合、詳細な情報をログ出力
         if (error.status === 400) {
           // エラーの詳細をコンソールに出力（開発時のデバッグ用）
-          console.error('❌ user_profiles更新エラー（詳細）:', {
+          console.error('user_profiles更新エラー（詳細）:', {
             code: error.code,
             message: error.message,
             status: error.status,

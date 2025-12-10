@@ -71,7 +71,7 @@ export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRe
         throw result.error || new Error(errorMessage);
       }
 
-      logger.info(`✅ クイック記録を保存: ${minutes}分`, {
+      logger.info(`クイック記録を保存: ${minutes}分`, {
         practiceDate: formatLocalDate(new Date()),
         instrumentId: currentInstrumentId
       });

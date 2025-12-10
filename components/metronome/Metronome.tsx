@@ -4,6 +4,7 @@ import { Play, Pause } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import audioResourceManager from '@/lib/audioResourceManager';
 
 // 拍子の選択肢（画像に合わせて拡張）
 const timeSignatures = [
@@ -27,6 +28,7 @@ interface MetronomeProps {
 
 export default function Metronome({ audioContextRef }: MetronomeProps) {
   const { currentTheme } = useInstrumentTheme();
+  const OWNER_NAME = 'Metronome';
   
   // メトロノーム関連の状態
   const [isMetronomePlaying, setIsMetronomePlaying] = useState(false);
@@ -45,39 +47,50 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
 
   // メトロノーム用のref
   const metronomeIntervalRef = useRef<number | null>(null);
+  const activeOscillatorsRef = useRef<OscillatorNode[]>([]);
 
-  // コンポーネントの初期化
+  // コンポーネントの初期化とクリーンアップ
   useEffect(() => {
+    // 初期化時にAudioContextを取得
+    audioResourceManager.acquireAudioContext(OWNER_NAME).then(ctx => {
+      if (ctx) {
+        audioContextRef.current = ctx;
+      }
+    });
+
     return () => {
       // クリーンアップ
       if (metronomeIntervalRef.current) {
         clearInterval(metronomeIntervalRef.current);
+        metronomeIntervalRef.current = null;
       }
+      
+      // アクティブなオシレーターを停止
+      activeOscillatorsRef.current.forEach(osc => {
+        try {
+          if (osc.state !== 'finished' && osc.state !== 'stopped') {
+            osc.stop();
+          }
+          osc.disconnect();
+        } catch (error) {
+          logger.warn('Failed to stop oscillator during cleanup:', error);
+        }
+      });
+      activeOscillatorsRef.current = [];
+      
+      // リソースを解放
+      audioResourceManager.releaseAllResources(OWNER_NAME);
     };
   }, []);
 
-  // AudioContextの初期化と再開
+  // AudioContextの初期化と再開（リソース管理サービスを使用）
   const ensureAudioContext = async (): Promise<AudioContext | null> => {
-    // Web環境でのみ動作
-    if (typeof window === 'undefined' || !window.AudioContext && !(window as any).webkitAudioContext) {
-      logger.warn('Web Audio API is not available');
-      return null;
-    }
-
     try {
-      // AudioContextが存在しない場合は作成
-      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
-        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-        audioContextRef.current = new AudioContextClass();
+      // リソース管理サービスからAudioContextを取得
+      const ctx = await audioResourceManager.acquireAudioContext(OWNER_NAME);
+      if (ctx) {
+        audioContextRef.current = ctx;
       }
-
-      const ctx = audioContextRef.current;
-
-      // AudioContextが停止している場合は再開
-      if (ctx.state === 'suspended') {
-        await ctx.resume();
-      }
-
       return ctx;
     } catch (error) {
       logger.error('Failed to initialize AudioContext:', error);
@@ -104,6 +117,10 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
             oscillator.connect(gainNode);
             gainNode.connect(ctx.destination);
             
+            // オシレーターをリソース管理サービスに登録
+            audioResourceManager.registerOscillator(OWNER_NAME, oscillator);
+            activeOscillatorsRef.current.push(oscillator);
+            
             // 典型的なメトロノームの強拍音: 約1000Hz
             oscillator.frequency.setValueAtTime(1000, currentTime);
             oscillator.type = 'square'; // より明確な音色
@@ -115,12 +132,21 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
             
             oscillator.start(currentTime);
             oscillator.stop(currentTime + 0.05);
+            
+            // 停止後に配列から削除
+            oscillator.onended = () => {
+              activeOscillatorsRef.current = activeOscillatorsRef.current.filter(osc => osc !== oscillator);
+            };
           } else {
             // 弱拍: 「トック」音（低い音、やや柔らかい）
             const oscillator = ctx.createOscillator();
             const gainNode = ctx.createGain();
             oscillator.connect(gainNode);
             gainNode.connect(ctx.destination);
+            
+            // オシレーターをリソース管理サービスに登録
+            audioResourceManager.registerOscillator(OWNER_NAME, oscillator);
+            activeOscillatorsRef.current.push(oscillator);
             
             // 典型的なメトロノームの弱拍音: 約600Hz
             oscillator.frequency.setValueAtTime(600, currentTime);
@@ -133,6 +159,11 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
             
             oscillator.start(currentTime);
             oscillator.stop(currentTime + 0.08);
+            
+            // 停止後に配列から削除
+            oscillator.onended = () => {
+              activeOscillatorsRef.current = activeOscillatorsRef.current.filter(osc => osc !== oscillator);
+            };
           }
         }
         break;
@@ -144,6 +175,10 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
           const gainNode = ctx.createGain();
           oscillator.connect(gainNode);
           gainNode.connect(ctx.destination);
+          
+          // オシレーターをリソース管理サービスに登録
+          audioResourceManager.registerOscillator(OWNER_NAME, oscillator);
+          activeOscillatorsRef.current.push(oscillator);
           
           oscillator.type = 'sine';
           if (isStrongBeat) {
@@ -157,6 +192,11 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
           
           oscillator.start(currentTime);
           oscillator.stop(currentTime + 0.15);
+          
+          // 停止後に配列から削除
+          oscillator.onended = () => {
+            activeOscillatorsRef.current = activeOscillatorsRef.current.filter(osc => osc !== oscillator);
+          };
         }
         break;
         
@@ -174,6 +214,10 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
             osc.connect(gain);
             gain.connect(ctx.destination);
             
+            // オシレーターをリソース管理サービスに登録
+            audioResourceManager.registerOscillator(OWNER_NAME, osc);
+            activeOscillatorsRef.current.push(osc);
+            
             osc.type = 'sine';
             osc.frequency.setValueAtTime(baseFreq * (i + 1), currentTime);
             
@@ -183,6 +227,11 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
             
             osc.start(currentTime);
             osc.stop(currentTime + 0.3);
+            
+            // 停止後に配列から削除
+            osc.onended = () => {
+              activeOscillatorsRef.current = activeOscillatorsRef.current.filter(o => o !== osc);
+            };
             
             oscillators.push(osc);
             gainNodes.push(gain);
@@ -198,6 +247,10 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
           oscillator.connect(gainNode);
           gainNode.connect(ctx.destination);
           
+          // オシレーターをリソース管理サービスに登録
+          audioResourceManager.registerOscillator(OWNER_NAME, oscillator);
+          activeOscillatorsRef.current.push(oscillator);
+          
           oscillator.type = 'sine';
           const startFreq = isStrongBeat ? 1000 : 400;
           const endFreq = isStrongBeat ? 1500 : 600;
@@ -210,6 +263,11 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
           
           oscillator.start(currentTime);
           oscillator.stop(currentTime + 0.2);
+          
+          // 停止後に配列から削除
+          oscillator.onended = () => {
+            activeOscillatorsRef.current = activeOscillatorsRef.current.filter(osc => osc !== oscillator);
+          };
         }
         break;
     }

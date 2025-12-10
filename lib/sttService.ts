@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 import logger from './logger';
 import { ErrorHandler } from './errorHandler';
+import audioResourceManager from './audioResourceManager';
 
 // Web環境ではexpo-audioをインポートしない
 let AudioRecorder: any = null;
@@ -30,11 +31,12 @@ class WebAudioRecorderImpl implements WebAudioRecorder {
   private mediaRecorder: MediaRecorder | null = null;
   private audioChunks: Blob[] = [];
   private stream: MediaStream | null = null;
+  private readonly OWNER_NAME = 'SttService';
 
   async start(): Promise<void> {
     try {
-      // マイクアクセスの要求
-      this.stream = await navigator.mediaDevices.getUserMedia({ 
+      // リソース管理サービスからマイクアクセスを取得（排他制御）
+      this.stream = await audioResourceManager.acquireMicrophone(this.OWNER_NAME, {
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
@@ -92,6 +94,8 @@ class WebAudioRecorderImpl implements WebAudioRecorder {
       this.stream.getTracks().forEach(track => track.stop());
       this.stream = null;
     }
+    // リソース管理サービスからマイクを解放
+    audioResourceManager.releaseMicrophone(this.OWNER_NAME);
     this.mediaRecorder = null;
     this.audioChunks = [];
   }

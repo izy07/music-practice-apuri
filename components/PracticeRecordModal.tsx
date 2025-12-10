@@ -32,7 +32,7 @@ export default function PracticeRecordModal({
   onRefresh
 }: PracticeRecordModalProps) {
   const router = useRouter();
-  const { selectedInstrument } = useInstrumentTheme();
+  const { selectedInstrument, currentTheme } = useInstrumentTheme();
   const { user } = useAuthAdvanced();
   const [minutes, setMinutes] = useState('');
   const [content, setContent] = useState('');
@@ -66,6 +66,21 @@ export default function PracticeRecordModal({
   // 無限ループを防ぐため、existingRecordingとisRecordingJustSavedの最新値を保持
   const existingRecordingRef = useRef(existingRecording);
   const isRecordingJustSavedRef = useRef(isRecordingJustSaved);
+  
+  // 時間・分入力欄のref
+  const hoursInputRef = useRef<TextInput>(null);
+  const minutesInputRef = useRef<TextInput>(null);
+
+  // 全角数字を半角数字に変換する関数
+  const convertToHalfWidth = (text: string): string => {
+    return text.replace(/[０-９]/g, (char) => {
+      const fullWidthMap: { [key: string]: string } = {
+        '０': '0', '１': '1', '２': '2', '３': '3', '４': '4',
+        '５': '5', '６': '6', '７': '7', '８': '8', '９': '9'
+      };
+      return fullWidthMap[char] || char;
+    });
+  };
   
   // 最新値を更新
   useEffect(() => {
@@ -414,7 +429,7 @@ export default function PracticeRecordModal({
           setAudioUrl(''); // 録音済みとして表示するため、一時的なURLをクリア
           setVideoUrl(''); // 動画URLもクリア
           
-          logger.debug('✅ 録音情報を即座に状態に設定しました（録音済み状態を表示）:', {
+          logger.debug('録音情報を即座に状態に設定しました（録音済み状態を表示）:', {
             recordingState,
             audioUrl: '',
             videoUrl: '',
@@ -425,6 +440,18 @@ export default function PracticeRecordModal({
           setIsAudioFavorite(false);
           setAudioDuration(0);
           
+          // 録音保存後、フォーム状態を復元（録音前に入力していた情報を保持）
+          if (formStateBeforeRecording) {
+            logger.debug('録音保存後（handleAudioOnlySave）、フォーム状態を復元します', {
+              minutes: formStateBeforeRecording.minutes,
+              content: formStateBeforeRecording.content ? 'あり' : 'なし'
+            });
+            setMinutes(formStateBeforeRecording.minutes);
+            setContent(formStateBeforeRecording.content);
+            // フォーム状態をクリア（復元済み）
+            setFormStateBeforeRecording(null);
+          }
+          
           // コールバックを呼び出す（カレンダーデータの更新はコールバック側で処理）
           onRecordingSaved?.();
           
@@ -433,7 +460,22 @@ export default function PracticeRecordModal({
         // データベース反映を待つため、少し遅延してから読み込む
         // loadExistingRecordは既にloadRecordingを含んでいるので、loadRecordingを個別に呼ぶ必要はない
         setTimeout(async () => {
+          // フォーム状態を一時保存（loadExistingRecordで上書きされる可能性があるため）
+          const savedMinutes = formStateBeforeRecording?.minutes || minutes;
+          const savedContent = formStateBeforeRecording?.content || content;
+          
           await loadExistingRecord(savedRecording.id);
+          
+          // 読み込み後にフォーム状態を復元（既存記録で上書きされた場合でも、ユーザーが入力した情報を優先）
+          if (savedMinutes || savedContent) {
+            logger.debug('loadExistingRecord後（handleAudioOnlySave）、フォーム状態を復元します', {
+              minutes: savedMinutes,
+              content: savedContent ? 'あり' : 'なし'
+            });
+            if (savedMinutes) setMinutes(savedMinutes);
+            if (savedContent) setContent(savedContent);
+          }
+          
           // 読み込み完了後にフラグをリセット
           setIsRecordingJustSaved(false);
         }, 500);
@@ -442,7 +484,7 @@ export default function PracticeRecordModal({
       }
         } else {
           // 保存に失敗した場合は、フォームをリセットしない
-          logger.warn('⚠️ 録音保存は成功しましたが、savedRecordingがnullです');
+          logger.warn('録音保存は成功しましたが、savedRecordingがnullです');
         }
         
         Alert.alert('保存完了', '録音を保存しました');
@@ -474,12 +516,25 @@ export default function PracticeRecordModal({
       // 録音済み表示条件: existingRecording && !audioUrl && !videoUrl
       setAudioUrl(''); // 録音済みとして表示するため、一時的なURLをクリア
       setVideoUrl(''); // 動画URLもクリア
+      
+      // 録音保存後、フォーム状態を復元（録音前に入力していた情報を保持）
+      if (formStateBeforeRecording) {
+        logger.debug('録音保存後、フォーム状態を復元します', {
+          minutes: formStateBeforeRecording.minutes,
+          content: formStateBeforeRecording.content ? 'あり' : 'なし'
+        });
+        setMinutes(formStateBeforeRecording.minutes);
+        setContent(formStateBeforeRecording.content);
+        // フォーム状態をクリア（復元済み）
+        setFormStateBeforeRecording(null);
+      }
+      
       setAudioTitle('');
       setAudioMemo('');
       setIsAudioFavorite(false);
       setAudioDuration(0);
       
-      logger.debug('✅ 録音情報を即座に状態に設定しました（録音済み状態を表示）:', {
+      logger.debug('録音情報を即座に状態に設定しました（録音済み状態を表示）:', {
         id: audioData.recordingId,
         title: audioData.title,
         duration: audioData.duration,
@@ -493,7 +548,22 @@ export default function PracticeRecordModal({
         // データベース反映を待つため、少し遅延してから読み込む
         // loadExistingRecordは既にloadRecordingを含んでいるので、loadRecordingを個別に呼ぶ必要はない
         setTimeout(async () => {
+          // フォーム状態を一時保存（loadExistingRecordで上書きされる可能性があるため）
+          const savedMinutes = formStateBeforeRecording?.minutes || minutes;
+          const savedContent = formStateBeforeRecording?.content || content;
+          
           await loadExistingRecord(audioData.recordingId);
+          
+          // 読み込み後にフォーム状態を復元（既存記録で上書きされた場合でも、ユーザーが入力した情報を優先）
+          if (savedMinutes || savedContent) {
+            logger.debug('loadExistingRecord後、フォーム状態を復元します', {
+              minutes: savedMinutes,
+              content: savedContent ? 'あり' : 'なし'
+            });
+            if (savedMinutes) setMinutes(savedMinutes);
+            if (savedContent) setContent(savedContent);
+          }
+          
           // 読み込み完了後にフラグをリセット
           setIsRecordingJustSaved(false);
         }, 500);
@@ -578,7 +648,7 @@ export default function PracticeRecordModal({
   };
 
   const handleDeleteRecord = () => {
-    logger.debug('🗑️ 削除ボタンが押されました', {
+    logger.debug('削除ボタンが押されました', {
       existingRecord: !!existingRecord,
       existingRecording: !!existingRecording,
       existingRecordId: existingRecord?.id,
@@ -716,7 +786,7 @@ export default function PracticeRecordModal({
         { text: 'キャンセル', style: 'cancel' },
         { text: '削除', style: 'destructive', onPress: async () => {
           try {
-            logger.debug('🗑️ 両方削除を開始します');
+            logger.debug('両方削除を開始します');
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) {
               Alert.alert('エラー', 'ログインが必要です');
@@ -764,7 +834,7 @@ export default function PracticeRecordModal({
                 practiceDeleteError = error;
               } else {
                 practiceDeleteSuccess = true;
-                logger.debug('✅ 練習記録の削除に成功しました');
+                logger.debug('練習記録の削除に成功しました');
               }
             } else {
               // 削除する練習記録がない場合も成功とみなす
@@ -781,7 +851,7 @@ export default function PracticeRecordModal({
                 recordingDeleteError = recordingError;
               } else {
                 recordingDeleteSuccess = true;
-                logger.debug('✅ 録音の削除に成功しました');
+                logger.debug('録音の削除に成功しました');
                 setAudioUrl('');
                 setExistingRecording(null);
               }
@@ -826,7 +896,7 @@ export default function PracticeRecordModal({
             // コールバックを呼び出してデータを更新
             onRecordingSaved?.();
 
-            logger.debug('✅ 両方削除が完了しました');
+            logger.debug('両方削除が完了しました');
             Alert.alert('削除完了', '練習記録と演奏録音を削除しました', [
               { text: 'OK', onPress: () => onClose() }
             ]);
@@ -903,127 +973,124 @@ export default function PracticeRecordModal({
               )}
             </Text>
             
-            {/* 時間選択ボタン */}
-            <View style={styles.timeSelectionContainer}>
-              <View style={styles.timeButtonRow}>
-                <TouchableOpacity 
-                  style={[styles.timeButton, minutes === '15' && styles.timeButtonActive]}
-                  onPress={() => setMinutes('15')}
-                >
-                  <Text style={[styles.timeButtonText, minutes === '15' && styles.timeButtonTextActive]}>
-                    {(timerMinutes > 0 || existingRecord) ? '+' : ''}15分
+            {/* 練習時間入力（時間と分を分けて入力） */}
+            <View style={styles.customTimeInputContainer}>
+              <Text style={[styles.customTimeLabel, { color: currentTheme.text }]}>
+                練習時間を入力
+              </Text>
+              <View style={styles.customTimeInputRow}>
+                <View style={styles.customTimeInputGroup}>
+                  <TextInput
+                    ref={hoursInputRef}
+                    style={[
+                      styles.customTimeInput,
+                      {
+                        backgroundColor: currentTheme.background,
+                        color: currentTheme.text,
+                        borderColor: minutes && !isNaN(Number(minutes)) && Number(minutes) > 0
+                          ? currentTheme.primary
+                          : currentTheme.secondary,
+                      }
+                    ]}
+                    value={(() => {
+                      const totalMinutes = minutes ? Number(minutes) : 0;
+                      const hours = Math.floor(totalMinutes / 60);
+                      return hours > 0 ? hours.toString() : '';
+                    })()}
+                    onChangeText={(text) => {
+                      // 全角数字を半角数字に変換
+                      const halfWidthText = convertToHalfWidth(text);
+                      // 数字以外の文字を除去
+                      const cleanedText = halfWidthText.replace(/[^0-9]/g, '');
+                      
+                      const hours = cleanedText === '' ? 0 : Math.max(0, Math.min(24, parseInt(cleanedText, 10) || 0));
+                      const currentMinutes = minutes ? Number(minutes) : 0;
+                      const minutesPart = currentMinutes % 60;
+                      const newTotalMinutes = hours * 60 + minutesPart;
+                      setMinutes(newTotalMinutes > 0 ? newTotalMinutes.toString() : '');
+                      
+                      // 1文字入力されたら自動的に分の入力欄にフォーカス
+                      if (text.length >= 1 && cleanedText.length >= 1) {
+                        // 少し遅延を入れてフォーカスを移行（React Native Webのレンダリングを待つ）
+                        setTimeout(() => {
+                          if (minutesInputRef.current) {
+                            minutesInputRef.current.focus();
+                          }
+                        }, 100);
+                      }
+                    }}
+                    placeholder="0"
+                    keyboardType="numeric"
+                    maxLength={2}
+                    returnKeyType="next"
+                    onSubmitEditing={() => {
+                      minutesInputRef.current?.focus();
+                    }}
+                  />
+                  <Text style={[styles.customTimeUnit, { color: currentTheme.textSecondary }]}>
+                    時間
                   </Text>
-                </TouchableOpacity>
+                </View>
                 
-                <TouchableOpacity 
-                  style={[styles.timeButton, minutes === '30' && styles.timeButtonActive]}
-                  onPress={() => setMinutes('30')}
-                >
-                  <Text style={[styles.timeButtonText, minutes === '30' && styles.timeButtonTextActive]}>
-                    {(timerMinutes > 0 || existingRecord) ? '+' : ''}30分
+                <View style={styles.customTimeInputGroup}>
+                  <TextInput
+                    ref={minutesInputRef}
+                    style={[
+                      styles.customTimeInput,
+                      {
+                        backgroundColor: currentTheme.background,
+                        color: currentTheme.text,
+                        borderColor: minutes && !isNaN(Number(minutes)) && Number(minutes) > 0
+                          ? currentTheme.primary
+                          : currentTheme.secondary,
+                      }
+                    ]}
+                    value={(() => {
+                      const totalMinutes = minutes ? Number(minutes) : 0;
+                      const minutesPart = totalMinutes % 60;
+                      return minutesPart > 0 ? minutesPart.toString() : '';
+                    })()}
+                    onChangeText={(text) => {
+                      // 全角数字を半角数字に変換
+                      const halfWidthText = convertToHalfWidth(text);
+                      // 数字以外の文字を除去
+                      const cleanedText = halfWidthText.replace(/[^0-9]/g, '');
+                      
+                      const mins = cleanedText === '' ? 0 : Math.max(0, Math.min(59, parseInt(cleanedText, 10) || 0));
+                      const currentMinutes = minutes ? Number(minutes) : 0;
+                      const hours = Math.floor(currentMinutes / 60);
+                      const newTotalMinutes = hours * 60 + mins;
+                      setMinutes(newTotalMinutes > 0 ? newTotalMinutes.toString() : '');
+                    }}
+                    placeholder="0"
+                    keyboardType="numeric"
+                    maxLength={2}
+                    returnKeyType="done"
+                  />
+                  <Text style={[styles.customTimeUnit, { color: currentTheme.textSecondary }]}>
+                    分
                   </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.timeButton, minutes === '45' && styles.timeButtonActive]}
-                  onPress={() => setMinutes('45')}
-                >
-                  <Text style={[styles.timeButtonText, minutes === '45' && styles.timeButtonTextActive]}>
-                    {(timerMinutes > 0 || existingRecord) ? '+' : ''}45分
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.timeButton, minutes === '60' && styles.timeButtonActive]}
-                  onPress={() => setMinutes('60')}
-                >
-                  <Text style={[styles.timeButtonText, minutes === '60' && styles.timeButtonTextActive]}>
-                    {(timerMinutes > 0 || existingRecord) ? '+' : ''}1時間
-                  </Text>
-                </TouchableOpacity>
+                </View>
               </View>
               
-              <View style={styles.timeButtonRow}>
-                <TouchableOpacity 
-                  style={[styles.timeButton, minutes === '90' && styles.timeButtonActive]}
-                  onPress={() => setMinutes('90')}
-                >
-                  <Text style={[styles.timeButtonText, minutes === '90' && styles.timeButtonTextActive]}>
-                    {(timerMinutes > 0 || existingRecord) ? '+' : ''}1時間半
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.timeButton, minutes === '120' && styles.timeButtonActive]}
-                  onPress={() => setMinutes('120')}
-                >
-                  <Text style={[styles.timeButtonText, minutes === '120' && styles.timeButtonTextActive]}>
-                    {(timerMinutes > 0 || existingRecord) ? '+' : ''}2時間
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.timeButton, minutes === '180' && styles.timeButtonActive]}
-                  onPress={() => setMinutes('180')}
-                >
-                  <Text style={[styles.timeButtonText, minutes === '180' && styles.timeButtonTextActive]}>
-                    {(timerMinutes > 0 || existingRecord) ? '+' : ''}3時間
-                  </Text>
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.timeButtonRow}>
-                <TouchableOpacity 
-                  style={[styles.timeButton, minutes === '210' && styles.timeButtonActive]}
-                  onPress={() => setMinutes('210')}
-                >
-                  <Text style={[styles.timeButtonText, minutes === '210' && styles.timeButtonTextActive]}>
-                    {(timerMinutes > 0 || existingRecord) ? '+' : ''}3時間半
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.timeButton, minutes === '240' && styles.timeButtonActive]}
-                  onPress={() => setMinutes('240')}
-                >
-                  <Text style={[styles.timeButtonText, minutes === '240' && styles.timeButtonTextActive]}>
-                    {(timerMinutes > 0 || existingRecord) ? '+' : ''}4時間
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.timeButton, minutes === '300' && styles.timeButtonActive]}
-                  onPress={() => setMinutes('300')}
-                >
-                  <Text style={[styles.timeButtonText, minutes === '300' && styles.timeButtonTextActive]}>
-                    {(timerMinutes > 0 || existingRecord) ? '+' : ''}5時間
-                  </Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity 
-                  style={[styles.timeButton, minutes === '360' && styles.timeButtonActive]}
-                  onPress={() => setMinutes('360')}
-                >
-                  <Text style={[styles.timeButtonText, minutes === '360' && styles.timeButtonTextActive]}>
-                    {(timerMinutes > 0 || existingRecord) ? '+' : ''}6時間
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              {/* 入力値の表示 */}
+              {(() => {
+                const totalMinutes = minutes ? Number(minutes) : 0;
+                if (totalMinutes > 0 && !isNaN(totalMinutes)) {
+                  return (
+                    <Text style={[styles.customTimeDisplay, { color: currentTheme.primary }]}>
+                      {formatMinutesToHours(totalMinutes)}
+                    </Text>
+                  );
+                }
+                return null;
+              })()}
             </View>
-            
-            {/* カスタム時間入力 */}
-            <TextInput
-              style={styles.input}
-              value={minutes}
-              onChangeText={setMinutes}
-              placeholder="練習時間を入力（分）"
-              keyboardType="numeric"
-            />
             
             <Text style={styles.hintText}>
               {existingRecord 
-                ? '上記ボタンから選択するか、時間を入力してください（+は既存の記録に追加されます）'
-                : '上記ボタンから選択するか、時間を入力してください'
+                ? '時間と分を入力してください（+は既存の記録に追加されます）'
+                : '時間と分を入力してください'
               }
             </Text>
           </View>
@@ -1474,6 +1541,56 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#888888',
     marginTop: 4,
+    textAlign: 'center',
+  },
+  customTimeInputContainer: {
+    marginTop: 12,
+    marginBottom: 8,
+    padding: 12,
+    backgroundColor: '#F8F8F8',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  customTimeLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  customTimeInputRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    gap: 8,
+  },
+  customTimeInputGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  customTimeInput: {
+    flex: 1,
+    minWidth: 60,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    borderWidth: 1.5,
+    fontSize: 16,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  customTimeUnit: {
+    fontSize: 14,
+    fontWeight: '400',
+    minWidth: 30,
+  },
+  customTimeDisplay: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 8,
     textAlign: 'center',
   },
   mediaSelectionContainer: {

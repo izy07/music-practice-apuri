@@ -68,7 +68,7 @@ export const checkShowOnCalendarSupport = async (forceCheck: boolean = false): P
       if (isColumnError) {
         // カラムが存在しない場合
         if (isFirstCheck || forceCheck) {
-          logger.warn('⚠️ show_on_calendarカラムが存在しません');
+          logger.warn('show_on_calendarカラムが存在しません');
         }
         supportsShowOnCalendar = false;
         // フラグは設定しない（次回も確認するため）
@@ -77,17 +77,13 @@ export const checkShowOnCalendarSupport = async (forceCheck: boolean = false): P
       
       // カラムエラー以外のエラー（テーブルが存在しないなど）
       if (isFirstCheck || forceCheck) {
-        logger.error('❌ goalsテーブルのクエリエラー:', error);
+        logger.error('goalsテーブルのクエリエラー:', error);
       }
       supportsShowOnCalendar = false;
       return false;
     }
 
     // エラーがない場合はカラムが存在する
-    // 初回チェック時のみログを出力（重複ログを防ぐ）
-    if (isFirstCheck || forceCheck) {
-      logger.info('✅ show_on_calendarカラムが存在します');
-    }
     supportsShowOnCalendar = true;
     // フラグをクリア（カラムが存在する場合）
     if (typeof window !== 'undefined') {
@@ -100,7 +96,7 @@ export const checkShowOnCalendarSupport = async (forceCheck: boolean = false): P
     return true;
   } catch (error) {
     // エラーが発生した場合
-    logger.error('❌ show_on_calendarカラムの確認中にエラーが発生しました:', error);
+    logger.error('show_on_calendarカラムの確認中にエラーが発生しました:', error);
     // デフォルトはtrue（カラムが存在すると仮定）
     supportsShowOnCalendar = true;
     return true;
@@ -196,12 +192,12 @@ export const initializeGoalRepository = async (forceRecheck: boolean = false): P
           logger.warn('⚠️ show_on_calendarカラムが存在しません。追加を試みます...');
           const added = await ensureShowOnCalendarColumn();
           if (added) {
-            logger.info('✅ show_on_calendarカラムを追加しました');
+            logger.info('show_on_calendarカラムを追加しました');
             // 再度チェック
             supportsShowOnCalendar = null;
             await checkShowOnCalendarSupport(forceRecheck);
           } else {
-            logger.warn('⚠️ show_on_calendarカラムの自動追加に失敗しました。マイグレーションを実行してください。');
+            logger.warn('show_on_calendarカラムの自動追加に失敗しました。マイグレーションを実行してください。');
           }
         }
       }

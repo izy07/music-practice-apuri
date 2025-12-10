@@ -127,9 +127,9 @@ export async function checkAttendanceRecordsTableExists(): Promise<boolean> {
           if (rpcResult && (rpcResult as any).success) {
             const created = (rpcResult as any).created;
             if (created) {
-              logger.info('✅ attendance_recordsテーブルを自動作成しました');
+              logger.info('attendance_recordsテーブルを自動作成しました');
             } else {
-              logger.info('ℹ️ attendance_recordsテーブルは既に存在します');
+              logger.info('attendance_recordsテーブルは既に存在します');
             }
             
             // 作成後、再度存在確認

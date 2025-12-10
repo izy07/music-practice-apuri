@@ -103,9 +103,17 @@ export const testSupabaseConnection = async () => {
 };
 
 // シングルトンパターンでSupabaseクライアントを管理
+// HMR時にも同じインスタンスを再利用するため、windowオブジェクトに保存
 let supabaseInstance: any = null;
 
 const getSupabaseClient = () => {
+  // HMR時にも同じインスタンスを再利用
+  if (typeof window !== 'undefined' && (window as any).__supabaseInstance) {
+    supabaseInstance = (window as any).__supabaseInstance;
+    logger.debug('既存のSupabaseクライアントインスタンスを再利用（HMR対応）');
+    return supabaseInstance;
+  }
+  
   if (!supabaseInstance) {
     logger.debug('新しいSupabaseクライアントインスタンスを作成中...');
     
@@ -136,9 +144,17 @@ const getSupabaseClient = () => {
           }
           
           // representative_songsテーブルの404エラーは、フォールバックデータを使用するため無視
+          // コンソールにエラーを表示しないように、空のレスポンスを返す
           if (pathname.includes('/representative_songs') || url.includes('representative_songs')) {
-            // エラーレスポンスをそのまま返す（呼び出し側で処理される）
-            return response;
+            // 404エラーを完全に抑制するため、空のJSONレスポンスを返す
+            logger.debug('representative_songsテーブルの404エラー（フォールバックデータを使用）:', { url: pathname });
+            return new Response(JSON.stringify([]), {
+              status: 200,
+              statusText: 'OK',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+            });
           }
         }
         
@@ -191,6 +207,12 @@ const getSupabaseClient = () => {
         schema: 'public',
       },
     });
+    
+    // HMR時にも同じインスタンスを再利用するため、windowオブジェクトに保存
+    if (typeof window !== 'undefined') {
+      (window as any).__supabaseInstance = supabaseInstance;
+    }
+    
     logger.debug('Supabaseクライアントインスタンス作成完了');
   } else {
     logger.debug('既存のSupabaseクライアントインスタンスを再利用');

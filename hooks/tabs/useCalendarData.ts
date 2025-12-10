@@ -80,13 +80,13 @@ export function useCalendarData(currentDate: Date) {
 
           if (error) {
             if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
-              logger.info('ℹ️ practice_sessionsテーブルが存在しません。マイグレーションを実行してください。');
+              logger.info('practice_sessionsテーブルが存在しません。マイグレーションを実行してください。');
               setPracticeData({});
               setMonthlyTotal(0);
               return;
             }
             ErrorHandler.handle(error, '練習データ読み込み', false);
-            logger.error('❌ 練習データ読み込みエラー:', error);
+            logger.error('練習データ読み込みエラー:', error);
             return;
           }
 
@@ -238,29 +238,29 @@ export function useCalendarData(currentDate: Date) {
           // RPC関数が存在しない場合、フォールバックとして直接クエリを使用
           if (rpcError.code === '42883' || rpcError.message?.includes('function') || rpcError.message?.includes('does not exist')) {
             logger.debug('RPC関数が存在しないため、フォールバック方式を使用');
-            
-            let query = supabase
-              .from('practice_sessions')
-              .select('duration_minutes')
+      
+      let query = supabase
+        .from('practice_sessions')
+        .select('duration_minutes')
               .eq('user_id', user.id)
               .neq('input_method', 'preset'); // 基礎練を除外
-            
-            if (currentInstrumentId) {
-              query = query.eq('instrument_id', currentInstrumentId);
-            } else {
-              query = query.is('instrument_id', null);
-            }
-            
+      
+      if (currentInstrumentId) {
+        query = query.eq('instrument_id', currentInstrumentId);
+      } else {
+        query = query.is('instrument_id', null);
+      }
+      
             const { data: sessions, error: queryError } = await query;
 
             if (queryError) {
               if (queryError.code === 'PGRST205' || queryError.code === 'PGRST116' || queryError.message?.includes('Could not find the table')) {
-                return;
-              }
-              return;
-            }
+          return;
+        }
+        return;
+      }
 
-            if (sessions) {
+      if (sessions) {
               const total = sessions.reduce((sum: number, session: { duration_minutes: number }) => sum + (session.duration_minutes || 0), 0);
               setTotalPracticeTime(total);
             }
@@ -293,7 +293,7 @@ export function useCalendarData(currentDate: Date) {
 
         if (!queryError && sessions) {
           const total = sessions.reduce((sum: number, session: { duration_minutes: number }) => sum + (session.duration_minutes || 0), 0);
-          setTotalPracticeTime(total);
+        setTotalPracticeTime(total);
         }
       }
     } catch (error) {
@@ -321,11 +321,11 @@ export function useCalendarData(currentDate: Date) {
 
       if (error) {
         if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
-          logger.info('ℹ️ eventsテーブルが存在しません。マイグレーションを実行してください。');
+          logger.info('eventsテーブルが存在しません。マイグレーションを実行してください。');
           return;
         }
         ErrorHandler.handle(error, 'イベント読み込み', false);
-        logger.error('❌ イベント読み込みエラー:', error);
+        logger.error('イベント読み込みエラー:', error);
         return;
       }
 
@@ -413,12 +413,12 @@ export function useCalendarData(currentDate: Date) {
 
       if (error) {
         if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
-          logger.info('ℹ️ recordingsテーブルが存在しません');
+          logger.info('recordingsテーブルが存在しません');
           setRecordingsData({});
           return;
         }
         ErrorHandler.handle(error, '録音データ読み込み', false);
-        logger.error('❌ 録音データ読み込みエラー:', error);
+        logger.error('録音データ読み込みエラー:', error);
         setRecordingsData({});
         return;
       }
@@ -448,21 +448,21 @@ export function useCalendarData(currentDate: Date) {
           // 現在表示している月と一致するか確認
           if (year === targetYear && month - 1 === targetMonth) {
             newRecordingsData[day] = { hasRecording: true };
-            logger.debug(`✅ 録音データを日付 ${day} に追加 (recorded_at: ${recording.recorded_at}, localDate: ${localDateStr})`);
+            logger.debug(`録音データを日付 ${day} に追加 (recorded_at: ${recording.recorded_at}, localDate: ${localDateStr})`);
           } else {
-            logger.debug(`⏭️ 録音データをスキップ (recorded_at: ${recording.recorded_at}, localDate: ${localDateStr}, target: ${targetYear}-${targetMonth + 1})`);
+            logger.debug(`録音データをスキップ (recorded_at: ${recording.recorded_at}, localDate: ${localDateStr}, target: ${targetYear}-${targetMonth + 1})`);
           }
         });
         
         logger.debug('📅 最終的な録音データ:', newRecordingsData);
         setRecordingsData(newRecordingsData);
       } else {
-        logger.debug('ℹ️ 録音データが見つかりませんでした');
+        logger.debug('録音データが見つかりませんでした');
         setRecordingsData({});
       }
     } catch (error) {
       ErrorHandler.handle(error, '録音データの読み込み', false);
-      logger.error('❌ 録音データの読み込みエラー:', error);
+      logger.error('録音データの読み込みエラー:', error);
       setRecordingsData({});
     }
   }, [currentDate, selectedInstrument]);
@@ -487,13 +487,13 @@ export function useCalendarData(currentDate: Date) {
 
       if (error) {
         if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
-          logger.info('ℹ️ goalsテーブルが存在しません。マイグレーションを実行してください。');
+          logger.info('goalsテーブルが存在しません。マイグレーションを実行してください。');
           setShortTermGoal(null);
           setShortTermGoals([]);
           return;
         }
         ErrorHandler.handle(error, '目標の読み込み', false);
-        logger.error('❌ 目標の読み込みエラー:', error);
+        logger.error('目標の読み込みエラー:', error);
         setShortTermGoal(null);
         setShortTermGoals([]);
         return;

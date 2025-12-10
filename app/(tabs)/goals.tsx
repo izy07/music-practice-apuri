@@ -637,11 +637,17 @@ export default function GoalsScreen() {
 
   const deleteGoal = async (goalId: string) => {
     logger.debug('deleteGoal関数が呼ばれました', goalId);
+    console.log('deleteGoal関数が呼ばれました', goalId);
+    
     // 削除処理の重複実行を防ぐ
     if (isDeleting) {
       logger.debug('削除処理が既に実行中です');
+      console.log('削除処理が既に実行中です');
       return;
     }
+    
+    // goalIdを確実に保持するために、クロージャーではなく明示的に保存
+    const targetGoalId = goalId;
     
     // 確認ダイアログを表示
     Alert.alert(
@@ -653,23 +659,25 @@ export default function GoalsScreen() {
           style: 'cancel',
           onPress: () => {
             logger.debug('削除がキャンセルされました');
+            console.log('削除がキャンセルされました');
           }
         },
         {
           text: '削除',
           style: 'destructive',
-          onPress: async () => {
-            logger.debug('削除が確認されました、executeDeleteGoalを実行します', goalId);
-            try {
-              await executeDeleteGoal(goalId);
-            } catch (error) {
+          onPress: () => {
+            logger.debug('削除が確認されました、executeDeleteGoalを実行します', targetGoalId);
+            console.log('削除が確認されました、executeDeleteGoalを実行します', targetGoalId);
+            // 非同期処理を即座に実行（awaitは不要、executeDeleteGoal内で処理）
+            executeDeleteGoal(targetGoalId).catch((error) => {
               logger.error('executeDeleteGoalでエラーが発生しました', error);
               console.error('executeDeleteGoalでエラーが発生しました', error);
               setIsDeleting(false);
-            }
+            });
           }
         }
-      ]
+      ],
+      { cancelable: true } // Web環境でも確実に動作するように
     );
   };
 

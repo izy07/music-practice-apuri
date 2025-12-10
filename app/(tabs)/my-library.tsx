@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Plus, Music, Edit3, Trash2, Star, Play, Clock, Target, CheckCircle2, Calendar } from 'lucide-react-native';
+import { ArrowLeft, Plus, Music, Edit3, Trash2, Star, Play, Clock, CheckCircle2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
@@ -9,7 +9,6 @@ import { useLanguage } from '@/components/LanguageContext';
 import { supabase } from '@/lib/supabase';
 import { canAccessFeature } from '../../lib/subscriptionService';
 import { useSubscription } from '@/hooks/useSubscription';
-import EventCalendar from '@/components/EventCalendar';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { safeGoBack } from '@/lib/navigationUtils';
@@ -39,7 +38,6 @@ export default function MyLibraryScreen() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingSong, setEditingSong] = useState<Song | null>(null);
   const [filterStatus, setFilterStatus] = useState<'want_to_play' | 'learning' | 'played' | 'mastered'>('want_to_play');
-  const [showDatePicker, setShowDatePicker] = useState(false);
   const [isSaving, setIsSaving] = useState(false); // 保存中の二重クリック防止
   
   // 新規追加・編集用の状態
@@ -49,8 +47,7 @@ export default function MyLibraryScreen() {
     genre: '',
     difficulty: 'beginner' as 'beginner' | 'intermediate' | 'advanced',
     status: 'want_to_play' as 'want_to_play' | 'learning' | 'played' | 'mastered',
-    notes: '',
-    target_date: ''
+    notes: ''
   });
 
   // 初期ロード + 権限変化時に再評価
@@ -146,8 +143,7 @@ export default function MyLibraryScreen() {
           genre: formData.genre || null,
           difficulty: formData.difficulty,
           status: formData.status,
-          notes: formData.notes || null,
-          target_date: formData.target_date || null
+          notes: formData.notes || null
         };
         logger.debug('曲を更新:', editingSong.id, updateData);
         const { error } = await supabase
@@ -184,8 +180,7 @@ export default function MyLibraryScreen() {
           genre: formData.genre || null,
           difficulty: formData.difficulty,
           status: formData.status,
-          notes: formData.notes || null,
-          target_date: formData.target_date || null
+          notes: formData.notes || null
         };
         logger.debug('新規追加:', songData);
         
@@ -229,29 +224,131 @@ export default function MyLibraryScreen() {
     }
   };
 
+  // ステータス変更
+  const changeSongStatus = async (song: Song, newStatus: 'want_to_play' | 'learning' | 'played' | 'mastered') => {
+    try {
+      const { error } = await supabase
+        .from('my_songs')
+        .update({ status: newStatus })
+        .eq('id', song.id);
+
+      if (error) {
+        ErrorHandler.handle(error, 'ステータス変更', true);
+        throw error;
+      }
+
+      logger.debug('ステータス変更成功:', { songId: song.id, newStatus });
+      
+      // 選択されたステータスのフィルターに自動切り替え
+      setFilterStatus(newStatus);
+      
+      // リストを再読み込み
+      await loadSongs();
+      
+      Alert.alert('成功', `ステータスを「${getStatusText(newStatus)}」に変更しました`);
+    } catch (error) {
+      logger.error('ステータス変更エラー:', error);
+      Alert.alert('エラー', 'ステータスの変更に失敗しました');
+    }
+  };
+
+  // ステータス選択ダイアログを表示
+  const showStatusSelection = (song: Song) => {
+    const statusOptions = [
+      { key: 'want_to_play' as const, label: '弾きたい' },
+      { key: 'learning' as const, label: '練習中' },
+      { key: 'played' as const, label: '演奏済み' },
+      { key: 'mastered' as const, label: 'マスター' },
+    ];
+
+    // 現在のステータスを除外した選択肢を作成
+    const availableOptions = statusOptions.filter(option => option.key !== song.status);
+
+    // Alert.alertで選択肢を提示
+    Alert.alert(
+      'ステータスを変更',
+      `${song.title}のステータスを選択してください`,
+      [
+        ...availableOptions.map(option => ({
+          text: option.label,
+          onPress: () => changeSongStatus(song, option.key),
+        })),
+        { text: 'キャンセル', style: 'cancel' },
+      ],
+      { cancelable: true }
+    );
+  };
+
   // 曲の削除
-  const deleteSong = async (songId: string) => {
+  const deleteSong = async (song: Song) => {
+    logger.debug('deleteSong関数が呼び出されました:', { songId: song.id, title: song.title });
+    
+    // Web環境ではwindow.confirmを使用（Alert.alertが正しく動作しない場合があるため）
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(`「${song.title}」を削除しますか？\n\nこの操作は元に戻せません。`);
+      if (!confirmed) {
+        logger.debug('削除がキャンセルされました');
+        return;
+      }
+      
+      try {
+        logger.debug('曲を削除中:', { songId: song.id, title: song.title });
+        const { error } = await supabase
+          .from('my_songs')
+          .delete()
+          .eq('id', song.id);
+
+        if (error) {
+          ErrorHandler.handle(error, '曲削除', true);
+          throw error;
+        }
+
+        logger.debug('曲削除成功:', { songId: song.id });
+        
+        // 削除後にリストを再読み込み
+        await loadSongs();
+        
+        // Web環境では簡易的なアラートを表示
+        window.alert('曲を削除しました');
+      } catch (error) {
+        logger.error('曲削除エラー:', error);
+        window.alert('曲の削除に失敗しました。もう一度お試しください。');
+      }
+      return;
+    }
+    
+    // モバイル環境ではAlert.alertを使用
     Alert.alert(
       '削除確認',
-      'この曲を削除しますか？',
+      `「${song.title}」を削除しますか？\nこの操作は元に戻せません。`,
       [
-        { text: 'キャンセル', style: 'cancel' },
+        { text: 'キャンセル', style: 'cancel', onPress: () => logger.debug('削除がキャンセルされました') },
         {
           text: '削除',
           style: 'destructive',
           onPress: async () => {
             try {
+              logger.debug('曲を削除中:', { songId: song.id, title: song.title });
               const { error } = await supabase
                 .from('my_songs')
                 .delete()
-                .eq('id', songId);
+                .eq('id', song.id);
 
-              if (error) throw error;
-              Alert.alert('成功', '曲を削除しました');
-              loadSongs();
-                    } catch (error) {
-          Alert.alert('エラー', '曲の削除に失敗しました');
-        }
+              if (error) {
+                ErrorHandler.handle(error, '曲削除', true);
+                throw error;
+              }
+
+              logger.debug('曲削除成功:', { songId: song.id });
+              
+              // 削除後にリストを再読み込み
+              await loadSongs();
+              
+              Alert.alert('削除完了', '曲を削除しました');
+            } catch (error) {
+              logger.error('曲削除エラー:', error);
+              Alert.alert('エラー', '曲の削除に失敗しました。もう一度お試しください。');
+            }
           }
         }
       ]
@@ -266,8 +363,7 @@ export default function MyLibraryScreen() {
       genre: '',
       difficulty: 'beginner' as 'beginner' | 'intermediate' | 'advanced',
       status: 'want_to_play' as 'want_to_play' | 'learning' | 'mastered',
-      notes: '',
-      target_date: ''
+      notes: ''
     });
   };
 
@@ -280,8 +376,7 @@ export default function MyLibraryScreen() {
       genre: song.genre,
       difficulty: song.difficulty as 'beginner' | 'intermediate' | 'advanced',
       status: song.status as 'want_to_play' | 'learning' | 'mastered',
-      notes: song.notes,
-      target_date: song.target_date || ''
+      notes: song.notes
     });
     setShowAddModal(true);
   };
@@ -301,7 +396,7 @@ export default function MyLibraryScreen() {
     switch (difficulty) {
       case 'beginner': return '初級';
       case 'intermediate': return '中級';
-      case 'advanced': return 'マスター';
+      case 'advanced': return '上級';
       default: return difficulty;
     }
   };
@@ -436,79 +531,72 @@ export default function MyLibraryScreen() {
               <View key={song.id} style={[styles.songCard, { backgroundColor: currentTheme.surface }]}>
                 <View style={styles.songHeader}>
                   <View style={styles.songInfo}>
-                    <Text style={[styles.songTitle, { color: currentTheme.text }]}>
+                    <Text style={[styles.songTitle, { color: currentTheme.text }]} numberOfLines={1}>
                       {song.title}
                     </Text>
-                    <Text style={[styles.songComposer, { color: currentTheme.textSecondary }]}>
-                      {song.artist}
-                    </Text>
+                    {song.artist && song.artist.trim() ? (
+                      <Text style={[styles.songComposer, { color: currentTheme.textSecondary }]} numberOfLines={1}>
+                        {song.artist}
+                      </Text>
+                    ) : null}
                   </View>
                   <View style={styles.songActions}>
                     <TouchableOpacity
                       style={styles.actionButton}
-                      onPress={() => startEditing(song)}
+                      onPress={() => {
+                        logger.debug('編集ボタンが押されました:', song.id);
+                        startEditing(song);
+                      }}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                      <Edit3 size={16} color={currentTheme.textSecondary} />
+                      <Edit3 size={18} color={currentTheme.textSecondary} />
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => deleteSong(song.id)}
+                      style={[styles.actionButton, styles.deleteButton]}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        logger.debug('削除ボタンタッチイベント発生:', { songId: song.id, title: song.title });
+                        deleteSong(song);
+                      }}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
-                      <Trash2 size={16} color="#F44336" />
+                      <Trash2 size={18} color="#F44336" />
                     </TouchableOpacity>
                   </View>
                 </View>
                 
-                <View style={styles.songDetails}>
-                  <View style={styles.detailItem}>
-                    <Text style={[styles.detailLabel, { color: currentTheme.textSecondary }]}>
-                      ジャンル
-                    </Text>
-                    <Text style={[styles.detailValue, { color: currentTheme.text }]}>
-                      {song.genre}
-                    </Text>
-                  </View>
-                  
-                  <View style={styles.detailItem}>
-                    <Text style={[styles.detailLabel, { color: currentTheme.textSecondary }]}>
-                      難易度
-                    </Text>
-                    <Text style={[styles.detailValue, { color: currentTheme.text }]}>
+                <View style={styles.songMetaRow}>
+                  {song.genre && song.genre.trim() ? (
+                    <View style={styles.metaChip}>
+                      <Text style={[styles.metaChipText, { color: currentTheme.textSecondary }]}>
+                        {song.genre}
+                      </Text>
+                    </View>
+                  ) : null}
+                  <View style={styles.metaChip}>
+                    <Text style={[styles.metaChipText, { color: currentTheme.textSecondary }]}>
                       {getDifficultyText(song.difficulty)}
                     </Text>
                   </View>
-                  
-                  <View style={styles.detailItem}>
-                    <Text style={[styles.detailLabel, { color: currentTheme.textSecondary }]}>
-                      ステータス
-                    </Text>
+                  <TouchableOpacity
+                    onPress={() => showStatusSelection(song)}
+                    activeOpacity={0.7}
+                  >
                     <View style={[styles.statusBadge, { backgroundColor: getStatusColor(song.status) }]}>
                       <Text style={styles.statusText}>
                         {getStatusText(song.status)}
                       </Text>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 </View>
                 
-                {song.notes && (
-                  <View style={styles.notesContainer}>
-                    <Text style={[styles.notesLabel, { color: currentTheme.textSecondary }]}>
-                      メモ
-                    </Text>
-                    <Text style={[styles.notesText, { color: currentTheme.text }]}>
-                      {song.notes}
-                    </Text>
-                  </View>
-                )}
-                
-                {song.target_date && (
-                  <View style={styles.targetContainer}>
-                    <Target size={16} color={currentTheme.primary} />
-                    <Text style={[styles.targetText, { color: currentTheme.primary }]}>
-                      目標日: {song.target_date}
-                    </Text>
-                  </View>
-                )}
+                {song.notes && song.notes.trim() ? (
+                  <Text style={[styles.notesText, { color: currentTheme.textSecondary }]} numberOfLines={2}>
+                    {song.notes}
+                  </Text>
+                ) : null}
               </View>
             ))
           )}
@@ -660,24 +748,6 @@ export default function MyLibraryScreen() {
               </View>
 
               <View style={styles.formGroup}>
-                <Text style={[styles.formLabel, { color: currentTheme.text }]}>目標日</Text>
-                <TouchableOpacity
-                  style={[styles.datePickerButton, { 
-                    backgroundColor: currentTheme.surface,
-                    borderColor: currentTheme.secondary
-                  }]}
-                  onPress={() => setShowDatePicker(true)}
-                >
-                  <Calendar size={18} color={currentTheme.textSecondary} />
-                  <Text style={[styles.datePickerText, { 
-                    color: formData.target_date ? currentTheme.text : currentTheme.textSecondary 
-                  }]}>
-                    {formData.target_date || '目標日を選択'}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-
-              <View style={styles.formGroup}>
                 <Text style={[styles.formLabel, { color: currentTheme.text }]}>メモ</Text>
                 <TextInput
                   id="song-notes-input"
@@ -687,7 +757,7 @@ export default function MyLibraryScreen() {
                     color: currentTheme.text,
                     borderColor: currentTheme.secondary
                   }]}
-                  value={formData.notes}
+                  value={formData.notes || ''}
                   onChangeText={(text) => setFormData(prev => ({ ...prev, notes: text }))}
                   placeholder="練習のポイントやメモを入力"
                   placeholderTextColor={currentTheme.textSecondary}
@@ -721,51 +791,6 @@ export default function MyLibraryScreen() {
         </SafeAreaView>
       </Modal>
 
-      {/* 日付選択モーダル */}
-      <Modal
-        visible={showDatePicker}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowDatePicker(false)}
-      >
-        <SafeAreaView style={[styles.modalContainer, { backgroundColor: currentTheme.background }]}>
-          <View 
-            role="dialog"
-            aria-modal={true}
-            aria-labelledby="date-picker-modal-title"
-            data-modal-content={true}
-            style={{ flex: 1 }}
-          >
-            <View style={[styles.modalHeader, { borderBottomColor: currentTheme.secondary }]}>
-              <TouchableOpacity
-                onPress={() => setShowDatePicker(false)}
-                style={styles.modalCloseButton}
-              >
-                <Text style={[styles.modalCloseText, { color: currentTheme.textSecondary }]}>
-                  キャンセル
-                </Text>
-              </TouchableOpacity>
-              <Text id="date-picker-modal-title" style={[styles.modalTitle, { color: currentTheme.text }]}>
-                目標日を選択
-              </Text>
-              <View style={styles.modalHeaderSpacer} />
-            </View>
-            
-            <View style={{ flex: 1, padding: 16 }}>
-              <EventCalendar
-                onDateSelect={(date) => {
-                  const year = date.getFullYear();
-                  const month = String(date.getMonth() + 1).padStart(2, '0');
-                  const day = String(date.getDate()).padStart(2, '0');
-                  const dateString = `${year}-${month}-${day}`;
-                  setFormData(prev => ({ ...prev, target_date: dateString }));
-                  setShowDatePicker(false);
-                }}
-              />
-            </View>
-          </View>
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -854,87 +879,87 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   songCard: {
-    borderRadius: 16,
-    padding: 20,
-    
-    
-    
-    elevation: 4,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 8,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+        elevation: 2,
+      },
+    }),
   },
   songHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 12,
   },
   songInfo: {
     flex: 1,
     marginRight: 16,
   },
   songTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 3,
   },
   songComposer: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '500',
   },
   songActions: {
     flexDirection: 'row',
     gap: 8,
+    zIndex: 10,
   },
   actionButton: {
     padding: 8,
     borderRadius: 8,
     backgroundColor: '#F5F5F5',
+    zIndex: 10,
   },
-  songDetails: {
+  deleteButton: {
+    backgroundColor: '#FFEBEE',
+    zIndex: 11,
+  },
+  songMetaRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  detailItem: {
     alignItems: 'center',
-    flex: 1,
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
   },
-  detailLabel: {
-    fontSize: 12,
-    marginBottom: 4,
+  metaChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: '#F5F5F5',
   },
-  detailValue: {
-    fontSize: 14,
-    fontWeight: '600',
+  metaChipText: {
+    fontSize: 11,
+    fontWeight: '500',
   },
   statusBadge: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 8,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: '#FFFFFF',
   },
-  notesContainer: {
-    marginBottom: 16,
-  },
-  notesLabel: {
-    fontSize: 12,
-    marginBottom: 4,
-  },
   notesText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  targetContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  targetText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 4,
   },
   modalContainer: {
     flex: 1,
@@ -1005,18 +1030,6 @@ const styles = StyleSheet.create({
   genreChipText: {
     fontSize: 14,
     fontWeight: '500',
-  },
-  datePickerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  datePickerText: {
-    fontSize: 16,
   },
   formRow: {
     flexDirection: 'row',

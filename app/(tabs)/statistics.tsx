@@ -56,7 +56,19 @@ function BarChart({ data, maxValue, barColor, weekdays, disableSlicing }: { data
     <View style={{ alignItems: 'center' }}>
       <Svg width={chartWidth} height={chartHeight}>
         <G>
-          {/* 平均ラインは非表示 */}
+          {/* 平均ラインを表示 */}
+          {avgValue > 0 && (
+            <Line
+              x1={0}
+              y1={avgYPos}
+              x2={chartWidth}
+              y2={avgYPos}
+              stroke="#9CA3AF"
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              opacity={0.7}
+            />
+          )}
           {sliced.map((d, i) => {
             const h = Math.max(UI.MIN_BAR_HEIGHT, Math.round((d.minutes / safeMax) * (barArea - 10) * heightScale));
             const x = i * (barWidth + barGap);

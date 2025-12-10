@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Dimensions, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, ExternalLink } from 'lucide-react-native';
+import { ArrowLeft, ExternalLink, Youtube } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -98,10 +98,14 @@ export default function RepresentativeSongsScreen() {
           result.error.code === 'PGRST116' || 
           result.error.status === 404 || 
           result.error.message?.includes('Could not find the table') || 
-          result.error.message?.includes('does not exist')
+          result.error.message?.includes('does not exist') ||
+          result.error.message?.includes('Not Found')
         );
         
-        if (result.error && !isTableNotFound) {
+        if (result.error && isTableNotFound) {
+          // テーブルが存在しない場合は、フォールバックデータを使用するため、デバッグログのみ
+          logger.debug('[代表曲画面] representative_songsテーブルが存在しません。フォールバックデータを使用します。');
+        } else if (result.error && !isTableNotFound) {
           // テーブルが存在しない以外のエラーのみログ出力
           logger.error('[代表曲画面] 代表曲取得エラー:', {
             code: result.error.code,
@@ -404,28 +408,17 @@ export default function RepresentativeSongsScreen() {
               )}
             </ScrollView>
             
+            {/* YouTubeボタン（youtube_urlがある場合） */}
             {selectedSong?.youtube_url && (
               <View style={styles.modalFooter}>
-                <Text style={[styles.modalQuestion, { color: currentTheme.text }]}>
-                  YOUTUBEに飛びますか？
-                </Text>
-                <View style={styles.modalButtons}>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.modalButtonCancel, { borderColor: currentTheme.secondary }]}
-                    onPress={() => {
-                      setShowModal(false);
-                      setSelectedSong(null);
-                    }}
-                  >
-                    <Text style={[styles.modalButtonText, { color: currentTheme.text }]}>いいえ</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.modalButtonYes, { backgroundColor: currentTheme.primary }]}
-                    onPress={handleOpenYouTube}
-                  >
-                    <Text style={[styles.modalButtonText, { color: '#FFFFFF' }]}>はい</Text>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  style={[styles.youtubeButton, { backgroundColor: '#FF0000' }]}
+                  onPress={handleOpenYouTube}
+                  activeOpacity={0.8}
+                >
+                  <Youtube size={20} color="#FFFFFF" />
+                  <Text style={styles.youtubeButtonText}>YouTubeで見る</Text>
+                </TouchableOpacity>
               </View>
             )}
           </View>
@@ -597,32 +590,17 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E5E5E5',
   },
-  modalQuestion: {
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  modalButtons: {
+  youtubeButton: {
     flexDirection: 'row',
-    gap: 12,
-  },
-  modalButton: {
-    flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    gap: 8,
   },
-  modalButtonCancel: {
-    borderWidth: 1,
-    backgroundColor: 'transparent',
-  },
-  modalButtonYes: {
-    // backgroundColorは動的に設定
-  },
-  modalButtonText: {
+  youtubeButtonText: {
+    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },

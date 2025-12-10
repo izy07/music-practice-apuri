@@ -610,7 +610,7 @@ export const saveRecording = async (record: {
     logger.debug('録音保存成功:', data);
     return { data, error: null };
   } catch (error) {
-    console.error('💥 録音保存エラー:', error);
+    console.error('録音保存エラー:', error);
     return { data: null, error };
   }
 };

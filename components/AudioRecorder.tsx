@@ -18,6 +18,7 @@ import { uploadRecordingBlob, saveRecording } from '@/lib/database';
 import { useRouter } from 'expo-router';
 import { ErrorHandler } from '@/lib/errorHandler';
 import logger from '@/lib/logger';
+import audioResourceManager from '@/lib/audioResourceManager';
 
 const { width } = Dimensions.get('window');
 
@@ -40,6 +41,7 @@ interface AudioRecorderProps {
 export default function AudioRecorder({ visible, onSave, onClose, onRecordingSaved, onBack, selectedDate }: AudioRecorderProps) {
   const { currentTheme } = useInstrumentTheme();
   const router = useRouter();
+  const OWNER_NAME = 'AudioRecorder';
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -61,13 +63,37 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const recordingIntervalRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioBlobRef = useRef<Blob | null>(null);
+  const microphoneStreamRef = useRef<MediaStream | null>(null);
+  const isRecordingRef = useRef(false); // 最新のisRecording状態を保持
 
   // 録音時間の制限（1分 = 60秒）
   const MAX_RECORDING_TIME = 60;
 
+  // isRecordingの最新値をrefに保持
   useEffect(() => {
-    // コンポーネントのクリーンアップ（改善版）
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
+
+  // コンポーネントのクリーンアップ（アンマウント時のみ実行）
+  useEffect(() => {
     return () => {
+      logger.debug('AudioRecorderコンポーネントがアンマウントされます');
+      
+      // 録音を停止（refを使用して最新の状態を確認）
+      if (isRecordingRef.current && mediaRecorderRef.current) {
+        logger.debug('コンポーネントアンマウント時に録音を停止します');
+        // stopRecordingを直接呼ばず、手動でクリーンアップ
+        try {
+          if (mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+          }
+        } catch (error) {
+          logger.warn('MediaRecorder stop error during cleanup:', error);
+        }
+        setIsRecording(false);
+        isRecordingRef.current = false;
+      }
+      
       // 録音タイマーのクリア
       if (recordingIntervalRef.current) {
         clearInterval(recordingIntervalRef.current);
@@ -103,16 +129,19 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         audioBlobRef.current = null;
       }
       
-      // AudioContextのクリア
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        try {
-          audioContextRef.current.suspend();
-        } catch (error) {
-          logger.warn('AudioContext suspend error during cleanup:', error);
-        }
+      // マイクストリームの解放
+      if (microphoneStreamRef.current) {
+        microphoneStreamRef.current.getTracks().forEach(track => {
+          track.stop();
+          track.enabled = false;
+        });
+        microphoneStreamRef.current = null;
       }
+      
+      // リソース管理サービスからリソースを解放
+      audioResourceManager.releaseAllResources(OWNER_NAME);
     };
-  }, []);
+  }, []); // 依存配列を空にして、アンマウント時のみ実行
 
   // 楽曲リストを読み込み
   useEffect(() => {
@@ -146,19 +175,25 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   // 録音開始
   const startRecording = async () => {
     try {
+      logger.debug('録音開始ボタンが押されました');
+      
       if (Platform.OS !== 'web') {
         Alert.alert('録音機能', '録音機能はWeb環境でのみ利用できます');
         return;
       }
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        logger.error('navigator.mediaDevicesが利用できません');
         Alert.alert('エラー', 'このブラウザでは録音機能を利用できません');
         return;
       }
 
+      logger.debug('navigator.mediaDevicesが利用可能です');
+
       // マイク権限の事前確認
       try {
         const permission = await navigator.permissions.query({ name: 'microphone' as PermissionName });
+        logger.debug('マイク権限状態:', permission.state);
         if (permission.state === 'denied') {
           Alert.alert('マイク権限が必要', 'ブラウザの設定でマイクの使用を許可してください');
           return;
@@ -167,14 +202,37 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         logger.debug('Permission API not supported, proceeding with getUserMedia');
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 44100,
-        } 
-      });
+      // リソース管理サービスからマイクアクセスを取得（排他制御）
+      let stream: MediaStream;
+      try {
+        logger.debug('マイクアクセスを取得中...');
+        stream = await audioResourceManager.acquireMicrophone(OWNER_NAME, {
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 44100,
+          }
+        });
+        microphoneStreamRef.current = stream;
+        logger.debug('マイクアクセスを取得しました');
+      } catch (error: any) {
+        logger.error('マイクアクセスの取得エラー:', error);
+        const errorMessage = error?.message || 'マイクアクセスの取得に失敗しました';
+        const errorName = error?.name || '';
+        const errorCode = error?.code || '';
+        
+        if (errorMessage.includes('既に') || errorName === 'NotAllowedError') {
+          Alert.alert('マイク使用中', errorMessage + '\n\n他の機能（チューナー、クイック記録など）がマイクを使用している可能性があります。');
+        } else if (errorName === 'NotAllowedError' || errorCode === 'NotAllowedError') {
+          Alert.alert('マイク権限が拒否されました', 'ブラウザの設定でマイクの使用を許可してください。\n\n設定方法:\n1. ブラウザのアドレスバーのアイコンをクリック\n2. マイクの許可を選択\n3. ページを再読み込みしてください。');
+        } else if (errorName === 'NotFoundError' || errorCode === 'NotFoundError') {
+          Alert.alert('マイクが見つかりません', 'マイクが接続されていることを確認してください。');
+        } else {
+          Alert.alert('マイクエラー', errorMessage + '\n\nエラーコード: ' + errorCode);
+        }
+        return;
+      }
       
       // サポートされているMIMEタイプを確認
       let mimeType = 'audio/webm;codecs=opus';
@@ -200,48 +258,132 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       const handleDataAvailable = (event: BlobEvent) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
+          logger.debug('録音データを受信しました', {
+            chunkSize: event.data.size,
+            totalChunks: audioChunksRef.current.length,
+            totalSize: audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0)
+          });
+        } else {
+          logger.debug('空の録音データを受信しました');
         }
       };
 
       const handleStop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType || 'audio/webm' });
-        audioBlobRef.current = audioBlob;
-        const newAudioUrl = URL.createObjectURL(audioBlob);
-        setAudioUrl(newAudioUrl);
-        
-        // 実際の録音時間を計算（開始時刻からの経過時間）
-        const actualDuration = Math.round((Date.now() - startTime) / 1000);
-        setRecordingDuration(actualDuration);
-        
-        // ストリームを停止
-        stream.getTracks().forEach(track => {
-          track.stop();
-          track.enabled = false;
+        logger.debug('MediaRecorder stopイベントが発火しました', {
+          chunksCount: audioChunksRef.current.length,
+          totalSize: audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0),
+          recorderState: mediaRecorder.state
         });
         
-        // MediaRecorderのイベントリスナーを削除
-        mediaRecorder.removeEventListener('dataavailable', handleDataAvailable);
-        mediaRecorder.removeEventListener('stop', handleStop);
-        mediaRecorder.removeEventListener('error', handleError);
+        // 録音状態を先に更新
+        setIsRecording(false);
+        isRecordingRef.current = false;
         
-        // MediaRecorderのクリーンアップ
-        if (mediaRecorderRef.current) {
-          mediaRecorderRef.current = null;
+        // チャンクのコピーを作成（クリーンアップ前に保存）
+        const chunksCopy = [...audioChunksRef.current];
+        
+        try {
+          // 録音データが空の場合は警告のみ（即座に停止した場合など）
+          if (chunksCopy.length === 0) {
+            logger.warn('録音データが空です。録音時間が短すぎる可能性があります。');
+            const actualDuration = Math.round((Date.now() - startTime) / 1000);
+            if (actualDuration < 1) {
+              logger.warn('録音時間が1秒未満です');
+            }
+            // クリーンアップのみ実行
+            cleanupAfterRecording();
+            return;
+          }
+          
+          const audioBlob = new Blob(chunksCopy, { type: mimeType || 'audio/webm' });
+          audioBlobRef.current = audioBlob;
+          const newAudioUrl = URL.createObjectURL(audioBlob);
+          
+          logger.debug('録音データを作成しました', {
+            blobSize: audioBlob.size,
+            blobType: audioBlob.type,
+            audioUrl: newAudioUrl.substring(0, 50) + '...'
+          });
+          
+          setAudioUrl(newAudioUrl);
+          
+          // 実際の録音時間を計算（開始時刻からの経過時間）
+          const actualDuration = Math.round((Date.now() - startTime) / 1000);
+          setRecordingDuration(actualDuration);
+          
+          logger.debug('録音が完了しました', {
+            duration: actualDuration,
+            audioUrl: newAudioUrl.substring(0, 50) + '...'
+          });
+        } catch (error) {
+          logger.error('録音データの処理エラー:', error);
+          Alert.alert('録音エラー', '録音データの処理に失敗しました');
+        } finally {
+          cleanupAfterRecording();
         }
         
-        // チャンクのクリア
-        audioChunksRef.current = [];
+        // クリーンアップ関数
+        function cleanupAfterRecording() {
+          // ストリームを停止
+          try {
+            stream.getTracks().forEach(track => {
+              track.stop();
+              track.enabled = false;
+            });
+          } catch (error) {
+            logger.warn('ストリーム停止エラー:', error);
+          }
+          
+          // MediaRecorderのイベントリスナーを削除
+          try {
+            mediaRecorder.removeEventListener('dataavailable', handleDataAvailable);
+            mediaRecorder.removeEventListener('stop', handleStop);
+            mediaRecorder.removeEventListener('error', handleError);
+          } catch (error) {
+            logger.warn('イベントリスナー削除エラー:', error);
+          }
+          
+          // MediaRecorderのクリーンアップ
+          if (mediaRecorderRef.current === mediaRecorder) {
+            mediaRecorderRef.current = null;
+          }
+          
+          // チャンクのクリア（Blob作成後なので安全）
+          audioChunksRef.current = [];
+        }
       };
 
       const handleError = (event: Event) => {
+        const errorEvent = event as ErrorEvent;
+        logger.error('MediaRecorderエラー:', {
+          error: errorEvent.error,
+          message: errorEvent.message,
+          recorderState: mediaRecorder.state,
+          streamActive: stream.active
+        });
         ErrorHandler.handle(event, 'MediaRecorder', true);
-        Alert.alert('録音エラー', '録音中にエラーが発生しました');
+        Alert.alert('録音エラー', `録音中にエラーが発生しました: ${errorEvent.message || '不明なエラー'}`);
         setIsRecording(false);
+        isRecordingRef.current = false;
         
         // エラー時のクリーンアップ
-        mediaRecorder.removeEventListener('dataavailable', handleDataAvailable);
-        mediaRecorder.removeEventListener('stop', handleStop);
-        mediaRecorder.removeEventListener('error', handleError);
+        try {
+          mediaRecorder.removeEventListener('dataavailable', handleDataAvailable);
+          mediaRecorder.removeEventListener('stop', handleStop);
+          mediaRecorder.removeEventListener('error', handleError);
+        } catch (e) {
+          logger.warn('イベントリスナーの削除エラー:', e);
+        }
+        
+        // ストリームのクリーンアップ
+        if (microphoneStreamRef.current) {
+          microphoneStreamRef.current.getTracks().forEach(track => {
+            track.stop();
+            track.enabled = false;
+          });
+          microphoneStreamRef.current = null;
+        }
+        audioResourceManager.releaseMicrophone(OWNER_NAME);
       };
 
       // イベントリスナーを追加
@@ -250,70 +392,117 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       mediaRecorder.addEventListener('error', handleError);
 
       // 録音開始
-      mediaRecorder.start(100); // 100ms間隔でデータを取得
-      setIsRecording(true);
-      setRecordingTime(0);
-      setRecordingDuration(0);
-      audioChunksRef.current = [];
-
-      // より正確な録音時間のカウント（Date.now()ベース）: 更新頻度を緩和
-      recordingIntervalRef.current = window.setInterval(() => {
-        const elapsedTime = Math.round((Date.now() - startTime) / 1000);
-        setRecordingTime(elapsedTime);
+      logger.debug('MediaRecorderを開始します...', {
+        recorderState: mediaRecorder.state,
+        streamActive: stream.active,
+        streamTracks: stream.getTracks().length
+      });
+      try {
+        mediaRecorder.start(100); // 100ms間隔でデータを取得
         
-        // 59秒に達したら自動的に録音を停止開始（60秒を超えないようにする）
-        // Math.roundによる丸め誤差とMediaRecorder停止処理の遅延を考慮して1秒前に停止開始
-        if (elapsedTime >= MAX_RECORDING_TIME - 1) {
-          logger.debug('⏱️ 録音時間が最大時間に近づきました。自動停止を開始します。', {
-            elapsedTime,
-            maxTime: MAX_RECORDING_TIME,
-            stopAt: MAX_RECORDING_TIME - 1
-          });
-          // タイマーを即座にクリア（重複停止を防止）
-          if (recordingIntervalRef.current) {
-            clearInterval(recordingIntervalRef.current);
-            recordingIntervalRef.current = null;
-          }
-          // 停止処理を開始（MediaRecorderの停止処理には時間がかかるため、早めに開始）
-          stopRecording('auto');
-        }
-      }, 250); // UI更新を250ms間隔にしてCPU負荷を軽減
+        // 状態を更新（refも更新）
+        setIsRecording(true);
+        isRecordingRef.current = true;
+        setRecordingTime(0);
+        setRecordingDuration(0);
+        audioChunksRef.current = [];
+        
+        logger.debug('録音を開始しました', {
+          recorderState: mediaRecorder.state,
+          isRecording: true
+        });
 
-    } catch (error) {
+        // より正確な録音時間のカウント（Date.now()ベース）: 更新頻度を緩和
+        recordingIntervalRef.current = window.setInterval(() => {
+          const elapsedTime = Math.round((Date.now() - startTime) / 1000);
+          setRecordingTime(elapsedTime);
+          
+          // 59秒に達したら自動的に録音を停止開始（60秒を超えないようにする）
+          // Math.roundによる丸め誤差とMediaRecorder停止処理の遅延を考慮して1秒前に停止開始
+          if (elapsedTime >= MAX_RECORDING_TIME - 1) {
+            logger.debug('録音時間が最大時間に近づきました。自動停止を開始します。', {
+              elapsedTime,
+              maxTime: MAX_RECORDING_TIME,
+              stopAt: MAX_RECORDING_TIME - 1
+            });
+            // タイマーを即座にクリア（重複停止を防止）
+            if (recordingIntervalRef.current) {
+              clearInterval(recordingIntervalRef.current);
+              recordingIntervalRef.current = null;
+            }
+            // 停止処理を開始（MediaRecorderの停止処理には時間がかかるため、早めに開始）
+            stopRecording('auto');
+          }
+        }, 250); // UI更新を250ms間隔にしてCPU負荷を軽減
+      } catch (startError: any) {
+        logger.error('MediaRecorder.start()エラー:', startError);
+        Alert.alert('録音開始エラー', '録音を開始できませんでした。\n\nエラー: ' + (startError?.message || '不明なエラー'));
+        // エラー時のクリーンアップ
+        if (stream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+        audioResourceManager.releaseMicrophone(OWNER_NAME);
+        setIsRecording(false);
+        return;
+      }
+
+    } catch (error: any) {
+      logger.error('録音開始処理のエラー:', error);
       ErrorHandler.handle(error, 'Recording start', true);
+      
+      // エラー時のクリーンアップ
+      if (microphoneStreamRef.current) {
+        microphoneStreamRef.current.getTracks().forEach(track => track.stop());
+        audioResourceManager.releaseMicrophone(OWNER_NAME);
+      }
+      setIsRecording(false);
+      
       if (error instanceof Error) {
         if (error.name === 'NotAllowedError') {
-          Alert.alert('マイク権限が必要', 'ブラウザの設定でマイクの使用を許可してください');
+          Alert.alert('マイク権限が必要', 'ブラウザの設定でマイクの使用を許可してください。\n\n設定方法:\n1. ブラウザのアドレスバーのアイコンをクリック\n2. マイクの許可を選択\n3. ページを再読み込みしてください。');
         } else if (error.name === 'NotFoundError') {
-          Alert.alert('マイクが見つかりません', 'マイクが接続されているか確認してください');
+          Alert.alert('マイクが見つかりません', 'マイクが接続されているか確認してください。');
         } else if (error.name === 'NotSupportedError') {
-          Alert.alert('録音機能がサポートされていません', 'このブラウザでは録音機能を利用できません');
+          Alert.alert('録音機能がサポートされていません', 'このブラウザでは録音機能を利用できません。');
         } else {
-          Alert.alert('エラー', '録音を開始できませんでした。マイクの権限を確認してください。');
+          Alert.alert('エラー', `録音を開始できませんでした。\n\nエラー: ${error.message || '不明なエラー'}`);
         }
       } else {
-        Alert.alert('エラー', '録音を開始できませんでした。マイクの権限を確認してください。');
+        Alert.alert('エラー', `録音を開始できませんでした。\n\nエラー: ${error?.message || '不明なエラー'}`);
       }
     }
   };
 
   // 録音停止
   const stopRecording = (cause: 'auto' | 'manual' = 'manual') => {
-    // 既に停止している場合は何もしない
-    if (!isRecording || !mediaRecorderRef.current) {
-      logger.debug('録音は既に停止しています');
+    logger.debug('🛑 stopRecordingが呼ばれました:', { 
+      cause,
+      isRecordingRef: isRecordingRef.current,
+      hasRecorder: !!mediaRecorderRef.current,
+      recorderState: mediaRecorderRef.current?.state
+    });
+    
+    // refを使用して最新の状態を確認（非同期の状態更新に対応）
+    if (!isRecordingRef.current || !mediaRecorderRef.current) {
+      logger.debug('録音は既に停止しています', {
+        isRecordingRef: isRecordingRef.current,
+        hasRecorder: !!mediaRecorderRef.current
+      });
       return;
     }
 
     logger.debug('🛑 録音を停止します:', { 
       cause,
-      recorderState: mediaRecorderRef.current?.state 
+      recorderState: mediaRecorderRef.current?.state,
+      isRecording: isRecordingRef.current,
+      chunksCount: audioChunksRef.current.length
     });
     
     // タイマーを最優先でクリア（重複停止を防止）
     if (recordingIntervalRef.current) {
       clearInterval(recordingIntervalRef.current);
       recordingIntervalRef.current = null;
+      logger.debug('録音タイマーをクリアしました');
     }
 
     // MediaRecorderの状態を厳密にチェックして停止
@@ -321,21 +510,46 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       const recorder = mediaRecorderRef.current;
       const currentState = recorder.state;
       
+      logger.debug('MediaRecorderの状態を確認:', { 
+        state: currentState,
+        chunksCount: audioChunksRef.current.length,
+        totalSize: audioChunksRef.current.reduce((sum, chunk) => sum + chunk.size, 0)
+      });
+      
       // 'recording'状態の場合のみ停止処理を実行
       // 'inactive'や'paused'の場合は既に停止しているため、何もしない
       if (currentState === 'recording') {
         logger.debug('MediaRecorderを停止します:', { state: currentState });
         recorder.stop();
+        logger.debug('MediaRecorder.stop()を呼びました。handleStopイベントを待機します...');
       } else {
         logger.debug('MediaRecorderは既に停止しています:', { state: currentState });
+        // 既に停止している場合は、状態を更新してクリーンアップ
+        setIsRecording(false);
+        isRecordingRef.current = false;
       }
     } catch (error) {
       logger.error('録音停止エラー:', error);
       ErrorHandler.handle(error, '録音停止', false);
+      setIsRecording(false);
+      isRecordingRef.current = false;
+    }
+
+    // マイクストリームの解放（リソース管理サービス経由）
+    if (microphoneStreamRef.current) {
+      try {
+        microphoneStreamRef.current.getTracks().forEach(track => {
+          track.stop();
+          track.enabled = false;
+        });
+        microphoneStreamRef.current = null;
+      } catch (error) {
+        logger.warn('マイクストリームの解放エラー:', error);
+      }
     }
     
-    // 録音状態を即座に更新（UIの即座反映のため）
-    setIsRecording(false);
+    // リソース管理サービスからマイクを解放
+    audioResourceManager.releaseMicrophone(OWNER_NAME);
 
     // 停止時の通知（自動停止の場合のみ）
     if (cause === 'auto') {
@@ -347,24 +561,58 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   };
 
   // 再生開始
-  const startPlayback = () => {
-    if (!audioUrl) return;
+  const startPlayback = async () => {
+    if (!audioUrl) {
+      logger.warn('再生エラー: audioUrlが設定されていません');
+      Alert.alert('再生エラー', '再生する録音データがありません');
+      return;
+    }
 
     if (Platform.OS !== 'web') {
       Alert.alert('再生機能', '再生機能はWeb環境でのみ利用できます');
       return;
     }
 
-    if (!audioElementRef.current) {
-      audioElementRef.current = new Audio(audioUrl);
-    }
+    try {
+      // 既存のAudio要素がある場合は削除
+      if (audioElementRef.current) {
+        audioElementRef.current.pause();
+        audioElementRef.current.src = '';
+        audioElementRef.current = null;
+      }
 
-    audioElementRef.current.play();
-    setIsPlaying(true);
+      logger.debug('Audio要素を作成します', { audioUrl: audioUrl.substring(0, 50) + '...' });
+      const audioElement = new Audio(audioUrl);
+      audioElementRef.current = audioElement;
 
-    audioElementRef.current.onended = () => {
+      // エラーハンドリング
+      audioElement.onerror = (error) => {
+        logger.error('Audio再生エラー:', error);
+        Alert.alert('再生エラー', '音声の再生に失敗しました');
+        setIsPlaying(false);
+        audioElementRef.current = null;
+      };
+
+      // 再生終了時の処理
+      audioElement.onended = () => {
+        logger.debug('再生が終了しました');
+        setIsPlaying(false);
+      };
+
+      // 再生開始
+      logger.debug('音声再生を開始します');
+      await audioElement.play();
+      setIsPlaying(true);
+      logger.debug('音声再生を開始しました');
+    } catch (error: any) {
+      logger.error('再生開始エラー:', error);
+      const errorMessage = error?.message || '不明なエラー';
+      Alert.alert('再生エラー', `音声の再生に失敗しました: ${errorMessage}`);
       setIsPlaying(false);
-    };
+      if (audioElementRef.current) {
+        audioElementRef.current = null;
+      }
+    }
   };
 
   // 再生停止
@@ -497,7 +745,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         try {
           await onRecordingSaved();
         } catch (error) {
-          console.error('❌ onRecordingSavedコールバックエラー:', error);
+          console.error('onRecordingSavedコールバックエラー:', error);
         }
       }
 
@@ -510,7 +758,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       onClose();
 
     } catch (error) {
-      console.error('💥 録音保存エラー:', error);
+      console.error('録音保存エラー:', error);
       ErrorHandler.handle(error, 'recording_save');
     } finally {
       // 保存状態を必ずリセット
@@ -589,7 +837,12 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
             {!isRecording ? (
               <TouchableOpacity
                 style={[styles.recordButton, { backgroundColor: currentTheme.primary }]}
-                onPress={startRecording}
+                onPress={() => {
+                  logger.debug('録音ボタンがタップされました');
+                  startRecording();
+                }}
+                activeOpacity={0.8}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
                 <Mic size={24} color="#FFFFFF" />
                 <Text style={styles.recordButtonText}>録音開始</Text>

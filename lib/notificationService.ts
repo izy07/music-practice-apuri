@@ -206,10 +206,10 @@ export class NotificationService {
             },
             trigger: null, // 即座に送信
           });
-          logger.debug('✅ ネイティブ通知を送信しました');
+          logger.debug('ネイティブ通知を送信しました');
           return true;
         } catch (error) {
-          logger.error('❌ ネイティブ通知の送信エラー:', error);
+          logger.error('ネイティブ通知の送信エラー:', error);
           ErrorHandler.handle(error, 'ネイティブ通知送信', false);
           return false;
         }
@@ -399,10 +399,10 @@ export class NotificationService {
           return 'denied';
         }
         
-        logger.debug('✅ 通知権限が許可されました');
+        logger.debug('通知権限が許可されました');
         return 'granted';
       } catch (error) {
-        logger.error('❌ 通知権限のリクエストエラー:', error);
+        logger.error('通知権限のリクエストエラー:', error);
         ErrorHandler.handle(error, '通知権限要求', false);
         return 'denied';
       }
@@ -466,10 +466,10 @@ export class NotificationService {
         projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID,
       });
 
-      logger.debug('✅ プッシュトークンを取得しました:', tokenData.data);
+      logger.debug('プッシュトークンを取得しました:', tokenData.data);
       return tokenData.data;
     } catch (error) {
-      logger.error('❌ プッシュトークンの取得エラー:', error);
+      logger.error('プッシュトークンの取得エラー:', error);
       ErrorHandler.handle(error, 'プッシュトークン取得', false);
       return null;
     }
@@ -510,15 +510,15 @@ export class NotificationService {
         });
 
       if (error) {
-        logger.error('❌ プッシュトークンの登録エラー:', error);
+        logger.error('プッシュトークンの登録エラー:', error);
         ErrorHandler.handle(error, 'プッシュトークン登録', false);
         return false;
       }
 
-      logger.debug('✅ プッシュトークンをサーバーに登録しました');
+      logger.debug('プッシュトークンをサーバーに登録しました');
       return true;
     } catch (error) {
-      logger.error('❌ プッシュトークン登録処理のエラー:', error);
+      logger.error('プッシュトークン登録処理のエラー:', error);
       ErrorHandler.handle(error, 'プッシュトークン登録', false);
       return false;
     }

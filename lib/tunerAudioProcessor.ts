@@ -44,16 +44,71 @@ export const getNoteFromFrequency = (
     };
   }
 
+  // 周波数の妥当性チェック
+  if (!isFinite(frequency) || frequency <= 0 || frequency > 10000) {
+    return {
+      note: '--',
+      noteJa: '--',
+      octave: 0,
+      cents: 0,
+      isInTune: false,
+      tuningQuality: 'poor',
+      frequency: 0,
+    };
+  }
+
   const a4NoteNumber = 69; // MIDI note number for A4
   const noteNumber = 12 * Math.log2(frequency / a4Freq) + a4NoteNumber;
-  const octave = Math.floor(noteNumber / 12) - 1;
-  const noteIndex = Math.round(noteNumber) % 12;
-  const adjustedNoteIndex = noteIndex < 0 ? noteIndex + 12 : noteIndex;
+  
+  // noteNumberの妥当性チェック
+  if (!isFinite(noteNumber) || noteNumber < 0 || noteNumber > 127) {
+    return {
+      note: '--',
+      noteJa: '--',
+      octave: 0,
+      cents: 0,
+      isInTune: false,
+      tuningQuality: 'poor',
+      frequency: frequency,
+    };
+  }
+  
+  const nearestMidi = Math.round(noteNumber); // 最も近い半音に丸め
+  
+  // nearestMidiの妥当性チェック
+  if (nearestMidi < 0 || nearestMidi > 127) {
+    return {
+      note: '--',
+      noteJa: '--',
+      octave: 0,
+      cents: 0,
+      isInTune: false,
+      tuningQuality: 'poor',
+      frequency: frequency,
+    };
+  }
+  
+  const octave = Math.floor(nearestMidi / 12) - 1;
+  const noteIndex = ((nearestMidi % 12) + 12) % 12; // 0-11 に正規化
 
-  const note = NOTE_NAMES[adjustedNoteIndex];
-  const noteJa = NOTE_NAMES_JA[adjustedNoteIndex];
+  // noteIndexの範囲チェック
+  if (noteIndex < 0 || noteIndex >= NOTE_NAMES.length) {
+    console.error('Invalid noteIndex:', noteIndex, 'nearestMidi:', nearestMidi, 'frequency:', frequency);
+    return {
+      note: '--',
+      noteJa: '--',
+      octave: 0,
+      cents: 0,
+      isInTune: false,
+      tuningQuality: 'poor',
+      frequency: frequency,
+    };
+  }
 
-  const cents = (noteNumber - Math.round(noteNumber)) * 100;
+  const note = NOTE_NAMES[noteIndex];
+  const noteJa = NOTE_NAMES_JA[noteIndex];
+
+  const cents = (noteNumber - nearestMidi) * 100;
   const absCents = Math.abs(cents);
 
   // プロ仕様のチューニング品質判定
@@ -86,7 +141,7 @@ export const getNoteFromFrequency = (
 };
 
 /**
- * 改良された自己相関法でピッチ検出
+ * 改良された自己相関法でピッチ検出（ハーモニクス除去機能付き）
  */
 export const autoCorrelate = (
   buffer: Float32Array,
@@ -152,23 +207,66 @@ export const autoCorrelate = (
   let d = 0;
   while (d < SIZE - 1 && c[d] > c[d + 1]) d++;
 
-  let maxval = -1;
-  let maxpos = -1;
-
   // 周波数範囲制限（より厳密）
   const minPeriod = Math.floor(sampleRate / 4000); // 最高周波数4000Hz
   const maxPeriod = Math.floor(sampleRate / 80);   // 最低周波数80Hz
 
+  // 候補となるピークを複数見つける（ハーモニクス除去のため）
+  const candidates: Array<{ period: number; correlation: number }> = [];
+  
   for (let i = Math.max(d, minPeriod); i < Math.min(SIZE, maxPeriod); i += step) {
-    if (c[i] > maxval) {
-      maxval = c[i];
-      maxpos = i;
+    // ピークを検出（前後の値より大きい）
+    if (i > 0 && i < SIZE - 1 && c[i] > c[i - 1] && c[i] > c[i + 1] && c[i] > 0.3) {
+      candidates.push({ period: i, correlation: c[i] });
     }
   }
 
-  if (maxpos === -1 || maxval < 0.4) return -1; // より厳密な閾値チェック
+  // 相関値でソート（高い順）
+  candidates.sort((a, b) => b.correlation - a.correlation);
 
-  let T0 = maxpos;
+  // 基本周波数を決定（ハーモニクスを除外）
+  let fundamentalPeriod = -1;
+  let fundamentalCorrelation = -1;
+
+  for (const candidate of candidates) {
+    // 既に見つかった基本周波数の整数倍（ハーモニクス）かチェック
+    if (fundamentalPeriod > 0) {
+      const ratio = candidate.period / fundamentalPeriod;
+      // 2倍、3倍、4倍などのハーモニクスの可能性をチェック
+      if (Math.abs(ratio - Math.round(ratio)) < 0.1) {
+        continue; // ハーモニクスの可能性が高いのでスキップ
+      }
+    }
+
+    // 他の候補がこの候補の整数倍（ハーモニクス）かチェック
+    let isHarmonic = false;
+    for (const other of candidates) {
+      if (other.period === candidate.period) continue;
+      const ratio = other.period / candidate.period;
+      // 2倍、3倍、4倍などのハーモニクスの可能性をチェック
+      if (ratio > 1 && Math.abs(ratio - Math.round(ratio)) < 0.1) {
+        isHarmonic = true;
+        break;
+      }
+    }
+
+    // ハーモニクスでない場合、基本周波数として採用
+    if (!isHarmonic) {
+      fundamentalPeriod = candidate.period;
+      fundamentalCorrelation = candidate.correlation;
+      break;
+    }
+  }
+
+  // 候補が見つからなかった場合は、最も相関値の高いものを使用
+  if (fundamentalPeriod === -1 && candidates.length > 0) {
+    fundamentalPeriod = candidates[0].period;
+    fundamentalCorrelation = candidates[0].correlation;
+  }
+
+  if (fundamentalPeriod === -1 || fundamentalCorrelation < 0.4) return -1;
+
+  let T0 = fundamentalPeriod;
 
   // パラボラ補間による精度向上
   if (T0 > 0 && T0 < SIZE - 1) {

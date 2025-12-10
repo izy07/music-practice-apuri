@@ -203,7 +203,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       // キャッシュがある場合は即座に使用（遅延ゼロ）
       if (instrumentsCacheRef.current) {
         setDbInstruments(instrumentsCacheRef.current);
-        logger.debug('✅ キャッシュから楽器データを即座に読み込み（遅延ゼロ）');
+        logger.debug('キャッシュから楽器データを即座に読み込み（遅延ゼロ）');
       }
       
       // まずデフォルト楽器を即座に設定（UIの応答性を向上・黒を防ぐ）
@@ -232,7 +232,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         setDbInstruments(result.data);
         // キャッシュに保存（次回は即座に表示）
         instrumentsCacheRef.current = result.data;
-        logger.debug('✅ 楽器データをキャッシュに保存');
+        logger.debug('楽器データをキャッシュに保存');
       } else {
         // エラーの場合はローカルのdefaultInstrumentsを使用（既に設定済み）
         if (__DEV__) {

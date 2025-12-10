@@ -103,7 +103,7 @@ export default function ResetPasswordScreen() {
 
       setIsValidSession(true);
     } catch (error) {
-      console.error('💥 セッション確認エラー:', error);
+      console.error('セッション確認エラー:', error);
       router.replace('/auth/login');
     }
   };
@@ -144,7 +144,7 @@ export default function ResetPasswordScreen() {
       });
 
       if (error) {
-        console.error('❌ パスワード更新エラー:', error);
+        console.error('パスワード更新エラー:', error);
         throw error;
       }
       
@@ -173,7 +173,7 @@ export default function ResetPasswordScreen() {
       );
       
     } catch (error) {
-      console.error('💥 パスワードリセット処理エラー:', error);
+      console.error('パスワードリセット処理エラー:', error);
       Alert.alert(
         'エラー',
         'パスワードの更新に失敗しました。もう一度お試しください。'
