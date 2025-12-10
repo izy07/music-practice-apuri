@@ -12,7 +12,7 @@ import { membershipRepository } from '@/repositories/membershipRepository';
 import { safeServiceExecute, ServiceResult } from './baseService';
 import logger from '@/lib/logger';
 import { hashPassword } from '@/lib/security/passwordHasher';
-import { generatePassword, generateInviteCode } from '@/lib/security/codeGenerator';
+import { generatePassword, generateInviteCode, generateAdminCode } from '@/lib/security/codeGenerator';
 import {
   validateCreateOrganization,
   validateUpdateOrganization,
@@ -155,6 +155,10 @@ export class OrganizationService {
         let inviteCodeHash: string | undefined;
         let expiresAt: Date | undefined;
 
+        // 管理者コードは全ての組織（ソロモード含む）で自動生成
+        const adminCode = generateAdminCode();
+        const adminCodeHash = await hashPassword(adminCode);
+
         if (!input.isSolo) {
           // カスタムパスワードまたは自動生成
           password = input.customPassword || generatePassword(8);
@@ -176,6 +180,9 @@ export class OrganizationService {
           name: normalizedName,
           description: input.description?.trim(),
           created_by: user.id,
+          // 管理者コードは全ての組織で自動生成（平文とハッシュの両方を保存）
+          admin_code: adminCode, // 平文（表示用）
+          admin_code_hash: adminCodeHash, // ハッシュ（検証用）
         };
 
         // is_soloがtrueの場合のみ追加（falseの場合はカラムが存在しない可能性があるため）
@@ -184,9 +191,11 @@ export class OrganizationService {
         }
 
         // ソロモードでない場合のみパスワードと招待コードを設定
-        // セキュリティのため、パスワードの平文は保存しない（password_hashのみ）
-        if (!input.isSolo && passwordHash && inviteCode && inviteCodeHash) {
-          insertData.password_hash = passwordHash;
+        // パスワードは組織作成者が後から確認できるように平文でも保存
+        // （セキュリティ: 参加時はpassword_hashで検証、表示時は平文を使用）
+        if (!input.isSolo && password && passwordHash && inviteCode && inviteCodeHash) {
+          insertData.password = password; // 平文パスワードも保存（表示用）
+          insertData.password_hash = passwordHash; // ハッシュパスワード（検証用）
           insertData.invite_code = inviteCode;
           insertData.invite_code_hash = inviteCodeHash;
           insertData.invite_code_expires_at = expiresAt?.toISOString();
@@ -402,7 +411,12 @@ export class OrganizationService {
 
         // ソロモードでない場合のみパスワードを検証
         if (!organization.is_solo) {
-          logger.debug(`[${SERVICE_CONTEXT}] joinOrganization:verifying password`);
+          logger.debug(`[${SERVICE_CONTEXT}] joinOrganization:verifying password`, {
+            providedPassword: input.password,
+            providedPasswordLength: input.password.length,
+            hasPasswordHash: !!organization.password_hash,
+          });
+          
           const { verifyPassword } = await import('@/lib/security/passwordHasher');
           const isValidPassword = await verifyPassword(
             input.password,
@@ -411,15 +425,20 @@ export class OrganizationService {
 
           logger.debug(`[${SERVICE_CONTEXT}] joinOrganization:password verification result`, {
             isValid: isValidPassword,
+            providedPassword: input.password,
+            providedPasswordLength: input.password.length,
           });
 
           if (!isValidPassword) {
             logger.warn(`[${SERVICE_CONTEXT}] joinOrganization:invalid password`, {
               organizationId: input.organizationId,
+              organizationName: organization.name,
               userId: user.id,
+              providedPassword: input.password,
               providedPasswordLength: input.password.length,
+              providedPasswordCharCodes: input.password.split('').map(c => c.charCodeAt(0)),
             });
-            throw new Error('パスワードが正しくありません');
+            throw new Error('パスワードが正しくありません。パスワードは8桁の大文字英数字である必要があります。');
           }
         } else {
           logger.debug(`[${SERVICE_CONTEXT}] joinOrganization:skipping password check (solo mode)`);

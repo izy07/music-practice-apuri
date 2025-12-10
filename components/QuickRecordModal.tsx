@@ -22,6 +22,7 @@ import { formatLocalDate } from '@/lib/dateUtils';
 import { supabase } from '@/lib/supabase';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
+import { readableTextColor } from '@/lib/colors';
 
 interface QuickRecordModalProps {
   visible: boolean;
@@ -386,7 +387,7 @@ export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRe
                     style={[styles.timeButton, getTimeButtonStyle(), { backgroundColor: currentTheme.secondary }]}
                     onPress={() => handleManualTimeSelect(option.minutes)}
                   >
-                    <Text style={[styles.timeButtonText, { color: '#FFFFFF' }]}>{option.label}</Text>
+                    <Text style={[styles.timeButtonText, { color: readableTextColor(currentTheme.secondary) }]}>{option.label}</Text>
                   </TouchableOpacity>
                 ))}
               </View>

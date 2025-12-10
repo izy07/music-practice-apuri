@@ -627,7 +627,7 @@ export default function MyLibraryScreen() {
                   キャンセル
                 </Text>
               </TouchableOpacity>
-              <Text id="my-library-modal-title" style={[styles.modalTitle, { color: currentTheme.text }]}>
+              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
                 {editingSong ? '曲を編集' : (
                   formData.status === 'learning' ? '練習中の曲を追加' : 
                   formData.status === 'mastered' ? 'マスター済みの曲を追加' : 
@@ -648,7 +648,7 @@ export default function MyLibraryScreen() {
                     color: currentTheme.text,
                     borderColor: currentTheme.secondary
                   }]}
-                  value={formData.title}
+                  value={formData.title || ''}
                   onChangeText={(text) => setFormData(prev => ({ ...prev, title: text }))}
                   placeholder="曲名を入力"
                   placeholderTextColor={currentTheme.textSecondary}
@@ -658,8 +658,6 @@ export default function MyLibraryScreen() {
               <View style={styles.formGroup}>
                 <Text style={[styles.formLabel, { color: currentTheme.text }]}>アーティスト</Text>
                 <TextInput
-                  id="song-artist-input"
-                  name="song-artist"
                   style={[styles.formInput, { 
                     backgroundColor: currentTheme.surface,
                     color: currentTheme.text,
@@ -750,8 +748,6 @@ export default function MyLibraryScreen() {
               <View style={styles.formGroup}>
                 <Text style={[styles.formLabel, { color: currentTheme.text }]}>メモ</Text>
                 <TextInput
-                  id="song-notes-input"
-                  name="song-notes"
                   style={[styles.formTextArea, { 
                     backgroundColor: currentTheme.surface,
                     color: currentTheme.text,

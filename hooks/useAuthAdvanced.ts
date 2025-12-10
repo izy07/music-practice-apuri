@@ -95,6 +95,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
   // レート制限インスタンス
   const rateLimiter = useRef(createRateLimiter()).current;
   
+  // signOut関数の参照を保持（useEffectで使用するため）
+  const signOutRef = useRef<(() => Promise<void>) | null>(null);
+  
   // 新規登録画面の場合はユーザー取得を停止（Hooksの順序を保持）
   const authChild = segments.length > 1 ? (segments as readonly string[])[1] : undefined;
   const isSignupScreen = authChild === 'signup';
@@ -318,9 +321,48 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         if (diffMs > 0) {
           timer = setTimeout(async () => {
             try {
-              await supabase.auth.refreshSession();
-            } catch (e) {
-              // 失敗時は静かに。UI側で必要に応じ通知
+              const { error } = await supabase.auth.refreshSession();
+              if (error) {
+                // リフレッシュトークンが無効な場合
+                if (
+                  error.message?.includes('Invalid Refresh Token') ||
+                  error.message?.includes('Refresh Token Not Found') ||
+                  error.message?.includes('refresh_token_not_found')
+                ) {
+                  logger.warn('リフレッシュトークンが無効です。セッションをクリアします。', error);
+                  // セッションをクリアしてログイン画面にリダイレクト
+                  if (signOutRef.current) {
+                    await signOutRef.current();
+                  } else {
+                    await supabase.auth.signOut();
+                  }
+                  if (typeof router !== 'undefined') {
+                    router.replace('/auth/login');
+                  }
+                } else {
+                  // その他のエラーはログに記録
+                  logger.debug('セッションリフレッシュエラー:', error);
+                }
+              }
+            } catch (e: any) {
+              // 予期しないエラーの場合
+              if (
+                e?.message?.includes('Invalid Refresh Token') ||
+                e?.message?.includes('Refresh Token Not Found') ||
+                e?.message?.includes('refresh_token_not_found')
+              ) {
+                logger.warn('リフレッシュトークンが無効です。セッションをクリアします。', e);
+                if (signOutRef.current) {
+                  await signOutRef.current();
+                } else {
+                  await supabase.auth.signOut();
+                }
+                if (typeof router !== 'undefined') {
+                  router.replace('/auth/login');
+                }
+              } else {
+                logger.debug('セッションリフレッシュ例外:', e);
+              }
             }
           }, diffMs);
         }
@@ -333,7 +375,24 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         const exp = res.data.session?.expires_at;
         const nowSec = Math.floor(Date.now() / 1000);
         if (exp && exp - nowSec < TIMEOUT.SESSION_EXPIRY_WARNING_SEC) {
-          supabase.auth.refreshSession().catch(() => {});
+          supabase.auth.refreshSession().catch(async (error: any) => {
+            // リフレッシュトークンが無効な場合
+            if (
+              error?.message?.includes('Invalid Refresh Token') ||
+              error?.message?.includes('Refresh Token Not Found') ||
+              error?.message?.includes('refresh_token_not_found')
+            ) {
+              logger.warn('リフレッシュトークンが無効です。セッションをクリアします。', error);
+              if (signOutRef.current) {
+                await signOutRef.current();
+              } else {
+                await supabase.auth.signOut();
+              }
+              if (typeof router !== 'undefined') {
+                router.replace('/auth/login');
+              }
+            }
+          });
         }
       });
     };
@@ -346,7 +405,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         document.removeEventListener('visibilitychange', onVisible);
       }
     };
-  }, []);
+  }, [router]);
 
   // 内部用の認証済みユーザー処理
   const handleAuthenticatedUser = useCallback(async (user: any): Promise<AuthUser | null> => {
@@ -940,6 +999,10 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     }
   }, [clearInstrumentThemeLocal]);
   
+  // signOut関数の参照を更新（useEffectで使用するため）
+  useEffect(() => {
+    signOutRef.current = signOut;
+  }, [signOut]);
 
   // セッションクリア処理（新規登録用）
   const clearSession = useCallback(async (): Promise<void> => {

@@ -120,7 +120,7 @@ export function generatePassword(length: number = CODE_CONFIG.passwordLength): s
  * 
  * 4桁の数字コードをランダムに生成します。
  * 
- * @returns 生成された管理者コード
+ * @returns 生成された管理者コード（4桁の数字）
  * 
  * @example
  * ```typescript
@@ -129,7 +129,25 @@ export function generatePassword(length: number = CODE_CONFIG.passwordLength): s
  * ```
  */
 export function generateAdminCode(): string {
-  return generatePassword(4);
+  try {
+    // 4桁の数字コードを生成
+    const randomValues = crypto.getRandomValues(new Uint32Array(4));
+    let result = '';
+    
+    for (let i = 0; i < 4; i++) {
+      // 0-9の数字を生成
+      result += (randomValues[i] % 10).toString();
+    }
+    
+    return result;
+  } catch (error) {
+    // フォールバック: Math.random()を使用
+    let result = '';
+    for (let i = 0; i < 4; i++) {
+      result += Math.floor(Math.random() * 10).toString();
+    }
+    return result;
+  }
 }
 
 /**

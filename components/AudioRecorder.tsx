@@ -308,13 +308,75 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
           setAudioUrl(newAudioUrl);
           
           // 実際の録音時間を計算（開始時刻からの経過時間）
-          const actualDuration = Math.round((Date.now() - startTime) / 1000);
-          setRecordingDuration(actualDuration);
+          const dateBasedDuration = Math.round((Date.now() - startTime) / 1000);
+          setRecordingDuration(dateBasedDuration);
           
           logger.debug('録音が完了しました', {
-            duration: actualDuration,
+            duration: dateBasedDuration,
             audioUrl: newAudioUrl.substring(0, 50) + '...'
           });
+          
+          // Audio要素からより正確なdurationを取得（非同期で更新、エラーは無視）
+          // 即座にDate.now()ベースの値を設定し、後でAudio要素のdurationで更新する可能性がある
+          (async function updateDurationFromAudio() {
+            try {
+              const audio = new Audio(newAudioUrl);
+              
+              // メタデータの読み込み完了を待つ
+              await new Promise<void>((resolve, reject) => {
+                const timeoutId = setTimeout(() => {
+                  reject(new Error('タイムアウト'));
+                }, 3000);
+                
+                audio.addEventListener('loadedmetadata', () => {
+                  clearTimeout(timeoutId);
+                  resolve();
+                }, { once: true });
+                
+                audio.addEventListener('error', () => {
+                  clearTimeout(timeoutId);
+                  reject(new Error('Audio読み込みエラー'));
+                }, { once: true });
+                
+                // メタデータの読み込みを開始
+                audio.load();
+              });
+              
+              const duration = audio.duration;
+              if (isFinite(duration) && duration > 0) {
+                // Audio要素のdurationは秒単位（小数）なので、四捨五入して整数秒に変換
+                const roundedDuration = Math.round(duration);
+                logger.debug('Audio要素から取得した録音時間', {
+                  rawDuration: duration,
+                  roundedDuration: roundedDuration,
+                  dateBasedDuration: dateBasedDuration
+                });
+                
+                // 実際のdurationとDate.now()ベースの値に大きな差がある場合のみ更新
+                // （小さな差の場合はDate.now()ベースの値を維持）
+                if (Math.abs(roundedDuration - dateBasedDuration) > 1) {
+                  setRecordingDuration(roundedDuration);
+                  logger.debug('録音時間をAudio要素のdurationに更新', {
+                    old: dateBasedDuration,
+                    new: roundedDuration
+                  });
+                }
+              } else {
+                logger.debug('Audio要素のdurationが無効なため、Date.now()ベースの値を維持', {
+                  duration,
+                  dateBasedDuration
+                });
+              }
+              
+              // クリーンアップ（URLは後で使用するため、ここでは削除しない）
+              audio.src = '';
+            } catch (error) {
+              logger.debug('Audio要素からの録音時間取得に失敗、Date.now()ベースの値を維持', {
+                error,
+                dateBasedDuration
+              });
+            }
+          })();
         } catch (error) {
           logger.error('録音データの処理エラー:', error);
           Alert.alert('録音エラー', '録音データの処理に失敗しました');

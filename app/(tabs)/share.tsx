@@ -26,7 +26,6 @@ export default function ShareScreen() {
     loadOrganizations,
     createOrganization: createOrg,
     joinOrganization: joinOrg,
-    searchOrganizations: searchOrgs,
   } = useOrganization();
   
   // UI状態管理
@@ -43,12 +42,10 @@ export default function ShareScreen() {
 
   // 組織参加フォーム
   const [joinForm, setJoinForm] = useState<{
-    searchName: string;
-    selectedOrg: Organization | null;
+    organizationId: string;
     password: string;
   }>({
-    searchName: '',
-    selectedOrg: null,
+    organizationId: '',
     password: ''
   });
   
@@ -103,74 +100,47 @@ export default function ShareScreen() {
     }
   };
 
-  // 組織検索
-  const handleSearchOrganizations = async () => {
-    if (!joinForm.searchName.trim()) {
-      Alert.alert(t('error'), t('pleaseEnterOrganizationName'));
-      return;
-    }
-
-    try {
-      logger.debug('組織検索開始:', { searchName: joinForm.searchName.trim() });
-      const foundOrgs = await searchOrgs(joinForm.searchName.trim());
-      logger.debug('組織検索結果:', { count: foundOrgs.length, orgs: foundOrgs });
-      
-      if (foundOrgs.length === 0) {
-        Alert.alert(t('searchResult'), t('noOrganizationsFound'));
-      } else if (foundOrgs.length === 1) {
-        logger.debug('組織を選択:', { orgId: foundOrgs[0].id, orgName: foundOrgs[0].name });
-        setJoinForm(prev => ({ ...prev, selectedOrg: foundOrgs[0] }));
-      } else {
-        // 複数の組織が見つかった場合の選択処理
-        const orgNames = foundOrgs.map(org => org.name);
-        Alert.alert(
-          t('multipleOrganizationsFound') || '複数の組織が見つかりました',
-          orgNames.join('\n') + '\n\n最初の組織を選択しますか？',
-          [
-            { text: t('cancel') || 'キャンセル', style: 'cancel' },
-            {
-              text: t('select') || '選択',
-              onPress: () => {
-                logger.debug('最初の組織を選択:', { orgId: foundOrgs[0].id });
-                setJoinForm(prev => ({ ...prev, selectedOrg: foundOrgs[0] }));
-              },
-            },
-          ]
-        );
-      }
-    } catch (error) {
-      logger.error('組織検索エラー:', error);
-      ErrorHandler.handle(error, '組織検索', true);
-    }
-  };
-
   // 組織参加
   const handleJoinOrganization = async () => {
-    if (!joinForm.selectedOrg || !joinForm.password.trim()) {
-      Alert.alert(t('error'), t('pleaseEnterOrganizationAndPassword'));
+    if (!joinForm.organizationId.trim() || !joinForm.password.trim()) {
+      Alert.alert(t('error'), '組織IDとパスワードを入力してください');
       return;
     }
 
     try {
+      // 組織IDを正規化（空白を削除）
+      const normalizedOrgId = joinForm.organizationId.trim();
+      
+      // パスワードを正規化（大文字に変換、英数字以外を削除）
+      const normalizedPassword = joinForm.password.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+      
       logger.debug('組織参加を試行:', {
-        organizationId: joinForm.selectedOrg.id,
-        organizationName: joinForm.selectedOrg.name,
-        passwordLength: joinForm.password.trim().length,
+        organizationId: normalizedOrgId,
+        originalPassword: joinForm.password,
+        normalizedPassword: normalizedPassword,
+        originalPasswordLength: joinForm.password.trim().length,
+        normalizedPasswordLength: normalizedPassword.length,
       });
 
+      if (normalizedPassword.length !== 8) {
+        Alert.alert(t('error'), 'パスワードは8桁の大文字英数字である必要があります。');
+        return;
+      }
+
       const organization = await joinOrg({
-        organizationId: joinForm.selectedOrg.id,
-        password: joinForm.password.trim(),
+        organizationId: normalizedOrgId,
+        password: normalizedPassword,
       });
 
       if (organization) {
         logger.debug('組織参加成功:', { organizationId: organization.id });
         Alert.alert(t('success'), t('joinedOrganization'));
         setShowJoinOrg(false);
-        setJoinForm({ searchName: '', selectedOrg: null, password: '' });
+        setJoinForm({ organizationId: '', password: '' });
+        // 組織一覧を再読み込み
+        loadOrganizations();
       } else {
         // joinOrgがnullを返した場合（エラーは既にuseOrganizationフック内で表示されている）
-        // 追加のエラーメッセージは不要（重複を避けるため）
         logger.warn('組織参加がnullを返しました');
       }
     } catch (error) {
@@ -480,54 +450,30 @@ export default function ShareScreen() {
             </View>
 
             <ScrollView style={styles.modalBody}>
-              {/* 組織検索 */}
+              {/* 組織ID入力 */}
               <View style={styles.inputContainer}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                  {t('searchOrganizationByName')} *
+                  組織ID *
                 </Text>
-                <View style={styles.searchContainer}>
-                  <TextInput
-                    style={[styles.textInput, { 
-                      backgroundColor: currentTheme.background,
-                      color: currentTheme.text,
-                      borderColor: currentTheme.secondary,
-                      flex: 1
-                    }]}
-                    value={joinForm.searchName}
-                    onChangeText={(text) => setJoinForm(prev => ({ ...prev, searchName: text }))}
-                    placeholder={t('organizationNamePlaceholder')}
-                    placeholderTextColor={currentTheme.textSecondary}
-                  />
-                  <TouchableOpacity
-                    style={[styles.searchButton, { backgroundColor: currentTheme.primary }]}
-                    onPress={handleSearchOrganizations}
-                    disabled={loading}
-                  >
-                    <Text style={[styles.searchButtonText, { color: currentTheme.surface }]}>
-                      {t('search')}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
+                <TextInput
+                  style={[styles.textInput, { 
+                    backgroundColor: currentTheme.background,
+                    color: currentTheme.text,
+                    borderColor: currentTheme.secondary
+                  }]}
+                  value={joinForm.organizationId}
+                  onChangeText={(text) => setJoinForm(prev => ({ ...prev, organizationId: text }))}
+                  placeholder="組織IDを入力してください（UUID形式）"
+                  placeholderTextColor={currentTheme.textSecondary}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <Text style={[styles.inputHint, { color: currentTheme.textSecondary }]}>
+                  組織の管理者から提供された組織IDを入力してください
+                </Text>
               </View>
 
-              {joinForm.selectedOrg && (
-                <View style={styles.inputContainer}>
-                  <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                    {t('selectedOrganization')}
-                  </Text>
-                  <View style={[styles.selectedOrgCard, { backgroundColor: currentTheme.background }]}>
-                    <Text style={[styles.selectedOrgName, { color: currentTheme.text }]}>
-                      {joinForm.selectedOrg.name}
-                    </Text>
-                    {joinForm.selectedOrg.description && (
-                      <Text style={[styles.selectedOrgDescription, { color: currentTheme.textSecondary }]}>
-                        {joinForm.selectedOrg.description}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-              )}
-
+              {/* パスワード入力 */}
               <View style={styles.inputContainer}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
                   {t('organizationPassword')} *
@@ -554,10 +500,10 @@ export default function ShareScreen() {
               <TouchableOpacity
                 style={[styles.actionButton, { 
                   backgroundColor: currentTheme.primary,
-                  opacity: (!joinForm.selectedOrg || !joinForm.password.trim()) ? 0.5 : 1
+                  opacity: (!joinForm.organizationId.trim() || !joinForm.password.trim()) ? 0.5 : 1
                 }]}
                 onPress={handleJoinOrganization}
-                disabled={loading || !joinForm.selectedOrg || !joinForm.password.trim()}
+                disabled={loading || !joinForm.organizationId.trim() || !joinForm.password.trim()}
               >
                 <Text style={[styles.actionButtonText, { color: currentTheme.surface }]}>
                   {loading ? t('joining') : t('join')}
@@ -998,6 +944,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     marginBottom: 8,
+  },
+  inputHint: {
+    fontSize: 12,
+    marginTop: 4,
+    lineHeight: 16,
   },
   textInput: {
     borderWidth: 1,

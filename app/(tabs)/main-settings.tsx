@@ -8,7 +8,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft } from 'lucide-react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
 import InstrumentHeader from '@/components/InstrumentHeader';

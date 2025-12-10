@@ -35,15 +35,15 @@ export default function TutorialScreen() {
   const [notificationEnabled, setNotificationEnabled] = useState(false);
   const [isRequestingPermission, setIsRequestingPermission] = useState(false);
   
-  // アニメーション用の値
+  // アニメーション用の値（シンプル化）
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
 
   const tutorialSteps = [
     {
       icon: '🎵',
       title: '楽器練習アプリへ\nようこそ!',
+      subtitle: '〜あなただけの楽器練習帳〜',
       description: '楽器練習を楽しく継続しましょう。このアプリがあなたの練習を全力でサポートします。',
       gradientColors: ['#667eea', '#764ba2'],
     },
@@ -55,7 +55,7 @@ export default function TutorialScreen() {
     },
     {
       icon: '👥',
-      title: '効率的なチーム運営',
+      title: '連絡が埋もれない',
       description: '連絡事項が埋もれない。団体活動をアプリで完結。\n\n部活、サークル、バンドの練習日程、出欠、課題をまとめて管理。LINEなどに頼らず、連絡漏れのない快適な活動を実現します。',
       gradientColors: ['#4facfe', '#00f2fe'],
     },
@@ -93,44 +93,29 @@ export default function TutorialScreen() {
     setIsNavigating(false);
     loadNotificationSettings();
     
-    // 初期アニメーション
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 400,
-        useNativeDriver,
-      }),
-      Animated.spring(slideAnim, {
-        toValue: 0,
-        friction: 8,
-        tension: 40,
-        useNativeDriver,
-      }),
-    ]).start();
+    // 初期アニメーション（シンプル化：フェードのみ）
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 250,
+      useNativeDriver,
+    }).start();
   }, []);
 
-  // ステップ変更時のアニメーション
+  // ステップ変更時のアニメーション（シンプル化：フェード+軽いスライド）
   useEffect(() => {
     fadeAnim.setValue(0);
-    slideAnim.setValue(50);
-    scaleAnim.setValue(0.95);
+    slideAnim.setValue(15); // 移動距離を減らす（50px → 15px）
 
+    // シンプルなフェード+スライドのみ
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 300,
+        duration: 250,
         useNativeDriver,
       }),
-      Animated.spring(slideAnim, {
+      Animated.timing(slideAnim, {
         toValue: 0,
-        friction: 8,
-        tension: 40,
-        useNativeDriver,
-      }),
-      Animated.spring(scaleAnim, {
-        toValue: 1,
-        friction: 7,
-        tension: 40,
+        duration: 250,
         useNativeDriver,
       }),
     ]).start();
@@ -155,7 +140,27 @@ export default function TutorialScreen() {
     
     try {
       const notificationService = NotificationService.getInstance();
+      const newEnabled = !notificationEnabled;
       
+      // 通知をオフにする場合、権限リクエストは不要で設定を直接更新
+      if (!newEnabled) {
+        setNotificationEnabled(false);
+        
+        const settings = await notificationService.loadSettings();
+        if (settings) {
+          const updatedSettings = {
+            ...settings,
+            practice_reminders: false,
+            daily_practice: false,
+          };
+          await notificationService.saveSettings(updatedSettings);
+          logger.debug('通知設定をオフにしました', updatedSettings);
+        }
+        setIsRequestingPermission(false);
+        return;
+      }
+      
+      // 通知をオンにする場合のみ権限リクエスト
       if (Platform.OS === 'web') {
         if (!('Notification' in window)) {
           Alert.alert('通知がサポートされていません', 'このブラウザでは通知機能を利用できません');
@@ -166,22 +171,19 @@ export default function TutorialScreen() {
         const permission = await notificationService.requestPermission();
         
         if (permission === 'granted') {
-          const newEnabled = !notificationEnabled;
-          setNotificationEnabled(newEnabled);
+          setNotificationEnabled(true);
           
           const settings = await notificationService.loadSettings();
           if (settings) {
             const updatedSettings = {
               ...settings,
-              practice_reminders: newEnabled,
-              daily_practice: newEnabled,
+              practice_reminders: true,
+              daily_practice: true,
             };
             await notificationService.saveSettings(updatedSettings);
             logger.debug('通知設定を保存しました', updatedSettings);
             
-            if (newEnabled) {
-              await notificationService.sendPracticeReminder();
-            }
+            await notificationService.sendPracticeReminder();
           }
         } else if (permission === 'denied') {
           Alert.alert(
@@ -195,26 +197,23 @@ export default function TutorialScreen() {
         const permission = await notificationService.requestPermission();
         
         if (permission === 'granted') {
-          const newEnabled = !notificationEnabled;
-          setNotificationEnabled(newEnabled);
+          setNotificationEnabled(true);
           
           const settings = await notificationService.loadSettings();
           if (settings) {
             const updatedSettings = {
               ...settings,
-              practice_reminders: newEnabled,
-              daily_practice: newEnabled,
+              practice_reminders: true,
+              daily_practice: true,
             };
             await notificationService.saveSettings(updatedSettings);
             logger.debug('通知設定を保存しました', updatedSettings);
           }
           
-          if (newEnabled) {
-            const registered = await notificationService.registerPushToken();
-            if (registered) {
-              logger.debug('プッシュトークンを登録しました');
-              await notificationService.sendPracticeReminder();
-            }
+          const registered = await notificationService.registerPushToken();
+          if (registered) {
+            logger.debug('プッシュトークンを登録しました');
+            await notificationService.sendPracticeReminder();
           }
         } else if (permission === 'denied') {
           Alert.alert(
@@ -398,9 +397,6 @@ export default function TutorialScreen() {
                   styles.stepIndicatorDot,
                   isActive && styles.stepIndicatorDotActive,
                   isPast && styles.stepIndicatorDotPast,
-                  isActive && {
-                    transform: [{ scale: scaleAnim }],
-                  },
                 ]}
               />
             );
@@ -421,29 +417,26 @@ export default function TutorialScreen() {
               opacity: fadeAnim,
               transform: [
                 { translateY: slideAnim },
-                { scale: scaleAnim },
               ],
             },
           ]}
         >
           {/* アイコン */}
-          <Animated.View
-            style={[
-              styles.iconContainer,
-              {
-                transform: [{ scale: scaleAnim }],
-              },
-            ]}
-          >
+          <View style={styles.iconContainer}>
             <View style={[styles.iconCircle, { backgroundColor: currentStepData.gradientColors[0] }]}>
               <Text style={styles.iconText}>{currentStepData.icon}</Text>
             </View>
             {/* アイコン周りの装飾 */}
             <View style={[styles.iconDecoration, { borderColor: currentStepData.gradientColors[0] }]} />
-          </Animated.View>
+          </View>
 
           {/* タイトル */}
           <Text style={styles.stepTitle}>{currentStepData.title}</Text>
+
+          {/* サブタイトル（1枚目の場合のみ） */}
+          {currentStep === 0 && currentStepData.subtitle && (
+            <Text style={styles.stepSubtitle}>{currentStepData.subtitle}</Text>
+          )}
 
           {/* 説明文 */}
           <Text style={styles.stepDescription}>{currentStepData.description}</Text>
@@ -656,9 +649,17 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '700',
     textAlign: 'center',
-    marginBottom: 16,
+    marginBottom: 8,
     color: '#1a1a1a',
     lineHeight: 38,
+  },
+  stepSubtitle: {
+    fontSize: 18,
+    fontWeight: '400',
+    textAlign: 'center',
+    marginBottom: 16,
+    color: '#666666',
+    fontStyle: 'italic',
   },
   stepDescription: {
     fontSize: 16,
