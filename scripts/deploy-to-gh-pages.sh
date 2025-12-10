@@ -55,13 +55,27 @@ echo "📋 dist/の内容をコピー中..."
 cp dist/index.html . 2>/dev/null || true
 cp dist/favicon.ico . 2>/dev/null || true
 cp dist/metadata.json . 2>/dev/null || true
-# 404.htmlをコピー（SPAルーティング用）
-cp dist/404.html . 2>/dev/null || cp dist/index.html 404.html || true
+# 404.htmlをコピー（SPAルーティング用）- 必ず存在することを確認
+if [ -f dist/404.html ]; then
+  cp dist/404.html . || {
+    echo "⚠️  404.htmlのコピーに失敗しました。index.htmlから作成します..."
+    cp dist/index.html 404.html
+  }
+else
+  echo "⚠️  dist/404.htmlが見つかりません。index.htmlから作成します..."
+  cp dist/index.html 404.html
+fi
 # _expoとassetsディレクトリをコピー
 cp -r dist/_expo . 2>/dev/null || true
 cp -r dist/assets . 2>/dev/null || true
-# .nojekyllファイルを作成
+# .nojekyllファイルを作成（Jekyllを無効化してGitHub Pagesで静的ファイルを正しく配信）
 echo "" > .nojekyll
+# 404.htmlが存在することを確認
+if [ ! -f 404.html ]; then
+  echo "❌ 404.htmlが作成されていません。エラーです。"
+  exit 1
+fi
+echo "✅ 404.htmlが存在することを確認しました"
 
 # すべてをコミット
 echo "💾 コミット中..."

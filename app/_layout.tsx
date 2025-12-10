@@ -391,10 +391,11 @@ function RootLayoutContent() {
       const redirectPath = urlParams.get('_redirect');
       
       // sessionStorageからも取得（フォールバック）
-      const originalPath = sessionStorage.getItem('expo-router-original-path');
+      const originalPath = sessionStorage.getItem('_original_path');
       const storedRedirectPath = sessionStorage.getItem('expo-router-redirect-path');
       
       // リダイレクトフラグをクリア
+      sessionStorage.removeItem('_404_redirected');
       sessionStorage.removeItem('github-pages-redirecting');
       
       // ルートパス（/music-practice-apuri/ または /music-practice-apuri/index.html）にアクセスした場合
