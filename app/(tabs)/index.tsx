@@ -116,6 +116,8 @@ export default function CalendarScreen() {
   // データ取得のデバウンス用ref
   const loadAllDataTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastDataFetchTimeRef = useRef<number>(0);
+  const lastMonthRef = useRef<{ year: number; month: number } | null>(null);
+  const lastInstrumentRef = useRef<string | null>(null);
   
   // 日付管理
   const [currentDate, setCurrentDate] = useState(() => {
@@ -224,8 +226,12 @@ export default function CalendarScreen() {
         instrumentId: getInstrumentId(selectedInstrument)
       });
       hasInitialLoadRef.current = true;
+      const currentYear = currentDate.getFullYear();
+      const currentMonth = currentDate.getMonth() + 1;
       loadAllData().then(() => {
         lastDataFetchTimeRef.current = Date.now();
+        lastMonthRef.current = { year: currentYear, month: currentMonth };
+        lastInstrumentRef.current = selectedInstrument || null;
       });
     }
   }, [isLoading, isInitialized, isAuthenticated, isInstrumentInitializing, selectedInstrument, loadAllData]);
@@ -241,21 +247,37 @@ export default function CalendarScreen() {
   }, []);
 
   // デバウンス付きデータ取得関数（useEffectの前に定義）
-  const debouncedLoadAllData = useCallback(() => {
+  const debouncedLoadAllData = useCallback((force: boolean = false) => {
     // 既存のタイマーをクリア
     if (loadAllDataTimeoutRef.current) {
       clearTimeout(loadAllDataTimeoutRef.current);
     }
     
-    // 前回取得から60秒以内の場合はスキップ（パフォーマンス最適化）
-    const now = Date.now();
-    const timeSinceLastFetch = now - lastDataFetchTimeRef.current;
-    if (timeSinceLastFetch < 60000) {
-      logger.debug('前回取得から60秒以内のため、データ取得をスキップします', {
-        timeSinceLastFetch,
-        lastFetchTime: lastDataFetchTimeRef.current
-      });
-      return;
+    // 月または楽器が変更された場合は強制取得
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth() + 1;
+    const currentInstrument = selectedInstrument || '';
+    
+    const monthChanged = !lastMonthRef.current || 
+      lastMonthRef.current.year !== currentYear || 
+      lastMonthRef.current.month !== currentMonth;
+    
+    const instrumentChanged = lastInstrumentRef.current !== currentInstrument;
+    
+    // 強制取得フラグがtrue、または月/楽器が変更された場合は必ず取得
+    const shouldForceFetch = force || monthChanged || instrumentChanged;
+    
+    // 強制取得でない場合、前回取得から60秒以内の場合はスキップ（パフォーマンス最適化）
+    if (!shouldForceFetch) {
+      const now = Date.now();
+      const timeSinceLastFetch = now - lastDataFetchTimeRef.current;
+      if (timeSinceLastFetch < 60000) {
+        logger.debug('前回取得から60秒以内のため、データ取得をスキップします', {
+          timeSinceLastFetch,
+          lastFetchTime: lastDataFetchTimeRef.current
+        });
+        return;
+      }
     }
     
     // 300ms後に実行（デバウンス）
@@ -263,13 +285,19 @@ export default function CalendarScreen() {
       try {
         await loadAllData();
         lastDataFetchTimeRef.current = Date.now();
-        logger.debug('デバウンス付きデータ取得完了');
+        lastMonthRef.current = { year: currentYear, month: currentMonth };
+        lastInstrumentRef.current = currentInstrument;
+        logger.debug('デバウンス付きデータ取得完了', {
+          monthChanged,
+          instrumentChanged,
+          force
+        });
       } catch (error) {
         logger.error('デバウンス付きデータ取得エラー:', error);
       }
       loadAllDataTimeoutRef.current = null;
     }, 300);
-  }, [loadAllData]);
+  }, [loadAllData, currentDate, selectedInstrument]);
 
   // Load practice/events/recordings for current month and total（デバウンス付き）
   useEffect(() => {
