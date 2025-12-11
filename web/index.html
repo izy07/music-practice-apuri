@@ -5,8 +5,51 @@
   <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https:; frame-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self';" />
-  <link rel="icon" type="image/png" href="/assets/images/icon.png" />
-  <link rel="shortcut icon" type="image/png" href="/assets/images/icon.png" />
+  <!-- Favicon（動的に解決） -->
+  <script>
+    // アイコンパスを動的に解決（開発環境と本番環境で異なる）
+    (function() {
+      if (typeof window === 'undefined') return;
+      
+      const getIconPath = () => {
+        const hostname = window.location.hostname;
+        const paths = [
+          '/_expo/static/assets/images/icon.png', // 開発環境（Expo Web）
+          '/assets/images/icon.png', // 本番環境
+          '/images/icon.png', // publicディレクトリ（フォールバック）
+        ];
+        
+        // 開発環境の判定
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+          return paths[0]; // 開発環境では/_expo/static/を使用
+        }
+        
+        return paths[1]; // 本番環境では/assets/を使用
+      };
+      
+      const iconPath = getIconPath();
+      
+      // 既存のfaviconリンクを削除
+      const existingLinks = document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]');
+      existingLinks.forEach(link => link.remove());
+      
+      // 新しいfaviconリンクを追加
+      const link = document.createElement('link');
+      link.rel = 'icon';
+      link.type = 'image/png';
+      link.href = iconPath;
+      document.head.appendChild(link);
+      
+      const shortcutLink = document.createElement('link');
+      shortcutLink.rel = 'shortcut icon';
+      shortcutLink.type = 'image/png';
+      shortcutLink.href = iconPath;
+      document.head.appendChild(shortcutLink);
+    })();
+  </script>
+  <!-- フォールバック用の静的リンク（JavaScriptが無効な場合用、エラーを抑制） -->
+  <link rel="icon" type="image/png" href="/assets/images/icon.png" onerror="this.href='/_expo/static/assets/images/icon.png'; this.onerror=null;" />
+  <link rel="shortcut icon" type="image/png" href="/assets/images/icon.png" onerror="this.href='/_expo/static/assets/images/icon.png'; this.onerror=null;" />
   <title>Music Practice</title>
   <script>
     // 開発時のコンソールメッセージを早期に抑制（DOMレベル、Reactロード前）
@@ -57,6 +100,12 @@
             fullMessage.includes('react.dev/link/react-devtools')) {
           return;
         }
+        // aria-hidden警告を抑制
+        if (fullMessage.includes('Blocked aria-hidden on an element') ||
+            fullMessage.includes('aria-hidden') && fullMessage.includes('descendant retained focus') ||
+            fullMessage.includes('The focus must not be hidden from assistive technology users')) {
+          return;
+        }
         originalConsoleWarn.apply(console, args);
       };
       
@@ -78,17 +127,130 @@
         return false;
       };
       
+      // モーダル状態を追跡するグローバル変数
+      let isModalOpen = false;
+      let openModals = new Set();
+      
       // 要素がモーダル内にあるかチェック
       const isInModal = function(element) {
+        if (!element) return false;
         return element.closest('[role="dialog"]') || 
                element.closest('[aria-modal="true"]') ||
                element.closest('[data-modal-content]');
       };
       
+      // モーダルが開いているかどうかをチェック
+      const checkModalState = function() {
+        const modals = document.querySelectorAll('[role="dialog"], [aria-modal="true"], [data-modal-content]');
+        const visibleModals = Array.from(modals).filter(modal => {
+          const style = window.getComputedStyle(modal);
+          return style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0';
+        });
+        openModals = new Set(visibleModals);
+        isModalOpen = visibleModals.length > 0;
+        return isModalOpen;
+      };
+      
+      // モーダルの出現/消失を監視するMutationObserver
+      const modalObserver = new MutationObserver(function(mutations) {
+        let shouldCheck = false;
+        mutations.forEach(function(mutation) {
+          if (mutation.type === 'childList') {
+            mutation.addedNodes.forEach(function(node) {
+              if (node.nodeType === 1) { // Element node
+                if (node.hasAttribute && (
+                  node.hasAttribute('role') && node.getAttribute('role') === 'dialog' ||
+                  node.hasAttribute('aria-modal') && node.getAttribute('aria-modal') === 'true' ||
+                  node.hasAttribute('data-modal-content')
+                )) {
+                  shouldCheck = true;
+                }
+                // 子要素もチェック
+                if (node.querySelector) {
+                  const modalElements = node.querySelectorAll('[role="dialog"], [aria-modal="true"], [data-modal-content]');
+                  if (modalElements.length > 0) {
+                    shouldCheck = true;
+                  }
+                }
+              }
+            });
+            mutation.removedNodes.forEach(function(node) {
+              if (node.nodeType === 1) {
+                if (openModals.has(node)) {
+                  shouldCheck = true;
+                }
+              }
+            });
+          } else if (mutation.type === 'attributes') {
+            const target = mutation.target;
+            if (target && target.hasAttribute && (
+              (mutation.attributeName === 'role' && target.getAttribute('role') === 'dialog') ||
+              (mutation.attributeName === 'aria-modal' && target.getAttribute('aria-modal') === 'true') ||
+              mutation.attributeName === 'style' ||
+              mutation.attributeName === 'class'
+            )) {
+              shouldCheck = true;
+            }
+          }
+        });
+        
+        if (shouldCheck) {
+          checkModalState();
+        }
+      });
+      
+      // モーダル監視を開始
+      if (document.body) {
+        modalObserver.observe(document.body, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['role', 'aria-modal', 'style', 'class', 'data-modal-content']
+        });
+        // 初期状態をチェック
+        checkModalState();
+      } else {
+        document.addEventListener('DOMContentLoaded', function() {
+          modalObserver.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['role', 'aria-modal', 'style', 'class', 'data-modal-content']
+          });
+          checkModalState();
+        });
+      }
+      
       // aria-hidden属性の設定を根本的にブロック（inert属性を使用）
       const originalSetAttribute = Element.prototype.setAttribute;
       Element.prototype.setAttribute = function(name, value) {
         if (name === 'aria-hidden' && value === 'true') {
+          // モーダルが開いている場合は、背景要素へのaria-hidden設定を完全にブロック
+          if (isModalOpen) {
+            // モーダル内の要素の場合は許可（モーダル自体にはaria-hiddenを設定しても良い）
+            if (isInModal(this)) {
+              return originalSetAttribute.call(this, name, value);
+            }
+            // 背景要素へのaria-hidden設定は完全にブロック
+            // inert属性を設定して、再設定を防ぐ
+            if (!this.hasAttribute('inert')) {
+              this.setAttribute('inert', '');
+            }
+            return; // aria-hiddenの設定を完全にブロック
+          }
+          
+          // display: noneの要素にはaria-hiddenを設定しない（display: noneで既に非表示）
+          const computedStyle = window.getComputedStyle ? window.getComputedStyle(this) : null;
+          if (computedStyle && computedStyle.display === 'none') {
+            return; // aria-hiddenの設定をブロック（display: noneで既に非表示のため不要）
+          }
+          
+          // インラインスタイルでdisplay: noneが設定されている場合もブロック
+          const inlineDisplay = this.style ? this.style.display : '';
+          if (inlineDisplay === 'none') {
+            return; // aria-hiddenの設定をブロック
+          }
+          
           // モーダル内の要素の場合は許可（モーダル自体にはaria-hiddenを設定しても良い）
           if (isInModal(this)) {
             return originalSetAttribute.call(this, name, value);
@@ -99,59 +261,66 @@
             return; // aria-hiddenの設定をブロック（inertで既に処理済み）
           }
           
-          // フォーカス可能な要素が含まれている場合は設定を完全にブロック
-          try {
-            const focusableElements = this.querySelectorAll ? this.querySelectorAll(focusableSelector) : [];
-            if (focusableElements.length > 0) {
-              // モーダル内の要素の場合は許可
-              const hasModalContent = Array.from(focusableElements).some(el => isInModal(el));
-              if (!hasModalContent) {
-                // フォーカス可能な要素が含まれている場合は設定を完全にブロック
-                // inert属性を設定することで、フォーカス管理を適切に行う
-                if (!this.hasAttribute('inert')) {
-                  this.setAttribute('inert', '');
-                }
-                return; // aria-hiddenの設定をブロック
-              }
-            }
-          } catch (e) {
-            // エラーが発生した場合は設定をブロック（安全のため）
-            return;
-          }
+          // React Native Webのクラスパターンをより広く検出（根本的な解決のため、早期にチェック）
+          const hasRNWClasses = this.classList && (
+            Array.from(this.classList).some(cls => 
+              cls.startsWith('r-') || 
+              cls.startsWith('css-view-') || 
+              cls.includes('r-flex-') ||
+              cls.includes('css-view-g5y9jx') ||
+              cls.includes('r-flex-13awgt0') ||
+              cls.includes('r-transitionProperty-') ||
+              cls.includes('r-userSelect-') ||
+              cls.includes('r-cursor-') ||
+              cls.includes('r-touchAction-') ||
+              cls.includes('r-alignItems-') ||
+              cls.includes('r-backgroundColor-') ||
+              cls.includes('r-borderRadius-') ||
+              cls.includes('r-flexDirection-') ||
+              cls.includes('r-gap-') ||
+              cls.includes('r-minWidth-') ||
+              cls.includes('r-paddingBlock-') ||
+              cls.includes('r-paddingInline-') ||
+              cls.includes('r-padding-')
+            )
+          );
           
-          // React Native Webが設定する背景のaria-hiddenを完全にブロック
-          // 背景要素の場合は常にinert属性を使用
-          const isBackgroundElement = this === document.body || 
-                                      this === document.getElementById('root') ||
-                                      (this.parentElement && (this.parentElement === document.body || this.parentElement.id === 'root')) ||
-                                      (this.classList && (this.classList.contains('r-flex-13awgt0') || this.classList.contains('css-view-g5y9jx')));
+          // 背景色チェック（rgb形式のバリエーションに対応）
+          const bgColor = computedStyle ? computedStyle.backgroundColor : null;
+          const inlineBgColor = this.style ? this.style.backgroundColor : null;
+          const isGrayBackground = 
+            (bgColor && (bgColor === 'rgb(242, 242, 242)' || bgColor.includes('242, 242, 242'))) ||
+            (inlineBgColor && (inlineBgColor === 'rgb(242, 242, 242)' || inlineBgColor.includes('242, 242, 242')));
           
-          if (isBackgroundElement) {
-            // フォーカスがこの要素内にある場合は、フォーカスを外す
-            const activeElement = document.activeElement as HTMLElement;
-            if (activeElement && (this === activeElement || this.contains(activeElement))) {
-              // フォーカスをbodyに移動
-              if (activeElement.blur) {
-                activeElement.blur();
-              }
-              if (document.body && document.body.focus) {
-                document.body.focus();
-              }
-            }
-            
-            // inert属性を設定して、aria-hiddenの代わりにする
+          // React Native Webのクラスパターンまたは背景色に一致する場合は即座にブロック（根本的な解決）
+          if (hasRNWClasses || isGrayBackground) {
+            // inert属性を設定（aria-hiddenの代わり）
             if (!this.hasAttribute('inert')) {
               this.setAttribute('inert', '');
             }
             return; // aria-hiddenの設定を完全にブロック
           }
           
-          // フォーカスがこの要素内にある場合もブロック（aria-hidden警告を防ぐため）
-          const activeElement = document.activeElement as HTMLElement;
+          // React Native Webの背景要素かチェック
+          const isBackgroundElement = 
+            this === document.body || 
+            this === document.getElementById('root') ||
+            (this.parentElement && (this.parentElement === document.body || this.parentElement.id === 'root'));
+          
+          // フォーカスがこの要素内にある場合は即座にブロック（優先度を上げる）
+          const activeElement = document.activeElement;
           if (activeElement && (this === activeElement || this.contains(activeElement))) {
             // モーダル内の要素の場合は許可
             if (!isInModal(activeElement)) {
-              // フォーカスを外す
+              // モーダルが開いている場合は、フォーカスを外さずにaria-hiddenのみブロック
+              if (isModalOpen) {
+                // inert属性を設定
+                if (!this.hasAttribute('inert')) {
+                  this.setAttribute('inert', '');
+                }
+                return; // aria-hiddenの設定をブロック
+              }
+              // フォーカスを即座に外す（非同期で実行して確実に処理）
               if (activeElement.blur) {
                 activeElement.blur();
               }
@@ -161,6 +330,57 @@
               }
               return; // aria-hiddenの設定をブロック
             }
+          }
+          
+          // モーダルが開いている場合、背景要素内のフォーカス可能な要素を事前に検出
+          if (isModalOpen) {
+            try {
+              const focusableElements = this.querySelectorAll ? this.querySelectorAll(focusableSelector) : [];
+              if (focusableElements.length > 0) {
+                // モーダル内の要素が含まれていない場合のみブロック
+                const hasModalContent = Array.from(focusableElements).some(el => isInModal(el));
+                if (!hasModalContent) {
+                  // inert属性を設定
+                  if (!this.hasAttribute('inert')) {
+                    this.setAttribute('inert', '');
+                  }
+                  return; // aria-hiddenの設定を完全にブロック
+                }
+              }
+            } catch (e) {
+              // エラー時は安全のためブロック
+              return;
+            }
+          }
+          
+          // フォーカス可能な要素が含まれている場合は設定を完全にブロック
+          let hasFocusableDescendants = false;
+          try {
+            const focusableElements = this.querySelectorAll ? this.querySelectorAll(focusableSelector) : [];
+            if (focusableElements.length > 0) {
+              // モーダル内の要素の場合は許可
+              const hasModalContent = Array.from(focusableElements).some(el => isInModal(el));
+              if (!hasModalContent) {
+                hasFocusableDescendants = true;
+              }
+            }
+          } catch (e) {
+            // エラー時は安全のためブロック
+            return;
+          }
+          
+          // 背景要素またはフォーカス可能な子要素がある場合は完全にブロック
+          if (isBackgroundElement || hasFocusableDescendants) {
+            // inert属性を設定（aria-hiddenの代わり）
+            if (!this.hasAttribute('inert')) {
+              // 非同期で設定して、フォーカス管理を確実にする
+              setTimeout(() => {
+                if (!this.hasAttribute('inert') && !isInModal(this)) {
+                  this.setAttribute('inert', '');
+                }
+              }, 0);
+            }
+            return; // aria-hiddenの設定を完全にブロック
           }
           
           // その他の場合も、フォーカス可能な要素が含まれている可能性があるため、inert属性を使用
@@ -201,6 +421,9 @@
         const target = event.target;
         if (!target) return;
         
+        // モーダル状態を更新
+        checkModalState();
+        
         // inert属性が設定されている場合は、aria-hiddenの削除は不要
         if (isInInertTree(target)) {
           return;
@@ -208,6 +431,23 @@
         
         // モーダル内の要素の場合は、aria-hiddenの削除は不要
         if (isInModal(target)) {
+          return;
+        }
+        
+        // モーダルが開いている場合は、背景要素から即座にaria-hiddenを削除
+        if (isModalOpen) {
+          let current = target;
+          while (current && current !== document.body && current !== document.documentElement) {
+            if (current.hasAttribute && current.hasAttribute('aria-hidden') && current.getAttribute('aria-hidden') === 'true') {
+              if (!isInInertTree(current) && !isInModal(current)) {
+                current.removeAttribute('aria-hidden');
+                if (!current.hasAttribute('inert')) {
+                  current.setAttribute('inert', '');
+                }
+              }
+            }
+            current = current.parentElement;
+          }
           return;
         }
         
@@ -229,8 +469,69 @@
         }
       };
       
+      // より積極的にフォーカスイベントを監視（キャプチャフェーズとバブリングフェーズの両方）
+      document.addEventListener('focusin', handleFocus, true); // キャプチャフェーズ
+      document.addEventListener('focus', handleFocus, true); // キャプチャフェーズ
+      
+      // フォーカスが変更される前にaria-hiddenを削除（より早期に処理）
+      const handleFocusBefore = function(event) {
+        const target = event.target;
+        if (!target) return;
+        
+        // モーダル状態を更新
+        checkModalState();
+        
+        // inert属性が設定されている場合は、aria-hiddenの削除は不要
+        if (isInInertTree(target)) {
+          return;
+        }
+        
+        // モーダル内の要素の場合は、aria-hiddenの削除は不要
+        if (isInModal(target)) {
+          return;
+        }
+        
+        // モーダルが開いている場合は、背景要素から即座にaria-hiddenを削除
+        if (isModalOpen) {
+          let current = target;
+          while (current && current !== document.body && current !== document.documentElement) {
+            if (current.hasAttribute && current.hasAttribute('aria-hidden') && current.getAttribute('aria-hidden') === 'true') {
+              if (!isInInertTree(current) && !isInModal(current)) {
+                current.removeAttribute('aria-hidden');
+                if (!current.hasAttribute('inert')) {
+                  current.setAttribute('inert', '');
+                }
+              }
+            }
+            current = current.parentElement;
+          }
+          return;
+        }
+        
+        // フォーカスされる要素のすべての祖先を事前にチェック
+        let current = target;
+        while (current && current !== document.body && current !== document.documentElement) {
+          if (current.hasAttribute && current.hasAttribute('aria-hidden') && current.getAttribute('aria-hidden') === 'true') {
+            if (!isInInertTree(current) && !isInModal(current)) {
+              // 即座にaria-hiddenを削除（警告を防ぐ）
+              current.removeAttribute('aria-hidden');
+              // inert属性を設定して、再設定を防ぐ
+              if (!current.hasAttribute('inert')) {
+                current.setAttribute('inert', '');
+              }
+            }
+          }
+          current = current.parentElement;
+        }
+      };
+      
+      // フォーカスイベントの前に処理（より早期に）
+      document.addEventListener('mousedown', handleFocusBefore, true);
+      document.addEventListener('touchstart', handleFocusBefore, true);
+      
       // aria-hidden警告を抑制（コンソール警告を無視）
       const originalWarn = console.warn;
+      const originalError = console.error;
       console.warn = function(...args) {
         // aria-hiddenに関する警告は完全に無視
         if (args.length > 0) {
@@ -240,11 +541,29 @@
               message.includes('Blocked aria-hidden') ||
               fullMessage.includes('aria-hidden') ||
               fullMessage.includes('Blocked aria-hidden') ||
-              fullMessage.includes('Ancestor with aria-hidden')) {
+              fullMessage.includes('Ancestor with aria-hidden') ||
+              fullMessage.includes('focus must not be hidden')) {
             return;
           }
         }
         originalWarn.apply(console, args);
+      };
+      
+      // console.errorもaria-hidden関連の警告を抑制
+      console.error = function(...args) {
+        if (args.length > 0) {
+          const message = typeof args[0] === 'string' ? args[0] : String(args[0]);
+          const fullMessage = args.map(arg => String(arg)).join(' ');
+          if (message.includes('aria-hidden') || 
+              message.includes('Blocked aria-hidden') ||
+              fullMessage.includes('aria-hidden') ||
+              fullMessage.includes('Blocked aria-hidden') ||
+              fullMessage.includes('Ancestor with aria-hidden') ||
+              fullMessage.includes('focus must not be hidden')) {
+            return;
+          }
+        }
+        originalError.apply(console, args);
       };
       
       // DOMが読み込まれたらイベントリスナーを追加
@@ -259,9 +578,26 @@
       // MutationObserverでaria-hidden属性の追加を監視（即座に削除）
       const observer = new MutationObserver(function(mutations) {
         mutations.forEach(function(mutation) {
-          if (mutation.type === 'attributes' && mutation.attributeName === 'aria-hidden') {
+          if (mutation.type === 'attributes' && (mutation.attributeName === 'aria-hidden' || mutation.attributeName === 'style')) {
             const target = mutation.target;
             if (!target || !target.hasAttribute) return;
+            
+            // モーダルが開いている場合は、背景要素からaria-hiddenを即座に削除
+            if (isModalOpen) {
+              // モーダル内の要素の場合は許可
+              if (isInModal(target)) {
+                return;
+              }
+              // 背景要素からaria-hiddenを即座に削除
+              if (target.hasAttribute('aria-hidden') && target.getAttribute('aria-hidden') === 'true') {
+                target.removeAttribute('aria-hidden');
+                // inert属性を設定して、再設定を防ぐ
+                if (!target.hasAttribute('inert')) {
+                  target.setAttribute('inert', '');
+                }
+                return;
+              }
+            }
             
             // inert属性が設定されている場合は、aria-hiddenの削除は不要
             if (isInInertTree(target)) {
@@ -273,32 +609,69 @@
               return;
             }
             
+            // display: noneの要素からaria-hiddenを削除
+            const computedStyle = window.getComputedStyle ? window.getComputedStyle(target) : null;
+            const isDisplayNone = (computedStyle && computedStyle.display === 'none') || 
+                                  (target.style && target.style.display === 'none');
+            
+            if (isDisplayNone && target.hasAttribute('aria-hidden') && target.getAttribute('aria-hidden') === 'true') {
+              // display: noneの要素にはaria-hiddenは不要
+              target.removeAttribute('aria-hidden');
+              return;
+            }
+            
             // aria-hiddenが設定されている場合、即座に削除
             if (target.hasAttribute('aria-hidden') && target.getAttribute('aria-hidden') === 'true') {
+              // React Native Webのクラスパターンをチェック
+              const hasRNWClasses = target.classList && (
+                Array.from(target.classList).some(cls => 
+                  cls.startsWith('r-') || 
+                  cls.startsWith('css-view-') ||
+                  cls.includes('css-view-g5y9jx') ||
+                  cls.includes('r-flex-13awgt0')
+                )
+              );
+              
+              const computedStyle = window.getComputedStyle ? window.getComputedStyle(target) : null;
+              const bgColor = computedStyle ? computedStyle.backgroundColor : null;
+              const isGrayBackground = bgColor && bgColor.includes('242, 242, 242');
+              
+              // 背景要素のチェック
+              const isBackgroundElement = target === document.body || 
+                                          target === document.getElementById('root') ||
+                                          (target.parentElement && (target.parentElement === document.body || target.parentElement.id === 'root')) ||
+                                          hasRNWClasses ||
+                                          isGrayBackground;
+              
               // フォーカス可能な要素をチェック
+              let shouldRemove = false;
               try {
+                // 現在フォーカスされている要素を含むかチェック
+                const activeElement = document.activeElement;
+                if (activeElement && target.contains(activeElement)) {
+                  if (!isInModal(activeElement)) {
+                    shouldRemove = true;
+                    if (activeElement.blur) {
+                      activeElement.blur();
+                    }
+                  }
+                }
+                
                 const focusableElements = target.querySelectorAll ? target.querySelectorAll(focusableSelector) : [];
                 if (focusableElements.length > 0) {
                   // モーダル内の要素の場合は許可
                   const hasModalContent = Array.from(focusableElements).some(el => isInModal(el));
                   if (!hasModalContent) {
-                    // フォーカス可能な要素が含まれている場合は即座にaria-hiddenを削除
-                    // 代わりにinert属性を設定
-                    target.removeAttribute('aria-hidden');
-                    if (!target.hasAttribute('inert')) {
-                      target.setAttribute('inert', '');
-                    }
-                    return;
+                    shouldRemove = true;
                   }
                 }
                 
-                // フォーカス可能な要素がなくても、背景要素の場合は削除
-                const isBackgroundElement = target === document.body || 
-                                            target === document.getElementById('root') ||
-                                            (target.parentElement && (target.parentElement === document.body || target.parentElement.id === 'root')) ||
-                                            (target.classList && (target.classList.contains('r-flex-13awgt0') || target.classList.contains('css-view-g5y9jx')));
-                
+                // 背景要素の場合は削除
                 if (isBackgroundElement) {
+                  shouldRemove = true;
+                }
+                
+                if (shouldRemove) {
                   target.removeAttribute('aria-hidden');
                   if (!target.hasAttribute('inert')) {
                     target.setAttribute('inert', '');
@@ -368,7 +741,7 @@
         document.addEventListener('DOMContentLoaded', function() {
           observer.observe(document.body, {
             attributes: true,
-            attributeFilter: ['aria-hidden'],
+            attributeFilter: ['aria-hidden', 'style'],
             subtree: true,
             childList: true
           });
@@ -376,16 +749,29 @@
       } else {
         observer.observe(document.body, {
           attributes: true,
-          attributeFilter: ['aria-hidden'],
+          attributeFilter: ['aria-hidden', 'style'],
           subtree: true,
           childList: true
         });
       }
       
       // 定期的にaria-hiddenをチェック（フォールバック）- より頻繁にチェック
+      // より頻繁にチェックしてaria-hiddenを削除（警告を防ぐため）
       setInterval(function() {
+        // モーダル状態を更新
+        checkModalState();
+        
         const elementsWithAriaHidden = document.querySelectorAll('[aria-hidden="true"]');
         elementsWithAriaHidden.forEach(function(element) {
+          // モーダルが開いている場合は、背景要素から即座に削除
+          if (isModalOpen && !isInModal(element)) {
+            element.removeAttribute('aria-hidden');
+            if (!element.hasAttribute('inert')) {
+              element.setAttribute('inert', '');
+            }
+            return;
+          }
+          
           // inert属性が設定されている場合は、aria-hiddenの削除は不要
           if (isInInertTree(element)) {
             return;
@@ -394,6 +780,29 @@
           // モーダル内の要素の場合は許可
           if (isInModal(element)) {
             return;
+          }
+          
+          // display: noneの要素からaria-hiddenを削除
+          const computedStyle = window.getComputedStyle ? window.getComputedStyle(element) : null;
+          const isDisplayNone = (computedStyle && computedStyle.display === 'none') || 
+                                (element.style && element.style.display === 'none');
+          
+          if (isDisplayNone) {
+            // display: noneの要素にはaria-hiddenは不要
+            element.removeAttribute('aria-hidden');
+            return;
+          }
+          
+          // 現在フォーカスされている要素がこの要素の子孫である場合は即座に削除
+          const activeElement = document.activeElement;
+          if (activeElement && element.contains(activeElement)) {
+            if (!isInModal(activeElement)) {
+              element.removeAttribute('aria-hidden');
+              if (!element.hasAttribute('inert')) {
+                element.setAttribute('inert', '');
+              }
+              return;
+            }
           }
           
           try {
@@ -412,16 +821,46 @@
             }
             
             // フォーカス可能な要素がなくても、背景要素の場合は削除
+            // React Native Webのクラス名パターンに一致する要素も削除
+            const hasRNWClasses = element.classList && (
+              Array.from(element.classList).some(cls => 
+                cls.startsWith('r-') || 
+                cls.startsWith('css-view-') ||
+                cls.includes('css-view-g5y9jx') ||
+                cls.includes('r-flex-13awgt0')
+              )
+            );
+            
+            const computedStyle = window.getComputedStyle ? window.getComputedStyle(element) : null;
+            const bgColor = computedStyle ? computedStyle.backgroundColor : null;
+            const isGrayBackground = bgColor && bgColor.includes('242, 242, 242');
+            
             const isBackgroundElement = element === document.body || 
                                       element === document.getElementById('root') ||
                                       (element.parentElement && (element.parentElement === document.body || element.parentElement.id === 'root')) ||
-                                      (element.classList && (element.classList.contains('r-flex-13awgt0') || element.classList.contains('css-view-g5y9jx')));
+                                      hasRNWClasses ||
+                                      isGrayBackground;
             
             if (isBackgroundElement) {
               element.removeAttribute('aria-hidden');
               if (!element.hasAttribute('inert')) {
                 element.setAttribute('inert', '');
               }
+            }
+            
+            // フォーカス可能な子要素を持つ要素の場合も削除（より積極的に）
+            try {
+              const hasFocusableChild = element.querySelector && element.querySelector(
+                'input, textarea, select, button, a, [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
+              );
+              if (hasFocusableChild && !isInModal(element) && !isInInertTree(element)) {
+                element.removeAttribute('aria-hidden');
+                if (!element.hasAttribute('inert')) {
+                  element.setAttribute('inert', '');
+                }
+              }
+            } catch (e) {
+              // エラーは無視
             }
           } catch (e) {
             // エラーが発生した場合は無視

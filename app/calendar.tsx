@@ -56,13 +56,15 @@ export default function CalendarScreen() {
     endTime: string;
     location: string;
     practiceType: PracticeType;
+    addToMainCalendar: boolean;
   }>({
     title: '',
     description: '',
     startTime: '',
     endTime: '',
     location: '',
-    practiceType: 'ensemble' as PracticeType
+    practiceType: 'ensemble' as PracticeType,
+    addToMainCalendar: false
   });
 
   useEffect(() => {
@@ -223,33 +225,12 @@ export default function CalendarScreen() {
       return;
     }
 
-    // practice_typeが'event'の場合、確認ダイアログを表示
-    if (createForm.practiceType === 'event') {
-      Alert.alert(
-        'カレンダーに表示',
-        'メインのカレンダー画面に表示しますか？',
-        [
-          {
-            text: 'いいえ',
-            style: 'cancel',
-            onPress: async () => {
-              // イベント登録なしで練習日程のみ作成
-              await createScheduleInternal(false);
-            }
-          },
-          {
-            text: 'はい',
-            onPress: async () => {
-              // イベント登録ありで練習日程を作成
-              await createScheduleInternal(true);
-            }
-          }
-        ]
-      );
-    } else {
-      // イベント以外の場合は通常通り作成
-      await createScheduleInternal(false);
-    }
+    // リハーサルまたはイベントの場合は、トグルの状態に応じてメインカレンダーに追加
+    const shouldAddToCalendar = (createForm.practiceType === 'rehearsal' || createForm.practiceType === 'event') 
+      ? createForm.addToMainCalendar 
+      : false;
+    
+    await createScheduleInternal(shouldAddToCalendar);
   };
 
   const createScheduleInternal = async (addToCalendar: boolean) => {
@@ -275,13 +256,14 @@ export default function CalendarScreen() {
           startTime: '',
           endTime: '',
           location: '',
-          practiceType: 'ensemble'
+          practiceType: 'ensemble',
+          addToMainCalendar: false
         });
         setSelectedDate(null);
         await loadSchedules();
         
-        // イベントが作成された場合、カスタムイベントを発火してメインカレンダーを更新
-        if (addToCalendar && createForm.practiceType === 'event') {
+        // リハーサルまたはイベントがメインカレンダーに追加された場合、カスタムイベントを発火してメインカレンダーを更新
+        if (addToCalendar && (createForm.practiceType === 'event' || createForm.practiceType === 'rehearsal')) {
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('eventCreated', {
               detail: { action: 'event_created' }
@@ -620,6 +602,42 @@ export default function CalendarScreen() {
                 />
               </View>
 
+              {/* リハーサルまたはイベントの場合、メインカレンダーに追加するトグル */}
+              {(createForm.practiceType === 'rehearsal' || createForm.practiceType === 'event') && (
+                <View style={styles.inputContainer}>
+                  <View style={styles.toggleContainer}>
+                    <Text style={[styles.inputLabel, { color: currentTheme.text, marginBottom: 0 }]}>
+                      メインカレンダー画面にも追加しますか？
+                    </Text>
+                    <TouchableOpacity
+                      style={[
+                        styles.toggle,
+                        {
+                          backgroundColor: createForm.addToMainCalendar ? currentTheme.primary : currentTheme.secondary,
+                        }
+                      ]}
+                      onPress={() => setCreateForm(prev => ({ ...prev, addToMainCalendar: !prev.addToMainCalendar }))}
+                      activeOpacity={0.7}
+                    >
+                      <View
+                        style={[
+                          styles.toggleThumb,
+                          {
+                            transform: [{ translateX: createForm.addToMainCalendar ? 20 : 0 }],
+                            backgroundColor: currentTheme.surface,
+                          }
+                        ]}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                  <Text style={[styles.toggleDescription, { color: currentTheme.textSecondary }]}>
+                    {createForm.addToMainCalendar 
+                      ? 'メインカレンダー画面と練習日程の両方に表示されます' 
+                      : '練習日程のみに表示されます'}
+                  </Text>
+                </View>
+              )}
+
               <TouchableOpacity
                 style={[styles.modalButton, { 
                   backgroundColor: currentTheme.primary,
@@ -908,6 +926,28 @@ const styles = StyleSheet.create({
   organizationName: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  toggle: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleThumb: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+  },
+  toggleDescription: {
+    fontSize: 12,
+    marginTop: 4,
   },
   // タブレット対応スタイル
   calendarTablet: {

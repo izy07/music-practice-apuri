@@ -30,6 +30,7 @@ import logger from '@/lib/logger';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { navigateWithBasePath } from '@/lib/navigationUtils';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width: screenWidth } = Dimensions.get('window');
 

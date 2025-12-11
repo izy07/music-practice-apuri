@@ -78,7 +78,6 @@ export default function RecordingsLibraryScreen() {
   const loadRecordings = async () => {
     try {
       logger.debug('録音ライブラリ読み込み開始');
-      logger.debug('エンタイトルメント情報:', entitlement);
       logger.debug('録音機能アクセス可否:', canAccessFeature('recordings', entitlement));
       
       // ペイウォール: 未購読かつトライアル外の場合はデータをロードしない
@@ -91,11 +90,8 @@ export default function RecordingsLibraryScreen() {
       
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        logger.debug('ユーザーID:', user.id);
-        
         // コンテキストから楽器IDを取得（DBアクセス不要）
         const instrumentId = selectedInstrument || null;
-        logger.debug('現在の楽器ID:', instrumentId);
         
         const { data, error } = await listAllRecordings(user.id, instrumentId);
         if (error) {
@@ -103,7 +99,6 @@ export default function RecordingsLibraryScreen() {
           Alert.alert('エラー', '録音データの読み込みに失敗しました');
         } else {
           logger.debug('録音データ取得成功:', data?.length || 0, '件');
-          logger.debug('録音データ詳細:', data);
           // データを更新（0件の場合は空配列を設定）
           setRecordings(data || []);
         }
@@ -307,38 +302,32 @@ export default function RecordingsLibraryScreen() {
     return filtered;
   };
 
-  // 指定された期間の最初の録音にスクロール
-  const scrollToFilteredRecording = (filter: TimeFilter) => {
+  // 指定された期間の録音を表示（7日前から最新まで）
+  const handleTimeFilter = (filter: TimeFilter) => {
     setTimeFilter(filter);
-    
-    // フィルター適用後にスクロール（レンダリング完了を待つ）
-    // requestAnimationFrameを使用してブラウザのレンダリングサイクルに合わせる
-    if (typeof window !== 'undefined') {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          const filtered = getFilteredRecordings(filter);
-          if (filtered.length > 0 && scrollViewRef.current) {
-            // 最初の録音の位置を計算してスクロール
-            // ヘッダーとフィルターの高さを考慮
-            const headerHeight = 100;
-            const filterHeight = 80;
-            const estimatedPosition = headerHeight + filterHeight;
-            
-            scrollViewRef.current.scrollTo({ 
-              y: estimatedPosition, 
-              animated: true 
-            });
-          }
+    // フィルター適用後、先頭にスクロール
+    if (typeof window !== 'undefined' && scrollViewRef.current) {
+      setTimeout(() => {
+        scrollViewRef.current?.scrollTo({ 
+          y: 0, 
+          animated: true 
         });
-      });
+      }, 100);
     }
   };
 
   const sortedRecordings = [...getFilteredRecordings()].sort((a, b) => {
-    // お気に入りを優先、次に録音日時で降順
-    if (a.is_favorite && !b.is_favorite) return -1;
-    if (!a.is_favorite && b.is_favorite) return 1;
-    return new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime();
+    // 「全て」以外のフィルターの場合は、古い順（昇順）で表示（最新が下に来る）
+    // 「全て」の場合は、お気に入りを優先、次に録音日時で降順（新しいものが上）
+    if (timeFilter === 'all') {
+      // お気に入りを優先、次に録音日時で降順
+      if (a.is_favorite && !b.is_favorite) return -1;
+      if (!a.is_favorite && b.is_favorite) return 1;
+      return new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime();
+    } else {
+      // 時間フィルター適用時は、録音日時で昇順（古いものが上、最新が下）
+      return new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime();
+    }
   });
 
   // エンタイトルメントの読み込み中はローディング画面を表示
@@ -420,6 +409,8 @@ export default function RecordingsLibraryScreen() {
               placeholderTextColor={currentTheme.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
+              nativeID="recordings-search-input"
+              accessibilityLabel="録音検索"
             />
             {searchQuery.trim() && (
               <TouchableOpacity
@@ -466,7 +457,7 @@ export default function RecordingsLibraryScreen() {
                     backgroundColor: timeFilter === '1week' ? currentTheme.primary : currentTheme.secondary,
                   }
                 ]}
-                onPress={() => scrollToFilteredRecording('1week')}
+                onPress={() => handleTimeFilter('1week')}
               >
                 <Text style={[
                   styles.timeFilterButtonText,
@@ -482,7 +473,7 @@ export default function RecordingsLibraryScreen() {
                     backgroundColor: timeFilter === '1month' ? currentTheme.primary : currentTheme.secondary,
                   }
                 ]}
-                onPress={() => scrollToFilteredRecording('1month')}
+                onPress={() => handleTimeFilter('1month')}
               >
                 <Text style={[
                   styles.timeFilterButtonText,
@@ -498,7 +489,7 @@ export default function RecordingsLibraryScreen() {
                     backgroundColor: timeFilter === '3months' ? currentTheme.primary : currentTheme.secondary,
                   }
                 ]}
-                onPress={() => scrollToFilteredRecording('3months')}
+                onPress={() => handleTimeFilter('3months')}
               >
                 <Text style={[
                   styles.timeFilterButtonText,
@@ -514,7 +505,7 @@ export default function RecordingsLibraryScreen() {
                     backgroundColor: timeFilter === '6months' ? currentTheme.primary : currentTheme.secondary,
                   }
                 ]}
-                onPress={() => scrollToFilteredRecording('6months')}
+                onPress={() => handleTimeFilter('6months')}
               >
                 <Text style={[
                   styles.timeFilterButtonText,
@@ -530,7 +521,7 @@ export default function RecordingsLibraryScreen() {
                     backgroundColor: timeFilter === '1year' ? currentTheme.primary : currentTheme.secondary,
                   }
                 ]}
-                onPress={() => scrollToFilteredRecording('1year')}
+                onPress={() => handleTimeFilter('1year')}
               >
                 <Text style={[
                   styles.timeFilterButtonText,
@@ -742,8 +733,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   timeFilterContainer: {
-    marginBottom: 20,
-    padding: 16,
+    marginBottom: 12,
+    padding: 12,
     borderRadius: 16,
     elevation: 2,
     ...createShadowStyle({
@@ -757,7 +748,7 @@ const styles = StyleSheet.create({
   timeFilterTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   timeFilterButtons: {
     flexDirection: 'row',
@@ -765,8 +756,8 @@ const styles = StyleSheet.create({
     paddingRight: 16,
   },
   timeFilterButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 20,
     minWidth: 80,
     alignItems: 'center',
@@ -781,10 +772,8 @@ const styles = StyleSheet.create({
   },
   recordingCard: {
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    
-    
+    padding: 12,
+    marginBottom: 8,
     elevation: 4,
   },
   recordingHeader: {
@@ -799,7 +788,8 @@ const styles = StyleSheet.create({
   titleContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
+    paddingLeft: 8,
   },
   mediaIcon: {
     marginRight: 6,
@@ -827,18 +817,18 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   actionButton: {
-    padding: 12,
+    padding: 8,
     borderRadius: 8,
-    minWidth: 44,
-    minHeight: 44,
+    minWidth: 40,
+    minHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },
   recordingMemo: {
     fontSize: 14,
     fontStyle: 'italic',
-    marginTop: 12,
-    paddingTop: 12,
+    marginTop: 8,
+    paddingTop: 8,
     borderTopWidth: 1,
     borderTopColor: '#E5E5E5',
   },
@@ -846,15 +836,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 16,
+    paddingVertical: 8,
+    marginBottom: 12,
     borderRadius: 12,
     gap: 12,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
-    paddingVertical: 8,
+    paddingVertical: 6,
   },
   clearButton: {
     padding: 4,

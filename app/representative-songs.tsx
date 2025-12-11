@@ -6,7 +6,6 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { supabase } from '@/lib/supabase';
 import { createShadowStyle } from '@/lib/shadowStyles';
-import { instrumentGuides } from '@/data/instrumentGuides';
 import logger from '@/lib/logger';
 import { practiceDataCache, PracticeDataCache } from '@/lib/cache/practiceDataCache';
 
@@ -19,7 +18,6 @@ interface RepresentativeSong {
   composer: string;
   era?: string;
   genre?: string;
-  difficulty_level?: number;
   youtube_url?: string;
   spotify_url?: string;
   description_ja?: string;
@@ -39,7 +37,9 @@ interface Instrument {
 
 export default function RepresentativeSongsScreen() {
   const router = useRouter();
-  const { instrumentId } = useLocalSearchParams();
+  const { instrumentId: instrumentIdParam } = useLocalSearchParams();
+  // useLocalSearchParams()の戻り値は string | string[] なので、文字列に変換
+  const instrumentId = Array.isArray(instrumentIdParam) ? instrumentIdParam[0] : instrumentIdParam;
   const { currentTheme } = useInstrumentTheme();
   
   const [songs, setSongs] = useState<RepresentativeSong[]>([]);
@@ -144,31 +144,12 @@ export default function RepresentativeSongsScreen() {
         return;
       }
       
-      // データベースに代表曲がない場合はフォールバックデータを使用（静かに処理）
-      if (instrumentData && instrumentData.name_en) {
-        const fallbackSongs = getFallbackSongs(instrumentData.name_en);
-        if (fallbackSongs.length > 0) {
-          logger.debug('[代表曲画面] フォールバックデータを使用:', fallbackSongs.length, '曲');
-          setSongs(fallbackSongs);
-          return;
-        }
-      }
-      
-      // フォールバックデータもない場合は空配列
+      // データベースに代表曲がない場合は空配列
       logger.debug('[代表曲画面] 代表曲データなし');
       setSongs([]);
     } catch (error) {
       logger.error('[代表曲画面] データ読み込みエラー:', error);
-      // エラー時はフォールバックデータを試す
-      if (instrument && instrument.name_en) {
-        const fallbackSongs = getFallbackSongs(instrument.name_en);
-        if (fallbackSongs.length > 0) {
-          logger.debug('[代表曲画面] エラー発生。フォールバックデータを使用');
-          setSongs(fallbackSongs);
-          return;
-        }
-      }
-      // フォールバックデータもない場合は空配列
+      // エラー時は空配列
       setSongs([]);
       // ユーザーに表示するエラーは重大なエラーのみ
       if (error instanceof Error && !error.message.includes('Could not find the table')) {
@@ -179,93 +160,6 @@ export default function RepresentativeSongsScreen() {
     }
   };
 
-  // instrumentGuides.tsから代表曲データを取得するフォールバック関数
-  const getFallbackSongs = (nameEn: string): RepresentativeSong[] => {
-    if (!nameEn) return [];
-    
-    // nameEnを小文字に変換してinstrumentGuidesのキーと一致させる
-    const guideKey = nameEn.toLowerCase();
-    const guide = instrumentGuides[guideKey as keyof typeof instrumentGuides];
-    
-    if (!guide || !guide.repertoire) return [];
-    
-    const songs: RepresentativeSong[] = [];
-    let displayOrder = 1;
-    
-    // 初心者向け曲を追加
-    if (guide.repertoire.beginner && Array.isArray(guide.repertoire.beginner)) {
-      guide.repertoire.beginner.forEach((title: string) => {
-        songs.push({
-          id: `fallback-${guideKey}-beginner-${displayOrder}`,
-          instrument_id: instrumentId || '',
-          title: title,
-          composer: '伝統曲',
-          era: undefined,
-          genre: undefined,
-          difficulty_level: 1,
-          youtube_url: undefined,
-          spotify_url: undefined,
-          description_ja: undefined,
-          description_en: undefined,
-          is_popular: false,
-          display_order: displayOrder++,
-          famous_performer: undefined,
-          famous_video_url: undefined,
-          famous_note: undefined,
-        });
-      });
-    }
-    
-    // 中級者向け曲を追加
-    if (guide.repertoire.intermediate && Array.isArray(guide.repertoire.intermediate)) {
-      guide.repertoire.intermediate.forEach((title: string) => {
-        songs.push({
-          id: `fallback-${guideKey}-intermediate-${displayOrder}`,
-          instrument_id: instrumentId || '',
-          title: title,
-          composer: '伝統曲',
-          era: undefined,
-          genre: undefined,
-          difficulty_level: 3,
-          youtube_url: undefined,
-          spotify_url: undefined,
-          description_ja: undefined,
-          description_en: undefined,
-          is_popular: true,
-          display_order: displayOrder++,
-          famous_performer: undefined,
-          famous_video_url: undefined,
-          famous_note: undefined,
-        });
-      });
-    }
-    
-    // 上級者向け曲を追加
-    if (guide.repertoire.advanced && Array.isArray(guide.repertoire.advanced)) {
-      guide.repertoire.advanced.forEach((title: string) => {
-        songs.push({
-          id: `fallback-${guideKey}-advanced-${displayOrder}`,
-          instrument_id: instrumentId || '',
-          title: title,
-          composer: '伝統曲',
-          era: undefined,
-          genre: undefined,
-          difficulty_level: 5,
-          youtube_url: undefined,
-          spotify_url: undefined,
-          description_ja: undefined,
-          description_en: undefined,
-          is_popular: true,
-          display_order: displayOrder++,
-          famous_performer: undefined,
-          famous_video_url: undefined,
-          famous_note: undefined,
-        });
-      });
-    }
-    
-    return songs;
-  };
 
   const handleSongPress = (song: RepresentativeSong) => {
     // 曲名を押したら、説明を表示するモーダルを開く

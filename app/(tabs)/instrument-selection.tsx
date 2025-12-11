@@ -46,7 +46,7 @@ export default function InstrumentSelectionScreen() {
     { id: '550e8400-e29b-41d4-a716-446655440007', name: 'サックス', nameEn: 'Saxophone', emoji: '🎷' },
     { id: '550e8400-e29b-41d4-a716-446655440018', name: 'ヴィオラ', nameEn: 'Viola', emoji: '🎻' },
     { id: '550e8400-e29b-41d4-a716-446655440008', name: 'ホルン', nameEn: 'Horn', emoji: '📯' },
-    { id: '550e8400-e29b-41d4-a716-446655440006', name: '打楽器', nameEn: 'Drums', emoji: '🥁' },
+    { id: '550e8400-e29b-41d4-a716-446655440006', name: 'ドラム', nameEn: 'Drums', emoji: '🥁' },
     { id: '550e8400-e29b-41d4-a716-446655440013', name: 'オーボエ', nameEn: 'Oboe', emoji: '🎵' },
     { id: '550e8400-e29b-41d4-a716-446655440010', name: 'トロンボーン', nameEn: 'Trombone', emoji: '🎺' },
     { id: '550e8400-e29b-41d4-a716-446655440015', name: 'コントラバス', nameEn: 'Contrabass', emoji: '🎻' },
@@ -531,7 +531,7 @@ export default function InstrumentSelectionScreen() {
         // エラーは無視（チュートリアル完了状態の更新失敗は致命的ではない）
       }
       
-      // ストレージイベントを発火して、useAuthSimpleが楽器選択状態を検出できるようにする
+      // ストレージイベントを発火して、useAuthAdvancedが楽器選択状態を検出できるようにする
       if (typeof window !== 'undefined') {
         try {
           const userKey = withUser(STORAGE_KEYS.selectedInstrument, user.id);
@@ -637,6 +637,8 @@ export default function InstrumentSelectionScreen() {
               placeholder="例: ウクレレ、マンドリン、etc..."
               placeholderTextColor={currentTheme.textSecondary}
               maxLength={50}
+              nativeID="custom-instrument-name-input"
+              accessibilityLabel="楽器名"
             />
           </View>
         )}

@@ -40,7 +40,21 @@ export const checkShowOnCalendarSupport = async (forceCheck: boolean = false): P
     return supportsShowOnCalendar ?? true;
   }
 
-  // 常にデータベースにクエリを送信して確認（localStorageのフラグは無視）
+  // localStorageのフラグを先にチェック（初回チェック時のエラーを回避）
+  if (typeof window !== 'undefined' && !forceCheck) {
+    try {
+      const flag = window.localStorage.getItem('disable_show_on_calendar');
+      if (flag === '1') {
+        // カラムが存在しないことが既に分かっている
+        supportsShowOnCalendar = false;
+        return false;
+      }
+    } catch (e) {
+      // localStorageへのアクセスエラーは無視して続行
+    }
+  }
+
+  // データベースにクエリを送信して確認
   try {
     if (isFirstCheck || forceCheck) {
       logger.debug('📅 show_on_calendarカラムの存在を確認中...');
@@ -67,11 +81,19 @@ export const checkShowOnCalendarSupport = async (forceCheck: boolean = false): P
       
       if (isColumnError) {
         // カラムが存在しない場合
-        if (isFirstCheck || forceCheck) {
-          logger.warn('show_on_calendarカラムが存在しません');
-        }
         supportsShowOnCalendar = false;
-        // フラグは設定しない（次回も確認するため）
+        // localStorageにフラグを設定して以降のチェックをスキップ（エラー表示を回避）
+        if (typeof window !== 'undefined') {
+          try {
+            window.localStorage.setItem('disable_show_on_calendar', '1');
+          } catch (e) {
+            // localStorageへの書き込みエラーは無視
+          }
+        }
+        // 初回チェック時のみ警告ログを出力（エラーは表示しない）
+        if (isFirstCheck || forceCheck) {
+          logger.debug('show_on_calendarカラムが存在しません（正常な動作です）');
+        }
         return false;
       }
       
@@ -950,6 +972,67 @@ export const goalRepository = {
           window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
         }
       } catch {}
+    }
+  },
+
+  /**
+   * 達成済み目標を未達成に戻す
+   */
+  async uncompleteGoal(goalId: string, userId: string): Promise<void> {
+    const updateData: any = {};
+    
+    // is_completedカラムが存在する場合のみ追加
+    if (supportsIsCompleted) {
+      updateData.is_completed = false;
+    }
+    
+    // completed_atカラムをnullに設定（エラー時は除外）
+    updateData.completed_at = null;
+    
+    // 進捗が100%の場合は99%に戻す（100%のままでは達成済みとして扱われる可能性があるため）
+    updateData.progress_percentage = 99;
+    
+    let { error } = await supabase
+      .from('goals')
+      .update(updateData)
+      .eq('id', goalId)
+      .eq('user_id', userId);
+
+    if (error) {
+      const isCompletedError = (error.code === 'PGRST204' || error.code === '42703') && 
+                                (error.message?.includes('is_completed') || error.message?.includes('completed_at'));
+      
+      if (isCompletedError) {
+        // is_completedまたはcompleted_atカラムが存在しない場合、除外して再試行
+        const retryData: any = { progress_percentage: 99 };
+        
+        // completed_atのエラーの場合、除外
+        if (error.message?.includes('completed_at')) {
+          // completed_atは除外（既にretryDataには含まれていない）
+        }
+        
+        // is_completedのエラーの場合、除外
+        if (error.message?.includes('is_completed')) {
+          // is_completedは除外（既にretryDataには含まれていない）
+        }
+        
+        const { error: retryError } = await supabase
+          .from('goals')
+          .update(retryData)
+          .eq('id', goalId)
+          .eq('user_id', userId);
+        
+        if (retryError) {
+          throw retryError;
+        }
+      } else {
+        throw error;
+      }
+    }
+
+    // カレンダー更新イベントを発火
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
     }
   },
 

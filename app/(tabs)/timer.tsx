@@ -291,16 +291,106 @@ export default function TimerScreen() {
   const timerHoursInputRef = useRef<TextInput>(null);
   const timerMinutesInputRef = useRef<TextInput>(null);
   
+  // 入力フィールドのフォーカス状態を追跡
+  const [isHoursFocused, setIsHoursFocused] = useState(false);
+  const [isMinutesFocused, setIsMinutesFocused] = useState(false);
+  
   // 全角数字を半角数字に変換する関数
-  const convertToHalfWidth = (text: string): string => {
-    return text.replace(/[０-９]/g, (char) => {
-      const fullWidthMap: { [key: string]: string } = {
-        '０': '0', '１': '1', '２': '2', '３': '3', '４': '4',
-        '５': '5', '６': '6', '７': '7', '８': '8', '９': '9'
-      };
-      return fullWidthMap[char] || char;
-    });
-  };
+  const convertToHalfWidth = useCallback((text: string): string => {
+    const fullWidthToHalfWidth: { [key: string]: string } = {
+      '０': '0', '１': '1', '２': '2', '３': '3', '４': '4',
+      '５': '5', '６': '6', '７': '7', '８': '8', '９': '9',
+    };
+    return text.split('').map(char => fullWidthToHalfWidth[char] || char).join('');
+  }, []);
+
+  // シンプルな数字入力ハンドラー（新規実装）
+  const handleHoursInput = useCallback((text: string) => {
+    // 全角数字を半角数字に変換
+    const halfWidthText = convertToHalfWidth(text);
+    
+    // 数字以外を除去
+    const numericText = halfWidthText.replace(/[^0-9]/g, '');
+    
+    if (numericText === '') {
+      setTimerHours('');
+      return;
+    }
+    
+    // 先頭の0を除去（ただし、単独の0は許可）
+    let cleanedText = numericText;
+    if (numericText.length > 1 && numericText.startsWith('0')) {
+      cleanedText = numericText.replace(/^0+/, '') || '0';
+    }
+    
+    const numValue = parseInt(cleanedText, 10);
+    if (!isNaN(numValue)) {
+      // 最大値99に制限
+      if (numValue > 99) {
+        setTimerHours('99');
+      } else {
+        setTimerHours(cleanedText);
+      }
+    } else {
+      setTimerHours('');
+    }
+  }, [convertToHalfWidth]);
+  
+  const handleMinutesInput = useCallback((text: string) => {
+    // 全角数字を半角数字に変換
+    const halfWidthText = convertToHalfWidth(text);
+    
+    // 数字以外を除去
+    const numericText = halfWidthText.replace(/[^0-9]/g, '');
+    
+    if (numericText === '') {
+      setTimerMinutes('');
+      return;
+    }
+    
+    // 先頭の0を除去（ただし、単独の0は許可）
+    let cleanedText = numericText;
+    if (numericText.length > 1 && numericText.startsWith('0')) {
+      cleanedText = numericText.replace(/^0+/, '') || '0';
+    }
+    
+    const numValue = parseInt(cleanedText, 10);
+    if (!isNaN(numValue)) {
+      // 最大値59に制限
+      if (numValue > 59) {
+        setTimerMinutes('59');
+      } else {
+        setTimerMinutes(cleanedText);
+      }
+    } else {
+      setTimerMinutes('');
+    }
+  }, [convertToHalfWidth]);
+  
+  // 入力確定時の処理
+  const handleHoursBlur = useCallback(() => {
+    if (timerHours) {
+      const numValue = parseInt(timerHours, 10);
+      if (!isNaN(numValue) && numValue >= 0) {
+        const clamped = Math.min(99, Math.max(0, numValue));
+        setTimerHours(clamped.toString());
+      } else {
+        setTimerHours('');
+      }
+    }
+  }, [timerHours]);
+  
+  const handleMinutesBlur = useCallback(() => {
+    if (timerMinutes) {
+      const numValue = parseInt(timerMinutes, 10);
+      if (!isNaN(numValue) && numValue >= 0) {
+        const clamped = Math.min(59, Math.max(0, numValue));
+        setTimerMinutes(clamped.toString());
+      } else {
+        setTimerMinutes('');
+      }
+    }
+  }, [timerMinutes]);
 
   // カスタム時間の状態変更をログ出力（デバッグ時のみ）
   useEffect(() => {
@@ -441,6 +531,11 @@ export default function TimerScreen() {
       return;
     }
     
+    // 入力フィールドにフォーカスがある場合は更新しない
+    if (isHoursFocused || isMinutesFocused) {
+      return;
+    }
+    
     if (mode === 'timer' && !isTimerRunning && timerSeconds === timerPresetRef.current) {
       // タイマーが停止中で、表示時間が設定時間と一致する場合のみ更新
       if (timerPresetRef.current > 0) {
@@ -453,12 +548,11 @@ export default function TimerScreen() {
           setTimerHours(hours > 0 ? hours.toString() : '');
           setTimerMinutes(minutes > 0 ? minutes.toString() : '');
         }
-      } else if (timerHours !== '' || timerMinutes !== '') {
-        setTimerHours('');
-        setTimerMinutes('');
       }
+      // timerPresetRef.current === 0の場合でも、入力フィールドにフォーカスがある場合はリセットしない
+      // （ユーザーが入力中にリセットされないようにする）
     }
-  }, [mode, isTimerRunning, timerSeconds, timerHours, timerMinutes]);
+  }, [mode, isTimerRunning, timerSeconds, timerHours, timerMinutes, isHoursFocused, isMinutesFocused]);
 
   // タイマーの実行状態を追跡（完了検出のため）
   useEffect(() => {
@@ -1430,44 +1524,40 @@ export default function TimerScreen() {
               flexDirection: 'row',
               justifyContent: 'center',
               alignItems: 'center',
-              marginVertical: 20,
-              gap: 16,
+              marginVertical: 16,
+              gap: 12,
             }}>
               {/* 時間入力 */}
               <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 8,
+                gap: 6,
               }}>
                 <TextInput
                   ref={timerHoursInputRef}
                   style={{
                     width: 60,
-                    paddingVertical: 12,
+                    paddingVertical: 10,
                     paddingHorizontal: 8,
                     borderRadius: 8,
                     borderWidth: 1.5,
-                    borderColor: (timerHours && parseInt(timerHours, 10) > 0) || (timerMinutes && parseInt(timerMinutes, 10) > 0)
-                      ? currentTheme.primary
-                      : currentTheme.secondary,
+                    borderColor: timerHours ? currentTheme.primary : currentTheme.secondary,
                     fontSize: 18,
-                    textAlign: 'center',
-                    fontWeight: '600',
+                    textAlign: 'right',
+                    fontWeight: '700',
                     color: currentTheme.text,
                     backgroundColor: currentTheme.surface,
                   }}
                   value={timerHours}
-                  onChangeText={(text) => {
-                    // 全角数字を半角数字に変換
-                    const halfWidthText = convertToHalfWidth(text);
-                    // 数字以外の文字を除去
-                    const cleanedText = halfWidthText.replace(/[^0-9]/g, '');
-                    const hours = cleanedText === '' ? '' : Math.max(0, Math.min(24, parseInt(cleanedText, 10) || 0)).toString();
-                    setTimerHours(hours);
+                  onChangeText={handleHoursInput}
+                  onFocus={() => setIsHoursFocused(true)}
+                  onBlur={() => {
+                    setIsHoursFocused(false);
+                    handleHoursBlur();
                   }}
                   placeholder="0"
                   placeholderTextColor={currentTheme.textSecondary}
-                  keyboardType="default"
+                  keyboardType="number-pad"
                   maxLength={2}
                   returnKeyType="next"
                   onSubmitEditing={() => {
@@ -1475,8 +1565,8 @@ export default function TimerScreen() {
                   }}
                 />
                 <Text style={{
-                  fontSize: 16,
-                  fontWeight: '400',
+                  fontSize: 14,
+                  fontWeight: '500',
                   color: currentTheme.textSecondary,
                   minWidth: 30,
                 }}>
@@ -1488,49 +1578,42 @@ export default function TimerScreen() {
               <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 8,
+                gap: 6,
               }}>
                 <TextInput
                   ref={timerMinutesInputRef}
                   style={{
                     width: 60,
-                    paddingVertical: 12,
+                    paddingVertical: 10,
                     paddingHorizontal: 8,
                     borderRadius: 8,
                     borderWidth: 1.5,
-                    borderColor: (timerHours && parseInt(timerHours, 10) > 0) || (timerMinutes && parseInt(timerMinutes, 10) > 0)
-                      ? currentTheme.primary
-                      : currentTheme.secondary,
+                    borderColor: timerMinutes ? currentTheme.primary : currentTheme.secondary,
                     fontSize: 18,
-                    textAlign: 'center',
-                    fontWeight: '600',
+                    textAlign: 'right',
+                    fontWeight: '700',
                     color: currentTheme.text,
                     backgroundColor: currentTheme.surface,
                   }}
                   value={timerMinutes}
-                  onChangeText={(text) => {
-                    // 全角数字を半角数字に変換
-                    const halfWidthText = convertToHalfWidth(text);
-                    // 数字以外の文字を除去
-                    const cleanedText = halfWidthText.replace(/[^0-9]/g, '');
-                    const minutes = cleanedText === '' ? '' : Math.max(0, Math.min(59, parseInt(cleanedText, 10) || 0)).toString();
-                    setTimerMinutes(minutes);
+                  onChangeText={handleMinutesInput}
+                  onFocus={() => setIsMinutesFocused(true)}
+                  onBlur={() => {
+                    setIsMinutesFocused(false);
+                    handleMinutesBlur();
                   }}
                   placeholder="0"
                   placeholderTextColor={currentTheme.textSecondary}
-                  keyboardType="default"
+                  keyboardType="number-pad"
                   maxLength={2}
                   returnKeyType="done"
-                  onSubmitEditing={() => {
-                    // Enterキーでタイマーを設定
-                    handleTimerInputApply();
-                  }}
+                  onSubmitEditing={handleTimerInputApply}
                 />
                 <Text style={{
-                  fontSize: 16,
-                  fontWeight: '400',
+                  fontSize: 14,
+                  fontWeight: '500',
                   color: currentTheme.textSecondary,
-                  minWidth: 30,
+                  minWidth: 25,
                 }}>
                   {t('minutes') || '分'}
                 </Text>
@@ -1683,11 +1766,10 @@ export default function TimerScreen() {
               activeElement.blur();
             }
           }
-          setShowTimerInputModal(false);
+          handleTimerInputCancel();
         }}
         transparent={true}
         animationType="fade"
-        onRequestClose={handleTimerInputCancel}
       >
         <View style={{
           flex: 1,
@@ -1711,7 +1793,7 @@ export default function TimerScreen() {
               marginBottom: 20,
               textAlign: 'center',
             }}>
-              {t('setTimerTime') || 'タイマー時間を設定'}
+              タイマー時間を設定
             </Text>
             
             <View style={{
@@ -1719,8 +1801,8 @@ export default function TimerScreen() {
               justifyContent: 'space-around',
               alignItems: 'center',
               width: '100%',
-              marginBottom: 30,
-              gap: 16,
+              marginBottom: 24,
+              gap: 12,
             }}>
               {/* 時間入力 */}
               <View style={{
@@ -1728,40 +1810,34 @@ export default function TimerScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 8,
+                gap: 6,
               }}>
                 <TextInput
                   ref={timerHoursInputRef}
                   style={{
                     flex: 1,
                     minWidth: 60,
-                    paddingVertical: 12,
+                    paddingVertical: 10,
                     paddingHorizontal: 8,
                     borderRadius: 8,
                     borderWidth: 1.5,
-                    borderColor: (timerHours && parseInt(timerHours, 10) > 0) || (timerMinutes && parseInt(timerMinutes, 10) > 0)
-                      ? currentTheme.primary
-                      : '#666666',
+                    borderColor: timerHours ? currentTheme.primary : '#666666',
                     fontSize: 18,
-                    textAlign: 'center',
-                    fontWeight: '600',
+                    textAlign: 'right',
+                    fontWeight: '700',
                     color: '#FFFFFF',
                     backgroundColor: '#2A2A2A',
                   }}
                   value={timerHours}
-                  onChangeText={(text) => {
-                    // 全角数字を半角数字に変換
-                    const halfWidthText = convertToHalfWidth(text);
-                    // 数字以外の文字を除去
-                    const cleanedText = halfWidthText.replace(/[^0-9]/g, '');
-                    const hours = cleanedText === '' ? '' : Math.max(0, Math.min(24, parseInt(cleanedText, 10) || 0)).toString();
-                    setTimerHours(hours);
+                  onChangeText={handleHoursInput}
+                  onFocus={() => setIsHoursFocused(true)}
+                  onBlur={() => {
+                    setIsHoursFocused(false);
+                    handleHoursBlur();
                   }}
                   placeholder="0"
                   placeholderTextColor="#666666"
                   keyboardType="number-pad"
-                  editable={true}
-                  {...(Platform.OS === 'web' ? { inputMode: 'numeric' } : {})}
                   maxLength={2}
                   returnKeyType="next"
                   onSubmitEditing={() => {
@@ -1769,8 +1845,8 @@ export default function TimerScreen() {
                   }}
                 />
                 <Text style={{
-                  fontSize: 16,
-                  fontWeight: '400',
+                  fontSize: 14,
+                  fontWeight: '500',
                   color: '#E0E0E0',
                   minWidth: 30,
                 }}>
@@ -1784,48 +1860,43 @@ export default function TimerScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 8,
+                gap: 6,
               }}>
                 <TextInput
                   ref={timerMinutesInputRef}
                   style={{
                     flex: 1,
                     minWidth: 60,
-                    paddingVertical: 12,
+                    paddingVertical: 10,
                     paddingHorizontal: 8,
                     borderRadius: 8,
                     borderWidth: 1.5,
-                    borderColor: (timerHours && parseInt(timerHours, 10) > 0) || (timerMinutes && parseInt(timerMinutes, 10) > 0)
-                      ? currentTheme.primary
-                      : '#666666',
+                    borderColor: timerMinutes ? currentTheme.primary : '#666666',
                     fontSize: 18,
-                    textAlign: 'center',
-                    fontWeight: '600',
+                    textAlign: 'right',
+                    fontWeight: '700',
                     color: '#FFFFFF',
                     backgroundColor: '#2A2A2A',
                   }}
                   value={timerMinutes}
-                  onChangeText={(text) => {
-                    // 全角数字を半角数字に変換
-                    const halfWidthText = convertToHalfWidth(text);
-                    // 数字以外の文字を除去
-                    const cleanedText = halfWidthText.replace(/[^0-9]/g, '');
-                    const minutes = cleanedText === '' ? '' : Math.max(0, Math.min(59, parseInt(cleanedText, 10) || 0)).toString();
-                    setTimerMinutes(minutes);
+                  onChangeText={handleMinutesInput}
+                  onFocus={() => setIsMinutesFocused(true)}
+                  onBlur={() => {
+                    setIsMinutesFocused(false);
+                    handleMinutesBlur();
                   }}
                   placeholder="0"
                   placeholderTextColor="#666666"
                   keyboardType="number-pad"
-                  editable={true}
-                  {...(Platform.OS === 'web' ? { inputMode: 'numeric' } : {})}
                   maxLength={2}
                   returnKeyType="done"
+                  onSubmitEditing={handleTimerInputApply}
                 />
                 <Text style={{
-                  fontSize: 16,
-                  fontWeight: '400',
+                  fontSize: 14,
+                  fontWeight: '500',
                   color: '#E0E0E0',
-                  minWidth: 30,
+                  minWidth: 25,
                 }}>
                   {t('minutes') || '分'}
                 </Text>

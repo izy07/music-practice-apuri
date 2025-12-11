@@ -1,4 +1,6 @@
 const { getDefaultConfig } = require('expo/metro-config');
+const path = require('path');
+const fs = require('fs');
 
 // Webプラットフォームを検出
 const isWeb = 
@@ -82,12 +84,26 @@ config.server.rewriteRequestUrl = (url) => {
   // 静的ファイル（拡張子付き）や内部API（/_）はそのまま返す
   const hasFileExtension = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json|map|html|bundle)$/i.test(url);
   
+  // /assets/パスを処理（開発環境でのアセット提供）
+  if (url.startsWith('/assets/')) {
+    // assetsディレクトリのファイルを直接提供
+    const assetPath = path.join(__dirname, url);
+    if (fs.existsSync(assetPath)) {
+      return url;
+    }
+    // 存在しない場合は/_expo/static/配下を試す（開発環境）
+    if (isWeb) {
+      const expoPath = url.replace('/assets/', '/_expo/static/assets/');
+      return expoPath;
+    }
+    return url;
+  }
+  
   if (
     hasFileExtension || 
     url.startsWith('/_') || 
     url.startsWith('/api') ||
-    url.startsWith('/static') ||
-    url.startsWith('/assets')
+    url.startsWith('/static')
   ) {
     return url;
   }

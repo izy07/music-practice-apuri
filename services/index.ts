@@ -13,8 +13,6 @@ export type { CreatePracticeParams } from './practiceService';
 export { OrganizationService, organizationService } from './organizationService';
 export type { CreateOrganizationResult } from './organizationService';
 
-export { AdminCodeService, adminCodeService } from './adminCodeService';
-
 export { MembershipService, membershipService } from './membershipService';
 
 export { ScheduleService, scheduleService } from './scheduleService';

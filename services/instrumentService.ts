@@ -94,7 +94,7 @@ const defaultInstruments: Instrument[] = [
   },
   {
     id: '550e8400-e29b-41d4-a716-446655440006',
-    name: '打楽器',
+    name: 'ドラム',
     nameEn: 'Drums',
     primary: '#000000',
     secondary: '#696969',

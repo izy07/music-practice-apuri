@@ -188,23 +188,6 @@ export default function AddGoalScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: currentTheme.text }]}>説明</Text>
-            <TextInput
-              style={[styles.textArea, { 
-                backgroundColor: currentTheme.background,
-                color: currentTheme.text,
-                borderColor: currentTheme.secondary
-              }]}
-              value={newGoal.description}
-              onChangeText={(text) => setNewGoal({...newGoal, description: text})}
-              placeholder="目標についての詳細な説明"
-              placeholderTextColor={currentTheme.textSecondary}
-              multiline
-              numberOfLines={3}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: currentTheme.text }]}>目標期日</Text>
             <View style={styles.dateInputContainer}>
               <TouchableOpacity

@@ -1319,7 +1319,7 @@ const styles = StyleSheet.create({
 
   fab: {
     position: 'absolute',
-    bottom: getScaledSpacing(40), // より下に移動
+    bottom: getScaledSpacing(100), // 少し上に移動（60 → 100）
     right: getScaledSpacing(20),
     width: getScaledSize(96),
     height: getScaledSize(96),

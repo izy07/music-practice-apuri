@@ -485,9 +485,6 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
                 return presetName || 'カスタム';
               })() : (selectedInstrument && currentTheme?.name ? currentTheme.name : '楽器の自動テーマ')}
             </Text>
-            <Text style={[styles.themeModeDescription, { color: currentTheme?.textSecondary || '#718096' }]}>
-              選択した楽器に応じて自動的にカラーテーマが変更されます
-            </Text>
           </View>
           <TouchableOpacity
             style={[
@@ -704,13 +701,13 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
 const styles = StyleSheet.create({
   settingsContainer: {
     borderRadius: 16,
-    padding: 20,
+    padding: 12,
     marginBottom: 20,
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 8,
     gap: 12,
   },
   sectionTitle: {
@@ -720,18 +717,18 @@ const styles = StyleSheet.create({
   },
   sectionDescription: {
     fontSize: 14,
-    marginBottom: 16,
+    marginBottom: 8,
     color: '#666666',
   },
   themeModeContainer: {
-    marginBottom: 24,
+    marginBottom: 12,
   },
   themeModeRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: 12,
     borderWidth: 1,
   },
@@ -741,11 +738,7 @@ const styles = StyleSheet.create({
   themeModeTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
-  },
-  themeModeDescription: {
-    fontSize: 14,
-    lineHeight: 20,
+    marginBottom: 0,
   },
   themeModeToggle: {
     paddingHorizontal: 16,
@@ -759,12 +752,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   presetSection: {
-    marginBottom: 24,
+    marginBottom: 12,
   },
   presetTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   presetGrid: {
     flexDirection: 'row',
@@ -774,7 +767,7 @@ const styles = StyleSheet.create({
   },
   presetButton: {
     width: '30%',
-    padding: 12,
+    padding: 8,
     borderRadius: 12,
     alignItems: 'center',
     borderWidth: 1,
@@ -782,7 +775,7 @@ const styles = StyleSheet.create({
   presetColors: {
     flexDirection: 'row',
     gap: 4,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   presetColor: {
     width: 20,
@@ -800,20 +793,20 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   customSection: {
-    marginBottom: 24,
+    marginBottom: 12,
   },
   customTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 16,
+    marginBottom: 8,
   },
   colorPickerContainer: {
-    marginBottom: 16,
+    marginBottom: 10,
   },
   colorPickerLabel: {
     fontSize: 14,
     fontWeight: '500',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   colorPickerRow: {
     flexDirection: 'row',
@@ -838,7 +831,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   customActions: {
-    marginTop: 16,
+    marginTop: 8,
   },
   saveButton: {
     flexDirection: 'row',
@@ -857,10 +850,10 @@ const styles = StyleSheet.create({
   resetButton: {
     borderWidth: 1,
     borderRadius: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 12,
   },
   resetButtonText: {
     fontSize: 14,

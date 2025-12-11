@@ -70,6 +70,18 @@ export const disableBackgroundFocus = () => {
     setTimeout(removeAriaHidden, 200);
     setTimeout(removeAriaHidden, 500);
     
+    // 定期的にチェックして削除（モーダルが開いている間、継続的に監視）
+    const intervalId = setInterval(() => {
+      if (modalCount === 0) {
+        clearInterval(intervalId);
+        return;
+      }
+      removeAriaHidden();
+    }, 100);
+    
+    // モーダルが閉じたときにintervalをクリアするため、グローバルに保存
+    (window as any).__modalAriaHiddenInterval = intervalId;
+    
     // MutationObserverでリアルタイムにaria-hiddenの追加を監視
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
@@ -80,7 +92,13 @@ export const disableBackgroundFocus = () => {
             if (!target.closest('[role="dialog"]') && 
                 !target.closest('[aria-modal="true"]') &&
                 !target.closest('[data-modal-content]')) {
-              target.removeAttribute('aria-hidden');
+              // フォーカス可能な要素が含まれている場合は、aria-hiddenを削除
+              const hasFocusableDescendant = target.querySelector(
+                'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+              );
+              if (hasFocusableDescendant || target.matches('a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')) {
+                target.removeAttribute('aria-hidden');
+              }
             }
           }
         }
@@ -128,24 +146,51 @@ export const enableBackgroundFocus = () => {
   // モーダルが閉じる前に、モーダル内の要素からフォーカスを外す
   // これにより、aria-hidden警告を根本的に解決
   const activeElement = document.activeElement as HTMLElement;
+  
+  // すべてのフォーカス可能な要素からフォーカスを外す（確実性のため）
+  const focusableElements = document.querySelectorAll(
+    'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  );
+  
+  focusableElements.forEach((element) => {
+    const htmlElement = element as HTMLElement;
+    // モーダル内の要素にフォーカスがある場合、フォーカスを外す
+    if (htmlElement === activeElement && (
+      htmlElement.closest('[role="dialog"]') || 
+      htmlElement.closest('[aria-modal="true"]') ||
+      htmlElement.closest('[data-modal-content]')
+    )) {
+      if (htmlElement.blur) {
+        htmlElement.blur();
+      }
+    }
+  });
+  
+  // アクティブな要素がモーダル内にある場合、フォーカスを外す
   if (activeElement) {
     // モーダル内の要素にフォーカスがある場合、フォーカスを外す
     if (activeElement.closest('[role="dialog"]') || 
         activeElement.closest('[aria-modal="true"]') ||
         activeElement.closest('[data-modal-content]')) {
-      // フォーカスをbodyに移動（aria-hidden警告を防ぐため）
+      // フォーカスを外す
       if (activeElement.blur) {
         activeElement.blur();
       }
-      // bodyにフォーカスを移動
-      if (document.body && document.body.focus) {
-        document.body.focus();
+    }
+    
+    // bodyにフォーカスを移動（フォーカスが残らないようにする）
+    // bodyは通常フォーカスできないので、代わりにroot要素にフォーカスを移動
+    const root = getRootElement();
+    if (root) {
+      // root要素にtabindexを一時的に設定してフォーカス可能にする
+      const originalTabIndex = root.getAttribute('tabindex');
+      root.setAttribute('tabindex', '-1');
+      root.focus();
+      // フォーカス後、tabindexを元に戻す
+      if (originalTabIndex === null) {
+        root.removeAttribute('tabindex');
       } else {
-        // bodyがフォーカスできない場合は、root要素にフォーカスを移動
-        const root = getRootElement();
-        if (root && root.focus) {
-          root.focus();
-        }
+        root.setAttribute('tabindex', originalTabIndex);
       }
     }
   }
@@ -165,6 +210,12 @@ export const enableBackgroundFocus = () => {
       delete (window as any).__modalAriaHiddenObserver;
     }
     
+    // 定期的なチェックのintervalをクリア
+    if ((window as any).__modalAriaHiddenInterval) {
+      clearInterval((window as any).__modalAriaHiddenInterval);
+      delete (window as any).__modalAriaHiddenInterval;
+    }
+    
     // フォールバック: 無効化したフォーカス可能な要素を再有効化
     const disabledElements = document.querySelectorAll('[data-modal-disabled-tabindex]');
     
@@ -180,7 +231,8 @@ export const enableBackgroundFocus = () => {
     });
     
     // すべてのaria-hidden属性を削除（安全のため）
-    setTimeout(() => {
+    // 複数回実行して確実に削除
+    const removeAllAriaHidden = () => {
       const elementsWithAriaHidden = document.querySelectorAll('[aria-hidden="true"]');
       elementsWithAriaHidden.forEach((element) => {
         const htmlElement = element as HTMLElement;
@@ -188,10 +240,25 @@ export const enableBackgroundFocus = () => {
         if (!htmlElement.closest('[role="dialog"]') && 
             !htmlElement.closest('[aria-modal="true"]') &&
             !htmlElement.closest('[data-modal-content]')) {
-          htmlElement.removeAttribute('aria-hidden');
+          // フォーカス可能な要素が含まれている場合は、aria-hiddenを削除
+          const hasFocusableDescendant = htmlElement.querySelector(
+            'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          );
+          if (hasFocusableDescendant || htmlElement.matches('a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')) {
+            htmlElement.removeAttribute('aria-hidden');
+          }
         }
       });
-    }, 0);
+    };
+    
+    // 即座に削除
+    removeAllAriaHidden();
+    // 少し遅延して再度削除（React Native Webが設定するタイミングに対応）
+    setTimeout(removeAllAriaHidden, 0);
+    setTimeout(removeAllAriaHidden, 10);
+    setTimeout(removeAllAriaHidden, 50);
+    setTimeout(removeAllAriaHidden, 100);
+    setTimeout(removeAllAriaHidden, 200);
   }
 };
 
@@ -229,9 +296,32 @@ export const blurActiveElement = () => {
       if (activeElement.blur) {
         activeElement.blur();
       }
-      // bodyにフォーカスを移動（フォーカスが残らないようにする）
-      if (document.body && document.body.focus) {
-        document.body.focus();
+    }
+    
+    // すべてのモーダル内のフォーカス可能な要素からフォーカスを外す（念のため）
+    const modalFocusableElements = document.querySelectorAll(
+      '[role="dialog"] a[href], [role="dialog"] button:not([disabled]), [role="dialog"] textarea:not([disabled]), [role="dialog"] input:not([disabled]), [role="dialog"] select:not([disabled]), [role="dialog"] [tabindex]:not([tabindex="-1"]), [aria-modal="true"] a[href], [aria-modal="true"] button:not([disabled]), [aria-modal="true"] textarea:not([disabled]), [aria-modal="true"] input:not([disabled]), [aria-modal="true"] select:not([disabled]), [aria-modal="true"] [tabindex]:not([tabindex="-1"]), [data-modal-content] a[href], [data-modal-content] button:not([disabled]), [data-modal-content] textarea:not([disabled]), [data-modal-content] input:not([disabled]), [data-modal-content] select:not([disabled]), [data-modal-content] [tabindex]:not([tabindex="-1"])'
+    );
+    
+    modalFocusableElements.forEach((element) => {
+      const htmlElement = element as HTMLElement;
+      if (htmlElement === document.activeElement) {
+        if (htmlElement.blur) {
+          htmlElement.blur();
+        }
+      }
+    });
+    
+    // root要素にフォーカスを移動（フォーカスが残らないようにする）
+    const root = getRootElement();
+    if (root) {
+      const originalTabIndex = root.getAttribute('tabindex');
+      root.setAttribute('tabindex', '-1');
+      root.focus();
+      if (originalTabIndex === null) {
+        root.removeAttribute('tabindex');
+      } else {
+        root.setAttribute('tabindex', originalTabIndex);
       }
     }
   }

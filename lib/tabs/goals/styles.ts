@@ -12,6 +12,7 @@ export const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 4,
     paddingBottom: 40,
+    alignItems: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -101,6 +102,8 @@ export const styles = StyleSheet.create({
   },
   goalsList: {
     gap: 8,
+    width: '100%',
+    alignItems: 'center',
   },
   goalCard: {
     borderRadius: 12,
@@ -109,14 +112,16 @@ export const styles = StyleSheet.create({
     borderColor: '#E5E5E5',
     marginBottom: 8,
     marginHorizontal: 0,
+    width: '100%',
+    maxWidth: 500,
     ...createShadowStyle({
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.08,
-      shadowRadius: 8,
-      elevation: 3,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 4,
+      elevation: 2,
     }),
-    elevation: 3,
+    elevation: 2,
   },
   goalHeader: {
     flexDirection: 'row',
@@ -129,12 +134,12 @@ export const styles = StyleSheet.create({
   goalHeaderRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   goalHeaderLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     flex: 1,
   },
   goalTitle: {
@@ -142,7 +147,7 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 4,
     lineHeight: 22,
-    letterSpacing: -0.3,
+    letterSpacing: -0.2,
   },
   goalDescription: {
     fontSize: 13,
@@ -183,50 +188,58 @@ export const styles = StyleSheet.create({
   },
   // 新しいセクション用のスタイル
   section: {
-    marginBottom: 16,
-    padding: 16,
-    borderRadius: 12,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 10,
     elevation: 3,
+    width: '95%',
+    maxWidth: 500,
+    alignSelf: 'center',
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
-    gap: 12,
+    marginBottom: 8,
+    gap: 10,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
   },
   goalTypes: {
-    gap: 12,
-    marginBottom: 16,
+    gap: 8,
+    marginBottom: 12,
+    alignItems: 'center',
   },
   goalTypeCard: {
-    padding: 16,
+    padding: 8,
     borderWidth: 2,
-    borderRadius: 12,
+    borderRadius: 8,
     backgroundColor: '#F8F9FA',
-    flex: 1,
+    width: '92%',
+    maxWidth: 380,
   },
   goalTypeTitle: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   goalTypeDescription: {
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 11,
+    lineHeight: 15,
     flexWrap: 'wrap',
   },
   addGoalButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 24,
-    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    gap: 6,
+    alignSelf: 'center',
+    width: '92%',
+    maxWidth: 380,
   },
 
   targetSongCard: {
@@ -396,6 +409,9 @@ export const styles = StyleSheet.create({
     paddingTop: 24,
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
+    width: '96%',
+    maxWidth: 550,
+    alignSelf: 'center',
   },
   completedSectionHeader: {
     flexDirection: 'row',
@@ -742,13 +758,13 @@ export const styles = StyleSheet.create({
   },
   addButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
   progressBar: {
     flex: 1,
     height: 5,
-    borderRadius: 5,
+    borderRadius: 4,
     overflow: 'hidden',
     marginBottom: 4,
   },
@@ -997,7 +1013,7 @@ export const styles = StyleSheet.create({
     letterSpacing: 0.1,
   },
   progressSection: {
-    marginTop: 2,
+    marginTop: 4,
   },
   progressHeader: {
     flexDirection: 'row',
@@ -1019,16 +1035,16 @@ export const styles = StyleSheet.create({
   goalTypeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 12,
-    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    gap: 3,
   },
   goalTypeBadgeText: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: 0.3,
+    letterSpacing: 0.2,
   },
   dateInput: {
     flexDirection: 'row',
@@ -1138,5 +1154,17 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
     marginHorizontal: 0,
     paddingHorizontal: 0,
+  },
+  uncompleteButton: {
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uncompleteButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

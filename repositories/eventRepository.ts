@@ -28,13 +28,21 @@ export const createEvent = async (
   try {
     // dateとevent_dateの両方を設定（テーブルスキーマの互換性のため）
     const payload: any = {
-      ...event,
+      user_id: event.user_id,
+      title: event.title,
+      date: event.date,
+      description: event.description || null,
       created_at: new Date().toISOString(),
     };
     
     // event_dateカラムが存在する場合は、dateと同じ値を設定
     if (event.date) {
       payload.event_date = event.date;
+    }
+    
+    // practice_schedule_idが存在する場合のみ追加（カラムが存在しない場合のエラーを防ぐため）
+    if (event.practice_schedule_id) {
+      payload.practice_schedule_id = event.practice_schedule_id;
     }
     
     const { data, error } = await supabase
@@ -65,13 +73,21 @@ export const updateEvent = async (
   try {
     // dateとevent_dateの両方を設定（テーブルスキーマの互換性のため）
     const payload: any = {
-      ...updates,
       updated_at: new Date().toISOString(),
     };
     
-    // dateが更新される場合は、event_dateも同じ値に設定
-    if (updates.date) {
-      payload.event_date = updates.date;
+    // 更新されるフィールドのみを追加
+    if (updates.title !== undefined) payload.title = updates.title;
+    if (updates.date !== undefined) {
+      payload.date = updates.date;
+      payload.event_date = updates.date; // event_dateも同じ値に設定
+    }
+    if (updates.description !== undefined) payload.description = updates.description;
+    if (updates.practice_schedule_id !== undefined) {
+      // practice_schedule_idがnullでない場合のみ追加
+      if (updates.practice_schedule_id !== null) {
+        payload.practice_schedule_id = updates.practice_schedule_id;
+      }
     }
     
     const { data, error } = await supabase

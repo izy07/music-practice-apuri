@@ -1,11 +1,16 @@
 /**
  * 認証状態の一元管理 - 世に出回っているアプリの一般的なパターン
  * 
+ * ⚠️ 非推奨: このコンテキストは使用されていません。
+ * 代わりに `hooks/useAuthAdvanced.ts` の `useAuthAdvanced` フックを使用してください。
+ * 
  * 特徴:
  * - 認証状態を一元管理
  * - 認証状態の変更を監視
  * - 新規登録画面では認証状態を無視
  * - 認証成功時は自動的にメインアプリに遷移
+ * 
+ * @deprecated このコンテキストは非推奨です。`useAuthAdvanced`を使用してください。
  */
 
 import React, { createContext, useContext, useEffect, useState } from 'react';

@@ -62,8 +62,8 @@ export function LevelSelector({
       </View>
 
       {userLevel && (
-        <Text style={[styles.levelFixedNotice, { color: currentTheme.textSecondary }]}>
-          演奏レベルは設定から変更できます
+        <Text style={[styles.levelFixedNotice, { color: currentTheme.text }]}>
+          演奏レベルは上のボタンを押すと変更できます
         </Text>
       )}
     </>

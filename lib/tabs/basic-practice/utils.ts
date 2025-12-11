@@ -33,7 +33,7 @@ export const getInstrumentName = (
     'violin': 'バイオリン',
     'flute': 'フルート',
     'trumpet': 'トランペット',
-    'drums': '打楽器',
+    'drums': 'ドラム',
     'saxophone': 'サックス',
     'horn': 'ホルン',
     'clarinet': 'クラリネット',

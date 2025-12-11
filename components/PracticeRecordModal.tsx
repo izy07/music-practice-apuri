@@ -259,20 +259,56 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
 
   // 練習記録を読み込む（リポジトリを使用）
   const loadPracticeSessions = useCallback(async () => {
-    if (!user || !selectedDate) return;
+    if (!user || !selectedDate) {
+      logger.debug('loadPracticeSessions: userまたはselectedDateが未設定', { 
+        hasUser: !!user, 
+        hasSelectedDate: !!selectedDate 
+      });
+      return;
+    }
 
     try {
       const practiceDate = formatLocalDate(selectedDate);
+      const instrumentId = getInstrumentId(selectedInstrument);
+      
+      logger.debug('loadPracticeSessions: 練習記録を取得開始', {
+        userId: user.id,
+        practiceDate,
+        instrumentId,
+        selectedInstrument
+      });
+
       const { data: sessions, error } = await getPracticeSessionsByDate(
         user.id,
         practiceDate,
-        getInstrumentId(selectedInstrument)
+        instrumentId
       );
 
-      logger.debug('読み込んだ練習セッション:', sessions);
+      logger.debug('loadPracticeSessions: 取得結果', {
+        sessionsCount: sessions?.length || 0,
+        sessions: sessions,
+        error: error ? {
+          message: error.message,
+          code: (error as any)?.code,
+          details: (error as any)?.details
+        } : null
+      });
 
       if (error) {
-        // エラーは無視（既存記録の読み込み失敗は致命的ではない）
+        // エラーログを出力（既存記録の読み込み失敗は致命的ではないが、ログは残す）
+        logger.warn('loadPracticeSessions: 練習記録の取得に失敗', {
+          error: error.message,
+          code: (error as any)?.code,
+          userId: user.id,
+          practiceDate,
+          instrumentId
+        });
+        // エラー時も既存の記録をクリア
+        setExistingRecord(null);
+        setTimerMinutes(0);
+        setMinutes('');
+        setContent('');
+        setPracticeBreakdown([]);
         return;
       }
 
@@ -314,19 +350,23 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           // otherSessionsがある場合は最初のセッションのIDとcontentを使用
           const primarySession = otherSessions.length > 0 ? otherSessions[0] : timerSessions[0];
           
+          // クイック記録、タイマー記録のcontentは表示しない
+          // 手動入力（manual）のcontentのみを表示
+          const manualSessions = timeRecords.filter(s => s.input_method === 'manual');
+          const manualContent = manualSessions.length > 0 
+            ? manualSessions.map(s => cleanContentFromTimeDetails(s.content)).filter(c => c && c.trim() !== '').join(', ')
+            : null;
+          
           setExistingRecord({
             id: primarySession.id!,
             minutes: totalMinutes, // すべての時間記録の合計
-            content: primarySession.content
+            content: manualContent || null // 手動入力のcontentのみ
           });
           
           // 既存の記録をフォームに設定（合計時間を表示）
           setMinutes(totalMinutes.toString());
-          if (primarySession.content) {
-            // contentから時間詳細（経由情報）を削除して設定（共通関数を使用）
-            const cleanedContent = cleanContentFromTimeDetails(primarySession.content);
-            setContent(cleanedContent);
-          }
+          // 手動入力のcontentのみを表示（クイック記録、タイマー記録のcontentは表示しない）
+          setContent(manualContent || '');
         } else {
           // 時間記録がない場合（基礎練のみ、または記録なし）
           setExistingRecord(null);
@@ -334,6 +374,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           setContent('');
         }
       } else {
+        logger.debug('loadPracticeSessions: セッションが見つかりませんでした', {
+          practiceDate: formatLocalDate(selectedDate),
+          instrumentId: getInstrumentId(selectedInstrument)
+        });
         setExistingRecord(null);
         setTimerMinutes(0);
         // フォームをリセット
@@ -343,7 +387,19 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         setPracticeBreakdown([]);
       }
     } catch (error) {
-      // エラーは無視（練習記録の読み込み失敗は致命的ではない）
+      // エラーログを出力（練習記録の読み込み失敗は致命的ではないが、ログは残す）
+      logger.error('loadPracticeSessions: 例外が発生しました', {
+        error: error instanceof Error ? error.message : String(error),
+        userId: user?.id,
+        practiceDate: selectedDate ? formatLocalDate(selectedDate) : null,
+        instrumentId: getInstrumentId(selectedInstrument)
+      });
+      // エラー時も既存の記録をクリア
+      setExistingRecord(null);
+      setTimerMinutes(0);
+      setMinutes('');
+      setContent('');
+      setPracticeBreakdown([]);
     }
   }, [user, selectedDate, selectedInstrument]);
 
@@ -1166,7 +1222,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   style={[
                     styles.timeButtonRow,
                     {
-                      backgroundColor: currentTheme.background,
+                      backgroundColor: '#FFFFFF',
                       borderBottomColor: currentTheme.secondary,
                     }
                   ]}
@@ -1186,7 +1242,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                     styles.timeButtonRow,
                     styles.timeButtonRowLast,
                     {
-                      backgroundColor: currentTheme.background,
+                      backgroundColor: '#FFFFFF',
                     }
                   ]}
                   onPress={() => openTimePicker('end')}
@@ -1746,7 +1802,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 8,
     padding: 12,
-    backgroundColor: '#F8F8F8',
+    backgroundColor: '#FFFFFF',
     borderRadius: 8,
     borderWidth: 1,
     borderColor: '#E0E0E0',

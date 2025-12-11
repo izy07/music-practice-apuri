@@ -15,18 +15,7 @@ import { useLanguage } from '@/components/LanguageContext';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { safeGoBack } from '@/lib/navigationUtils';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
-import {
-  DEFAULT_A4_FREQUENCY,
-} from '@/lib/tunerUtils';
-import { saveTunerSettings } from '@/lib/database';
-import { getCurrentUser } from '@/lib/authService';
-import { getUserProfile } from '@/repositories/userRepository';
-import { getUserSettings } from '@/repositories/userSettingsRepository';
-import logger from '@/lib/logger';
-import { ErrorHandler } from '@/lib/errorHandler';
-import { TunerSettings } from '@/components/main-settings/TunerSettings';
 import { InstrumentSettings } from '@/components/main-settings/InstrumentSettings';
-import { LevelSettings } from '@/components/main-settings/LevelSettings';
 import { AppearanceSettings } from '@/components/main-settings/AppearanceSettings';
 
 export default function MainSettingsScreen() {
@@ -58,18 +47,7 @@ export default function MainSettingsScreen() {
     );
   }
   
-  const [mode, setMode] = useState<'tuner' | 'instrument' | 'level' | 'appearance'>('tuner');
-  
-  // チューナー関連の状態
-  const [a4Frequency, setA4Frequency] = useState<number>(DEFAULT_A4_FREQUENCY);
-  const [sensitivity, setSensitivity] = useState<number>(0.1);
-  const [responseSpeed, setResponseSpeed] = useState<number>(0.8);
-  const [smoothing, setSmoothing] = useState<number>(0.3);
-  const [toleranceRange, setToleranceRange] = useState<number>(10);
-  const [referenceToneVolume, setReferenceToneVolume] = useState<number>(0.5);
-
-  // 演奏レベル
-  const [practiceLevel, setPracticeLevel] = useState('beginner');
+  const [mode, setMode] = useState<'instrument' | 'appearance'>('instrument');
   
   // 外観設定関連の状態
   const [useCustomTheme, setUseCustomTheme] = useState(isCustomTheme);
@@ -104,129 +82,7 @@ export default function MainSettingsScreen() {
     }
   }, [currentTheme, isCustomTheme]);
 
-  // 設定読み込み
-  useEffect(() => {
-    let cancelled = false;
-    
-    const load = async () => {
-      try {
-        // ユーザー情報を1回だけ取得（サービス層経由）
-        const { user, error: userError } = await getCurrentUser();
-        if (userError || !user || cancelled) {
-          if (!user) {
-            logger.warn('ユーザーが認証されていません。設定を読み込めません。');
-          }
-          return;
-        }
 
-        // チューナー設定読み込み（リポジトリ層経由）
-        const settingsResult = await getUserSettings(user.id);
-        
-        if (cancelled) return;
-        
-        if (settingsResult.error) {
-          const error = settingsResult.error;
-          const errorCode = 'code' in error ? (error as { code?: string }).code : undefined;
-          const errorStatus = 'status' in error ? (error as { status?: number }).status : undefined;
-          const errorMessage = error.message || '';
-          if (errorCode === 'PGRST116' || errorCode === 'PGRST205') {
-            // レコードが存在しない場合はデフォルト値を使用（エラーではない）
-            logger.info('user_settingsテーブルが存在しないか、データがありません。デフォルト値を使用します。');
-          } else {
-            // その他のエラー（406エラーを含む）は適切に処理する
-            ErrorHandler.handle(settingsResult.error, 'チューナー設定読み込み', false);
-          }
-        } else if (settingsResult.data?.tuner_settings) {
-          const settings = settingsResult.data.tuner_settings;
-          if (!cancelled) {
-            setA4Frequency(settings.a4Frequency || settings.reference_pitch || DEFAULT_A4_FREQUENCY);
-            setSensitivity(settings.sensitivity || 0.1);
-            setResponseSpeed(settings.responseSpeed || 0.8);
-            setSmoothing(settings.smoothing || 0.3);
-            setToleranceRange(settings.toleranceRange || 10);
-            setReferenceToneVolume(settings.referenceToneVolume || settings.volume || 0.5);
-          }
-        }
-
-        // 演奏レベルをプロフィールから読み込み（リポジトリ層経由）
-        if (cancelled) return;
-        
-        try {
-          const profileResult = await getUserProfile(user.id);
-          
-          if (!cancelled && !profileResult.error && profileResult.data?.practice_level) {
-            setPracticeLevel(profileResult.data.practice_level as 'beginner' | 'intermediate' | 'advanced');
-          }
-        } catch (profileError) {
-          ErrorHandler.handle(profileError, 'プロフィール読み込み', false);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          ErrorHandler.handle(error, '設定読み込み', false);
-        }
-      }
-    };
-
-    load();
-    
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  // 楽器変更時に演奏レベルを再読み込み
-  useEffect(() => {
-    let cancelled = false;
-    
-    const loadLevel = async () => {
-      try {
-        const { user, error: userError } = await getCurrentUser();
-        if (userError || !user || cancelled) {
-          return;
-        }
-
-        try {
-          const profileResult = await getUserProfile(user.id);
-          
-          if (!cancelled && !profileResult.error && profileResult.data?.practice_level) {
-            setPracticeLevel(profileResult.data.practice_level as 'beginner' | 'intermediate' | 'advanced');
-          }
-        } catch (profileError) {
-          // エラーは無視
-        }
-      } catch (error) {
-        // エラーは無視
-      }
-    };
-
-    loadLevel();
-    
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedInstrument]);
-
-  // 設定保存
-  useEffect(() => {
-    const saveSettings = async () => {
-      try {
-        const { user, error: userError } = await getCurrentUser();
-        if (userError || !user) return;
-
-        if (mode === 'tuner') {
-          await saveTunerSettings(user.id, {
-            reference_pitch: a4Frequency,
-            temperament: 'equal',
-            volume: referenceToneVolume,
-          });
-        }
-      } catch (error) {
-        ErrorHandler.handle(error, '設定保存', false);
-      }
-    };
-
-    saveSettings();
-  }, [mode, a4Frequency, sensitivity, responseSpeed, smoothing, toleranceRange, referenceToneVolume]);
 
   const goBack = () => {
     safeGoBack('/(tabs)/settings', true);
@@ -256,27 +112,6 @@ export default function MainSettingsScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.tabScrollContent}
         >
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              { 
-                backgroundColor: mode === 'tuner' ? currentTheme?.primary || '#4A5568' : currentTheme?.surface || '#FFFFFF',
-                borderColor: currentTheme?.primary || '#4A5568'
-              }
-            ]}
-            onPress={() => setMode('tuner')}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="チューナー設定タブ"
-          >
-            <Text style={[
-              styles.tabButtonText,
-              { color: mode === 'tuner' ? currentTheme?.surface || '#FFFFFF' : currentTheme?.text || '#2D3748' }
-            ]}>
-              {t('tunerSettings')}
-            </Text>
-          </TouchableOpacity>
-          
           <TouchableOpacity
             style={[
               styles.tabButton,
@@ -318,47 +153,10 @@ export default function MainSettingsScreen() {
               {t('appearanceSettings')}
             </Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              { 
-                backgroundColor: mode === 'level' ? currentTheme?.primary || '#4A5568' : currentTheme?.surface || '#FFFFFF',
-                borderColor: currentTheme?.primary || '#4A5568'
-              }
-            ]}
-            onPress={() => setMode('level')}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel={t('practiceLevel')}
-          >
-            <Text style={[
-              styles.tabButtonText,
-              { color: mode === 'level' ? currentTheme?.surface || '#FFFFFF' : currentTheme?.text || '#2D3748' }
-            ]}>
-              {t('practiceLevel')}
-            </Text>
-          </TouchableOpacity>
         </ScrollView>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {mode === 'tuner' && (
-          <TunerSettings
-            currentTheme={currentTheme}
-            a4Frequency={a4Frequency}
-            setA4Frequency={setA4Frequency}
-            responseSpeed={responseSpeed}
-            setResponseSpeed={setResponseSpeed}
-            smoothing={smoothing}
-            setSmoothing={setSmoothing}
-            toleranceRange={toleranceRange}
-            setToleranceRange={setToleranceRange}
-            referenceToneVolume={referenceToneVolume}
-            setReferenceToneVolume={setReferenceToneVolume}
-          />
-        )}
-
         {mode === 'instrument' && (
           <InstrumentSettings currentTheme={currentTheme} />
         )}
@@ -373,14 +171,6 @@ export default function MainSettingsScreen() {
             selectedInstrument={selectedInstrument}
             setCustomTheme={setCustomTheme}
             resetToInstrumentTheme={resetToInstrumentTheme}
-          />
-        )}
-
-        {mode === 'level' && (
-          <LevelSettings
-            currentTheme={currentTheme}
-            practiceLevel={practiceLevel}
-            setPracticeLevel={setPracticeLevel}
           />
         )}
       </ScrollView>

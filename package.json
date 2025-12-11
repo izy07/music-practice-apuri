@@ -88,6 +88,7 @@
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^29.5.14",
     "@types/react": "^19.2.0",
+    "@types/react-native": "^0.72.8",
     "babel-plugin-module-resolver": "^5.0.2",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",

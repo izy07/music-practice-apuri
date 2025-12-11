@@ -110,8 +110,8 @@ export class ScheduleService {
           throw new Error('練習日程の作成に失敗しました');
         }
 
-        // practice_typeが'event'かつaddToCalendarがtrueの場合のみ、eventsテーブルにも登録
-        if (result.data.practice_type === 'event' && addToCalendar === true) {
+        // practice_typeが'event'または'rehearsal'かつaddToCalendarがtrueの場合、eventsテーブルにも登録
+        if ((result.data.practice_type === 'event' || result.data.practice_type === 'rehearsal') && addToCalendar === true) {
           try {
             // created_byからuser_idを取得（practice_schedulesテーブルの構造に依存）
             const { data: { user } } = await supabase.auth.getUser();
@@ -134,6 +134,7 @@ export class ScheduleService {
                 logger.info(`[${SERVICE_CONTEXT}] createSchedule:event created`, {
                   scheduleId: result.data.id,
                   eventId: eventResult.data?.id,
+                  practiceType: result.data.practice_type,
                 });
               }
             }
@@ -191,7 +192,10 @@ export class ScheduleService {
         // 更新前に既存のスケジュールを取得（practice_typeを確認するため）
         const existingSchedule = await scheduleRepository.findById(id);
         const wasEvent = existingSchedule.data?.practice_type === 'event';
+        const wasRehearsal = existingSchedule.data?.practice_type === 'rehearsal';
+        const wasEventOrRehearsal = wasEvent || wasRehearsal;
         const isEvent = data.practice_type === 'event' || (existingSchedule.data?.practice_type === 'event' && !data.practice_type);
+        const isRehearsal = data.practice_type === 'rehearsal' || (existingSchedule.data?.practice_type === 'rehearsal' && !data.practice_type);
 
         const result = await scheduleRepository.update(id, data);
         if (result.error) {
@@ -201,8 +205,8 @@ export class ScheduleService {
           throw new Error('練習日程の更新に失敗しました');
         }
 
-        // practice_typeが'event'の場合、eventsテーブルも更新
-        if (isEvent && result.data.practice_type === 'event') {
+        // practice_typeが'event'または'rehearsal'の場合、eventsテーブルも更新
+        if ((isEvent || isRehearsal) && (result.data.practice_type === 'event' || result.data.practice_type === 'rehearsal')) {
           try {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
@@ -237,7 +241,7 @@ export class ScheduleService {
                       eventId: matchingEvent.id,
                     });
                   }
-                } else if (wasEvent) {
+                } else if (wasEventOrRehearsal) {
                   // 既存のイベントが見つからない場合、新規作成
                   const eventResult = await createEvent({
                     user_id: user.id,
@@ -259,7 +263,7 @@ export class ScheduleService {
                     });
                   }
                 }
-              } else if (wasEvent) {
+              } else if (wasEventOrRehearsal) {
                 // イベントが見つからない場合、新規作成
                 const eventResult = await createEvent({
                   user_id: user.id,
@@ -307,14 +311,15 @@ export class ScheduleService {
         // 削除前に既存のスケジュールを取得（practice_typeを確認するため）
         const existingSchedule = await scheduleRepository.findById(id);
         const isEvent = existingSchedule.data?.practice_type === 'event';
+        const isRehearsal = existingSchedule.data?.practice_type === 'rehearsal';
 
         const result = await scheduleRepository.delete(id);
         if (result.error) {
           throw result.error;
         }
 
-        // practice_typeが'event'の場合、関連するイベントも削除
-        if (isEvent && existingSchedule.data) {
+        // practice_typeが'event'または'rehearsal'の場合、関連するイベントも削除
+        if ((isEvent || isRehearsal) && existingSchedule.data) {
           try {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {

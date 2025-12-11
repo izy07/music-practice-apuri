@@ -65,11 +65,6 @@ export interface Organization {
   /** 招待コードの有効期限 */
   invite_code_expires_at?: Timestamp;
   
-  /** 管理者コード（平文、表示用のみ） */
-  admin_code?: string;
-  
-  /** 管理者コードのハッシュ値 */
-  admin_code_hash?: string;
   
   /** 作成日時 */
   created_at?: Timestamp;
@@ -246,16 +241,6 @@ export interface JoinOrganizationInput {
   password: string;
 }
 
-/**
- * 管理者コード設定時の入力データ
- */
-export interface SetAdminCodeInput {
-  /** 組織のID */
-  organizationId: ID;
-  
-  /** 管理者コード（4桁の数字） */
-  adminCode: string;
-}
 
 /**
  * 型ガード関数

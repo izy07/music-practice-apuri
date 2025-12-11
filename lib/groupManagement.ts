@@ -3,7 +3,6 @@
  * 
  * 新しいコードでは以下のサービスを使用してください:
  * - organizationService: 組織管理
- * - adminCodeService: 管理者コード管理
  * - scheduleService: 練習日程管理
  * - attendanceService: 出欠管理
  * - taskService: タスク管理
@@ -12,8 +11,6 @@
  * - OrganizationManager.createOrganization() → organizationService.createOrganization()
  * - OrganizationManager.joinOrganization() → organizationService.joinOrganization()
  * - OrganizationManager.getUserOrganizations() → organizationService.getUserOrganizations()
- * - OrganizationManager.setAdminCode() → adminCodeService.setAdminCode()
- * - OrganizationManager.becomeAdminByCode() → adminCodeService.becomeAdminByCode()
  * - PracticeScheduleManager.getMonthlySchedules() → scheduleService.getMonthlySchedules()
  * - PracticeScheduleManager.createSchedule() → scheduleService.createSchedule()
  * - AttendanceManager.getAttendanceRecords() → attendanceService.getByScheduleId()
@@ -37,7 +34,6 @@ export type {
 
 // サービスをインポート
 import { organizationService } from '@/services/organizationService';
-import { adminCodeService } from '@/services/adminCodeService';
 import { scheduleService } from '@/services/scheduleService';
 import { attendanceService } from '@/services/attendanceService';
 import { taskService } from '@/services/taskService';
@@ -173,37 +169,6 @@ export const OrganizationManager = {
     return { success: true };
   },
 
-  /**
-   * 管理者コードを設定（組織作成者のみ）
-   */
-  async setAdminCode(organizationId: string, adminCode: string) {
-    const result = await adminCodeService.setAdminCode({
-      organizationId,
-      adminCode,
-    });
-
-    if (!result.success) {
-      return { success: false, error: result.error };
-    }
-
-    return { success: true, message: '管理者コードが設定されました' };
-  },
-
-  /**
-   * 管理者コードで管理者になる
-   */
-  async becomeAdminByCode(organizationId: string, adminCode: string) {
-    const result = await adminCodeService.becomeAdminByCode({
-      organizationId,
-      adminCode,
-    });
-
-    if (!result.success) {
-      return { success: false, error: result.error };
-    }
-
-    return { success: true, message: '管理者になりました' };
-  },
 
   /**
    * メンバーを削除

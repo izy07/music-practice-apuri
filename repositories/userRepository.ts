@@ -39,10 +39,10 @@ export const getUserProfile = async (
     async () => {
       logger.debug(`[${REPOSITORY_CONTEXT}] getUserProfile:start`, { userId });
       
-      // 最小限のカラムのみを選択（存在が確実なカラムのみ）
+      // すべてのプロフィールカラムを取得（楽器に関係なく一律に同じデータを表示）
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('id, user_id, display_name, selected_instrument_id')
+        .select('*')
         .eq('user_id', userId)
         .maybeSingle();
 

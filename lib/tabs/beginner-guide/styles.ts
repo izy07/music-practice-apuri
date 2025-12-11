@@ -100,7 +100,7 @@ export const styles = StyleSheet.create({
     gap: 8,
   },
   infoItem: {
-    padding: 12,
+    padding: 8,
     backgroundColor: '#F8F9FA',
     borderRadius: 16,
     borderWidth: 1,

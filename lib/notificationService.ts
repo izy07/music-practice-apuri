@@ -227,10 +227,30 @@ export class NotificationService {
         }
 
         if (Notification.permission === 'granted') {
+          // アイコンパスを動的に解決（開発環境と本番環境で異なる）
+          const getIconPath = () => {
+            if (typeof window === 'undefined') return '/assets/images/icon.png';
+            
+            const hostname = window.location.hostname;
+            const paths = [
+              '/_expo/static/assets/images/icon.png', // 開発環境（Expo Web）
+              '/assets/images/icon.png', // 本番環境
+              '/images/icon.png', // publicディレクトリ（フォールバック）
+            ];
+            
+            // 開発環境の判定
+            if (hostname === 'localhost' || hostname === '127.0.0.1') {
+              return paths[0]; // 開発環境では/_expo/static/を使用
+            }
+            
+            return paths[1]; // 本番環境では/assets/を使用
+          };
+          
+          const iconPath = getIconPath();
           const notification = new Notification(title, {
             body,
-            icon: '/assets/images/icon.png',
-            badge: '/assets/images/icon.png',
+            icon: iconPath,
+            badge: iconPath,
             tag: 'music-practice',
             requireInteraction: false,
             silent: !this.settings?.sound_notifications,

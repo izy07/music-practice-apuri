@@ -8,7 +8,7 @@ export const styles = StyleSheet.create({
   },
   mainContent: {
     flex: 1,
-    paddingTop: 20,
+    paddingTop: 0,
   },
   header: {
     flexDirection: 'row',
@@ -35,7 +35,7 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 20,
     paddingTop: 8,
-    paddingBottom: 12,
+    paddingBottom: 0,
     gap: 12,
   },
   levelTab: {
@@ -52,9 +52,10 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
   levelFixedNotice: {
-    fontSize: 12,
+    fontSize: 13,
+    fontWeight: '500',
     textAlign: 'center',
-    marginTop: -12,
+    marginTop: 8,
     marginBottom: 12,
     paddingHorizontal: 20,
   },

@@ -30,11 +30,15 @@ export const organizationRepository = {
       }
 
       // user_group_membershipsとJOINして、現在のユーザーがメンバーである組織を取得
+      // passwordフィールドも明示的に含める（作成者のみ表示可能）
       const { data: membershipData, error: membershipError } = await supabase
         .from('user_group_memberships')
         .select(`
           organization_id,
-          organizations (*)
+          organizations (
+            *,
+            password
+          )
         `)
         .eq('user_id', user.id);
 
@@ -87,6 +91,7 @@ export const organizationRepository = {
       }
 
       // 組織作成者が作成した組織も取得（メンバーシップが存在しない場合でも表示されるように）
+      // passwordフィールドも明示的に含める（作成者のみ表示可能）
       const { data: createdOrganizations, error: createdOrgsError } = await supabase
         .from('organizations')
         .select('*')
@@ -115,14 +120,27 @@ export const organizationRepository = {
       const organizationMap = new Map<string, Organization>();
       
       // まず、メンバーシップから取得した組織を追加
+      // 作成者でない場合はpasswordフィールドを削除（セキュリティ）
       organizationsFromMemberships.forEach(org => {
-        organizationMap.set(org.id, org);
+        const orgCopy = { ...org };
+        // 作成者でない場合はpasswordフィールドを削除
+        if (orgCopy.created_by !== user.id) {
+          delete orgCopy.password;
+        }
+        organizationMap.set(orgCopy.id, orgCopy);
       });
       
       // 次に、作成した組織を追加（既に存在する場合は上書きしない）
+      // 作成した組織はpasswordフィールドを含む
       organizationsFromCreated.forEach(org => {
         if (!organizationMap.has(org.id)) {
           organizationMap.set(org.id, org);
+        } else {
+          // 既に存在する場合は、作成者の場合はpasswordフィールドを保持
+          const existingOrg = organizationMap.get(org.id);
+          if (existingOrg && org.created_by === user.id && org.password) {
+            existingOrg.password = org.password;
+          }
         }
       });
 
@@ -196,6 +214,9 @@ export const organizationRepository = {
    */
   async findById(id: string): Promise<RepositoryResult<Organization>> {
     return safeExecute(async () => {
+      // 現在のユーザーを取得して、作成者の場合はpasswordフィールドも取得
+      const { data: { user } } = await supabase.auth.getUser();
+      
       const { data, error } = await supabase
         .from('organizations')
         .select('*')
@@ -205,6 +226,11 @@ export const organizationRepository = {
       if (error) throw error;
       if (!data) {
         throw new Error('Organization not found');
+      }
+
+      // 作成者でない場合はpasswordフィールドを削除（セキュリティ）
+      if (user && data.created_by !== user.id) {
+        delete data.password;
       }
 
       return data as Organization;
@@ -239,8 +265,6 @@ export const organizationRepository = {
     invite_code?: string;
     invite_code_hash?: string;
     invite_code_expires_at?: string;
-    admin_code?: string;
-    admin_code_hash?: string;
     is_solo?: boolean;
     created_by: string;
   }): Promise<RepositoryResult<Organization>> {
@@ -304,34 +328,6 @@ export const organizationRepository = {
     }, 'update');
   },
 
-  /**
-   * 管理者コードを設定
-   */
-  async setAdminCode(
-    id: string,
-    adminCode: string,
-    adminCodeHash: string
-  ): Promise<RepositoryResult<Organization>> {
-    return safeExecute(async () => {
-      const { data: result, error } = await supabase
-        .from('organizations')
-        .update({
-          admin_code: adminCode,
-          admin_code_hash: adminCodeHash,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      if (!result) {
-        throw new Error('Failed to set admin code');
-      }
-
-      return result as Organization;
-    }, 'setAdminCode');
-  },
 
   /**
    * 組織の作成者を取得

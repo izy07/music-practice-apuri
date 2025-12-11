@@ -62,7 +62,29 @@ export const usePracticeMenu = (
         });
         
         if (error) {
-          logger.warn('practice_menusテーブルから取得失敗、フォールバックを使用', error);
+          // テーブルが存在しない場合のエラー（PGRST205）を特別に処理
+          if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+            logger.warn('practice_menusテーブルが存在しません。マイグレーションを実行してください。フォールバックを使用します。', {
+              error: {
+                code: error.code,
+                message: error.message,
+                hint: error.hint || 'practice_menusテーブルを作成するマイグレーションを実行してください。'
+              },
+              instrumentId,
+              difficulty: selectedLevel
+            });
+          } else {
+            logger.warn('practice_menusテーブルから取得失敗、フォールバックを使用', {
+              error: {
+                code: error.code,
+                message: error.message,
+                details: error.details,
+                hint: error.hint
+              },
+              instrumentId,
+              difficulty: selectedLevel
+            });
+          }
           setUseFallback(true);
           setDbMenus([]);
           return;

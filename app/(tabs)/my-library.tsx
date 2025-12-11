@@ -12,6 +12,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { safeGoBack } from '@/lib/navigationUtils';
+import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 
 interface Song {
   id: string;
@@ -39,6 +40,8 @@ export default function MyLibraryScreen() {
   const [editingSong, setEditingSong] = useState<Song | null>(null);
   const [filterStatus, setFilterStatus] = useState<'want_to_play' | 'learning' | 'played' | 'mastered'>('want_to_play');
   const [isSaving, setIsSaving] = useState(false); // 保存中の二重クリック防止
+  const [showStatusModal, setShowStatusModal] = useState(false);
+  const [statusModalSong, setStatusModalSong] = useState<Song | null>(null);
   
   // 新規追加・編集用の状態
   const [formData, setFormData] = useState({
@@ -54,6 +57,33 @@ export default function MyLibraryScreen() {
   useEffect(() => {
     loadSongs();
   }, [entitlement.isEntitled]);
+
+  // モーダルの開閉に応じてフォーカス管理（aria-hidden警告を根本的に解決）
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const isModalOpen = showAddModal || showStatusModal;
+    
+    if (isModalOpen) {
+      // モーダルが開いたとき：背景を非対話的にする
+      disableBackgroundFocus();
+    } else {
+      // モーダルが閉じたとき：背景を再有効化し、フォーカスを外す
+      enableBackgroundFocus();
+      // 念のため、追加でフォーカスを外す
+      setTimeout(() => {
+        blurActiveElement();
+      }, 0);
+    }
+
+    // クリーンアップ：コンポーネントがアンマウントされる際に確実にフォーカスを外す
+    return () => {
+      if (Platform.OS === 'web' && !showAddModal && !showStatusModal) {
+        enableBackgroundFocus();
+        blurActiveElement();
+      }
+    };
+  }, [showAddModal, showStatusModal]);
 
   // 曲の読み込み
   const loadSongs = async () => {
@@ -136,13 +166,27 @@ export default function MyLibraryScreen() {
 
       // statusの値を検証（許可されている値のみ）
       const validStatuses = ['want_to_play', 'learning', 'played', 'mastered'] as const;
-      const statusValue = formData.status && validStatuses.includes(formData.status as any) 
-        ? formData.status 
+      
+      // formData.statusを文字列として正規化（配列やnull/undefinedの場合に対処）
+      const normalizedStatus = typeof formData.status === 'string' 
+        ? formData.status.trim() 
+        : (Array.isArray(formData.status) ? formData.status[0] : 'want_to_play');
+      
+      const statusValue = normalizedStatus && validStatuses.includes(normalizedStatus as any) 
+        ? normalizedStatus 
         : 'want_to_play'; // 無効な値の場合はデフォルト値を使用
+      
+      logger.debug('ステータス検証:', {
+        originalStatus: formData.status,
+        normalizedStatus: normalizedStatus,
+        statusValue: statusValue,
+        isValid: validStatuses.includes(statusValue as any)
+      });
       
       if (!validStatuses.includes(statusValue as any)) {
         logger.error('無効なstatus値:', { 
-          received: formData.status, 
+          received: formData.status,
+          normalized: normalizedStatus,
           usingDefault: statusValue 
         });
         Alert.alert('エラー', '無効なステータス値です。デフォルト値を使用します。');
@@ -183,10 +227,16 @@ export default function MyLibraryScreen() {
         logger.debug('更新成功');
         
         // 更新されたステータスに合わせてフィルターを自動調整
-        setFilterStatus(statusValue);
+        setFilterStatus(statusValue as 'want_to_play' | 'learning' | 'played' | 'mastered');
         
         // リストを再読み込み（モーダルを閉じる前に実行してデータを確実に取得）
         await loadSongs();
+        
+        // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+        if (Platform.OS === 'web') {
+          enableBackgroundFocus();
+          blurActiveElement();
+        }
         
         // モーダルを閉じてフォームをリセット
         setShowAddModal(false);
@@ -208,7 +258,14 @@ export default function MyLibraryScreen() {
           status: statusValue,
           notes: formData.notes || null
         };
-        logger.debug('新規追加:', songData);
+        logger.debug('新規追加 - 送信データ:', {
+          ...songData,
+          statusValue: statusValue,
+          statusType: typeof statusValue,
+          statusValueLength: statusValue?.length,
+          formDataStatus: formData.status,
+          formDataStatusType: typeof formData.status
+        });
         
         const { error } = await supabase
           .from('my_songs')
@@ -230,10 +287,16 @@ export default function MyLibraryScreen() {
         logger.debug('追加成功');
         
         // 保存されたステータスに合わせてフィルターを自動調整
-        setFilterStatus(statusValue);
+        setFilterStatus(statusValue as 'want_to_play' | 'learning' | 'played' | 'mastered');
         
         // リストを再読み込み（モーダルを閉じる前に実行してデータを確実に取得）
         await loadSongs();
+        
+        // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+        if (Platform.OS === 'web') {
+          enableBackgroundFocus();
+          blurActiveElement();
+        }
         
         // モーダルを閉じてフォームをリセット
         setShowAddModal(false);
@@ -288,29 +351,35 @@ export default function MyLibraryScreen() {
 
   // ステータス選択ダイアログを表示
   const showStatusSelection = (song: Song) => {
-    const statusOptions = [
-      { key: 'want_to_play' as const, label: '弾きたい' },
-      { key: 'learning' as const, label: '練習中' },
-      { key: 'played' as const, label: '演奏済み' },
-      { key: 'mastered' as const, label: 'マスター' },
-    ];
+    logger.debug('ステータス選択ダイアログを表示:', { songId: song.id, currentStatus: song.status });
+    setStatusModalSong(song);
+    setShowStatusModal(true);
+  };
 
-    // 現在のステータスを除外した選択肢を作成
-    const availableOptions = statusOptions.filter(option => option.key !== song.status);
-
-    // Alert.alertで選択肢を提示
-    Alert.alert(
-      'ステータスを変更',
-      `${song.title}のステータスを選択してください`,
-      [
-        ...availableOptions.map(option => ({
-          text: option.label,
-          onPress: () => changeSongStatus(song, option.key),
-        })),
-        { text: 'キャンセル', style: 'cancel' },
-      ],
-      { cancelable: true }
-    );
+  // ステータスを変更（モーダルから呼ばれる）
+  const handleStatusChange = async (newStatus: 'want_to_play' | 'learning' | 'played' | 'mastered') => {
+    if (!statusModalSong) return;
+    
+    if (statusModalSong.status === newStatus) {
+      // 既に同じステータスの場合は何もしない
+      // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+      if (Platform.OS === 'web') {
+        const { blurActiveElement } = require('@/lib/modalFocusManager');
+        blurActiveElement();
+      }
+      setShowStatusModal(false);
+      setStatusModalSong(null);
+      return;
+    }
+    
+    // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+    if (Platform.OS === 'web') {
+      const { blurActiveElement } = require('@/lib/modalFocusManager');
+      blurActiveElement();
+    }
+    setShowStatusModal(false);
+    setStatusModalSong(null);
+    await changeSongStatus(statusModalSong, newStatus);
   };
 
   // 曲の削除
@@ -645,6 +714,98 @@ export default function MyLibraryScreen() {
         </View>
       </ScrollView>
 
+      {/* ステータス選択モーダル */}
+      <Modal
+        visible={showStatusModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => {
+          // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+          if (Platform.OS === 'web') {
+            enableBackgroundFocus();
+            blurActiveElement();
+          }
+          setShowStatusModal(false);
+          setStatusModalSong(null);
+        }}
+      >
+        <View style={[styles.statusModalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.5)' }]}>
+          <View style={[styles.statusModalContent, { backgroundColor: currentTheme.background }]}>
+            <Text style={[styles.statusModalTitle, { color: currentTheme.text }]}>
+              ステータスを変更
+            </Text>
+            {statusModalSong && (
+              <>
+                <Text style={[styles.statusModalSubtitle, { color: currentTheme.textSecondary }]}>
+                  {statusModalSong.title}
+                </Text>
+                <Text style={[styles.statusModalCurrentStatus, { color: currentTheme.textSecondary }]}>
+                  現在: {getStatusText(statusModalSong.status)}
+                </Text>
+                <View style={styles.statusModalOptions}>
+                  {[
+                    { key: 'want_to_play' as const, label: '弾きたい' },
+                    { key: 'learning' as const, label: '練習中' },
+                    { key: 'played' as const, label: '演奏済み' },
+                    { key: 'mastered' as const, label: 'マスター' },
+                  ].map((status) => (
+                    <TouchableOpacity
+                      key={status.key}
+                      style={[
+                        styles.statusModalOption,
+                        {
+                          backgroundColor: statusModalSong.status === status.key
+                            ? currentTheme.secondary
+                            : currentTheme.surface,
+                          borderColor: statusModalSong.status === status.key
+                            ? currentTheme.primary
+                            : currentTheme.secondary,
+                          borderWidth: statusModalSong.status === status.key ? 2 : 1,
+                        }
+                      ]}
+                      onPress={() => handleStatusChange(status.key)}
+                      activeOpacity={0.7}
+                    >
+                      <Text
+                        style={[
+                          styles.statusModalOptionText,
+                          {
+                            color: statusModalSong.status === status.key
+                              ? currentTheme.primary
+                              : currentTheme.text,
+                            fontWeight: statusModalSong.status === status.key ? '700' : '500',
+                          }
+                        ]}
+                      >
+                        {status.label}
+                        {statusModalSong.status === status.key && ' (現在)'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity
+                  style={[styles.statusModalCancelButton, { backgroundColor: currentTheme.surface }]}
+                  onPress={() => {
+                    // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+                    if (Platform.OS === 'web') {
+                      enableBackgroundFocus();
+                      blurActiveElement();
+                    }
+                    setShowStatusModal(false);
+                    setStatusModalSong(null);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.statusModalCancelText, { color: currentTheme.text }]}>
+                    キャンセル
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* 追加・編集モーダル */}
       <Modal
         visible={showAddModal}
@@ -653,7 +814,7 @@ export default function MyLibraryScreen() {
         onRequestClose={() => {
           // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
           if (Platform.OS === 'web') {
-            const { blurActiveElement } = require('@/lib/modalFocusManager');
+            enableBackgroundFocus();
             blurActiveElement();
           }
           setShowAddModal(false);
@@ -672,7 +833,7 @@ export default function MyLibraryScreen() {
                 onPress={() => {
                   // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
                   if (Platform.OS === 'web') {
-                    const { blurActiveElement } = require('@/lib/modalFocusManager');
+                    enableBackgroundFocus();
                     blurActiveElement();
                   }
                   setShowAddModal(false);
@@ -899,7 +1060,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   songsContainer: {
-    gap: 16,
+    gap: 8,
     paddingBottom: 20,
   },
   emptyContainer: {
@@ -932,8 +1093,8 @@ const styles = StyleSheet.create({
   },
   songCard: {
     borderRadius: 12,
-    padding: 12,
-    marginBottom: 8,
+    padding: 8,
+    marginBottom: 4,
     ...Platform.select({
       web: {
         boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
@@ -951,11 +1112,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   songInfo: {
     flex: 1,
     marginRight: 16,
+    paddingLeft: 8,
   },
   songTitle: {
     fontSize: 17,
@@ -986,7 +1148,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 6,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   metaChip: {
     paddingHorizontal: 8,
@@ -1012,6 +1174,68 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 16,
     marginTop: 4,
+  },
+  statusModalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  statusModalContent: {
+    width: '85%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 24,
+    ...(Platform.OS === 'web' 
+      ? { boxShadow: '0px 4px 20px rgba(0, 0, 0, 0.3)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.3,
+          shadowRadius: 20,
+          elevation: 10,
+        }
+    ),
+  },
+  statusModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  statusModalSubtitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  statusModalCurrentStatus: {
+    fontSize: 14,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  statusModalOptions: {
+    gap: 12,
+    marginBottom: 16,
+  },
+  statusModalOption: {
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  statusModalOptionText: {
+    fontSize: 16,
+  },
+  statusModalCancelButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  statusModalCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   modalContainer: {
     flex: 1,

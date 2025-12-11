@@ -26,6 +26,7 @@ import { autoCorrelate, getNoteFromFrequency, smoothValue, getTuningColor } from
 import { getUserSettings } from '@/repositories/userSettingsRepository';
 import { getCurrentUser } from '@/lib/authService';
 import { DEFAULT_A4_FREQUENCY } from '@/lib/tunerUtils';
+import { saveTunerSettings } from '@/lib/database';
 
 // プロ仕様の音名と周波数対応
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -257,7 +258,7 @@ export default function TunerScreen() {
     '550e8400-e29b-41d4-a716-446655440004': 'guitar',    // フルート（フォールバック）
     '550e8400-e29b-41d4-a716-446655440007': 'guitar',    // サックス（フォールバック）
     '550e8400-e29b-41d4-a716-446655440009': 'guitar',    // クラリネット（フォールバック）
-    '550e8400-e29b-41d4-a716-446655440006': 'guitar',    // 打楽器（フォールバック）
+    '550e8400-e29b-41d4-a716-446655440006': 'guitar',    // ドラム（フォールバック）
     '550e8400-e29b-41d4-a716-446655440012': 'guitar',    // ファゴット（フォールバック）
     '550e8400-e29b-41d4-a716-446655440014': 'guitar',    // ハープ（フォールバック）
     '550e8400-e29b-41d4-a716-446655440020': 'piano',     // シンセサイザー（ピアノとして）
@@ -319,6 +320,23 @@ export default function TunerScreen() {
       setNoteDisplayMode(mode);
     } catch (error) {
       ErrorHandler.handle(error, '音名表示モードの保存', false);
+    }
+  }, []);
+
+  // A4周波数を保存する（useCallbackでメモ化）
+  const saveA4Frequency = useCallback(async (frequency: number) => {
+    try {
+      const { user, error: userError } = await getCurrentUser();
+      if (!userError && user) {
+        await saveTunerSettings(user.id, {
+          reference_pitch: frequency,
+          temperament: 'equal',
+          volume: 0.5,
+        });
+        logger.debug('A4周波数を保存しました', { frequency });
+      }
+    } catch (error) {
+      ErrorHandler.handle(error, 'A4周波数の保存', false);
     }
   }, []);
 
@@ -995,6 +1013,41 @@ export default function TunerScreen() {
           ) : (
             <Metronome audioContextRef={audioContextRef} ownerName={OWNER_NAME} />
           )}
+        </View>
+
+        {/* A4基準周波数設定 */}
+        <View style={[styles.settingsPanel, { backgroundColor: currentTheme.surface, borderColor: currentTheme.secondary, borderWidth: 1 }]}>
+          <Text style={[styles.settingsTitle, { color: currentTheme.text }]}>
+            チューニングの基準周波数
+          </Text>
+          <Text style={[styles.settingDescription, { color: currentTheme.textSecondary }]}>
+            チューニングの基準となるA4の周波数を設定します（標準は440Hz）
+          </Text>
+          <View style={styles.frequencyAdjuster}>
+            <TouchableOpacity
+              style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
+              onPress={() => {
+                const newFreq = Math.max(440, a4Frequency - 1);
+                setA4Frequency(newFreq);
+                saveA4Frequency(newFreq);
+              }}
+            >
+              <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>-</Text>
+            </TouchableOpacity>
+            <View style={[styles.frequencyDisplay, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary }]}>
+              <Text style={[styles.frequencyValue, { color: currentTheme.primary, marginBottom: 0 }]}>{a4Frequency} Hz</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
+              onPress={() => {
+                const newFreq = Math.min(450, a4Frequency + 1);
+                setA4Frequency(newFreq);
+                saveA4Frequency(newFreq);
+              }}
+            >
+              <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>+</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 

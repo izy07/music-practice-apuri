@@ -14,6 +14,8 @@ import { styles } from '@/lib/tabs/goals/styles';
 import { CompletedGoalsSection } from './goals/components/_CompletedGoalsSection';
 import { goalRepository } from '@/repositories/goalRepository';
 import { getUserProfile } from '@/repositories/userRepository';
+import { OfflineStorage, isOnline } from '@/lib/offlineStorage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Goal {
   id: string;
@@ -108,14 +110,100 @@ export default function GoalsScreen() {
         return;
       }
 
+      // オフライン時はキャッシュから読み込み
+      if (!isOnline()) {
+        try {
+          const cacheKey = `goals_cache_${user.id}_${selectedInstrument || 'all'}`;
+          const cachedData = await AsyncStorage.getItem(cacheKey);
+          if (cachedData) {
+            const parsed = JSON.parse(cachedData);
+            const goalsWithShowOnCalendar = parsed.map((g: GoalFromDB) => ({
+              ...g,
+              show_on_calendar: g.show_on_calendar ?? false,
+            }));
+            setGoals(goalsWithShowOnCalendar);
+            logger.debug('目標データをキャッシュから読み込みました（オフライン）');
+            loadingRef.current = false;
+            return;
+          }
+        } catch (cacheError) {
+          logger.debug('キャッシュ読み込みエラー（無視）:', cacheError);
+        }
+      }
+
+      // オンライン時またはキャッシュがない場合はデータベースから取得
       const goalsData = await goalRepository.getGoals(user.id, selectedInstrument);
       const goalsWithShowOnCalendar = goalsData.map((g: GoalFromDB) => ({
         ...g,
         show_on_calendar: g.show_on_calendar ?? false,
       }));
-      setGoals(goalsWithShowOnCalendar);
+      
+      // オフラインで保存された目標も追加
+      try {
+        const offlineGoals = await OfflineStorage.getGoals();
+        const unsyncedGoals = offlineGoals.filter((g: any) => !g.is_synced && g.user_id === user.id);
+        const filteredOfflineGoals = unsyncedGoals.filter((g: any) => {
+          if (selectedInstrument) {
+            return g.instrument_id === selectedInstrument;
+          }
+          return !g.instrument_id || g.instrument_id === null;
+        });
+        
+        const offlineGoalsFormatted: Goal[] = filteredOfflineGoals.map((g: any) => ({
+          id: g.id,
+          title: g.title,
+          description: g.description,
+          target_date: g.target_date,
+          progress_percentage: g.progress_percentage || 0,
+          goal_type: g.goal_type,
+          is_active: g.is_active !== false,
+          is_completed: g.is_completed || false,
+          show_on_calendar: g.show_on_calendar || false,
+        }));
+        
+        // オフライン目標とオンライン目標を結合（重複を避ける）
+        const allGoals = [...goalsWithShowOnCalendar];
+        offlineGoalsFormatted.forEach(offlineGoal => {
+          if (!allGoals.find(g => g.id === offlineGoal.id)) {
+            allGoals.push(offlineGoal);
+          }
+        });
+        
+        setGoals(allGoals);
+      } catch (offlineError) {
+        logger.debug('オフライン目標読み込みエラー（無視）:', offlineError);
+        setGoals(goalsWithShowOnCalendar);
+      }
+      
+      // キャッシュに保存（オフライン対応）
+      try {
+        const cacheKey = `goals_cache_${user.id}_${selectedInstrument || 'all'}`;
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(goalsData));
+        logger.debug('目標データをキャッシュに保存しました');
+      } catch (saveError) {
+        logger.debug('キャッシュ保存エラー（無視）:', saveError);
+      }
     } catch (error) {
       logger.error('Error loading goals:', error);
+      // エラー時もキャッシュから読み込みを試行
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const cacheKey = `goals_cache_${user.id}_${selectedInstrument || 'all'}`;
+          const cachedData = await AsyncStorage.getItem(cacheKey);
+          if (cachedData) {
+            const parsed = JSON.parse(cachedData);
+            const goalsWithShowOnCalendar = parsed.map((g: GoalFromDB) => ({
+              ...g,
+              show_on_calendar: g.show_on_calendar ?? false,
+            }));
+            setGoals(goalsWithShowOnCalendar);
+            logger.debug('エラー時、目標データをキャッシュから読み込みました');
+          }
+        }
+      } catch (cacheError) {
+        // キャッシュ読み込みエラーは無視
+      }
     } finally {
       loadingRef.current = false;
     }
@@ -128,12 +216,102 @@ export default function GoalsScreen() {
         return;
       }
 
+      // オフライン時はキャッシュから読み込み
+      if (!isOnline()) {
+        try {
+          const cacheKey = `completed_goals_cache_${user.id}_${selectedInstrument || 'all'}`;
+          const cachedData = await AsyncStorage.getItem(cacheKey);
+          if (cachedData) {
+            const parsed = JSON.parse(cachedData);
+            setCompletedGoals(parsed);
+            logger.debug('達成済み目標データをキャッシュから読み込みました（オフライン）');
+            return;
+          }
+        } catch (cacheError) {
+          logger.debug('キャッシュ読み込みエラー（無視）:', cacheError);
+        }
+      }
+
       const completedGoalsData = await goalRepository.getCompletedGoals(user.id, selectedInstrument);
       setCompletedGoals(completedGoalsData);
+      
+      // キャッシュに保存（オフライン対応）
+      try {
+        const cacheKey = `completed_goals_cache_${user.id}_${selectedInstrument || 'all'}`;
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(completedGoalsData));
+        logger.debug('達成済み目標データをキャッシュに保存しました');
+      } catch (saveError) {
+        logger.debug('キャッシュ保存エラー（無視）:', saveError);
+      }
     } catch (error) {
       logger.error('Error loading completed goals:', error);
+      // エラー時もキャッシュから読み込みを試行
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const cacheKey = `completed_goals_cache_${user.id}_${selectedInstrument || 'all'}`;
+          const cachedData = await AsyncStorage.getItem(cacheKey);
+          if (cachedData) {
+            const parsed = JSON.parse(cachedData);
+            setCompletedGoals(parsed);
+            logger.debug('エラー時、達成済み目標データをキャッシュから読み込みました');
+          }
+        }
+      } catch (cacheError) {
+        // キャッシュ読み込みエラーは無視
+      }
     }
   }, [selectedInstrument]);
+
+  // 未同期の目標を同期する処理
+  const syncOfflineGoals = useCallback(async () => {
+    if (!isOnline()) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return;
+      }
+
+      const offlineGoals = await OfflineStorage.getGoals();
+      const unsyncedGoals = offlineGoals.filter((g: any) => !g.is_synced);
+
+      if (unsyncedGoals.length === 0) {
+        return;
+      }
+
+      logger.debug(`未同期の目標を同期します: ${unsyncedGoals.length}件`);
+
+      for (const offlineGoal of unsyncedGoals) {
+        try {
+          await goalRepository.createGoal(user.id, {
+            title: offlineGoal.title,
+            description: offlineGoal.description,
+            target_date: offlineGoal.target_date,
+            goal_type: offlineGoal.goal_type,
+            instrument_id: offlineGoal.instrument_id || null,
+          });
+
+          // 同期済みとしてマーク
+          await OfflineStorage.markAsSynced(offlineGoal.id);
+          
+          // ローカル状態から削除
+          setGoals(prevGoals => prevGoals.filter(g => g.id !== offlineGoal.id));
+        } catch (error) {
+          logger.error('目標同期エラー:', error);
+          // 個別のエラーは無視して続行
+        }
+      }
+
+      // 同期後に目標リストを再読み込み
+      await loadGoals();
+      logger.debug('未同期の目標の同期が完了しました');
+    } catch (error) {
+      logger.error('目標同期処理エラー:', error);
+    }
+  }, [loadGoals]);
 
   const loadUserProfile = useCallback(async () => {
     // 認証状態を確認
@@ -246,6 +424,32 @@ export default function GoalsScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedInstrument, isAuthenticated, user]); // selectedInstrument、認証状態に依存
 
+  // オンライン時に未同期の目標を同期（別のuseEffectで管理）
+  useEffect(() => {
+    if (!isAuthenticated || !user) {
+      return;
+    }
+    
+    // オンライン時に未同期の目標を同期
+    if (isOnline()) {
+      syncOfflineGoals();
+    }
+    
+    // ネットワーク状態の変化を監視
+    const handleOnline = () => {
+      if (isOnline()) {
+        syncOfflineGoals();
+      }
+    };
+    
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+      return () => {
+        window.removeEventListener('online', handleOnline);
+      };
+    }
+  }, [isAuthenticated, user, syncOfflineGoals]);
+
   // 画面にフォーカスが当たった時にデータを再読み込み（依存配列に含めて最新の関数を参照）
   useFocusEffect(
     React.useCallback(() => {
@@ -336,13 +540,53 @@ export default function GoalsScreen() {
         return;
       }
 
-      await goalRepository.createGoal(user.id, {
+      const goalData = {
         title: newGoal.title.trim(),
         description: newGoal.description.trim() || undefined,
         target_date: newGoal.target_date || undefined,
         goal_type: newGoal.goal_type,
         instrument_id: selectedInstrument || null,
-      });
+      };
+
+      // オフライン時はAsyncStorageに保存
+      if (!isOnline()) {
+        const tempId = `temp_goal_${Date.now()}`;
+        const offlineGoal = {
+          id: tempId,
+          user_id: user.id,
+          ...goalData,
+          progress_percentage: 0,
+          is_active: true,
+          is_completed: false,
+          show_on_calendar: false,
+          created_at: new Date().toISOString(),
+          is_synced: false,
+        };
+        
+        await OfflineStorage.saveGoal(offlineGoal);
+        
+        // ローカル状態に追加（即座に表示）
+        const localGoal: Goal = {
+          id: tempId,
+          title: goalData.title,
+          description: goalData.description,
+          target_date: goalData.target_date,
+          progress_percentage: 0,
+          goal_type: goalData.goal_type,
+          is_active: true,
+          is_completed: false,
+          show_on_calendar: false,
+        };
+        setGoals([...goals, localGoal]);
+        
+        Alert.alert('保存しました', 'オフラインで保存しました。オンライン時に自動的に同期されます。');
+        setNewGoal({ title: '', description: '', target_date: '', goal_type: 'personal_short' });
+        setShowAddGoalForm(false);
+        return;
+      }
+
+      // オンライン時はデータベースに保存
+      await goalRepository.createGoal(user.id, goalData);
 
       // 既存の目標でカレンダーに表示されているものがあるかチェック
       const hasVisibleGoal = goals.some(g => g.show_on_calendar === true);
@@ -372,6 +616,51 @@ export default function GoalsScreen() {
       setNewGoal({ title: '', description: '', target_date: '', goal_type: 'personal_short' });
       setShowAddGoalForm(false);
     } catch (error) {
+      logger.error('目標保存エラー:', error);
+      // エラー時もオフライン保存を試行
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const tempId = `temp_goal_${Date.now()}`;
+          const offlineGoal = {
+            id: tempId,
+            user_id: user.id,
+            title: newGoal.title.trim(),
+            description: newGoal.description.trim() || undefined,
+            target_date: newGoal.target_date || undefined,
+            goal_type: newGoal.goal_type,
+            instrument_id: selectedInstrument || null,
+            progress_percentage: 0,
+            is_active: true,
+            is_completed: false,
+            show_on_calendar: false,
+            created_at: new Date().toISOString(),
+            is_synced: false,
+          };
+          
+          await OfflineStorage.saveGoal(offlineGoal);
+          
+          const localGoal: Goal = {
+            id: tempId,
+            title: newGoal.title.trim(),
+            description: newGoal.description,
+            target_date: newGoal.target_date,
+            progress_percentage: 0,
+            goal_type: newGoal.goal_type,
+            is_active: true,
+            is_completed: false,
+            show_on_calendar: false,
+          };
+          setGoals([...goals, localGoal]);
+          
+          Alert.alert('保存しました', 'オフラインで保存しました。オンライン時に自動的に同期されます。');
+          setNewGoal({ title: '', description: '', target_date: '', goal_type: 'personal_short' });
+          setShowAddGoalForm(false);
+          return;
+        }
+      } catch (offlineError) {
+        logger.error('オフライン保存エラー:', offlineError);
+      }
       Alert.alert('エラー', '目標の保存に失敗しました');
     }
   };
@@ -466,6 +755,46 @@ export default function GoalsScreen() {
       Alert.alert('おめでとうございます！', '目標を達成しました！');
     } catch (error) {
       Alert.alert('エラー', '目標の達成処理に失敗しました');
+    }
+  };
+
+  const uncompleteGoal = async (goalId: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('エラー', '認証が必要です');
+        return;
+      }
+
+      // 達成済み目標から該当の目標を取得
+      const currentGoal = completedGoals.find(g => g.id === goalId);
+      
+      // 楽観的更新: UIを即座に更新
+      if (currentGoal) {
+        const uncompletedGoal = {
+          ...currentGoal,
+          is_completed: false,
+          completed_at: undefined,
+          progress_percentage: 99, // 100%から99%に戻す
+        };
+        setCompletedGoals(prev => prev.filter(g => g.id !== goalId));
+        setGoals(prevGoals => [uncompletedGoal, ...prevGoals]);
+      }
+
+      await goalRepository.uncompleteGoal(goalId, user.id);
+
+      // サーバーから再読み込みして状態を同期
+      await Promise.all([
+        loadGoals(),
+        loadCompletedGoals()
+      ]);
+    } catch (error) {
+      // エラー時は元の状態に戻す
+      await Promise.all([
+        loadGoals(),
+        loadCompletedGoals()
+      ]);
+      Alert.alert('エラー', '目標の未達成への戻しに失敗しました');
     }
   };
 
@@ -763,10 +1092,6 @@ export default function GoalsScreen() {
                 </View>
               </View>
               
-              <Text style={[styles.goalDescription, { color: currentTheme.textSecondary }]}>
-                {goal.description}
-              </Text>
-              
               <View style={styles.progressSection}>
                 <View style={styles.progressBar}>
                   <View 
@@ -806,6 +1131,7 @@ export default function GoalsScreen() {
       getGoalTypeLabel={getGoalTypeLabel}
       getGoalTypeColor={getGoalTypeColor}
       onDeleteGoal={deleteGoal}
+      onUncompleteGoal={uncompleteGoal}
     />
   );
 
@@ -837,25 +1163,6 @@ export default function GoalsScreen() {
         <Text style={[styles.characterCount, { color: currentTheme.textSecondary }]}>
           {newGoal.title.length}/50文字
         </Text>
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={[styles.label, { color: currentTheme.text }]}>詳細説明</Text>
-        <TextInput
-          style={[styles.input, styles.textArea, { 
-            backgroundColor: currentTheme.background,
-            color: currentTheme.text,
-            borderColor: currentTheme.secondary
-          }]}
-          value={newGoal.description}
-          onChangeText={(text) => setNewGoal({...newGoal, description: text})}
-          placeholder="目標の詳細を記入..."
-          placeholderTextColor={currentTheme.textSecondary}
-          multiline
-          numberOfLines={3}
-          nativeID="goal-description-input"
-          accessibilityLabel="詳細説明"
-        />
       </View>
 
       <View style={styles.inputGroup}>
@@ -1077,9 +1384,6 @@ export default function GoalsScreen() {
                   </View>
                   
                   <Text style={[styles.goalTitle, { color: currentTheme.text }]}>{goal.title}</Text>
-                  {goal.description && (
-                    <Text style={[styles.goalDescription, { color: currentTheme.textSecondary }]}>{goal.description}</Text>
-                  )}
                   
                   {goal.target_date && (
                     <View style={styles.goalDate}>

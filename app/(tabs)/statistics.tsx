@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Alert } from 'react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { useLanguage } from '@/components/LanguageContext';
 import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Svg, { Rect, G, Line, Text as SvgText } from 'react-native-svg';
@@ -102,6 +103,7 @@ function BarChart({ data, maxValue, barColor, weekdays, disableSlicing }: { data
 
 export default function StatisticsScreen() {
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
+  const { t, language } = useLanguage();
   const router = useRouter();
   const { user } = useAuthAdvanced();
   const [span, setSpan] = useState<Span>('daily');
@@ -521,7 +523,7 @@ export default function StatisticsScreen() {
       // duration_minutesが0より大きい場合のみ統計に含める
       const minutes = record.duration_minutes ?? 0;
       if (minutes > 0) {
-        methodStats[method].count++;
+      methodStats[method].count++;
         methodStats[method].totalMinutes += minutes;
       }
     });
@@ -853,7 +855,7 @@ export default function StatisticsScreen() {
                 <Text style={[
                   styles.segmentedButtonText,
                   { color: statsMode === 'monthly' ? '#FFFFFF' : SecondaryText }
-                ]}>週別</Text>
+                ]}>{t('weekByWeek')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -866,7 +868,7 @@ export default function StatisticsScreen() {
                 <Text style={[
                   styles.segmentedButtonText,
                   { color: statsMode === 'yearly' ? '#FFFFFF' : SecondaryText }
-                ]}>月別</Text>
+                ]}>{t('monthByMonth')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -887,13 +889,13 @@ export default function StatisticsScreen() {
         </View>
         <View style={[styles.chartCard, { backgroundColor: Surface }]}>
           <Text style={[styles.chartTitle, { color: TextColor }]}>
-            {span === 'daily' ? '週別統計' : (statsMode === 'yearly' ? '月別統計' : '週別統計')}
+            {span === 'daily' ? t('weeklyStats') : (statsMode === 'yearly' ? t('monthlyStats') : t('weeklyStats'))}
           </Text>
           <BarChart 
             data={data} 
             maxValue={maxValue} 
             barColor={Primary}
-            weekdays={span === 'daily' ? ['月','火','水','木','金','土','日'] : undefined}
+            weekdays={span === 'daily' ? (language === 'en' ? ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] : ['月','火','水','木','金','土','日']) : undefined}
             disableSlicing={span === 'stats' && statsMode === 'yearly'}
           />
         </View>
@@ -901,26 +903,26 @@ export default function StatisticsScreen() {
         <View style={styles.summaryGrid}>
           <View style={[styles.summaryCard, { backgroundColor: Surface }]}> 
             <Text style={styles.summaryValue}>{formatMinutesToHours(summary.avgMinutes)}</Text>
-            <Text style={[styles.summaryLabel, { color: SecondaryText }]}>平均練習時間</Text>
+            <Text style={[styles.summaryLabel, { color: SecondaryText }]}>{t('averagePracticeTime')}</Text>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: Surface }]}> 
             <Text style={styles.summaryValue}>{formatMinutesToHours(summary.longestMinutes)}</Text>
-            <Text style={[styles.summaryLabel, { color: SecondaryText }]}>最長練習時間</Text>
+            <Text style={[styles.summaryLabel, { color: SecondaryText }]}>{t('longestPracticeTime')}</Text>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: Surface }]}> 
             <Text style={styles.summaryValue}>{formatMinutesToHours(summary.totalMinutes)}</Text>
             <Text style={[styles.summaryLabel, { color: SecondaryText }]}>{summary.totalLabel}</Text>
           </View>
           <View style={[styles.summaryCard, { backgroundColor: Surface }]}> 
-            <Text style={styles.summaryValue}>{summary.days}{span === 'daily' ? '日' : (statsMode === 'yearly' ? 'ヶ月' : '区分')}</Text>
-            <Text style={[styles.summaryLabel, { color: SecondaryText }]}>{span === 'daily' ? '練習日数' : (statsMode === 'yearly' ? '練習した月数' : '練習した区分数')}</Text>
+            <Text style={styles.summaryValue}>{summary.days}{span === 'daily' ? t('days') : (statsMode === 'yearly' ? t('months') : t('sections'))}</Text>
+            <Text style={[styles.summaryLabel, { color: SecondaryText }]}>{span === 'daily' ? t('practiceDays') : (statsMode === 'yearly' ? t('practicedMonths') : t('practicedSections'))}</Text>
           </View>
         </View>
 
         {/* 年別グラフ（月別モードの時のみ表示） */}
         {span === 'stats' && statsMode === 'yearly' && (
           <View style={[styles.chartCard, { backgroundColor: Surface }]}>
-            <Text style={[styles.chartTitle, { color: TextColor }]}>年別統計</Text>
+            <Text style={[styles.chartTitle, { color: TextColor }]}>{t('yearlyStats')}</Text>
             <BarChart 
               data={yearlyStatsData} 
               maxValue={Math.max(600, Math.max(...yearlyStatsData.map(d => d.minutes), 600))} 
@@ -932,28 +934,28 @@ export default function StatisticsScreen() {
 
         {/* 詳細分析セクション */}
         <View style={[styles.detailAnalysisCard, { backgroundColor: Surface }]}>
-          <Text style={[styles.detailAnalysisTitle, { color: TextColor }]}>詳細分析</Text>
-          
+          <Text style={[styles.detailAnalysisTitle, { color: TextColor }]}>{t('detailedAnalysis')}</Text>
+
           {/* 基礎統計 */}
           {getAdditionalStats && (
             <View style={styles.analysisSection}>
-              <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>基礎統計</Text>
+              <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>{t('basicStats')}</Text>
               <View style={styles.analysisRow}>
-                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>平均練習時間</Text>
+                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{t('averagePracticeTime')}</Text>
                 <Text style={[styles.analysisValue, { color: TextColor }]}>
                   {formatMinutesToHours(getAdditionalStats.avgMinutes)}
                 </Text>
               </View>
               <View style={styles.analysisRow}>
-                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>最長連続練習日</Text>
+                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{t('longestConsecutiveDays')}</Text>
                 <Text style={[styles.analysisValue, { color: TextColor }]}>
-                  {getAdditionalStats.longestStreak}日
+                  {getAdditionalStats.longestStreak}{t('days')}
                 </Text>
               </View>
               <View style={styles.analysisRow}>
-                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>練習頻度</Text>
+                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{t('practiceFrequency')}</Text>
                 <Text style={[styles.analysisValue, { color: TextColor }]}>
-                  週{getAdditionalStats.recordsPerWeek}回
+                  {language === 'en' ? `${getAdditionalStats.recordsPerWeek} times/week` : `週${getAdditionalStats.recordsPerWeek}回`}
                 </Text>
               </View>
             </View>
@@ -962,15 +964,15 @@ export default function StatisticsScreen() {
           {/* 週間練習パターン */}
           {getAdditionalStats && Object.keys(getAdditionalStats.weeklyPattern).length > 0 && (
             <View style={styles.analysisSection}>
-              <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>週間練習パターン</Text>
+              <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>{t('weeklyPracticePattern')}</Text>
               {Object.entries(getAdditionalStats.weeklyPattern)
                 .sort((a, b) => (b[1] as number) - (a[1] as number))
                 .slice(0, 7)
                 .map(([day, count], index) => (
                 <View style={styles.analysisRow} key={index}>
-                  <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{day}曜日</Text>
+                  <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{day}{language === 'en' ? '' : t('dayOfWeek')}</Text>
                   <Text style={[styles.analysisValue, { color: TextColor }]}>
-                    {count as number}回
+                    {count as number}{t('times')}
                   </Text>
                 </View>
               ))}
@@ -980,7 +982,7 @@ export default function StatisticsScreen() {
           {/* 月別練習傾向 */}
           {getAdditionalStats && getAdditionalStats.monthlyTendency.length > 0 && (
             <View style={styles.analysisSection}>
-              <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>月別練習傾向（最近6ヶ月）</Text>
+              <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>{t('monthlyPracticeTrend')}</Text>
               {getAdditionalStats.monthlyTendency.map(([month, minutes], index) => (
                 <View style={styles.analysisRow} key={index}>
                   <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{month}</Text>
@@ -995,23 +997,23 @@ export default function StatisticsScreen() {
           {/* 練習統計サマリー */}
           {getAdditionalStats && (
             <View style={styles.analysisSection}>
-              <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>練習統計サマリー</Text>
+              <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>{t('practiceStatsSummary')}</Text>
               <View style={styles.analysisRow}>
-                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>総練習回数</Text>
+                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{t('totalPracticeCount')}</Text>
                 <Text style={[styles.analysisValue, { color: TextColor }]}>
-                  {getAdditionalStats.totalPracticeCount}回
+                  {getAdditionalStats.totalPracticeCount}{t('times')}
                 </Text>
               </View>
               <View style={styles.analysisRow}>
-                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>練習日数</Text>
+                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{t('practiceDays')}</Text>
                 <Text style={[styles.analysisValue, { color: TextColor }]}>
-                  {getAdditionalStats.totalPracticeDays}日
+                  {getAdditionalStats.totalPracticeDays}{t('days')}
                 </Text>
               </View>
               <View style={styles.analysisRow}>
-                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>平均日数/週</Text>
+                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{t('averageDaysPerWeek')}</Text>
                 <Text style={[styles.analysisValue, { color: TextColor }]}>
-                  {getAdditionalStats.recordsPerWeek}日
+                  {getAdditionalStats.recordsPerWeek}{t('days')}
                 </Text>
               </View>
             </View>
@@ -1020,23 +1022,23 @@ export default function StatisticsScreen() {
           {/* 練習強度別統計 */}
           {getAdditionalStats && (
             <View style={styles.analysisSection}>
-              <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>練習強度別統計</Text>
+              <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>{t('practiceIntensityStats')}</Text>
               <View style={styles.analysisRow}>
-                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>短時間（30分未満）</Text>
+                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{t('shortTime')}</Text>
                 <Text style={[styles.analysisValue, { color: TextColor }]}>
-                  {getAdditionalStats.intensityStats.short}回
+                  {getAdditionalStats.intensityStats.short}{t('times')}
                 </Text>
               </View>
               <View style={styles.analysisRow}>
-                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>中時間（30-60分）</Text>
+                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{t('mediumTime')}</Text>
                 <Text style={[styles.analysisValue, { color: TextColor }]}>
-                  {getAdditionalStats.intensityStats.medium}回
+                  {getAdditionalStats.intensityStats.medium}{t('times')}
                 </Text>
               </View>
               <View style={styles.analysisRow}>
-                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>長時間（60分以上）</Text>
+                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{t('longTime')}</Text>
                 <Text style={[styles.analysisValue, { color: TextColor }]}>
-                  {getAdditionalStats.intensityStats.long}回
+                  {getAdditionalStats.intensityStats.long}{t('times')}
                 </Text>
               </View>
             </View>

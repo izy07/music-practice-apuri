@@ -13,12 +13,14 @@ interface CompletedGoalCardProps {
   goal: Goal;
   onUpdateProgress: (goalId: string, newProgress: number) => Promise<void>;
   onDeleteGoal: (goalId: string) => Promise<void>;
+  onUncompleteGoal?: (goalId: string) => Promise<void>;
 }
 
 export const CompletedGoalCard: React.FC<CompletedGoalCardProps> = ({
   goal,
   onUpdateProgress,
   onDeleteGoal,
+  onUncompleteGoal,
 }) => {
   const { currentTheme } = useInstrumentTheme();
 
@@ -120,6 +122,17 @@ export const CompletedGoalCard: React.FC<CompletedGoalCardProps> = ({
             <Text style={styles.bigAchievementText}>達成成功！</Text>
           </View>
         </View>
+      )}
+
+      {/* 未達成に戻すボタン */}
+      {onUncompleteGoal && (
+        <TouchableOpacity
+          style={[styles.uncompleteButton, { backgroundColor: currentTheme.secondary }]}
+          onPress={() => onUncompleteGoal(goal.id)}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.uncompleteButtonText, { color: currentTheme.text }]}>未達成に戻す</Text>
+        </TouchableOpacity>
       )}
     </View>
   );

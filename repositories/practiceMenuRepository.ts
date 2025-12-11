@@ -78,7 +78,29 @@ export const getPracticeMenus = async (
     const { data, error } = await dbQuery;
     
     if (error) {
-      logger.error(`[${REPOSITORY_CONTEXT}] getPracticeMenus:error`, { error });
+      // テーブルが存在しない場合のエラー（PGRST205）を特別に処理
+      if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+        logger.warn(`[${REPOSITORY_CONTEXT}] practice_menusテーブルが存在しません。マイグレーションを実行してください。`, { 
+          error: {
+            code: error.code,
+            message: error.message,
+            hint: error.hint || 'practice_menusテーブルを作成するマイグレーションを実行してください。'
+          }
+        });
+      } else {
+        logger.error(`[${REPOSITORY_CONTEXT}] getPracticeMenus:error`, { 
+          error: {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          },
+          query: {
+            instrumentId: query?.instrumentId,
+            difficulty: query?.difficulty
+          }
+        });
+      }
       return { data: null, error };
     }
     
@@ -109,7 +131,27 @@ export const getPracticeMenuById = async (
       .single();
     
     if (error) {
-      logger.error(`[${REPOSITORY_CONTEXT}] getPracticeMenuById:error`, { error });
+      // テーブルが存在しない場合のエラー（PGRST205）を特別に処理
+      if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+        logger.warn(`[${REPOSITORY_CONTEXT}] practice_menusテーブルが存在しません。マイグレーションを実行してください。`, { 
+          error: {
+            code: error.code,
+            message: error.message,
+            hint: error.hint || 'practice_menusテーブルを作成するマイグレーションを実行してください。'
+          },
+          menuId
+        });
+      } else {
+        logger.error(`[${REPOSITORY_CONTEXT}] getPracticeMenuById:error`, { 
+          error: {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          },
+          menuId
+        });
+      }
       return { data: null, error };
     }
     

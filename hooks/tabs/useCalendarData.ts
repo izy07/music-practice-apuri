@@ -26,6 +26,7 @@ interface EventData {
     id: string;
     title: string;
     description?: string;
+    date: string;
   }>;
 }
 
@@ -55,6 +56,28 @@ export function useCalendarData(currentDate: Date) {
       if (!user) return;
 
       const currentInstrumentId = getInstrumentId(selectedInstrument);
+      
+      // オフライン時はキャッシュから読み込み
+      if (!isOnline()) {
+        try {
+          const cacheKey = `practice_data_cache_${user.id}_${currentInstrumentId || 'all'}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const cachedData = await AsyncStorage.getItem(cacheKey);
+          if (cachedData) {
+            const parsed = JSON.parse(cachedData);
+            // キャッシュが1日以内の場合は使用
+            const cacheAge = Date.now() - (parsed.timestamp || 0);
+            if (cacheAge < 24 * 60 * 60 * 1000) {
+              setPracticeData(parsed.practiceData || {});
+              setMonthlyTotal(parsed.monthlyTotal || 0);
+              logger.debug('練習データをキャッシュから読み込みました（オフライン）');
+              return;
+            }
+          }
+        } catch (cacheError) {
+          logger.debug('キャッシュ読み込みエラー（無視）:', cacheError);
+        }
+      }
       
       if (isOnline()) {
         try {
@@ -144,10 +167,39 @@ export function useCalendarData(currentDate: Date) {
             
             setPracticeData(newPracticeData);
             setMonthlyTotal(total);
+            
+            // キャッシュに保存（オフライン対応）
+            try {
+              const cacheKey = `practice_data_cache_${user.id}_${currentInstrumentId || 'all'}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+              const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+              await AsyncStorage.setItem(cacheKey, JSON.stringify({
+                practiceData: newPracticeData,
+                monthlyTotal: total,
+                timestamp: Date.now()
+              }));
+              logger.debug('練習データをキャッシュに保存しました');
+            } catch (saveError) {
+              logger.debug('キャッシュ保存エラー（無視）:', saveError);
+            }
+            
             return;
           }
         } catch (error) {
-          // サーバー取得エラー、ローカルから取得
+          // サーバー取得エラー、キャッシュから取得を試行
+          try {
+            const cacheKey = `practice_data_cache_${user.id}_${currentInstrumentId || 'all'}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+            const cachedData = await AsyncStorage.getItem(cacheKey);
+            if (cachedData) {
+              const parsed = JSON.parse(cachedData);
+              setPracticeData(parsed.practiceData || {});
+              setMonthlyTotal(parsed.monthlyTotal || 0);
+              logger.debug('エラー時、練習データをキャッシュから読み込みました');
+              return;
+            }
+          } catch (cacheError) {
+            logger.debug('キャッシュ読み込みエラー（無視）:', cacheError);
+          }
         }
       }
 
@@ -306,6 +358,26 @@ export function useCalendarData(currentDate: Date) {
       const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
       const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
       
+      // オフライン時はキャッシュから読み込み
+      if (!isOnline()) {
+        try {
+          const cacheKey = `events_cache_${user.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const cachedData = await AsyncStorage.getItem(cacheKey);
+          if (cachedData) {
+            const parsed = JSON.parse(cachedData);
+            const cacheAge = Date.now() - (parsed.timestamp || 0);
+            if (cacheAge < 24 * 60 * 60 * 1000) {
+              setEvents(parsed.events || {});
+              logger.debug('イベントデータをキャッシュから読み込みました（オフライン）');
+              return;
+            }
+          }
+        } catch (cacheError) {
+          logger.debug('キャッシュ読み込みエラー（無視）:', cacheError);
+        }
+      }
+      
       const { data: eventsData, error } = await supabase
         .from('events')
         .select('id, title, description, date')
@@ -318,10 +390,36 @@ export function useCalendarData(currentDate: Date) {
       if (error) {
         if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
           logger.info('eventsテーブルが存在しません。マイグレーションを実行してください。');
+          // エラー時もキャッシュから読み込みを試行
+          try {
+            const cacheKey = `events_cache_${user.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+            const cachedData = await AsyncStorage.getItem(cacheKey);
+            if (cachedData) {
+              const parsed = JSON.parse(cachedData);
+              setEvents(parsed.events || {});
+              logger.debug('エラー時、イベントデータをキャッシュから読み込みました');
+            }
+          } catch (cacheError) {
+            // キャッシュ読み込みエラーは無視
+          }
           return;
         }
         ErrorHandler.handle(error, 'イベント読み込み', false);
         logger.error('イベント読み込みエラー:', error);
+        // エラー時もキャッシュから読み込みを試行
+        try {
+          const cacheKey = `events_cache_${user.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const cachedData = await AsyncStorage.getItem(cacheKey);
+          if (cachedData) {
+            const parsed = JSON.parse(cachedData);
+            setEvents(parsed.events || {});
+            logger.debug('エラー時、イベントデータをキャッシュから読み込みました');
+          }
+        } catch (cacheError) {
+          // キャッシュ読み込みエラーは無視
+        }
         return;
       }
 
@@ -337,7 +435,8 @@ export function useCalendarData(currentDate: Date) {
           newEvents[dateStr].push({
             id: event.id,
             title: event.title,
-            description: event.description || undefined
+            description: event.description || undefined,
+            date: event.date
           });
         });
         
@@ -347,6 +446,19 @@ export function useCalendarData(currentDate: Date) {
           newEvents
         });
         setEvents(newEvents);
+        
+        // キャッシュに保存（オフライン対応）
+        try {
+          const cacheKey = `events_cache_${user.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          await AsyncStorage.setItem(cacheKey, JSON.stringify({
+            events: newEvents,
+            timestamp: Date.now()
+          }));
+          logger.debug('イベントデータをキャッシュに保存しました');
+        } catch (saveError) {
+          logger.debug('キャッシュ保存エラー（無視）:', saveError);
+        }
       } else {
         // イベントデータが空の場合も状態をクリア
         logger.debug('📅 イベントデータが空です');
@@ -355,6 +467,22 @@ export function useCalendarData(currentDate: Date) {
     } catch (error) {
       ErrorHandler.handle(error, 'イベントデータの読み込み', false);
       logger.error('イベントデータの読み込みエラー:', error);
+      // エラー時もキャッシュから読み込みを試行
+      try {
+        const user = userParam ?? (await supabase.auth.getUser()).data.user;
+        if (user) {
+          const cacheKey = `events_cache_${user.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const cachedData = await AsyncStorage.getItem(cacheKey);
+          if (cachedData) {
+            const parsed = JSON.parse(cachedData);
+            setEvents(parsed.events || {});
+            logger.debug('エラー時、イベントデータをキャッシュから読み込みました');
+          }
+        }
+      } catch (cacheError) {
+        // キャッシュ読み込みエラーは無視
+      }
     }
   }, [currentDate]);
 
@@ -474,11 +602,41 @@ export function useCalendarData(currentDate: Date) {
         return;
       }
 
+      // オフライン時はキャッシュから読み込み
+      if (!isOnline()) {
+        try {
+          const cacheKey = `short_term_goals_cache_${user.id}`;
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const cachedData = await AsyncStorage.getItem(cacheKey);
+          if (cachedData) {
+            const parsed = JSON.parse(cachedData);
+            const cacheAge = Date.now() - (parsed.timestamp || 0);
+            if (cacheAge < 24 * 60 * 60 * 1000) {
+              setShortTermGoal(parsed.shortTermGoal || null);
+              setShortTermGoals(parsed.shortTermGoals || []);
+              logger.debug('短期目標データをキャッシュから読み込みました（オフライン）');
+              return;
+            }
+          }
+        } catch (cacheError) {
+          logger.debug('キャッシュ読み込みエラー（無視）:', cacheError);
+        }
+      }
+
+      // show_on_calendarカラムの存在を確認（エラーを回避）
+      const { checkShowOnCalendarSupport } = await import('@/repositories/goalRepository');
+      const supportsShowOnCalendar = await checkShowOnCalendarSupport();
+
+      // クエリに含めるカラムを決定
+      const selectColumns = supportsShowOnCalendar
+        ? 'title, target_date, show_on_calendar, is_completed, progress_percentage, goal_type'
+        : 'title, target_date, is_completed, progress_percentage, goal_type';
+
       // show_on_calendarがtrueの目標をすべて取得（短期目標と長期目標の両方を含む）
       // 目標はカレンダーに1つだけ表示できるため、短期目標と長期目標の両方を読み込む
       const { data: goals, error } = await supabase
         .from('goals')
-        .select('title, target_date, show_on_calendar, is_completed, progress_percentage, goal_type')
+        .select(selectColumns)
         .eq('user_id', user.id)
         .in('goal_type', ['personal_short', 'personal_long'])
         .order('created_at', { ascending: false });
@@ -486,12 +644,41 @@ export function useCalendarData(currentDate: Date) {
       if (error) {
         if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
           logger.info('goalsテーブルが存在しません。マイグレーションを実行してください。');
+          // エラー時もキャッシュから読み込みを試行
+          try {
+            const cacheKey = `short_term_goals_cache_${user.id}`;
+            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+            const cachedData = await AsyncStorage.getItem(cacheKey);
+            if (cachedData) {
+              const parsed = JSON.parse(cachedData);
+              setShortTermGoal(parsed.shortTermGoal || null);
+              setShortTermGoals(parsed.shortTermGoals || []);
+              logger.debug('エラー時、短期目標データをキャッシュから読み込みました');
+            }
+          } catch (cacheError) {
+            // キャッシュ読み込みエラーは無視
+          }
           setShortTermGoal(null);
           setShortTermGoals([]);
           return;
         }
         ErrorHandler.handle(error, '目標の読み込み', false);
         logger.error('目標の読み込みエラー:', error);
+        // エラー時もキャッシュから読み込みを試行
+        try {
+          const cacheKey = `short_term_goals_cache_${user.id}`;
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const cachedData = await AsyncStorage.getItem(cacheKey);
+          if (cachedData) {
+            const parsed = JSON.parse(cachedData);
+            setShortTermGoal(parsed.shortTermGoal || null);
+            setShortTermGoals(parsed.shortTermGoals || []);
+            logger.debug('エラー時、短期目標データをキャッシュから読み込みました');
+            return;
+          }
+        } catch (cacheError) {
+          // キャッシュ読み込みエラーは無視
+        }
         setShortTermGoal(null);
         setShortTermGoals([]);
         return;
@@ -504,8 +691,10 @@ export function useCalendarData(currentDate: Date) {
           return !isCompleted;
         });
 
-        // show_on_calendarがtrueの目標をフィルタリング
-        const visibleGoals = activeGoals.filter((goal: any) => goal.show_on_calendar === true);
+        // show_on_calendarがtrueの目標をフィルタリング（カラムが存在する場合のみ）
+        const visibleGoals = supportsShowOnCalendar
+          ? activeGoals.filter((goal: any) => goal.show_on_calendar === true)
+          : []; // カラムが存在しない場合は表示しない
 
         // 目標はカレンダーに1つだけ表示できるため、最初の1つだけを表示
         // ただし、複数の目標が表示されている場合は、すべて表示する（後方互換性のため）
@@ -517,6 +706,20 @@ export function useCalendarData(currentDate: Date) {
           setShortTermGoals(goalsList);
           // 最初の目標を後方互換性のため設定
           setShortTermGoal(goalsList[0]);
+          
+          // キャッシュに保存（オフライン対応）
+          try {
+            const cacheKey = `short_term_goals_cache_${user.id}`;
+            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+            await AsyncStorage.setItem(cacheKey, JSON.stringify({
+              shortTermGoal: goalsList[0],
+              shortTermGoals: goalsList,
+              timestamp: Date.now()
+            }));
+            logger.debug('短期目標データをキャッシュに保存しました');
+          } catch (saveError) {
+            logger.debug('キャッシュ保存エラー（無視）:', saveError);
+          }
         } else {
           setShortTermGoal(null);
           setShortTermGoals([]);
@@ -528,6 +731,24 @@ export function useCalendarData(currentDate: Date) {
     } catch (error) {
       ErrorHandler.handle(error, '目標の読み込み', false);
       logger.error('目標の読み込みエラー:', error);
+      // エラー時もキャッシュから読み込みを試行
+      try {
+        const user = userParam ?? (await supabase.auth.getUser()).data.user;
+        if (user) {
+          const cacheKey = `short_term_goals_cache_${user.id}`;
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const cachedData = await AsyncStorage.getItem(cacheKey);
+          if (cachedData) {
+            const parsed = JSON.parse(cachedData);
+            setShortTermGoal(parsed.shortTermGoal || null);
+            setShortTermGoals(parsed.shortTermGoals || []);
+            logger.debug('エラー時、短期目標データをキャッシュから読み込みました');
+            return;
+          }
+        }
+      } catch (cacheError) {
+        // キャッシュ読み込みエラーは無視
+      }
       setShortTermGoal(null);
       setShortTermGoals([]);
     }

@@ -39,10 +39,30 @@ const currentLevel = LEVEL_ORDER[getCurrentLogLevel()];
 
 /**
  * ログメッセージをフォーマット
+ * 配列やオブジェクトをJSON文字列に変換して、React Native WebのLogBoxでのエラーを防ぐ
  */
 const format = (level: LogLevel, args: unknown[]): unknown[] => {
   const time = new Date().toISOString();
-  return [`[${time}]`, `[${level.toUpperCase()}]`, ...args];
+  const formattedArgs = args.map(arg => {
+    // undefined や null の場合は安全に処理
+    if (arg === undefined || arg === null) {
+      return String(arg);
+    }
+    // オブジェクトや配列の場合はJSON文字列に変換（LogBoxでのレンダリングエラーを防ぐ）
+    if (typeof arg === 'object') {
+      try {
+        const jsonStr = JSON.stringify(arg, null, 2);
+        // 空のオブジェクトや配列の場合も文字列として返す
+        return jsonStr || '{}';
+      } catch (e) {
+        // JSON.stringifyが失敗した場合はそのまま返す
+        return String(arg);
+      }
+    }
+    // その他の型（文字列、数値、真偽値など）はそのまま返す
+    return arg;
+  });
+  return [`[${time}]`, `[${level.toUpperCase()}]`, ...formattedArgs];
 };
 
 /**

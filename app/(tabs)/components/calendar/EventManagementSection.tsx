@@ -21,6 +21,7 @@ interface Event {
   id: string;
   title: string;
   description?: string;
+  date?: string;
 }
 
 interface EventManagementSectionProps {
@@ -111,7 +112,18 @@ export default function EventManagementSection({
         displayEvents.map((event, index) => (
           <View key={`event-${event.id}-${index}`} style={styles.eventCard}>
             <View style={styles.eventHeader}>
-              <Text style={[styles.eventTitle, { color: theme.text }]}>{event.title}</Text>
+              <View style={styles.eventTitleContainer}>
+                <Text style={[styles.eventTitle, { color: theme.text }]}>{event.title}</Text>
+                {event.date && (
+                  <Text style={[styles.eventDate, { color: theme.textSecondary }]}>
+                    {new Date(event.date).toLocaleDateString('ja-JP', { 
+                      month: 'numeric', 
+                      day: 'numeric',
+                      weekday: 'short'
+                    })}
+                  </Text>
+                )}
+              </View>
               <View style={styles.eventActions}>
                 <TouchableOpacity
                   style={[styles.actionButton, { backgroundColor: theme.secondary }]}
@@ -200,12 +212,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 2,
   },
+  eventTitleContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginRight: 8,
+    gap: 8,
+  },
   eventTitle: {
     fontSize: 11,
     fontWeight: '600',
-    flex: 1,
-    marginRight: 8,
     lineHeight: 14,
+  },
+  eventDate: {
+    fontSize: 9,
+    lineHeight: 12,
   },
   eventActions: {
     flexDirection: 'row',

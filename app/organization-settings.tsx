@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Modal, TextInput, FlatList, Share, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Settings, Plus, Users, Trash2, Edit3, ArrowLeft, UserPlus, Crown, Shield, Share as ShareIcon, Copy, Key } from 'lucide-react-native';
+import { Settings, Plus, Users, Trash2, Edit3, ArrowLeft, UserPlus, Crown, Shield, Share as ShareIcon, Copy } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import InstrumentHeader from '../components/InstrumentHeader';
 import { useInstrumentTheme } from '../components/InstrumentThemeContext';
@@ -9,7 +9,6 @@ import { useLanguage } from '../components/LanguageContext';
 import { safeGoBack } from '@/lib/navigationUtils';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { useOrganization } from '@/hooks/useOrganization';
-import { useAdminCode } from '@/hooks/useAdminCode';
 import type { Organization, UserGroupMembership } from '@/types/organization';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
@@ -33,11 +32,6 @@ export default function OrganizationSettingsScreen() {
     deleteOrganization: deleteOrg,
   } = useOrganization();
   
-  const {
-    loading: adminCodeLoading,
-    setAdminCode,
-    becomeAdminByCode,
-  } = useAdminCode();
   
   // 状態管理
   const [organization, setOrganization] = useState<Organization | null>(null);
@@ -49,18 +43,9 @@ export default function OrganizationSettingsScreen() {
   const [showInviteMember, setShowInviteMember] = useState(false);
   const [showEditOrganization, setShowEditOrganization] = useState(false);
   const [showCredentials, setShowCredentials] = useState(false);
-  const [showSetAdminCode, setShowSetAdminCode] = useState(false);
-  const [showEnterAdminCode, setShowEnterAdminCode] = useState(false);
-  
   // 認証情報
   const [organizationPassword, setOrganizationPassword] = useState<string>('');
   const [isSharing, setIsSharing] = useState(false);
-  
-  // 管理者コード関連
-  const [adminCodeForm, setAdminCodeForm] = useState({
-    code: '',
-    confirmCode: ''
-  });
   
   // フォーム状態
   const [inviteForm, setInviteForm] = useState({
@@ -81,14 +66,25 @@ export default function OrganizationSettingsScreen() {
   const loadOrganizationData = async () => {
     setLoading(true);
     try {
-      // 組織情報を取得
-      await loadOrganizations();
-      const org = organizations.find(o => o.id === orgId);
-      if (org) {
+      // 組織情報を取得（組織IDで直接取得してpasswordフィールドも含める）
+      const { organizationService } = await import('@/services/organizationService');
+      const result = await organizationService.getById(orgId as string);
+      
+      if (result.success && result.data) {
+        const org = result.data;
         setOrganization(org);
         setOrgEditForm({ name: org.name, description: org.description || '' });
-        // 認証情報を設定（実際のAPIに合わせて調整が必要）
+        // 認証情報を設定（作成者の場合はpasswordフィールドが含まれる）
         setOrganizationPassword(org.password || '');
+      } else {
+        // フォールバック: 組織一覧から取得
+        await loadOrganizations();
+        const org = organizations.find(o => o.id === orgId);
+        if (org) {
+          setOrganization(org);
+          setOrgEditForm({ name: org.name, description: org.description || '' });
+          setOrganizationPassword(org.password || '');
+        }
       }
 
       // TODO: メンバー一覧の取得（実装が必要）
@@ -142,75 +138,6 @@ export default function OrganizationSettingsScreen() {
     }
   };
 
-  // 管理者コードを設定（組織作成者用）
-  const handleSetAdminCode = async () => {
-    if (!adminCodeForm.code.trim() || !adminCodeForm.confirmCode.trim()) {
-      Alert.alert(t('error'), t('pleaseEnterAdminCode'));
-      return;
-    }
-
-    if (adminCodeForm.code !== adminCodeForm.confirmCode) {
-      Alert.alert(t('error'), t('adminCodeMismatch'));
-      return;
-    }
-
-    if (!/^\d{4}$/.test(adminCodeForm.code)) {
-      Alert.alert(t('error'), t('adminCodeMustBe4Digits'));
-      return;
-    }
-
-    if (!orgId) {
-      Alert.alert(t('error'), t('organizationIdNotFound'));
-      return;
-    }
-
-    if (!orgId) {
-      Alert.alert(t('error'), t('organizationIdNotFound'));
-      return;
-    }
-
-    const success = await setAdminCode({
-      organizationId: orgId as string,
-      adminCode: adminCodeForm.code,
-    });
-
-    if (success) {
-      setShowSetAdminCode(false);
-      setAdminCodeForm({ code: '', confirmCode: '' });
-      await loadOrganizationData();
-    }
-  };
-
-  // 管理者コードで管理者になる（一般ユーザー用）
-  const handleEnterAdminCode = async () => {
-    if (!adminCodeForm.code.trim()) {
-      Alert.alert(t('error'), t('pleaseEnterAdminCode'));
-      return;
-    }
-
-    if (!/^\d{4}$/.test(adminCodeForm.code)) {
-      Alert.alert(t('error'), t('adminCodeMustBe4Digits'));
-      return;
-    }
-
-    if (!orgId) {
-      Alert.alert(t('error'), t('organizationIdNotFound'));
-      return;
-    }
-
-    if (!orgId) {
-      Alert.alert(t('error'), t('organizationIdNotFound'));
-      return;
-    }
-
-    const success = await becomeAdminByCode(orgId as string, adminCodeForm.code);
-
-    if (success) {
-      setShowEnterAdminCode(false);
-      setAdminCodeForm({ code: '', confirmCode: '' });
-      await loadOrganizationData();
-    }
-  };
 
   const copyCredentials = async () => {
     if (isSharing) return; // 重複実行を防ぐ
@@ -538,44 +465,6 @@ export default function OrganizationSettingsScreen() {
               </View>
             </View>
 
-            {/* 管理者コードセクション */}
-            {user && organization && (
-              <>
-                {user.id === organization.created_by ? (
-                  // 組織作成者: 管理者コード設定
-                  <View style={styles.sectionHeader}>
-                    <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-                      管理者コード設定
-                    </Text>
-                    <TouchableOpacity
-                      style={[styles.editButton, { backgroundColor: currentTheme.secondary }]}
-                      onPress={() => setShowSetAdminCode(true)}
-                    >
-                      <Key size={16} color={currentTheme.text} />
-                      <Text style={[styles.editButtonText, { color: currentTheme.text }]}>
-                        {organization.admin_code ? '変更' : '設定'}
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                ) : (
-                  // 一般ユーザー: 管理者コード入力
-                  <View style={styles.sectionHeader}>
-                    <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-                      管理者になる
-                    </Text>
-                    <TouchableOpacity
-                      style={[styles.editButton, { backgroundColor: currentTheme.primary }]}
-                      onPress={() => setShowEnterAdminCode(true)}
-                    >
-                      <Crown size={16} color={currentTheme.surface} />
-                      <Text style={[styles.editButtonText, { color: currentTheme.surface }]}>
-                        管理者コード入力
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </>
-            )}
 
             {/* 認証情報セクション（ソロモードでない場合のみ表示） */}
             {!organization?.is_solo && (
@@ -641,87 +530,6 @@ export default function OrganizationSettingsScreen() {
                 </View>
               </View>
 
-              {/* 管理者コード */}
-              <View style={[styles.credentialItem, { backgroundColor: currentTheme.background, marginTop: 16 }]}>
-                <Text style={[styles.credentialLabel, { color: currentTheme.text }]}>
-                  管理者コード（4桁）
-                </Text>
-                
-                {user && organization && user.id === organization.created_by ? (
-                  // 組織作成者: 管理者コードを表示
-                  <>
-                    {organization.admin_code ? (
-                      <>
-                        <Text style={[styles.credentialHint, { color: currentTheme.textSecondary }]}>
-                          設定済みの管理者コード
-                        </Text>
-                        <View style={[styles.credentialValueContainer, { backgroundColor: '#E3F2FD', borderColor: currentTheme.primary }]}>
-                          <Text style={[styles.credentialValue, { color: '#1976D2', fontSize: 24, letterSpacing: 8 }]}>
-                            {organization.admin_code}
-                          </Text>
-                        </View>
-                      </>
-                    ) : (
-                      <>
-                        <Text style={[styles.credentialHint, { color: currentTheme.textSecondary }]}>
-                          管理者コードが設定されていません
-                        </Text>
-                        <TouchableOpacity
-                          style={[styles.modalButton, { 
-                            backgroundColor: currentTheme.primary,
-                            marginTop: 12
-                          }]}
-                          onPress={() => setShowSetAdminCode(true)}
-                        >
-                          <Text style={[styles.modalButtonText, { color: currentTheme.surface }]}>
-                            管理者コードを設定
-                          </Text>
-                        </TouchableOpacity>
-                      </>
-                    )}
-                  </>
-                ) : (
-                  // 一般ユーザー: 管理者コード入力欄
-                  <>
-                    <Text style={[styles.credentialHint, { color: currentTheme.textSecondary }]}>
-                      管理者コードを入力して管理者になります
-                    </Text>
-                    <View style={styles.inputContainer}>
-                      <TextInput
-                        style={[styles.textInput, { 
-                          backgroundColor: currentTheme.surface,
-                          color: currentTheme.text,
-                          borderColor: currentTheme.secondary,
-                          textAlign: 'center',
-                          fontSize: 24,
-                          letterSpacing: 8,
-                          fontWeight: 'bold',
-                          marginTop: 8
-                        }]}
-                        value={adminCodeForm.code}
-                        onChangeText={(text) => setAdminCodeForm(prev => ({ ...prev, code: text.replace(/\D/g, '').slice(0, 4) }))}
-                        placeholder="0000"
-                        placeholderTextColor={currentTheme.textSecondary}
-                        keyboardType="numeric"
-                        maxLength={4}
-                      />
-                    </View>
-                    <TouchableOpacity
-                      style={[styles.modalButton, { 
-                        backgroundColor: currentTheme.primary,
-                        opacity: (loading || adminCodeForm.code.length !== 4) ? 0.6 : 1,
-                        marginTop: 12
-                      }]}
-                      onPress={handleEnterAdminCode}
-                      disabled={loading || adminCodeForm.code.length !== 4}
-                    >
-                      <Text style={[styles.modalButtonText, { color: currentTheme.surface }]}>
-                        {loading ? '認証中...' : '管理者になる'}
-                      </Text>
-                    </TouchableOpacity>
-                  </>
-                )}
-              </View>
             </View>
               </>
             )}
@@ -904,166 +712,6 @@ export default function OrganizationSettingsScreen() {
         </View>
       </Modal>
 
-      {/* 管理者コード設定モーダル（組織作成者用） */}
-      <Modal
-        visible={showSetAdminCode}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => {
-          setShowSetAdminCode(false);
-          setAdminCodeForm({ code: '', confirmCode: '' });
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
-                管理者コードを設定
-              </Text>
-              <TouchableOpacity onPress={() => {
-                setShowSetAdminCode(false);
-                setAdminCodeForm({ code: '', confirmCode: '' });
-              }}>
-                <Text style={[styles.closeButton, { color: currentTheme.text }]}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody}>
-              <Text style={[styles.inputLabel, { color: currentTheme.textSecondary, marginBottom: 16 }]}>
-                4桁の数字で管理者コードを設定してください。このコードを入力したユーザーは管理者になります。
-              </Text>
-
-              <View style={styles.inputContainer}>
-                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                  管理者コード（4桁） *
-                </Text>
-                <TextInput
-                  style={[styles.textInput, { 
-                    backgroundColor: currentTheme.background,
-                    color: currentTheme.text,
-                    borderColor: currentTheme.secondary,
-                    textAlign: 'center',
-                    fontSize: 24,
-                    letterSpacing: 8,
-                    fontWeight: 'bold'
-                  }]}
-                  value={adminCodeForm.code}
-                  onChangeText={(text) => setAdminCodeForm(prev => ({ ...prev, code: text.replace(/\D/g, '').slice(0, 4) }))}
-                  placeholder="0000"
-                  placeholderTextColor={currentTheme.textSecondary}
-                  keyboardType="numeric"
-                  maxLength={4}
-                />
-              </View>
-
-              <View style={styles.inputContainer}>
-                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                  確認用（再入力） *
-                </Text>
-                <TextInput
-                  style={[styles.textInput, { 
-                    backgroundColor: currentTheme.background,
-                    color: currentTheme.text,
-                    borderColor: currentTheme.secondary,
-                    textAlign: 'center',
-                    fontSize: 24,
-                    letterSpacing: 8,
-                    fontWeight: 'bold'
-                  }]}
-                  value={adminCodeForm.confirmCode}
-                  onChangeText={(text) => setAdminCodeForm(prev => ({ ...prev, confirmCode: text.replace(/\D/g, '').slice(0, 4) }))}
-                  placeholder="0000"
-                  placeholderTextColor={currentTheme.textSecondary}
-                  keyboardType="numeric"
-                  maxLength={4}
-                />
-              </View>
-
-              <TouchableOpacity
-                style={[styles.modalButton, { 
-                  backgroundColor: currentTheme.primary,
-                  opacity: (loading || adminCodeForm.code.length !== 4 || adminCodeForm.confirmCode.length !== 4) ? 0.6 : 1
-                }]}
-                onPress={handleSetAdminCode}
-                disabled={loading || adminCodeForm.code.length !== 4 || adminCodeForm.confirmCode.length !== 4}
-              >
-                <Text style={[styles.modalButtonText, { color: currentTheme.surface }]}>
-                  {loading ? '設定中...' : '管理者コードを設定'}
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {/* 管理者コード入力モーダル（一般ユーザー用） */}
-      <Modal
-        visible={showEnterAdminCode}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => {
-          setShowEnterAdminCode(false);
-          setAdminCodeForm({ code: '', confirmCode: '' });
-        }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
-                管理者コードを入力
-              </Text>
-              <TouchableOpacity onPress={() => {
-                setShowEnterAdminCode(false);
-                setAdminCodeForm({ code: '', confirmCode: '' });
-              }}>
-                <Text style={[styles.closeButton, { color: currentTheme.text }]}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody}>
-              <Text style={[styles.inputLabel, { color: currentTheme.textSecondary, marginBottom: 16 }]}>
-                組織作成者から提供された4桁の管理者コードを入力してください。
-              </Text>
-
-              <View style={styles.inputContainer}>
-                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
-                  管理者コード（4桁） *
-                </Text>
-                <TextInput
-                  style={[styles.textInput, { 
-                    backgroundColor: currentTheme.background,
-                    color: currentTheme.text,
-                    borderColor: currentTheme.secondary,
-                    textAlign: 'center',
-                    fontSize: 24,
-                    letterSpacing: 8,
-                    fontWeight: 'bold'
-                  }]}
-                  value={adminCodeForm.code}
-                  onChangeText={(text) => setAdminCodeForm(prev => ({ ...prev, code: text.replace(/\D/g, '').slice(0, 4) }))}
-                  placeholder="0000"
-                  placeholderTextColor={currentTheme.textSecondary}
-                  keyboardType="numeric"
-                  maxLength={4}
-                />
-              </View>
-
-              <TouchableOpacity
-                style={[styles.modalButton, { 
-                  backgroundColor: currentTheme.primary,
-                  opacity: (loading || adminCodeForm.code.length !== 4) ? 0.6 : 1
-                }]}
-                onPress={handleEnterAdminCode}
-                disabled={loading || adminCodeForm.code.length !== 4}
-              >
-                <Text style={[styles.modalButtonText, { color: currentTheme.surface }]}>
-                  {loading ? '認証中...' : '管理者になる'}
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }

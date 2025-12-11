@@ -664,22 +664,68 @@ export const useAuthAdvanced = (): AuthHookReturn => {
   // 楽器テーマ関連のローカル保存をクリア（ユーザー切り替え時用）
   const clearInstrumentThemeLocal = useCallback(async () => {
     try {
+      // 従来のキーを削除
       await Promise.all([
         AsyncStorage.removeItem('selectedInstrument'),
         AsyncStorage.removeItem('customTheme'),
         AsyncStorage.removeItem('isCustomTheme'),
         AsyncStorage.removeItem('practiceSettings'),
       ]);
+      
+      // ユーザーID別のキーもすべて削除（新規登録時に以前のユーザーの設定が残らないように）
+      try {
+        const allKeys = await AsyncStorage.getAllKeys();
+        const themeKeys = allKeys.filter(key => 
+          key.includes('selectedInstrument') ||
+          key.includes('customTheme') ||
+          key.includes('isCustomTheme') ||
+          key.includes('practiceSettings')
+        );
+        
+        if (themeKeys.length > 0) {
+          await AsyncStorage.multiRemove(themeKeys);
+          logger.debug('外観設定のキーを削除しました:', themeKeys);
+        }
+      } catch (error) {
+        logger.warn('ユーザーID別キーの削除エラー（無視）:', error);
+      }
+      
       // WebのlocalStorage/sessionStorageに重複保存している可能性にも対応
       if (typeof window !== 'undefined') {
         try {
+          // 従来のキーを削除
           localStorage.removeItem('selectedInstrument');
           localStorage.removeItem('customTheme');
           localStorage.removeItem('isCustomTheme');
           localStorage.removeItem('practiceSettings');
-        } catch {}
+          
+          // ユーザーID別のキーもすべて削除
+          const localStorageKeys = Object.keys(localStorage);
+          const themeLocalKeys = localStorageKeys.filter(key => 
+            key.includes('selectedInstrument') ||
+            key.includes('customTheme') ||
+            key.includes('isCustomTheme') ||
+            key.includes('practiceSettings')
+          );
+          
+          themeLocalKeys.forEach(key => {
+            try {
+              localStorage.removeItem(key);
+            } catch (e) {
+              // 個別のエラーは無視
+            }
+          });
+          
+          if (themeLocalKeys.length > 0) {
+            logger.debug('Web localStorageの外観設定キーを削除しました:', themeLocalKeys);
+          }
+        } catch (error) {
+          logger.warn('Web localStorageの削除エラー（無視）:', error);
+        }
       }
-    } catch {}
+    } catch (error) {
+      logger.warn('外観設定クリアエラー（無視）:', error);
+    }
   }, []);
 
   // 認証済みユーザーの処理（外部から呼び出し可能）
@@ -904,9 +950,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       if (data.user) {
         logger.debug('新規登録成功:', data.user.email);
         logger.debug('新規登録成功 - 認証状態を更新');
-        // 以前のユーザーのローカルテーマ・楽器設定を完全クリア
-        await clearInstrumentThemeLocal();
         // 新規登録成功後は即座に認証状態を更新
+        // 外観設定のクリアはログアウト時に行う
         await handleAuthenticatedUser(data.user);
         
         return true;

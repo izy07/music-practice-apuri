@@ -26,6 +26,7 @@ interface Props {
   getGoalTypeColor: (type: string) => string;
   onUpdateProgress?: (goalId: string, progress: number) => Promise<void>;
   onDeleteGoal?: (goalId: string) => Promise<void>;
+  onUncompleteGoal?: (goalId: string) => Promise<void>;
 }
 
 export const CompletedGoalsSection: React.FC<Props> = memo(({
@@ -34,6 +35,7 @@ export const CompletedGoalsSection: React.FC<Props> = memo(({
   getGoalTypeColor,
   onUpdateProgress,
   onDeleteGoal,
+  onUncompleteGoal,
 }) => {
   const colors = useThemeColors();
 
@@ -76,6 +78,7 @@ export const CompletedGoalsSection: React.FC<Props> = memo(({
               getGoalTypeColor={getGoalTypeColor}
               onUpdateProgress={onUpdateProgress}
               onDeleteGoal={onDeleteGoal}
+              onUncompleteGoal={onUncompleteGoal}
             />
           ))}
         </View>
@@ -92,7 +95,8 @@ const CompletedGoalCard = memo<{
   getGoalTypeColor: (type: string) => string;
   onUpdateProgress?: (goalId: string, progress: number) => Promise<void>;
   onDeleteGoal?: (goalId: string) => Promise<void>;
-}>(({ goal, colors, getGoalTypeLabel, getGoalTypeColor, onUpdateProgress, onDeleteGoal }) => {
+  onUncompleteGoal?: (goalId: string) => Promise<void>;
+}>(({ goal, colors, getGoalTypeLabel, getGoalTypeColor, onUpdateProgress, onDeleteGoal, onUncompleteGoal }) => {
   const cardStyle = useMemo(() => [
     styles.completedGoalCard,
     { backgroundColor: colors.background, borderColor: colors.secondary + '33' }
@@ -146,6 +150,22 @@ const CompletedGoalCard = memo<{
       <Text style={dateStyle}>
         達成日: {goal.completed_at ? new Date(goal.completed_at).toLocaleDateString('ja-JP') : '不明'}
       </Text>
+      {onUncompleteGoal && (
+        <TouchableOpacity
+          style={[styles.uncompleteButton, { backgroundColor: colors.secondary }]}
+          onPress={(e) => {
+            e.stopPropagation();
+            if (onUncompleteGoal) {
+              onUncompleteGoal(goal.id).catch((error) => {
+                console.error('未達成への戻しエラー:', error);
+              });
+            }
+          }}
+          activeOpacity={0.7}
+        >
+          <Text style={[styles.uncompleteButtonText, { color: colors.text }]}>未達成に戻す</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 });
@@ -155,6 +175,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 16,
     borderRadius: 12,
+    width: '96%',
+    maxWidth: 550,
+    alignSelf: 'center',
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -225,6 +248,18 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     lineHeight: 20,
+  },
+  uncompleteButton: {
+    marginTop: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  uncompleteButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Fragment } from 'react';
+import React, { useState, useEffect, Fragment, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Image, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, User, Music, Target, Plus, Minus, Edit, Trash2, Award, Users, Clock, MapPin, Camera, Calendar } from 'lucide-react-native';
@@ -52,10 +52,18 @@ export default function ProfileSettingsScreen() {
   const [birthDay, setBirthDay] = useState<string>('');
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [birthdayError, setBirthdayError] = useState<string>('');
+  
+  // 誕生日入力フィールドのref
+  const birthYearInputRef = useRef<TextInput>(null);
+  const birthMonthInputRef = useRef<TextInput>(null);
+  const birthDayInputRef = useRef<TextInput>(null);
   const [breakPeriods, setBreakPeriods] = useState<Array<{id: string, startDate: string, endDate: string, reason: string}>>([]);
   const [pastOrganizations, setPastOrganizations] = useState<Array<{id: string, name: string, role: string, startDate: string, endDate: string}>>([]);
   const [awards, setAwards] = useState<Array<{id: string, title: string, organization: string, date: string, description: string}>>([]);
   const [performances, setPerformances] = useState<Array<{id: string, title: string, venue: string, date: string, role: string, description: string}>>([]);
+  const [instrumentTypes, setInstrumentTypes] = useState<Array<{id: string, name: string}>>([
+    { id: '1', name: '' },
+  ]);
   const [showBreakPeriodModal, setShowBreakPeriodModal] = useState(false);
   const [showPastOrganizationModal, setShowPastOrganizationModal] = useState(false);
   const [showAwardModal, setShowAwardModal] = useState(false);
@@ -143,6 +151,18 @@ export default function ProfileSettingsScreen() {
                   ]
             );
           }
+          
+          // 楽器の種類を読み込み（カンマ区切りから配列に変換）
+          if (profile.custom_instrument_name) {
+            const types = profile.custom_instrument_name.split(',').filter((name: string) => name.trim() !== '');
+            setInstrumentTypes(
+              types.length > 0 
+                ? types.map((name: string, index: number) => ({ id: (index + 1).toString(), name: name.trim() }))
+                : [
+                    { id: '1', name: '' },
+                  ]
+            );
+          }
         } else {
           // プロフィールが存在しない場合でも、新規登録時のニックネームを表示
           setDisplayName(resolvedNickname);
@@ -213,6 +233,25 @@ export default function ProfileSettingsScreen() {
     }
     
     return Math.max(0, age);
+  };
+
+  // 全角数字を半角数字に変換する関数
+  const convertToHalfWidth = (text: string): string => {
+    if (!text) return '';
+    
+    // 全角数字を半角に変換
+    let converted = text.replace(/[０-９]/g, (char) => {
+      const fullWidthMap: { [key: string]: string } = {
+        '０': '0', '１': '1', '２': '2', '３': '3', '４': '4',
+        '５': '5', '６': '6', '７': '7', '８': '8', '９': '9'
+      };
+      return fullWidthMap[char] || char;
+    });
+    
+    // その他の全角文字や記号も除去（数字のみを残す）
+    converted = converted.replace(/[^0-9]/g, '');
+    
+    return converted;
   };
 
   // 誕生日入力の妥当性チェック
@@ -647,6 +686,14 @@ export default function ProfileSettingsScreen() {
         if (musicExperienceYears) upsertRow.music_experience_years = musicExperienceYears;
         if (birthday) upsertRow.birthday = birthday.toISOString().split('T')[0];
         if (organizationsString) upsertRow.organization = organizationsString;
+        // 楽器の種類をカンマ区切り文字列として保存
+        const instrumentTypesString = instrumentTypes
+          .map(item => item.name.trim())
+          .filter(name => name !== '')
+          .join(',');
+        if (instrumentTypesString) {
+          (upsertRow as any).custom_instrument_name = instrumentTypesString;
+        }
       } catch (optionalColumnError) {
         // カラムが存在しない場合のエラーは無視（基本情報は保存される）
         logger.debug('オプショナルカラムの設定をスキップ（カラムが存在しない可能性）:', optionalColumnError);
@@ -759,12 +806,6 @@ export default function ProfileSettingsScreen() {
             <Text style={[styles.profileName, { color: currentTheme.text }]}>
               {nickname || 'ユーザー'}
             </Text>
-            <Text style={[styles.profileEmail, { color: currentTheme.textSecondary }]}>
-              {currentUser?.email || 'email@example.com'}
-            </Text>
-            <Text style={[styles.profileOrganization, { color: currentTheme.primary }]}>
-              {currentOrganizations.filter(org => org.name.trim()).map(org => org.name).join(', ') || '所属団体未設定'}
-            </Text>
           </View>
         </View>
 
@@ -798,7 +839,30 @@ export default function ProfileSettingsScreen() {
 
             <View style={styles.formRow}>
               <View style={styles.formItem}>
-                <Text style={[styles.formLabel, { color: currentTheme.textSecondary }]}>現在の所属団体</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text style={[styles.formLabel, { color: currentTheme.textSecondary }]}>現在の所属団体</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setCurrentOrganizations([
+                        ...currentOrganizations,
+                        { id: Date.now().toString(), name: '' }
+                      ]);
+                    }}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      backgroundColor: currentTheme.primary,
+                      borderRadius: 8,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Plus size={16} color="#FFFFFF" />
+                    <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>追加</Text>
+                  </TouchableOpacity>
+                </View>
                 {currentOrganizations.map((org, index) => (
                   <View key={org.id} style={{ marginBottom: index < currentOrganizations.length - 1 ? 12 : 0 }}>
                     <TextInput
@@ -819,23 +883,6 @@ export default function ProfileSettingsScreen() {
                     />
                   </View>
                 ))}
-                {currentOrganizations.length < 2 && (
-                  <TouchableOpacity
-                    style={[styles.addButton, { 
-                      backgroundColor: currentTheme.primary,
-                      marginTop: 8 
-                    }]}
-                    onPress={() => {
-                      setCurrentOrganizations([
-                        ...currentOrganizations,
-                        { id: Date.now().toString(), name: '' }
-                      ]);
-                    }}
-                  >
-                    <Plus size={20} color="#FFFFFF" />
-                    <Text style={styles.addButtonText}>追加</Text>
-                  </TouchableOpacity>
-                )}
               </View>
             </View>
 
@@ -844,6 +891,7 @@ export default function ProfileSettingsScreen() {
                 <Text style={[styles.formLabel, { color: currentTheme.textSecondary }]}>誕生日</Text>
           <View style={styles.birthdayRow}>
             <TextInput
+              ref={birthYearInputRef}
               style={[styles.dateInputSmall, { 
                 backgroundColor: currentTheme.background,
                 borderColor: currentTheme.secondary,
@@ -853,19 +901,37 @@ export default function ProfileSettingsScreen() {
               placeholderTextColor={currentTheme.textSecondary}
               value={birthYear}
               onChangeText={(v) => {
-                const nv = v.replace(/[^0-9]/g, '').slice(0, 4);
+                // 全角数字を半角に変換
+                const halfWidthText = convertToHalfWidth(v);
+                const nv = halfWidthText.slice(0, 4);
                 setBirthYear(nv);
                 if (nv.length === 4 && birthMonth && birthDay) {
                   validateBirthdayFields(nv, birthMonth, birthDay);
                 } else {
                   setBirthdayError('');
                 }
+                // 4桁入力されたら次のフィールド（月）にフォーカス
+                if (nv.length === 4) {
+                  birthMonthInputRef.current?.focus();
+                }
               }}
               keyboardType="number-pad"
+              {...(Platform.OS === 'web' ? { 
+                inputMode: 'numeric',
+                pattern: '[0-9]*',
+                type: 'tel',
+                autoComplete: 'off'
+              } : {})}
+              maxLength={4}
+              returnKeyType="next"
+              onSubmitEditing={() => {
+                birthMonthInputRef.current?.focus();
+              }}
               accessibilityLabel="誕生日 年"
             />
             <Text style={[styles.dateSep, { color: currentTheme.textSecondary }]}>-</Text>
             <TextInput
+              ref={birthMonthInputRef}
               style={[styles.dateInputXs, { 
                 backgroundColor: currentTheme.background,
                 borderColor: currentTheme.secondary,
@@ -875,10 +941,14 @@ export default function ProfileSettingsScreen() {
               placeholderTextColor={currentTheme.textSecondary}
               value={birthMonth}
               onChangeText={(v) => {
-                let nv = v.replace(/[^0-9]/g, '').slice(0, 2);
+                // 全角数字を半角に変換
+                const halfWidthText = convertToHalfWidth(v);
+                let nv = halfWidthText.slice(0, 2);
                 if (nv.length === 2) {
                   const n = Math.min(12, Math.max(1, parseInt(nv, 10)));
                   nv = String(n).padStart(2, '0');
+                  // 2桁入力されたら次のフィールド（日）にフォーカス
+                  birthDayInputRef.current?.focus();
                 }
                 setBirthMonth(nv);
                 if (birthYear && nv && birthDay) {
@@ -888,10 +958,22 @@ export default function ProfileSettingsScreen() {
                 }
               }}
               keyboardType="number-pad"
+              {...(Platform.OS === 'web' ? { 
+                inputMode: 'numeric',
+                pattern: '[0-9]*',
+                type: 'tel',
+                autoComplete: 'off'
+              } : {})}
+              maxLength={2}
+              returnKeyType="next"
+              onSubmitEditing={() => {
+                birthDayInputRef.current?.focus();
+              }}
               accessibilityLabel="誕生日 月"
             />
             <Text style={[styles.dateSep, { color: currentTheme.textSecondary }]}>-</Text>
             <TextInput
+              ref={birthDayInputRef}
               style={[styles.dateInputXs, { 
                 backgroundColor: currentTheme.background,
                 borderColor: currentTheme.secondary,
@@ -901,7 +983,9 @@ export default function ProfileSettingsScreen() {
               placeholderTextColor={currentTheme.textSecondary}
               value={birthDay}
               onChangeText={(v) => {
-                let nv = v.replace(/[^0-9]/g, '').slice(0, 2);
+                // 全角数字を半角に変換
+                const halfWidthText = convertToHalfWidth(v);
+                let nv = halfWidthText.slice(0, 2);
                 if (nv.length === 2) {
                   const y = parseInt(birthYear || '0', 10);
                   const m = parseInt(birthMonth || '0', 10);
@@ -917,6 +1001,14 @@ export default function ProfileSettingsScreen() {
                 }
               }}
               keyboardType="number-pad"
+              {...(Platform.OS === 'web' ? { 
+                inputMode: 'numeric',
+                pattern: '[0-9]*',
+                type: 'tel',
+                autoComplete: 'off'
+              } : {})}
+              maxLength={2}
+              returnKeyType="done"
               accessibilityLabel="誕生日 日"
             />
           </View>
@@ -994,6 +1086,78 @@ export default function ProfileSettingsScreen() {
                 </View>
               </View>
             </View>
+
+            <View style={styles.formRow}>
+              <View style={styles.formItem}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <Text style={[styles.formLabel, { color: currentTheme.textSecondary }]}>楽器の種類</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const newId = (instrumentTypes.length + 1).toString();
+                      setInstrumentTypes([...instrumentTypes, { id: newId, name: '' }]);
+                    }}
+                    style={{
+                      paddingHorizontal: 12,
+                      paddingVertical: 6,
+                      backgroundColor: currentTheme.primary,
+                      borderRadius: 8,
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      gap: 4,
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Plus size={16} color="#FFFFFF" />
+                    <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>追加</Text>
+                  </TouchableOpacity>
+                </View>
+                {instrumentTypes.map((item, index) => (
+                  <View key={item.id} style={{ marginBottom: index < instrumentTypes.length - 1 ? 12 : 0 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: currentTheme.background, 
+                          borderColor: currentTheme.secondary, 
+                          color: currentTheme.text,
+                          marginTop: 8,
+                          flex: 1
+                        }]}
+                        placeholder="例: バイオリンのストラディバリウス、フルートのYAMAHAなど"
+                        placeholderTextColor={currentTheme.textSecondary}
+                        value={item.name}
+                        onChangeText={(text) => {
+                          const updated = instrumentTypes.map(i => 
+                            i.id === item.id ? { ...i, name: text } : i
+                          );
+                          setInstrumentTypes(updated);
+                        }}
+                      />
+                      {instrumentTypes.length > 1 && (
+                        <TouchableOpacity
+                          onPress={() => {
+                            setInstrumentTypes(instrumentTypes.filter(i => i.id !== item.id));
+                          }}
+                          style={{
+                            marginTop: 8,
+                            padding: 8,
+                            backgroundColor: '#FF4444',
+                            borderRadius: 8,
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Trash2 size={16} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  </View>
+                ))}
+                <Text style={[styles.helpText, { color: currentTheme.textSecondary, marginTop: 4 }]}>
+                  楽器の種類を詳しく記入してください（例：バイオリン → バイオリンのストラディバリウス）。複数の楽器を追加できます。
+                </Text>
+              </View>
+            </View>
           </View>
 
           <TouchableOpacity
@@ -1016,32 +1180,6 @@ export default function ProfileSettingsScreen() {
               <Award size={18} color="#FFFFFF" />
             </View>
             <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>経歴・実績</Text>
-          </View>
-          
-          <View style={styles.careerTabs}>
-            <TouchableOpacity
-              style={[styles.careerTab, { backgroundColor: currentTheme.primary }]}
-              onPress={() => setShowPastOrganizationModal(true)}
-            >
-              <Users size={16} color="#FFFFFF" />
-              <Text style={styles.careerTabText}>所属履歴</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.careerTab, { backgroundColor: currentTheme.primary }]}
-              onPress={() => setShowAwardModal(true)}
-            >
-              <Award size={16} color="#FFFFFF" />
-              <Text style={styles.careerTabText}>受賞歴</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.careerTab, { backgroundColor: currentTheme.primary }]}
-              onPress={() => setShowPerformanceModal(true)}
-            >
-              <Music size={16} color="#FFFFFF" />
-              <Text style={styles.careerTabText}>演奏歴</Text>
-            </TouchableOpacity>
           </View>
 
           {/* ブランク期間は非表示 */}
@@ -1219,6 +1357,7 @@ export default function ProfileSettingsScreen() {
               </View>
             ))}
           </View>
+          
           {/* 経歴・実績 保存ボタン（Firebase） */}
           <TouchableOpacity
             style={[styles.saveAllButton, { backgroundColor: currentTheme.primary }]}
@@ -1235,6 +1374,7 @@ export default function ProfileSettingsScreen() {
                   awardsUi: awardsEdit,
                   performancesUi: performancesEdit,
                 }, { merge: true });
+                
                 Alert.alert('保存完了', '経歴・実績を保存しました');
               } catch (e) {
                 Alert.alert('エラー', '保存に失敗しました');

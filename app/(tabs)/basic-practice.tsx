@@ -10,6 +10,7 @@ import { ChevronLeft } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { useLanguage } from '@/components/LanguageContext';
 import PostureCameraModal from '@/components/PostureCameraModal';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import type { PracticeItem } from '@/lib/tabs/basic-practice/types';
@@ -22,10 +23,12 @@ import { LevelSelectionModal } from '@/lib/tabs/basic-practice/components/LevelS
 import { PracticeDetailModal } from '@/lib/tabs/basic-practice/components/PracticeDetailModal';
 import { getInstrumentKey, getInstrumentName } from '@/lib/tabs/basic-practice/utils';
 import { styles } from '@/lib/tabs/basic-practice/styles';
+import { safeGoBack } from '@/lib/navigationUtils';
 
 export default function BasicPracticeScreen() {
   const router = useRouter();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
+  const { t } = useLanguage();
   const { user } = useAuthAdvanced();
   const [selectedMenu, setSelectedMenu] = useState<PracticeItem | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
@@ -35,7 +38,7 @@ export default function BasicPracticeScreen() {
   const instrumentKey = getInstrumentKey(selectedInstrument);
   const instrumentName = getInstrumentName(selectedInstrument, null);
 
-  // レベル管理フック
+  // レベル管理フック（楽器ごとにレベルを管理）
   const {
     selectedLevel,
     userLevel,
@@ -44,7 +47,7 @@ export default function BasicPracticeScreen() {
     handleLevelChange,
     handleLevelSelection,
     levels,
-  } = usePracticeLevel();
+  } = usePracticeLevel(selectedInstrument);
 
   // 練習メニュー管理フック（DB取得版、フォールバック付き）
   const { filteredPracticeMenus, loading: menusLoading } = usePracticeMenu(selectedInstrument, selectedLevel);
@@ -56,7 +59,7 @@ export default function BasicPracticeScreen() {
 
   // 戻るボタン
   const goBack = () => {
-    router.back();
+    safeGoBack('/(tabs)/settings');
   };
 
   return (
@@ -69,7 +72,7 @@ export default function BasicPracticeScreen() {
           <ChevronLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
-          {instrumentName}の基礎練メニュー
+          {t('basicPracticeMenuFor').replace('{instrument}', instrumentName)}
         </Text>
         <View style={styles.placeholder} />
       </View>
@@ -86,16 +89,17 @@ export default function BasicPracticeScreen() {
       {/* メインコンテンツ - 全体をスクロール可能にする */}
       <ScrollView 
         style={styles.mainContent} 
-        contentContainerStyle={{ paddingTop: 8 }}
+        contentContainerStyle={{ paddingTop: 0 }}
         showsVerticalScrollIndicator={false}
       >
-
-        {/* 基礎情報セクション - マスターレベルでは表示しない */}
+        {/* 基礎情報セクション - レベル選択の直下、マスターレベルでは表示しない */}
         {userLevel && userLevel !== 'advanced' && (
-          <BasicInfoSection
-            instrumentKey={instrumentKey}
-            onOpenCamera={openCameraForPostureCheck}
-          />
+          <View style={{ paddingHorizontal: 16, paddingTop: 0 }}>
+            <BasicInfoSection
+              instrumentKey={instrumentKey}
+              onOpenCamera={openCameraForPostureCheck}
+            />
+          </View>
         )}
 
         {/* 練習メニュー一覧 */}

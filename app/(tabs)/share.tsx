@@ -204,7 +204,7 @@ export default function ShareScreen() {
             style={[styles.actionButton, { backgroundColor: currentTheme.primary }]}
             onPress={() => setShowCreateOrg(true)}
           >
-            <Plus size={20} color={currentTheme.surface} />
+            <Plus size={16} color={currentTheme.surface} />
             <Text style={[styles.actionButtonText, { color: currentTheme.surface }]}>
               {t('createNewOrganization')}
             </Text>
@@ -214,7 +214,7 @@ export default function ShareScreen() {
             style={[styles.actionButton, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary, borderWidth: 2 }]}
             onPress={() => setShowJoinOrg(true)}
           >
-            <Users size={20} color={currentTheme.primary} />
+            <Users size={16} color={currentTheme.primary} />
             <Text style={[styles.actionButtonText, { color: currentTheme.primary }]}>
               {t('joinOrganization')}
             </Text>
@@ -668,16 +668,16 @@ const styles = StyleSheet.create({
   actionButtons: {
     paddingHorizontal: 20,
     marginBottom: 12,
-    gap: 12,
+    gap: 8,
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    gap: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    gap: 8,
     elevation: 2,
     ...createShadowStyle({
       shadowColor: '#000',
@@ -688,7 +688,7 @@ const styles = StyleSheet.create({
     }),
   },
   actionButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
   content: {
