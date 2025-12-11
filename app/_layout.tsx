@@ -73,6 +73,20 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
         return;
       }
       
+      // shadow*スタイルの非推奨警告を抑制
+      if (
+        message.includes('shadow*') ||
+        message.includes('shadowColor') ||
+        message.includes('shadowOffset') ||
+        message.includes('shadowOpacity') ||
+        message.includes('shadowRadius') ||
+        message.includes('Use "boxShadow"') ||
+        fullMessage.includes('shadow*') ||
+        fullMessage.includes('Use "boxShadow"')
+      ) {
+        return;
+      }
+      
       originalConsoleWarn.apply(console, args);
     };
   }
@@ -465,6 +479,14 @@ function RootLayoutContent() {
    */
   // ナビゲーション関数（シンプル化）
   const navigateWithDelay = (path: RoutePath, delay: number = 0): void => {
+    // フレームワークが準備完了するまで待機
+    if (!isReady) {
+      logger.debug('フレームワーク準備中 - ナビゲーションを待機中', { path, isReady });
+      // 準備完了後に再試行
+      setTimeout(() => navigateWithDelay(path, 0), 100);
+      return;
+    }
+    
     setTimeout(() => {
       try {
         logger.debug('ナビゲーション実行:', path);
@@ -489,20 +511,36 @@ function RootLayoutContent() {
    * - 認証済み + 楽器未選択 → チュートリアル画面
    */
   useEffect(() => {
+    // 現在のセグメントを取得（Web環境ではrefから取得して強制遷移を防ぐ）
+    const currentSegments = Platform.OS === 'web' ? segmentsRef.current : segments;
+    
+    // フレームワークが準備完了するまで待機（Root Layoutのマウントを待つ）
+    // ただし、Web環境ではURLから画面を判断して即座に表示（Optimistic UI）
+    if (!isReady) {
+      // Web環境: 有効な画面にいる場合は、isReadyを待たずに画面を維持
+      if (Platform.OS === 'web') {
+        const firstSegment = currentSegments[0];
+        const isInTabsGroup = firstSegment === '(tabs)';
+        const isInOrgGroup = firstSegment === 'organization-dashboard' || firstSegment === 'organization-settings';
+        const isInAuthGroup = firstSegment === 'auth';
+        
+        // 有効なアプリ画面にいる場合は、画面を維持（デフォルト画面を表示しない）
+        if (isInTabsGroup || isInOrgGroup || isInAuthGroup) {
+          logger.debug('フレームワーク準備中・有効な画面 - 画面を維持', { isReady, currentSegments });
+          return;
+        }
+      }
+      
+      logger.debug('フレームワーク準備中 - 画面遷移を待機中', { isReady });
+      return;
+    }
+    
     /**
      * 【統一された認証保護ロジック】
      * - 未認証 → ログイン画面
      * - 認証済み + 楽器未選択 → チュートリアル or 楽器選択画面
      * - 認証済み + 楽器選択済み → メイン画面
      */
-    // 初期化中は何もしない（リロード時も現在の画面を維持）
-    if (isLoading || !isInitialized) {
-      logger.debug('認証初期化中 - 画面遷移を待機中', { isLoading, isInitialized });
-      return;
-    }
-
-    // 現在のセグメントを取得（Web環境ではrefから取得して強制遷移を防ぐ）
-    const currentSegments = Platform.OS === 'web' ? segmentsRef.current : segments;
     const firstSegment = currentSegments[0];
     const isInAuthGroup = firstSegment === 'auth';
     const isInTabsGroup = firstSegment === '(tabs)';
@@ -510,6 +548,49 @@ function RootLayoutContent() {
     const currentTab = isInTabsGroup && currentSegments.length > 1 ? currentSegments[1] : null;
     const isAtRoot = currentSegments.length === 0;
     
+    // 利用規約・プライバシーポリシー画面は許可（認証チェックをスキップ）
+    if (firstSegment === 'terms-of-service' || firstSegment === 'privacy-policy') {
+      return;
+    }
+    
+    // Web環境: 認証状態の初期化中でも、URLから画面を判断して表示（Optimistic UI）
+    if (Platform.OS === 'web' && (isLoading || !isInitialized)) {
+      // 認証画面にいる場合はそのまま待機（ログイン処理中など）
+      if (isInAuthGroup) {
+        logger.debug('認証初期化中・認証画面 - 画面遷移を待機中', { isLoading, isInitialized });
+        return;
+      }
+      
+      // 有効なアプリ画面（タブグループ、組織管理画面など）にいる場合は、認証確認を待たずに画面を維持
+      // これにより、リロード時にデフォルト画面やログイン画面が表示されない
+      if (isInTabsGroup || isInOrgGroup) {
+        logger.debug('認証初期化中・有効な画面 - 画面を維持（Optimistic UI）', { currentSegments, isLoading, isInitialized });
+        return; // 画面遷移をブロックしない（現在の画面を維持）
+      }
+      
+      // 利用規約・プライバシーポリシー画面も維持
+      if (firstSegment === 'terms-of-service' || firstSegment === 'privacy-policy') {
+        return;
+      }
+      
+      // ルートパスのみログイン画面にリダイレクト（初回アクセス時）
+      if (isAtRoot) {
+        logger.debug('認証初期化中・ルートパス - ログイン画面にリダイレクト', { isLoading, isInitialized });
+        router.replace('/auth/login');
+        return;
+      }
+      
+      // その他の画面（存在する画面）も維持
+      logger.debug('認証初期化中・その他の画面 - 画面を維持', { currentSegments, isLoading, isInitialized });
+      return;
+    }
+    
+    // ネイティブ環境: 初期化中は待機
+    if (isLoading || !isInitialized) {
+      logger.debug('認証初期化中 - 画面遷移を待機中', { isLoading, isInitialized });
+      return;
+    }
+
     logger.debug('画面遷移チェック', {
       isAuthenticated,
       isInitialized,
@@ -518,31 +599,27 @@ function RootLayoutContent() {
       hasInstrumentSelected: hasInstrumentSelected(),
       needsTutorial: needsTutorial(),
     });
-    
-    // 利用規約・プライバシーポリシー画面は許可
-    if (firstSegment === 'terms-of-service' || firstSegment === 'privacy-policy') {
-      return;
-    }
 
-    // Web環境: リロード時に現在の画面を維持する処理
-    // ただし、認証状態の初期化が完了している場合のみ（キャッシュされた認証状態を信頼しない）
+    // Web環境: 認証確認完了後の処理
+    // バックグラウンドで認証確認が完了した後、未認証の場合はログイン画面にリダイレクト
     if (Platform.OS === 'web') {
-      // 認証状態の初期化が完了していない場合は、画面遷移を待つ
-      if (!isInitialized || isLoading) {
-        logger.debug('認証状態の初期化中 - 画面遷移を待機', { isInitialized, isLoading });
-        return;
-      }
-      
       // 認証済みで適切な画面にいる場合は、リロード時も現在の画面を維持
-      // ただし、認証状態の初期化が完了している場合のみ
       if (isAuthenticated && (isInTabsGroup || isInOrgGroup) && hasInstrumentSelected()) {
         logger.debug('認証済み・楽器選択済み - 現在の画面を維持', { segments: currentSegments });
         return;
       }
       
-      // 未認証で認証画面にいる場合は、現在の画面を維持（リロード時の一瞬の遷移を防ぐ）
+      // 未認証で認証画面にいる場合は、現在の画面を維持
       if (!isAuthenticated && isInAuthGroup) {
         logger.debug('未認証・認証画面 - 現在の画面を維持', { segments: currentSegments });
+        return;
+      }
+      
+      // 未認証でアプリ画面にいる場合は、ログイン画面にリダイレクト
+      // ただし、認証確認が完了した後（isInitialized && !isLoading）のみ
+      if (!isAuthenticated && (isInTabsGroup || isInOrgGroup) && isInitialized && !isLoading) {
+        logger.debug('未認証・アプリ画面 - ログイン画面にリダイレクト', { segments: currentSegments });
+        router.replace('/auth/login');
         return;
       }
     }
@@ -588,7 +665,7 @@ function RootLayoutContent() {
       router.replace('/(tabs)/');
       return;
     }
-  }, [isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, needsTutorial, router, segments]);
+  }, [isReady, isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, needsTutorial, router, segments]);
 
   // checkUserProgressAndNavigate関数は削除（シンプル化のため不要）
 
@@ -603,11 +680,14 @@ function RootLayoutContent() {
   // LoadingSkeletonは表示しない（リロード時も現在の画面を維持）
 
   // メインの画面構成を定義
+  // デフォルトテーマの背景色を取得（黒い画面を防ぐため）
+  const defaultBackgroundColor = '#FFFFFF'; // defaultThemeのbackground色
+  
   return (
     <Stack 
       screenOptions={{ 
         headerShown: false, // ヘッダーを非表示（カスタムヘッダーを使用）
-        // 背景色は各画面で設定されるため、ここでは設定しない（テーマ色を維持）
+        contentStyle: { backgroundColor: defaultBackgroundColor }, // デフォルト背景色を設定（黒い画面を防ぐ）
       }}
     >
       {/* 認証関連の画面 - app/auth/_layout.tsx で子ルートを管理 */}

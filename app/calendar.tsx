@@ -223,6 +223,36 @@ export default function CalendarScreen() {
       return;
     }
 
+    // practice_typeが'event'の場合、確認ダイアログを表示
+    if (createForm.practiceType === 'event') {
+      Alert.alert(
+        'カレンダーに表示',
+        'メインのカレンダー画面に表示しますか？',
+        [
+          {
+            text: 'いいえ',
+            style: 'cancel',
+            onPress: async () => {
+              // イベント登録なしで練習日程のみ作成
+              await createScheduleInternal(false);
+            }
+          },
+          {
+            text: 'はい',
+            onPress: async () => {
+              // イベント登録ありで練習日程を作成
+              await createScheduleInternal(true);
+            }
+          }
+        ]
+      );
+    } else {
+      // イベント以外の場合は通常通り作成
+      await createScheduleInternal(false);
+    }
+  };
+
+  const createScheduleInternal = async (addToCalendar: boolean) => {
     setLoading(true);
     try {
       const result = await PracticeScheduleManager.createSchedule({
@@ -234,7 +264,7 @@ export default function CalendarScreen() {
         end_time: createForm.endTime || undefined,
         location: createForm.location.trim() || undefined,
         notes: createForm.description.trim() || undefined,
-      });
+      }, addToCalendar);
 
       if (result.success) {
         Alert.alert('成功', '練習日程を作成しました！');
@@ -249,6 +279,15 @@ export default function CalendarScreen() {
         });
         setSelectedDate(null);
         await loadSchedules();
+        
+        // イベントが作成された場合、カスタムイベントを発火してメインカレンダーを更新
+        if (addToCalendar && createForm.practiceType === 'event') {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('eventCreated', {
+              detail: { action: 'event_created' }
+            }));
+          }
+        }
       } else {
         Alert.alert('エラー', result.error || '練習日程の作成に失敗しました');
       }

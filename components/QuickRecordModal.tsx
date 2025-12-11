@@ -32,7 +32,7 @@ interface QuickRecordModalProps {
 
 const { height } = Dimensions.get('window');
 
-export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRecordModalProps) {
+const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose, onRecord }: QuickRecordModalProps) {
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const { user } = useAuthAdvanced();
   const [isRecording, setIsRecording] = useState(false);
@@ -397,7 +397,7 @@ export default function QuickRecordModal({ visible, onClose, onRecord }: QuickRe
       </View>
     </Modal>
   );
-}
+});
 
 // 動的なスタイルを定義（Platformに依存するため）
 const getTimeButtonStyle = () => ({
@@ -529,3 +529,5 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
 });
+
+export default QuickRecordModal;

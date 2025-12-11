@@ -148,7 +148,7 @@ export default function NotificationSettingsScreen() {
     if (Platform.OS === 'web' && 'Notification' in window && Notification.permission === 'granted') {
       new Notification('音楽練習アプリ', {
         body: 'これはテスト通知です。通知設定が正常に動作しています。',
-        icon: '/icon.png',
+        icon: '/assets/images/icon.png',
       });
     } else {
       Alert.alert('通知テスト', '通知のテストはWeb環境でのみ利用できます');

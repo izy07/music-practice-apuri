@@ -200,3 +200,4 @@ COMMENT ON FUNCTION ensure_attendance_records_table IS 'attendance_recordsテー
 GRANT EXECUTE ON FUNCTION ensure_attendance_records_table() TO authenticated;
 GRANT EXECUTE ON FUNCTION ensure_attendance_records_table() TO anon;
 
+

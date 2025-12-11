@@ -322,8 +322,6 @@ export default function TunerScreen() {
     }
   }, []);
 
-
-<<<<<<< Updated upstream
   // チューナー機能：音程検出を開始
   const startListening = async () => {
     try {
@@ -372,7 +370,7 @@ export default function TunerScreen() {
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 4096; // 高精度な周波数検出のため大きなFFTサイズ
-      analyser.smoothingTimeConstant = 0.3;
+      analyser.smoothingTimeConstant = 0.5; // より滑らかな平滑化
       source.connect(analyser);
       analyserNodeRef.current = analyser;
 
@@ -382,7 +380,7 @@ export default function TunerScreen() {
 
       // 定期的に音程を検出（60fps相当）
       // 周波数検出の信頼性を向上させるため、複数フレームの平均を使用
-      const HISTORY_SIZE = 5; // 5フレームの履歴を使用
+      const HISTORY_SIZE = 7; // 7フレームの履歴を使用（より滑らかに）
       frequencyHistoryRef.current = []; // 履歴をリセット
 
       const processAudio = () => {
@@ -409,12 +407,12 @@ export default function TunerScreen() {
             medianFreq = sortedFreqs[Math.floor(sortedFreqs.length / 2)];
           }
 
-          // 平滑化処理（中央値を使用）
+          // 平滑化処理（中央値を使用、より滑らかに）
           const smoothedFreq = smoothValue(
             smoothedFrequencyRef.current,
             medianFreq,
-            0.2, // alpha（より保守的に）
-            30   // maxChange (Hz)（より厳しく）
+            0.15, // alpha（より滑らかに）
+            20   // maxChange (Hz)（より滑らかに）
           );
           smoothedFrequencyRef.current = smoothedFreq;
 
@@ -435,19 +433,18 @@ export default function TunerScreen() {
             });
           }
           
-          // UIを更新
+          // UIを更新（滑らかな更新のため、状態更新を最適化）
           setCurrentFrequency(smoothedFreq);
           setCurrentNote(noteInfo.note);
           setCurrentNoteJa(noteInfo.noteJa);
           setCurrentOctave(noteInfo.octave);
           setCurrentCents(noteInfo.cents);
 
-          // チューニングバーの位置を更新
-          const position = ((noteInfo.cents + 50) / 100) * 100; // -50から+50セントを0-100%に変換
+          // チューニングバーの位置を更新（より滑らかなアニメーション）
           Animated.timing(tuningBarAnimation, {
             toValue: noteInfo.cents,
-            duration: 100,
-            easing: Easing.out(Easing.quad),
+            duration: 200, // より長いdurationで滑らかに
+            easing: Easing.out(Easing.cubic), // より滑らかなイージング
             useNativeDriver: false,
           }).start();
 
@@ -459,8 +456,8 @@ export default function TunerScreen() {
           frequencyHistoryRef.current = [];
           
           if (smoothedFrequencyRef.current > 0) {
-            // フェードアウト
-            smoothedFrequencyRef.current = smoothValue(smoothedFrequencyRef.current, 0, 0.1, 10);
+            // より滑らかなフェードアウト
+            smoothedFrequencyRef.current = smoothValue(smoothedFrequencyRef.current, 0, 0.08, 8);
             if (smoothedFrequencyRef.current < 1) {
               smoothedFrequencyRef.current = 0;
               setCurrentFrequency(0);
@@ -469,6 +466,29 @@ export default function TunerScreen() {
               setCurrentOctave(0);
               setCurrentCents(0);
               setIndicatorColor('#9E9E9E');
+              
+              // チューニングバーも滑らかにリセット
+              Animated.timing(tuningBarAnimation, {
+                toValue: 0,
+                duration: 300,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: false,
+              }).start();
+            } else {
+              // フェードアウト中もUIを更新（滑らかに）
+              const noteInfo = getNoteFromFrequency(smoothedFrequencyRef.current, a4Frequency);
+              setCurrentFrequency(smoothedFrequencyRef.current);
+              setCurrentNote(noteInfo.note);
+              setCurrentNoteJa(noteInfo.noteJa);
+              setCurrentOctave(noteInfo.octave);
+              setCurrentCents(noteInfo.cents);
+              
+              Animated.timing(tuningBarAnimation, {
+                toValue: noteInfo.cents,
+                duration: 200,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: false,
+              }).start();
             }
           }
         }
@@ -518,16 +538,6 @@ export default function TunerScreen() {
 
     logger.debug('チューナー機能を停止しました');
   };
-=======
-  // チューナー機能は削除済み（UIのみ表示）（useCallbackでメモ化）
-  const startListening = useCallback(() => {
-    Alert.alert(t('featureUnavailable'), t('tunerUnavailable'));
-  }, [t]);
-
-  const stopListening = useCallback(() => {
-    // 何もしない（UI表示のみ）
-  }, []);
->>>>>>> Stashed changes
 
 
   // 開放弦の音を連続再生する関数
@@ -539,21 +549,29 @@ export default function TunerScreen() {
         return;
       }
 
-      // リソース管理サービスからAudioContextを取得
-      const audioCtx = await audioResourceManager.acquireAudioContext(OWNER_NAME);
-      if (!audioCtx) {
-        Alert.alert('エラー', 'オーディオリソースを取得できませんでした。他の機能が使用中かもしれません。');
-        return;
-      }
-
-      // refを更新（メトロノームとの共有のため）
-      audioContextRef.current = audioCtx;
-      
       // 既に再生中の場合は停止してから新しい音を再生
       stopOpenString();
       
-      // 少し待ってから新しい音を再生（クリーンアップのため）
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // クリーンアップが完了するまで少し待つ
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // AudioContextを取得（既に存在する場合は再利用）
+      let audioCtx = audioContextRef.current;
+      if (!audioCtx || audioCtx.state === 'closed') {
+        // リソース管理サービスからAudioContextを取得
+        audioCtx = await audioResourceManager.acquireAudioContext(OWNER_NAME);
+        if (!audioCtx) {
+          Alert.alert('エラー', 'オーディオリソースを取得できませんでした。他の機能が使用中かもしれません。');
+          return;
+        }
+        // refを更新（メトロノームとの共有のため）
+        audioContextRef.current = audioCtx;
+      }
+      
+      // AudioContextがsuspended状態の場合は再開
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
       
       const oscillator = audioCtx.createOscillator();
       const gainNode = audioCtx.createGain();
@@ -581,46 +599,94 @@ export default function TunerScreen() {
       logger.debug(`Playing open string continuously: ${note} at ${frequency}Hz`);
     } catch (error) {
       ErrorHandler.handle(error, '開放弦の音再生', true);
-      Alert.alert('エラー', '音の再生に失敗しました。');
+      // エラーメッセージを詳細化
+      const errorMessage = error instanceof Error ? error.message : '音の再生に失敗しました。';
+      if (errorMessage.includes('AudioContextは既に')) {
+        // AudioContextの競合エラーの場合は、既存のAudioContextを使用
+        logger.warn('AudioContext競合を検出、既存のAudioContextを使用します');
+        // 再試行（既存のAudioContextを使用）
+        const audioCtx = audioContextRef.current;
+        if (audioCtx && audioCtx.state !== 'closed') {
+          try {
+            // 既存のAudioContextで再試行
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            audioResourceManager.registerOscillator(OWNER_NAME, oscillator);
+            openStringOscillatorRef.current = oscillator;
+            openStringGainNodeRef.current = gainNode;
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+            oscillator.type = 'sine';
+            gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+            gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.1);
+            oscillator.start(audioCtx.currentTime);
+            setPlayingOpenString(note);
+            return;
+          } catch (retryError) {
+            logger.error('再試行も失敗:', retryError);
+          }
+        }
+      }
+      Alert.alert('エラー', errorMessage);
     }
   };
 
   // 開放弦の音を停止する関数
   const stopOpenString = () => {
     try {
+      // 状態を即座にリセット（UIの更新を優先）
+      setPlayingOpenString(null);
+      
       if (openStringOscillatorRef.current && openStringGainNodeRef.current && audioContextRef.current) {
         const audioCtx = audioContextRef.current;
+        const oscillator = openStringOscillatorRef.current;
+        const gainNode = openStringGainNodeRef.current;
         
-        // フェードアウトしてから停止
+        // audioResourceManagerからオシレーターを登録解除
         try {
-          openStringGainNodeRef.current.gain.cancelScheduledValues(audioCtx.currentTime);
-          openStringGainNodeRef.current.gain.setValueAtTime(openStringGainNodeRef.current.gain.value, audioCtx.currentTime);
-          openStringGainNodeRef.current.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+          audioResourceManager.unregisterOscillator(OWNER_NAME, oscillator);
         } catch (e) {
-          logger.warn('Gain node fadeout error:', e);
+          logger.debug('Unregister oscillator error:', e);
         }
         
-        setTimeout(() => {
-          try {
-            if (openStringOscillatorRef.current) {
-              openStringOscillatorRef.current.stop();
-              openStringOscillatorRef.current.disconnect();
-              openStringOscillatorRef.current = null;
-            }
-            if (openStringGainNodeRef.current) {
-              openStringGainNodeRef.current.disconnect();
-              openStringGainNodeRef.current = null;
-            }
-          } catch (e) {
-            logger.warn('Oscillator cleanup error:', e);
-          }
-        }, 150);
+        // 即座に音量を0にして停止
+        try {
+          gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+          gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        } catch (e) {
+          logger.warn('Gain node stop error:', e);
+        }
+        
+        // オシレーターを即座に停止
+        try {
+          oscillator.stop();
+          oscillator.disconnect();
+        } catch (e) {
+          // 既に停止している場合は無視
+          logger.debug('Oscillator already stopped:', e);
+        }
+        
+        // GainNodeも切断
+        try {
+          gainNode.disconnect();
+        } catch (e) {
+          logger.debug('GainNode disconnect error:', e);
+        }
+        
+        // 参照をクリア
+        openStringOscillatorRef.current = null;
+        openStringGainNodeRef.current = null;
+        
+        logger.debug('Stopped open string immediately');
       }
-      
-      setPlayingOpenString(null);
-      logger.debug('Stopped open string');
     } catch (error) {
       ErrorHandler.handle(error, '開放弦の音停止', false);
+      // エラーが発生しても参照をクリア
+      openStringOscillatorRef.current = null;
+      openStringGainNodeRef.current = null;
       setPlayingOpenString(null);
     }
   };
@@ -927,7 +993,7 @@ export default function TunerScreen() {
               </View>
             </>
           ) : (
-            <Metronome audioContextRef={audioContextRef} />
+            <Metronome audioContextRef={audioContextRef} ownerName={OWNER_NAME} />
           )}
         </View>
       </ScrollView>

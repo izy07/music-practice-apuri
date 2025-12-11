@@ -399,6 +399,10 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
                 setInitialTheme(parsedTheme);
                 setCustomThemeState(parsedTheme);
                 setIsCustomTheme(true);
+                // 楽器IDも設定（楽器ヘッダーの一瞬消えを防ぐ）
+                if (instrumentStr) {
+                  setSelectedInstrumentState(instrumentStr);
+                }
                 return; // カスタムテーマが見つかったので終了
               } catch (parseError) {
                 // エラーは無視
@@ -449,6 +453,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     // 既存のテーマを即座に読み込む（非同期だが最優先で実行）
     // user.selected_instrument_idがある場合は即座に設定される（高速化）
     // initialThemeの初期値は既に設定されているため、リロード時も黒にならない
+    // 即座に実行（awaitしない）して、バックグラウンドで読み込み
     loadExistingTheme();
 
     const initialize = async () => {

@@ -35,13 +35,9 @@ class WebAudioRecorderImpl implements WebAudioRecorder {
 
   async start(): Promise<void> {
     try {
-<<<<<<< Updated upstream
       // リソース管理サービスからマイクアクセスを取得（排他制御）
+      // STT用に16000Hzに最適化
       this.stream = await audioResourceManager.acquireMicrophone(this.OWNER_NAME, {
-=======
-      // マイクアクセスの要求（STT用に16000Hzに最適化）
-      this.stream = await navigator.mediaDevices.getUserMedia({ 
->>>>>>> Stashed changes
         audio: {
           echoCancellation: true,
           noiseSuppression: true,

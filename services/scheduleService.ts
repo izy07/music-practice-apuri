@@ -91,11 +91,12 @@ export class ScheduleService {
    * 練習日程を作成
    */
   async createSchedule(
-    schedule: Omit<PracticeSchedule, 'id' | 'created_at'>
+    schedule: Omit<PracticeSchedule, 'id' | 'created_at'>,
+    addToCalendar?: boolean
   ): Promise<ServiceResult<PracticeSchedule>> {
     return safeServiceExecute(
       async () => {
-        logger.debug(`[${SERVICE_CONTEXT}] createSchedule:start`, { schedule });
+        logger.debug(`[${SERVICE_CONTEXT}] createSchedule:start`, { schedule, addToCalendar });
 
         if (!schedule.title.trim()) {
           throw new Error('練習タイトルを入力してください');
@@ -109,8 +110,8 @@ export class ScheduleService {
           throw new Error('練習日程の作成に失敗しました');
         }
 
-        // practice_typeが'event'の場合、eventsテーブルにも登録
-        if (result.data.practice_type === 'event') {
+        // practice_typeが'event'かつaddToCalendarがtrueの場合のみ、eventsテーブルにも登録
+        if (result.data.practice_type === 'event' && addToCalendar === true) {
           try {
             // created_byからuser_idを取得（practice_schedulesテーブルの構造に依存）
             const { data: { user } } = await supabase.auth.getUser();

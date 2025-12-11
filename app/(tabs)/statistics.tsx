@@ -11,6 +11,7 @@ import { UI, DATA, STATISTICS } from '@/lib/constants';
 import { getPracticeSessionsByDateRange } from '@/repositories/practiceSessionRepository';
 import { formatMinutesToHours } from '@/lib/dateUtils';
 import { getInstrumentId } from '@/lib/instrumentUtils';
+import { practiceDataCache, PracticeDataCache } from '@/lib/cache/practiceDataCache';
 
 const { width } = Dimensions.get('window');
 
@@ -109,27 +110,46 @@ export default function StatisticsScreen() {
   const [practiceRecords, setPracticeRecords] = useState<PracticeRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // 練習記録データを取得
+  // 練習記録データを取得（キャッシュ付き）
   const fetchPracticeRecords = React.useCallback(async () => {
     if (!user) return;
     
     try {
       setLoading(true);
       
-<<<<<<< Updated upstream
       // 共通関数を使用して楽器IDを取得
       const currentInstrumentId = getInstrumentId(selectedInstrument);
-=======
-      // 統計画面では、楽器が選択されていない場合は全楽器のデータを取得
-      // 楽器が選択されている場合は、その楽器のデータのみを取得
-      const currentInstrumentId = selectedInstrument?.id || null;
->>>>>>> Stashed changes
       
       // 最適化されたクエリ: 必要なカラムのみ取得、最近2年分を取得（年別統計のため24ヶ月分）
       // 2年分のデータで年別グラフ（12ヶ月）を表示可能
       const twoYearsAgo = new Date();
       twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
       const startDate = twoYearsAgo.toISOString().split('T')[0]; // YYYY-MM-DD形式
+      
+      // キャッシュキーを生成
+      const cacheKey = PracticeDataCache.generateKey('statistics', {
+        userId: user.id,
+        instrumentId: currentInstrumentId || 'null',
+        startDate,
+      });
+      
+      // メモリキャッシュから取得を試行
+      const cachedData = practiceDataCache.get<PracticeRecord[]>(cacheKey);
+      if (cachedData) {
+        setPracticeRecords(cachedData);
+        setLoading(false);
+        return;
+      }
+      
+      // ローカルストレージキャッシュから取得を試行
+      const storageData = await practiceDataCache.getFromStorage<PracticeRecord[]>(cacheKey);
+      if (storageData) {
+        setPracticeRecords(storageData);
+        // メモリキャッシュにも保存
+        practiceDataCache.set(cacheKey, storageData);
+        setLoading(false);
+        return;
+      }
       
       console.log('[統計画面] 練習記録取得開始:', {
         userId: user.id,
@@ -166,6 +186,10 @@ export default function StatisticsScreen() {
       if (invalidRecords.length > 0) {
         console.warn('[統計画面] duration_minutesがnull/undefinedのレコード:', invalidRecords.length, '件');
       }
+
+      // キャッシュに保存（メモリとローカルストレージ）
+      practiceDataCache.set(cacheKey, records);
+      await practiceDataCache.setToStorage(cacheKey, records);
 
       setPracticeRecords(records);
     } catch (error) {
@@ -213,7 +237,25 @@ export default function StatisticsScreen() {
         }
       }
       
-      // 通常のデータ読み込み
+      // 通常のデータ読み込み（キャッシュを確認してから実行）
+      // キャッシュキーを生成
+      const currentInstrumentId = getInstrumentId(selectedInstrument);
+      const twoYearsAgo = new Date();
+      twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+      const startDate = twoYearsAgo.toISOString().split('T')[0];
+      const cacheKey = PracticeDataCache.generateKey('statistics', {
+        userId: user.id,
+        instrumentId: currentInstrumentId || 'null',
+        startDate,
+      });
+      
+      // メモリキャッシュを確認
+      const cachedData = practiceDataCache.get<PracticeRecord[]>(cacheKey);
+      if (cachedData) {
+        // キャッシュがある場合はスキップ（前回取得から60秒以内の場合のみ）
+        return;
+      }
+      
       fetchPracticeRecords();
     }, [user, selectedInstrument, fetchPracticeRecords])
   );
@@ -242,15 +284,41 @@ export default function StatisticsScreen() {
           logger.error('統計画面: 1回目のデータ更新エラー:', error);
         }
         
-        // verifiedでない場合は、さらに待機してから2回目の更新を試行
+        // verifiedでない場合は、さらに待機してから2回目の更新を試行（キャッシュを無効化）
         if (!isVerified) {
           setTimeout(async () => {
             try {
+              // キャッシュを無効化してから取得
+              const currentInstrumentId = getInstrumentId(selectedInstrument);
+              const twoYearsAgo = new Date();
+              twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+              const startDate = twoYearsAgo.toISOString().split('T')[0];
+              const cacheKey = PracticeDataCache.generateKey('statistics', {
+                userId: user?.id || '',
+                instrumentId: currentInstrumentId || 'null',
+                startDate,
+              });
+              practiceDataCache.delete(cacheKey);
+              await practiceDataCache.deleteFromStorage(cacheKey);
+              
               await fetchPracticeRecords();
             } catch (error) {
               logger.error('統計画面: 2回目のデータ更新エラー:', error);
             }
           }, 1000);
+        } else {
+          // verifiedの場合はキャッシュを無効化してから取得
+          const currentInstrumentId = getInstrumentId(selectedInstrument);
+          const twoYearsAgo = new Date();
+          twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+          const startDate = twoYearsAgo.toISOString().split('T')[0];
+          const cacheKey = PracticeDataCache.generateKey('statistics', {
+            userId: user?.id || '',
+            instrumentId: currentInstrumentId || 'null',
+            startDate,
+          });
+          practiceDataCache.delete(cacheKey);
+          practiceDataCache.deleteFromStorage(cacheKey);
         }
       }, initialDelay);
     };
@@ -260,7 +328,7 @@ export default function StatisticsScreen() {
     return () => {
       window.removeEventListener('practiceRecordUpdated', handlePracticeRecordUpdated);
     };
-  }, [fetchPracticeRecords]);
+  }, [fetchPracticeRecords, user, selectedInstrument]);
 
 
   // 日別（当週：月〜日）- メモ化で最適化
@@ -436,8 +504,6 @@ export default function StatisticsScreen() {
     return arr;
   }, [practiceRecords]);
 
-<<<<<<< Updated upstream
-=======
   // 練習方法別統計を計算 - メモ化で最適化
   // 基礎練（preset）は時間が0のため統計から除外
   const getInputMethodStats = useMemo(() => {
@@ -464,7 +530,6 @@ export default function StatisticsScreen() {
       .map(([method, stats]) => ({ method, ...stats }))
       .sort((a, b) => b.totalMinutes - a.totalMinutes);
   }, [practiceRecords]);
->>>>>>> Stashed changes
 
   // 最近の練習記録を取得 - メモ化で最適化
   const getRecentRecords = useMemo(() => {
@@ -496,8 +561,8 @@ export default function StatisticsScreen() {
     const sortedRecords = [...practiceRecords]
       .filter(r => r.input_method !== 'preset' && (r.duration_minutes ?? 0) > 0)
       .sort((a, b) => 
-        new Date(a.practice_date).getTime() - new Date(b.practice_date).getTime()
-      );
+      new Date(a.practice_date).getTime() - new Date(b.practice_date).getTime()
+    );
     let currentStreak = 0;
     let longestStreak = 0;
     let lastDate: Date | null = null;
@@ -536,11 +601,11 @@ export default function StatisticsScreen() {
       // duration_minutesが0より大きい場合のみ統計に含める
       const minutes = record.duration_minutes ?? 0;
       if (minutes > 0) {
-        const date = new Date(record.practice_date);
-        const dayOfWeek = date.getDay();
-        const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
-        const dayName = weekdays[dayOfWeek];
-        weeklyPattern[dayName] = (weeklyPattern[dayName] || 0) + 1;
+      const date = new Date(record.practice_date);
+      const dayOfWeek = date.getDay();
+      const weekdays = ['日', '月', '火', '水', '木', '金', '土'];
+      const dayName = weekdays[dayOfWeek];
+      weeklyPattern[dayName] = (weeklyPattern[dayName] || 0) + 1;
       }
     });
 
@@ -592,15 +657,13 @@ export default function StatisticsScreen() {
       if (minutes > 0) {
         if (minutes < 30) intensityStats.short++;
         else if (minutes < 60) intensityStats.medium++;
-        else intensityStats.long++;
+      else intensityStats.long++;
       }
     });
 
     // 7. 総練習日数と練習回数
     // 基礎練（preset）とduration_minutesが0の記録を除外
-    const validRecords = practiceRecords.filter(r => 
-      r.input_method !== 'preset' && (r.duration_minutes ?? 0) > 0
-    );
+    // 549行目で既に計算済みのvalidRecordsを再利用
     const uniqueDates = new Set(validRecords.map(r => r.practice_date));
     const totalPracticeDays = uniqueDates.size;
     const totalPracticeCount = validRecords.length;

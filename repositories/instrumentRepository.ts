@@ -6,7 +6,7 @@
 import { supabase } from '@/lib/supabase';
 import { safeExecute, RepositoryResult } from '@/lib/database/baseRepository';
 import logger from '@/lib/logger';
-import { getCached, setCached, createCacheKey } from '@/lib/simpleCache';
+import { practiceDataCache, PracticeDataCache } from '@/lib/cache/practiceDataCache';
 
 const REPOSITORY_CONTEXT = 'instrumentRepository';
 const CACHE_KEY_INSTRUMENTS = 'instruments:all';
@@ -36,7 +36,7 @@ export const getAllInstruments = async (): Promise<RepositoryResult<InstrumentFr
       logger.debug(`[${REPOSITORY_CONTEXT}] getAllInstruments:start`);
       
       // キャッシュから取得を試行
-      const cached = getCached<InstrumentFromDB[]>(CACHE_KEY_INSTRUMENTS);
+      const cached = practiceDataCache.get<InstrumentFromDB[]>(CACHE_KEY_INSTRUMENTS);
       if (cached) {
         logger.debug(`[${REPOSITORY_CONTEXT}] getAllInstruments:cache hit`);
         return cached;
@@ -93,7 +93,7 @@ export const getAllInstruments = async (): Promise<RepositoryResult<InstrumentFr
       }
       
       // キャッシュに保存
-      setCached(CACHE_KEY_INSTRUMENTS, instruments);
+      practiceDataCache.set(CACHE_KEY_INSTRUMENTS, instruments);
       
       logger.debug(`[${REPOSITORY_CONTEXT}] getAllInstruments:success`, { count: instruments.length });
       return instruments;

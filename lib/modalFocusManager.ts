@@ -120,9 +120,35 @@ export const disableBackgroundFocus = () => {
 
 /**
  * モーダルが閉じたときに背景を再有効化
+ * モーダルが閉じる際に、モーダル内の要素からフォーカスを外す
  */
 export const enableBackgroundFocus = () => {
   if (typeof window === 'undefined') return;
+  
+  // モーダルが閉じる前に、モーダル内の要素からフォーカスを外す
+  // これにより、aria-hidden警告を根本的に解決
+  const activeElement = document.activeElement as HTMLElement;
+  if (activeElement) {
+    // モーダル内の要素にフォーカスがある場合、フォーカスを外す
+    if (activeElement.closest('[role="dialog"]') || 
+        activeElement.closest('[aria-modal="true"]') ||
+        activeElement.closest('[data-modal-content]')) {
+      // フォーカスをbodyに移動（aria-hidden警告を防ぐため）
+      if (activeElement.blur) {
+        activeElement.blur();
+      }
+      // bodyにフォーカスを移動
+      if (document.body && document.body.focus) {
+        document.body.focus();
+      } else {
+        // bodyがフォーカスできない場合は、root要素にフォーカスを移動
+        const root = getRootElement();
+        if (root && root.focus) {
+          root.focus();
+        }
+      }
+    }
+  }
   
   modalCount = Math.max(0, modalCount - 1);
   
@@ -152,6 +178,20 @@ export const enableBackgroundFocus = () => {
       }
       htmlElement.removeAttribute('data-modal-disabled-tabindex');
     });
+    
+    // すべてのaria-hidden属性を削除（安全のため）
+    setTimeout(() => {
+      const elementsWithAriaHidden = document.querySelectorAll('[aria-hidden="true"]');
+      elementsWithAriaHidden.forEach((element) => {
+        const htmlElement = element as HTMLElement;
+        // モーダル内の要素は除外（まだ開いているモーダルがある可能性があるため）
+        if (!htmlElement.closest('[role="dialog"]') && 
+            !htmlElement.closest('[aria-modal="true"]') &&
+            !htmlElement.closest('[data-modal-content]')) {
+          htmlElement.removeAttribute('aria-hidden');
+        }
+      });
+    }, 0);
   }
 };
 
@@ -169,6 +209,31 @@ export const focusFirstElement = (container: HTMLElement | null) => {
     setTimeout(() => {
       firstFocusable.focus();
     }, 100);
+  }
+};
+
+/**
+ * モーダルが閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+ * すべてのモーダルのonClose/onRequestCloseで呼び出す
+ */
+export const blurActiveElement = () => {
+  if (typeof window === 'undefined') return;
+  
+  const activeElement = document.activeElement as HTMLElement;
+  if (activeElement) {
+    // モーダル内の要素にフォーカスがある場合のみ処理
+    if (activeElement.closest('[role="dialog"]') || 
+        activeElement.closest('[aria-modal="true"]') ||
+        activeElement.closest('[data-modal-content]')) {
+      // フォーカスを外す
+      if (activeElement.blur) {
+        activeElement.blur();
+      }
+      // bodyにフォーカスを移動（フォーカスが残らないようにする）
+      if (document.body && document.body.focus) {
+        document.body.focus();
+      }
+    }
   }
 };
 

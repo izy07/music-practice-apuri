@@ -393,12 +393,73 @@ BEGIN
 END $$;
 
 -- ============================================
+-- 4. representative_songsテーブルの作成
+-- ============================================
+DO $$
+BEGIN
+  -- representative_songsテーブルが存在しない場合は作成
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables 
+    WHERE table_schema = 'public' 
+    AND table_name = 'representative_songs'
+  ) THEN
+    CREATE TABLE representative_songs (
+      id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+      instrument_id UUID REFERENCES instruments(id) ON DELETE CASCADE NOT NULL,
+      title TEXT NOT NULL,
+      composer TEXT NOT NULL,
+      era TEXT,
+      genre TEXT,
+      difficulty_level INTEGER CHECK (difficulty_level >= 1 AND difficulty_level <= 5),
+      youtube_url TEXT,
+      spotify_url TEXT,
+      description_ja TEXT,
+      description_en TEXT,
+      is_popular BOOLEAN DEFAULT false,
+      display_order INTEGER DEFAULT 0,
+      famous_performer TEXT,
+      famous_video_url TEXT,
+      famous_note TEXT,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    );
+    
+    -- インデックスの作成
+    CREATE INDEX IF NOT EXISTS idx_representative_songs_instrument_id ON representative_songs(instrument_id);
+    CREATE INDEX IF NOT EXISTS idx_representative_songs_display_order ON representative_songs(display_order);
+    CREATE INDEX IF NOT EXISTS idx_representative_songs_is_popular ON representative_songs(is_popular);
+    
+    -- RLSを有効化
+    ALTER TABLE representative_songs ENABLE ROW LEVEL SECURITY;
+    
+    -- RLSポリシーの作成（全ユーザーが読み取り可能）
+    DROP POLICY IF EXISTS "Anyone can view representative songs" ON representative_songs;
+    DROP POLICY IF EXISTS "representative_songs_select_policy" ON representative_songs;
+    
+    CREATE POLICY "Anyone can view representative songs" ON representative_songs
+      FOR SELECT USING (true);
+    
+    -- 更新日時を自動更新するトリガー
+    DROP TRIGGER IF EXISTS update_representative_songs_updated_at ON representative_songs;
+    CREATE TRIGGER update_representative_songs_updated_at
+      BEFORE UPDATE ON representative_songs
+      FOR EACH ROW
+      EXECUTE FUNCTION update_updated_at_column();
+    
+    RAISE NOTICE '✅ representative_songsテーブルを作成しました';
+  ELSE
+    RAISE NOTICE 'ℹ️ representative_songsテーブルは既に存在します';
+  END IF;
+END $$;
+
+-- ============================================
 -- 7. 確認メッセージ
 -- ============================================
 DO $$
 BEGIN
+
   RAISE NOTICE '========================================';
-  RAISE NOTICE 'practice_schedules、tasks、attendance_recordsテーブルの作成が完了しました';
+  RAISE NOTICE 'practice_schedules、tasks、attendance_records、representative_songsテーブルの作成が完了しました';
   RAISE NOTICE '========================================';
   RAISE NOTICE '1. practice_schedulesテーブルの作成';
   RAISE NOTICE '2. practice_schedulesテーブルのRLSポリシー作成';
@@ -406,7 +467,9 @@ BEGIN
   RAISE NOTICE '4. attendance_recordsテーブルのRLSポリシー作成';
   RAISE NOTICE '5. tasksテーブルの作成';
   RAISE NOTICE '6. tasksテーブルのRLSポリシー作成';
-  RAISE NOTICE '7. 更新日時トリガーの設定';
+  RAISE NOTICE '7. representative_songsテーブルの作成';
+  RAISE NOTICE '8. representative_songsテーブルのRLSポリシー作成';
+  RAISE NOTICE '9. 更新日時トリガーの設定';
   RAISE NOTICE '========================================';
 END $$;
 

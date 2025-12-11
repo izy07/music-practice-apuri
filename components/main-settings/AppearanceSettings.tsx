@@ -91,20 +91,20 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ label, color, onColorChange, 
   };
 
   return (
-    <View style={styles.colorPickerContainer}>
-      <Text style={[styles.colorPickerLabel, { color: currentTheme?.text || '#2D3748' }]}>{label}</Text>
-      <View style={styles.colorPickerRow}>
+  <View style={styles.colorPickerContainer}>
+    <Text style={[styles.colorPickerLabel, { color: currentTheme?.text || '#2D3748' }]}>{label}</Text>
+    <View style={styles.colorPickerRow}>
         <View style={[styles.colorPreview, { backgroundColor: color, borderColor: currentTheme?.secondary || '#E2E8F0' }]} />
-        <TouchableOpacity
+      <TouchableOpacity
           style={[styles.colorButton, { backgroundColor: currentTheme?.primary || '#4A5568' }]}
           onPress={openColorPicker}
-          activeOpacity={0.7}
-        >
+        activeOpacity={0.7}
+      >
           <Text style={[styles.colorButtonText, { color: currentTheme?.surface || '#FFFFFF' }]}>変更</Text>
-        </TouchableOpacity>
-      </View>
+      </TouchableOpacity>
     </View>
-  );
+  </View>
+);
 };
 
 interface AppearanceSettingsProps {

@@ -10,6 +10,9 @@ import { ErrorHandler } from '@/lib/errorHandler';
 import { getUserProfile } from '@/repositories/userRepository';
 import { getSession } from '@/lib/authService';
 import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { STORAGE_KEYS } from '@/lib/storageKeys';
+import { instrumentService } from '@/services';
 
 export default function InstrumentHeader() {
   const router = useRouter();
@@ -18,6 +21,44 @@ export default function InstrumentHeader() {
   const { isAuthenticated, user } = useAuthAdvanced();
   const [showLearningTools, setShowLearningTools] = useState(false);
   const [showAppealModal, setShowAppealModal] = useState(false);
+  
+  // AsyncStorageから即座に読み込んだ楽器情報（リロード時の一瞬消えを防ぐ）
+  const [cachedInstrumentInfo, setCachedInstrumentInfo] = useState<{ id: string; name: string; name_en: string } | null>(null);
+  
+  // 初期化時にAsyncStorageから楽器情報を即座に読み込む
+  useEffect(() => {
+    const loadCachedInstrument = async () => {
+      try {
+        const uid = user?.id || '';
+        const getKey = (base: string, userId?: string) => userId ? `${base}:${userId}` : base;
+        
+        // ユーザー別キーから読み込む
+        let storedInstrument = await AsyncStorage.getItem(getKey(STORAGE_KEYS.selectedInstrument, uid));
+        
+        // 従来キーもチェック
+        if (!storedInstrument) {
+          storedInstrument = await AsyncStorage.getItem(STORAGE_KEYS.selectedInstrument);
+        }
+        
+        if (storedInstrument) {
+          // デフォルト楽器から即座に取得（dbInstrumentsが読み込まれる前でも表示可能）
+          const defaultInstruments = instrumentService.getDefaultInstruments();
+          const instrument = defaultInstruments.find(inst => inst.id === storedInstrument);
+          if (instrument) {
+            setCachedInstrumentInfo({
+              id: instrument.id,
+              name: instrument.name,
+              name_en: instrument.nameEn,
+            });
+          }
+        }
+      } catch (error) {
+        // エラーは無視（コンテキストから取得する）
+      }
+    };
+    
+    loadCachedInstrument();
+  }, [user?.id]);
   
   // 楽器情報をコンテキストのキャッシュから取得（データベースクエリ不要）
   const instrumentInfo = useMemo(() => {
@@ -219,6 +260,12 @@ export default function InstrumentHeader() {
         const displayName = language === 'en' ? instrument.nameEn : instrument.name;
         return removeEmoji(displayName);
       }
+    }
+    
+    // AsyncStorageから読み込んだ楽器情報を表示（リロード時の一瞬消えを防ぐ）
+    if (cachedInstrumentInfo) {
+      const displayName = language === 'en' ? cachedInstrumentInfo.name_en : cachedInstrumentInfo.name;
+      return removeEmoji(displayName);
     }
     
     // 楽器が選択されていない場合（存在しない状況なので空文字列を返す）

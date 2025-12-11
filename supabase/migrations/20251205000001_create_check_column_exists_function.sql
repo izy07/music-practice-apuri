@@ -30,3 +30,4 @@ GRANT EXECUTE ON FUNCTION check_column_exists TO authenticated;
 
 
 
+

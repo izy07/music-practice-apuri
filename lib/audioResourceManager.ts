@@ -35,6 +35,12 @@ class AudioResourceManager {
    * AudioContextを取得（排他制御）
    */
   async acquireAudioContext(owner: string): Promise<AudioContext | null> {
+    // 同じオーナーが既にAudioContextを使用している場合は、既存のものを返す
+    if (this.audioContextOwner === owner && this.audioContext) {
+      return this.audioContext;
+    }
+
+    // 異なるオーナーが使用している場合はエラー
     if (this.audioContextOwner && this.audioContextOwner !== owner) {
       throw new Error(`AudioContextは既に${this.audioContextOwner}によって使用されています`);
     }
@@ -88,6 +94,22 @@ class AudioResourceManager {
       this.oscillators.set(owner, []);
     }
     this.oscillators.get(owner)?.push(oscillator);
+  }
+
+  /**
+   * オシレーターを登録解除
+   */
+  unregisterOscillator(owner: string, oscillator: OscillatorNode): void {
+    const ownerOscillators = this.oscillators.get(owner);
+    if (ownerOscillators) {
+      const index = ownerOscillators.indexOf(oscillator);
+      if (index > -1) {
+        ownerOscillators.splice(index, 1);
+      }
+      if (ownerOscillators.length === 0) {
+        this.oscillators.delete(owner);
+      }
+    }
   }
 
   /**
@@ -172,4 +194,5 @@ class AudioResourceManager {
 }
 
 export default AudioResourceManager.getInstance();
+
 

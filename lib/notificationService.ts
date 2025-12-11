@@ -229,8 +229,8 @@ export class NotificationService {
         if (Notification.permission === 'granted') {
           const notification = new Notification(title, {
             body,
-            icon: '/icon.png',
-            badge: '/icon.png',
+            icon: '/assets/images/icon.png',
+            badge: '/assets/images/icon.png',
             tag: 'music-practice',
             requireInteraction: false,
             silent: !this.settings?.sound_notifications,

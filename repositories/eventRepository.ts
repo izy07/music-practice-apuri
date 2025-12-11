@@ -26,10 +26,16 @@ export const createEvent = async (
   event: Omit<Event, 'id' | 'created_at' | 'updated_at'>
 ): Promise<{ data: Event | null; error: any }> => {
   try {
-    const payload = {
+    // dateとevent_dateの両方を設定（テーブルスキーマの互換性のため）
+    const payload: any = {
       ...event,
       created_at: new Date().toISOString(),
     };
+    
+    // event_dateカラムが存在する場合は、dateと同じ値を設定
+    if (event.date) {
+      payload.event_date = event.date;
+    }
     
     const { data, error } = await supabase
       .from('events')
@@ -38,7 +44,7 @@ export const createEvent = async (
       .single();
     
     if (error) {
-      logger.error(`[${REPOSITORY_CONTEXT}] createEvent:error`, { error });
+      logger.error(`[${REPOSITORY_CONTEXT}] createEvent:error`, { error, payload });
       return { data: null, error };
     }
     
@@ -57,10 +63,16 @@ export const updateEvent = async (
   updates: Partial<Event>
 ): Promise<{ data: Event | null; error: any }> => {
   try {
-    const payload = {
+    // dateとevent_dateの両方を設定（テーブルスキーマの互換性のため）
+    const payload: any = {
       ...updates,
       updated_at: new Date().toISOString(),
     };
+    
+    // dateが更新される場合は、event_dateも同じ値に設定
+    if (updates.date) {
+      payload.event_date = updates.date;
+    }
     
     const { data, error } = await supabase
       .from('events')
@@ -70,7 +82,7 @@ export const updateEvent = async (
       .single();
     
     if (error) {
-      logger.error(`[${REPOSITORY_CONTEXT}] updateEvent:error`, { error });
+      logger.error(`[${REPOSITORY_CONTEXT}] updateEvent:error`, { error, payload });
       return { data: null, error };
     }
     

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Alert, ScrollView, Platform } from 'react-native';
 import { X, Save, Mic, Video, Trash2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -14,6 +14,113 @@ import logger from '@/lib/logger';
 import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 
+// ドラムロール風のボタンベースピッカー（Web環境対応）
+function WheelPicker({ value, onChange, max, highlightColor }: { value: number; onChange: (v: number) => void; max: number; highlightColor: string }) {
+  const itemHeight = 40;
+  const list = Array.from({ length: max + 1 }, (_, i) => i);
+
+  const handleValueChange = (newValue: number) => {
+    // 循環式：0未満の場合はmaxに、maxを超える場合は0に
+    let clamped = newValue;
+    if (newValue < 0) {
+      clamped = max;
+    } else if (newValue > max) {
+      clamped = 0;
+    } else {
+      clamped = newValue;
+    }
+    if (clamped !== value) {
+      onChange(clamped);
+    }
+  };
+
+  return (
+    <View style={{ width: 80, height: itemHeight * 3, overflow: 'hidden', borderRadius: 8 }}>
+      {/* ハイライト背景 */}
+      <View style={{ position: 'absolute', top: itemHeight, left: 0, right: 0, height: itemHeight, borderRadius: 8, backgroundColor: highlightColor + '20' }} />
+      
+      {/* 背景の数字表示（ドラムロール風の見た目・タップ可能） */}
+      <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1 }}>
+        {list.map((n) => (
+          <TouchableOpacity
+            key={`wheel-picker-item-${n}`}
+            style={{ 
+              position: 'absolute',
+              top: n * itemHeight, 
+              left: 0, 
+              right: 0, 
+              height: itemHeight, 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              opacity: Math.abs(n - value) <= 1 ? 0.4 : 0.15,
+              zIndex: n === value ? 3 : 2
+            }}
+            onPress={() => handleValueChange(n)}
+            activeOpacity={0.7}
+          >
+            <Text style={{ fontSize: 18, fontWeight: '500', color: '#999' }}>
+              {String(n).padStart(2, '0')}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* 上向き矢印ボタン */}
+      <TouchableOpacity 
+        style={{ 
+          position: 'absolute', 
+          top: 0, 
+          left: 0, 
+          right: 0, 
+          height: itemHeight, 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          zIndex: 10
+        }}
+        onPress={() => handleValueChange(value - 1)}
+        activeOpacity={0.7}
+      >
+        <Text style={{ fontSize: 18, color: highlightColor }}>▲</Text>
+      </TouchableOpacity>
+
+      {/* 中央の値表示 */}
+      <View style={{ 
+        position: 'absolute', 
+        top: itemHeight, 
+        left: 0, 
+        right: 0, 
+        height: itemHeight, 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        zIndex: 5,
+        pointerEvents: 'none'
+      }}>
+        <Text style={{ fontSize: 24, fontWeight: '700', color: highlightColor }}>
+          {String(value).padStart(2, '0')}
+        </Text>
+      </View>
+
+      {/* 下向き矢印ボタン */}
+      <TouchableOpacity 
+        style={{ 
+          position: 'absolute', 
+          bottom: 0, 
+          left: 0, 
+          right: 0, 
+          height: itemHeight, 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          zIndex: 10
+        }}
+        onPress={() => handleValueChange(value + 1)}
+        activeOpacity={0.7}
+      >
+        <Text style={{ fontSize: 18, color: highlightColor }}>▼</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 interface PracticeRecordModalProps {
   visible: boolean;
   onClose: () => void;
@@ -23,7 +130,7 @@ interface PracticeRecordModalProps {
   onRefresh?: number; // データ再読み込みのトリガー（数値が変更されると再読み込み）
 }
 
-export default function PracticeRecordModal({ 
+const PracticeRecordModal = memo(function PracticeRecordModal({ 
   visible, 
   onClose, 
   selectedDate,
@@ -63,11 +170,19 @@ export default function PracticeRecordModal({
     existingRecording: typeof existingRecording;
   } | null>(null); // 録音画面に移動する前のフォーム状態と録音状態
   
+  // 開始時刻・終了時刻の状態（デフォルト値を設定）
+  const [startTime, setStartTime] = useState<{ hours: number; minutes: number } | null>({ hours: 13, minutes: 0 });
+  const [endTime, setEndTime] = useState<{ hours: number; minutes: number } | null>({ hours: 18, minutes: 0 });
+  const [showTimePickerModal, setShowTimePickerModal] = useState(false);
+  const [timePickerType, setTimePickerType] = useState<'start' | 'end'>('start');
+  const [timePickerHours, setTimePickerHours] = useState(0);
+  const [timePickerMinutes, setTimePickerMinutes] = useState(0);
+  
   // 無限ループを防ぐため、existingRecordingとisRecordingJustSavedの最新値を保持
   const existingRecordingRef = useRef(existingRecording);
   const isRecordingJustSavedRef = useRef(isRecordingJustSaved);
   
-  // 時間・分入力欄のref
+  // 時間・分入力欄のref（後方互換性のため残す）
   const hoursInputRef = useRef<TextInput>(null);
   const minutesInputRef = useRef<TextInput>(null);
 
@@ -80,6 +195,57 @@ export default function PracticeRecordModal({
       };
       return fullWidthMap[char] || char;
     });
+  };
+
+  // 開始時刻と終了時刻から練習時間を計算
+  const calculateMinutesFromTimes = useCallback((start: { hours: number; minutes: number } | null, end: { hours: number; minutes: number } | null): number => {
+    if (!start || !end) return 0;
+    
+    const startTotalMinutes = start.hours * 60 + start.minutes;
+    let endTotalMinutes = end.hours * 60 + end.minutes;
+    
+    // 終了時刻が開始時刻より前の場合は翌日として扱う
+    if (endTotalMinutes <= startTotalMinutes) {
+      endTotalMinutes += 24 * 60; // 24時間追加
+    }
+    
+    return endTotalMinutes - startTotalMinutes;
+  }, []);
+
+  // 開始時刻または終了時刻が変更されたら練習時間を更新
+  useEffect(() => {
+    if (startTime && endTime) {
+      const calculatedMinutes = calculateMinutesFromTimes(startTime, endTime);
+      if (calculatedMinutes > 0) {
+        setMinutes(calculatedMinutes.toString());
+      }
+    }
+  }, [startTime, endTime, calculateMinutesFromTimes]);
+
+  // 時刻選択モーダルを開く
+  const openTimePicker = (type: 'start' | 'end') => {
+    const currentTime = type === 'start' ? startTime : endTime;
+    setTimePickerType(type);
+    setTimePickerHours(currentTime?.hours || 0);
+    setTimePickerMinutes(currentTime?.minutes || 0);
+    setShowTimePickerModal(true);
+  };
+
+  // 時刻選択を確定
+  const confirmTimePicker = () => {
+    const selectedTime = { hours: timePickerHours, minutes: timePickerMinutes };
+    if (timePickerType === 'start') {
+      setStartTime(selectedTime);
+    } else {
+      setEndTime(selectedTime);
+    }
+    setShowTimePickerModal(false);
+  };
+
+  // 時刻をフォーマット（HH:MM形式）
+  const formatTime = (time: { hours: number; minutes: number } | null): string => {
+    if (!time) return '--:--';
+    return `${String(time.hours).padStart(2, '0')}:${String(time.minutes).padStart(2, '0')}`;
   };
   
   // 最新値を更新
@@ -197,8 +363,8 @@ export default function PracticeRecordModal({
         // 保存直後の場合は、データベース反映を待つため最大3回リトライ
         for (let attempt = 0; attempt < 3; attempt++) {
           const result = await getRecordingsByDate(
-            user.id,
-            practiceDate,
+        user.id,
+        practiceDate,
             getInstrumentId(selectedInstrument)
           );
           recordings = result.data;
@@ -456,7 +622,7 @@ export default function PracticeRecordModal({
           onRecordingSaved?.();
           
       // 録音保存後、データを再取得（データベース反映を待つため少し遅延）
-      if (visible && selectedDate) {
+          if (visible && selectedDate) {
         // データベース反映を待つため、少し遅延してから読み込む
         // loadExistingRecordは既にloadRecordingを含んでいるので、loadRecordingを個別に呼ぶ必要はない
         setTimeout(async () => {
@@ -481,7 +647,7 @@ export default function PracticeRecordModal({
         }, 500);
       } else {
         setIsRecordingJustSaved(false);
-      }
+          }
         } else {
           // 保存に失敗した場合は、フォームをリセットしない
           logger.warn('録音保存は成功しましたが、savedRecordingがnullです');
@@ -632,6 +798,21 @@ export default function PracticeRecordModal({
       
       // 保存処理を実行（完了を待つ）
       await onSave?.(minutesNumber, content?.trim() || undefined, audioUrl || undefined, videoUrl || undefined);
+      
+      // 保存完了後にカレンダーと統計を更新するイベントを発火
+      if (typeof window !== 'undefined') {
+        const event = new CustomEvent('practiceRecordUpdated', {
+          detail: { 
+            action: 'practice_saved',
+            minutes: minutesNumber,
+            content: content?.trim(),
+            date: selectedDate ? formatLocalDate(selectedDate) : new Date().toISOString().split('T')[0],
+            verified: true
+          }
+        });
+        window.dispatchEvent(event);
+        logger.debug('練習記録保存の即時反映イベントを発火:', { minutes: minutesNumber });
+      }
       
       // 録音や動画がある場合のみコールバックを呼び出す
       if (hasMedia) {
@@ -963,7 +1144,7 @@ export default function PracticeRecordModal({
               練習時間
               {existingRecord && (
                 <Text style={[styles.timerIndicator, { color: '#1976D2' }]}>
-                  {' '}(既存: {formatMinutesToHours(existingRecord.minutes)})
+                  {' '}(既存: {formatMinutesToHours(existingRecord.minutes)} +)
                 </Text>
               )}
               {timerMinutes > 0 && (
@@ -973,113 +1154,60 @@ export default function PracticeRecordModal({
               )}
             </Text>
             
-            {/* 練習時間入力（時間と分を分けて入力） */}
+            {/* 練習時間入力（開始時刻・終了時刻） */}
             <View style={styles.customTimeInputContainer}>
               <Text style={[styles.customTimeLabel, { color: currentTheme.text }]}>
                 練習時間を入力
               </Text>
-              <View style={styles.customTimeInputRow}>
-                <View style={styles.customTimeInputGroup}>
-                  <TextInput
-                    ref={hoursInputRef}
-                    style={[
-                      styles.customTimeInput,
-                      {
-                        backgroundColor: currentTheme.background,
-                        color: currentTheme.text,
-                        borderColor: minutes && !isNaN(Number(minutes)) && Number(minutes) > 0
-                          ? currentTheme.primary
-                          : currentTheme.secondary,
-                      }
-                    ]}
-                    value={(() => {
-                      const totalMinutes = minutes ? Number(minutes) : 0;
-                      const hours = Math.floor(totalMinutes / 60);
-                      return hours > 0 ? hours.toString() : '';
-                    })()}
-                    onChangeText={(text) => {
-                      // 全角数字を半角数字に変換
-                      const halfWidthText = convertToHalfWidth(text);
-                      // 数字以外の文字を除去
-                      const cleanedText = halfWidthText.replace(/[^0-9]/g, '');
-                      
-                      const hours = cleanedText === '' ? 0 : Math.max(0, Math.min(24, parseInt(cleanedText, 10) || 0));
-                      const currentMinutes = minutes ? Number(minutes) : 0;
-                      const minutesPart = currentMinutes % 60;
-                      const newTotalMinutes = hours * 60 + minutesPart;
-                      setMinutes(newTotalMinutes > 0 ? newTotalMinutes.toString() : '');
-                      
-                      // 1文字入力されたら自動的に分の入力欄にフォーカス
-                      if (text.length >= 1 && cleanedText.length >= 1) {
-                        // 少し遅延を入れてフォーカスを移行（React Native Webのレンダリングを待つ）
-                        setTimeout(() => {
-                          if (minutesInputRef.current) {
-                            minutesInputRef.current.focus();
-                          }
-                        }, 100);
-                      }
-                    }}
-                    placeholder="0"
-                    keyboardType="numeric"
-                    maxLength={2}
-                    returnKeyType="next"
-                    onSubmitEditing={() => {
-                      minutesInputRef.current?.focus();
-                    }}
-                  />
-                  <Text style={[styles.customTimeUnit, { color: currentTheme.textSecondary }]}>
-                    時間
+              
+              {/* 開始時刻・終了時刻ボタン */}
+              <View style={styles.timeRangeContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.timeButtonRow,
+                    {
+                      backgroundColor: currentTheme.background,
+                      borderBottomColor: currentTheme.secondary,
+                    }
+                  ]}
+                  onPress={() => openTimePicker('start')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.timeButtonLabel, { color: currentTheme.textSecondary }]}>
+                    開始日時
                   </Text>
-                </View>
+                  <Text style={[styles.timeButtonValue, { color: currentTheme.text }]}>
+                    {formatTime(startTime)}
+                  </Text>
+                </TouchableOpacity>
                 
-                <View style={styles.customTimeInputGroup}>
-                  <TextInput
-                    ref={minutesInputRef}
-                    style={[
-                      styles.customTimeInput,
-                      {
-                        backgroundColor: currentTheme.background,
-                        color: currentTheme.text,
-                        borderColor: minutes && !isNaN(Number(minutes)) && Number(minutes) > 0
-                          ? currentTheme.primary
-                          : currentTheme.secondary,
-                      }
-                    ]}
-                    value={(() => {
-                      const totalMinutes = minutes ? Number(minutes) : 0;
-                      const minutesPart = totalMinutes % 60;
-                      return minutesPart > 0 ? minutesPart.toString() : '';
-                    })()}
-                    onChangeText={(text) => {
-                      // 全角数字を半角数字に変換
-                      const halfWidthText = convertToHalfWidth(text);
-                      // 数字以外の文字を除去
-                      const cleanedText = halfWidthText.replace(/[^0-9]/g, '');
-                      
-                      const mins = cleanedText === '' ? 0 : Math.max(0, Math.min(59, parseInt(cleanedText, 10) || 0));
-                      const currentMinutes = minutes ? Number(minutes) : 0;
-                      const hours = Math.floor(currentMinutes / 60);
-                      const newTotalMinutes = hours * 60 + mins;
-                      setMinutes(newTotalMinutes > 0 ? newTotalMinutes.toString() : '');
-                    }}
-                    placeholder="0"
-                    keyboardType="numeric"
-                    maxLength={2}
-                    returnKeyType="done"
-                  />
-                  <Text style={[styles.customTimeUnit, { color: currentTheme.textSecondary }]}>
-                    分
+                <TouchableOpacity
+                  style={[
+                    styles.timeButtonRow,
+                    styles.timeButtonRowLast,
+                    {
+                      backgroundColor: currentTheme.background,
+                    }
+                  ]}
+                  onPress={() => openTimePicker('end')}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.timeButtonLabel, { color: currentTheme.textSecondary }]}>
+                    終了日時
                   </Text>
-                </View>
+                  <Text style={[styles.timeButtonValue, { color: currentTheme.text }]}>
+                    {formatTime(endTime)}
+                  </Text>
+                </TouchableOpacity>
               </View>
               
-              {/* 入力値の表示 */}
+              {/* 計算された練習時間の表示 */}
               {(() => {
                 const totalMinutes = minutes ? Number(minutes) : 0;
-                if (totalMinutes > 0 && !isNaN(totalMinutes)) {
+                if (totalMinutes > 0 && !isNaN(totalMinutes) && startTime && endTime) {
                   return (
                     <Text style={[styles.customTimeDisplay, { color: currentTheme.primary }]}>
-                      {formatMinutesToHours(totalMinutes)}
+                      練習時間: {formatMinutesToHours(totalMinutes)}
                     </Text>
                   );
                 }
@@ -1089,8 +1217,8 @@ export default function PracticeRecordModal({
             
             <Text style={styles.hintText}>
               {existingRecord 
-                ? '時間と分を入力してください（+は既存の記録に追加されます）'
-                : '時間と分を入力してください'
+                ? '開始時刻と終了時刻を選択してください（+は既存の記録に追加されます）'
+                : '開始時刻と終了時刻を選択してください'
               }
             </Text>
           </View>
@@ -1330,6 +1458,77 @@ export default function PracticeRecordModal({
         />
       </Modal>
 
+      {/* 時刻選択モーダル */}
+      <Modal
+        visible={showTimePickerModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowTimePickerModal(false)}
+      >
+        <View style={styles.timePickerModalOverlay}>
+          <View style={[styles.timePickerModalContent, { backgroundColor: currentTheme.background }]}>
+            <View style={styles.timePickerModalHeader}>
+              <Text style={[styles.timePickerModalTitle, { color: currentTheme.text }]}>
+                {timePickerType === 'start' ? '開始時刻' : '終了時刻'}を選択
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowTimePickerModal(false)}
+                style={styles.timePickerModalCloseButton}
+              >
+                <X size={24} color={currentTheme.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.timePickerWheelContainer}>
+              {/* 時間ドラムロール */}
+              <View style={styles.timePickerWheelGroup}>
+                <Text style={[styles.timePickerWheelLabel, { color: currentTheme.textSecondary }]}>
+                  時間
+                </Text>
+                <WheelPicker
+                  value={timePickerHours}
+                  onChange={setTimePickerHours}
+                  max={23}
+                  highlightColor={currentTheme.primary}
+                />
+              </View>
+              
+              {/* 分ドラムロール */}
+              <View style={styles.timePickerWheelGroup}>
+                <Text style={[styles.timePickerWheelLabel, { color: currentTheme.textSecondary }]}>
+                  分
+                </Text>
+                <WheelPicker
+                  value={timePickerMinutes}
+                  onChange={setTimePickerMinutes}
+                  max={59}
+                  highlightColor={currentTheme.primary}
+                />
+              </View>
+            </View>
+            
+            <View style={styles.timePickerModalButtons}>
+              <TouchableOpacity
+                style={[styles.timePickerModalButton, styles.timePickerModalButtonCancel]}
+                onPress={() => setShowTimePickerModal(false)}
+              >
+                <Text style={[styles.timePickerModalButtonText, { color: currentTheme.text }]}>
+                  キャンセル
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.timePickerModalButton, { backgroundColor: currentTheme.primary }]}
+                onPress={confirmTimePicker}
+              >
+                <Text style={[styles.timePickerModalButtonText, { color: '#FFFFFF' }]}>
+                  確定
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* 削除選択モーダル */}
       <Modal
         visible={showDeleteModal}
@@ -1396,7 +1595,7 @@ export default function PracticeRecordModal({
       </Modal>
     </Modal>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -1928,4 +2127,97 @@ const styles = StyleSheet.create({
     color: '#555555',
     marginBottom: 12,
   },
+  timeRangeContainer: {
+    marginTop: 12,
+    borderRadius: 8,
+    overflow: 'hidden',
+    borderWidth: 0.5,
+    borderColor: '#E0E0E0',
+  },
+  timeButtonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderBottomWidth: 0.5,
+  },
+  timeButtonRowLast: {
+    borderBottomWidth: 0,
+  },
+  timeButtonLabel: {
+    fontSize: 14,
+    color: '#666666',
+  },
+  timeButtonValue: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  timePickerModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  timePickerModalContent: {
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
+  },
+  timePickerModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  timePickerModalTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+  },
+  timePickerModalCloseButton: {
+    padding: 4,
+  },
+  timePickerWheelContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    gap: 32,
+    marginBottom: 24,
+    paddingVertical: 16,
+  },
+  timePickerWheelGroup: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  timePickerWheelLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  timePickerModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  timePickerModalButton: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  timePickerModalButtonCancel: {
+    backgroundColor: '#F5F5F5',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  timePickerModalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
 });
+
+export default PracticeRecordModal;

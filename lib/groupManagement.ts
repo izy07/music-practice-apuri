@@ -277,8 +277,8 @@ export const PracticeScheduleManager = {
   /**
    * 練習日程を作成
    */
-  async createSchedule(schedule: Omit<PracticeSchedule, 'id' | 'created_at'>) {
-    const result = await scheduleService.createSchedule(schedule);
+  async createSchedule(schedule: Omit<PracticeSchedule, 'id' | 'created_at'>, addToCalendar?: boolean) {
+    const result = await scheduleService.createSchedule(schedule, addToCalendar);
     if (!result.success) {
       return { success: false, error: result.error };
     }

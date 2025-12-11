@@ -173,8 +173,9 @@ export default function TuningSoundPlayer({ instrumentId }: TuningSoundPlayerPro
       oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
       
       // 音量を設定（フェードイン/アウト付き）
+      // スマホでも聞こえるように音量を上げる
       gainNode.gain.setValueAtTime(0, audioContext.currentTime);
-      gainNode.gain.linearRampToValueAtTime(volume * 0.3, audioContext.currentTime + 0.1);
+      gainNode.gain.linearRampToValueAtTime(volume * 0.7, audioContext.currentTime + 0.1);
       
       // 継続再生の場合はフェードアウトしない
       if (duration > 0 && !continuousPlay) {

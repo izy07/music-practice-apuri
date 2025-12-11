@@ -24,11 +24,12 @@ const timeSignatures = [
 
 interface MetronomeProps {
   audioContextRef: React.MutableRefObject<AudioContext | null>;
+  ownerName?: string; // オーナー名をpropsとして受け取る（TunerScreenと共有するため）
 }
 
-export default function Metronome({ audioContextRef }: MetronomeProps) {
+export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: MetronomeProps) {
   const { currentTheme } = useInstrumentTheme();
-  const OWNER_NAME = 'Metronome';
+  const OWNER_NAME = ownerName; // propsから受け取ったオーナー名を使用
   
   // メトロノーム関連の状態
   const [isMetronomePlaying, setIsMetronomePlaying] = useState(false);
@@ -42,7 +43,7 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
     noteValue: 4,
     display: '4/4'
   });
-  const [metronomeSoundType, setMetronomeSoundType] = useState<'click' | 'beep' | 'bell' | 'chime'>('click');
+  const [metronomeSoundType, setMetronomeSoundType] = useState<'click' | 'beep' | 'bell'>('click');
   const [isTimeSignatureModalVisible, setIsTimeSignatureModalVisible] = useState(false);
 
   // メトロノーム用のref
@@ -51,12 +52,27 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
 
   // コンポーネントの初期化とクリーンアップ
   useEffect(() => {
-    // 初期化時にAudioContextを取得
-    audioResourceManager.acquireAudioContext(OWNER_NAME).then(ctx => {
-      if (ctx) {
-        audioContextRef.current = ctx;
+    // audioContextRefが既に設定されている場合はそれを使用、そうでない場合は取得
+    const initializeAudioContext = async () => {
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        // 既にAudioContextが設定されている場合はそれを使用
+        logger.debug('Metronome: Using existing AudioContext from ref');
+        return;
       }
-    });
+      
+      // AudioContextを取得
+      try {
+        const ctx = await audioResourceManager.acquireAudioContext(OWNER_NAME);
+        if (ctx) {
+          audioContextRef.current = ctx;
+        }
+      } catch (error) {
+        logger.warn('Metronome: Failed to acquire AudioContext, using existing ref:', error);
+        // エラーが発生しても既存のaudioContextRefを使用
+      }
+    };
+
+    initializeAudioContext();
 
     return () => {
       // クリーンアップ
@@ -78,18 +94,37 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
       });
       activeOscillatorsRef.current = [];
       
-      // リソースを解放
-      audioResourceManager.releaseAllResources(OWNER_NAME);
+      // リソースを解放（ownerNameが'Metronome'の場合のみ、共有している場合は解放しない）
+      if (ownerName === 'Metronome') {
+        audioResourceManager.releaseAllResources(OWNER_NAME);
+      }
     };
-  }, []);
+  }, [ownerName]);
 
   // AudioContextの初期化と再開（リソース管理サービスを使用）
   const ensureAudioContext = async (): Promise<AudioContext | null> => {
     try {
+      // 既にaudioContextRefにAudioContextが設定されている場合はそれを使用
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        const ctx = audioContextRef.current;
+        // AudioContextがsuspended状態の場合はresumeする
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+          logger.debug('AudioContext resumed for metronome');
+        }
+        return ctx;
+      }
+      
       // リソース管理サービスからAudioContextを取得
       const ctx = await audioResourceManager.acquireAudioContext(OWNER_NAME);
       if (ctx) {
         audioContextRef.current = ctx;
+        
+        // AudioContextがsuspended状態の場合はresumeする
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+          logger.debug('AudioContext resumed for metronome');
+        }
       }
       return ctx;
     } catch (error) {
@@ -102,7 +137,26 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
   // メトロノームのクリック音を再生
   const playMetronomeClick = async (isStrongBeat: boolean) => {
     const ctx = await ensureAudioContext();
-    if (!ctx) return;
+    if (!ctx) {
+      logger.warn('AudioContext not available for metronome');
+      return;
+    }
+    
+    // AudioContextの状態を確認して必要に応じてresume
+    if (ctx.state === 'suspended') {
+      try {
+        await ctx.resume();
+        logger.debug('AudioContext resumed before playing metronome sound');
+      } catch (error) {
+        logger.error('Failed to resume AudioContext:', error);
+        return;
+      }
+    }
+    
+    if (ctx.state !== 'running') {
+      logger.warn('AudioContext state is not running:', ctx.state);
+      return;
+    }
     
     const currentTime = ctx.currentTime;
     
@@ -126,8 +180,9 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
             oscillator.type = 'square'; // より明確な音色
             
             // 短く鋭いアタック（典型的なメトロノームの「チック」音）
+            // スマホでも聞こえるように音量を上げる
             gainNode.gain.setValueAtTime(0, currentTime);
-            gainNode.gain.linearRampToValueAtTime(metronomeVolume * 0.6, currentTime + 0.005);
+            gainNode.gain.linearRampToValueAtTime(metronomeVolume * 1.0, currentTime + 0.005);
             gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.05);
             
             oscillator.start(currentTime);
@@ -153,8 +208,9 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
             oscillator.type = 'square'; // 強拍と同じ音色で統一感を出す
             
             // やや柔らかいアタック（典型的なメトロノームの「トック」音）
+            // スマホでも聞こえるように音量を上げる
             gainNode.gain.setValueAtTime(0, currentTime);
-            gainNode.gain.linearRampToValueAtTime(metronomeVolume * 0.4, currentTime + 0.005);
+            gainNode.gain.linearRampToValueAtTime(metronomeVolume * 0.85, currentTime + 0.005);
             gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.08);
             
             oscillator.start(currentTime);
@@ -187,7 +243,8 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
             oscillator.frequency.setValueAtTime(500, currentTime);
           }
           
-          gainNode.gain.setValueAtTime(metronomeVolume * 0.4, currentTime);
+          // スマホでも聞こえるように音量を上げる
+          gainNode.gain.setValueAtTime(metronomeVolume * 0.9, currentTime);
           gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.15);
           
           oscillator.start(currentTime);
@@ -221,7 +278,8 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
             osc.type = 'sine';
             osc.frequency.setValueAtTime(baseFreq * (i + 1), currentTime);
             
-            const volume = metronomeVolume * (isStrongBeat ? 0.3 : 0.2) / (i + 1);
+            // スマホでも聞こえるように音量を上げる
+            const volume = metronomeVolume * (isStrongBeat ? 0.7 : 0.5) / (i + 1);
             gain.gain.setValueAtTime(volume, currentTime);
             gain.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.3);
             
@@ -236,38 +294,6 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
             oscillators.push(osc);
             gainNodes.push(gain);
           }
-        }
-        break;
-        
-      case 'chime':
-        // チム音（上昇する周波数）
-        {
-          const oscillator = ctx.createOscillator();
-          const gainNode = ctx.createGain();
-          oscillator.connect(gainNode);
-          gainNode.connect(ctx.destination);
-          
-          // オシレーターをリソース管理サービスに登録
-          audioResourceManager.registerOscillator(OWNER_NAME, oscillator);
-          activeOscillatorsRef.current.push(oscillator);
-          
-          oscillator.type = 'sine';
-          const startFreq = isStrongBeat ? 1000 : 400;
-          const endFreq = isStrongBeat ? 1500 : 600;
-          
-          oscillator.frequency.setValueAtTime(startFreq, currentTime);
-          oscillator.frequency.linearRampToValueAtTime(endFreq, currentTime + 0.1);
-          
-          gainNode.gain.setValueAtTime(metronomeVolume * 0.35, currentTime);
-          gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.2);
-          
-          oscillator.start(currentTime);
-          oscillator.stop(currentTime + 0.2);
-          
-          // 停止後に配列から削除
-          oscillator.onended = () => {
-            activeOscillatorsRef.current = activeOscillatorsRef.current.filter(osc => osc !== oscillator);
-          };
         }
         break;
     }
@@ -607,7 +633,6 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
               { id: 'click', name: 'クリック' },
               { id: 'beep', name: 'ビープ' },
               { id: 'bell', name: 'ベル' },
-              { id: 'chime', name: 'チム' },
             ].map((sound) => (
               <TouchableOpacity
                 key={sound.id}
@@ -619,7 +644,7 @@ export default function Metronome({ audioContextRef }: MetronomeProps) {
                       : currentTheme.secondary,
                   }
                 ]}
-                onPress={() => setMetronomeSoundType(sound.id as 'click' | 'beep' | 'bell' | 'chime')}
+                onPress={() => setMetronomeSoundType(sound.id as 'click' | 'beep' | 'bell')}
               >
                 <Text
                   style={[

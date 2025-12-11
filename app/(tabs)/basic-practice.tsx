@@ -46,8 +46,8 @@ export default function BasicPracticeScreen() {
     levels,
   } = usePracticeLevel();
 
-  // 練習メニュー管理フック
-  const { filteredPracticeMenus } = usePracticeMenu(selectedInstrument, selectedLevel);
+  // 練習メニュー管理フック（DB取得版、フォールバック付き）
+  const { filteredPracticeMenus, loading: menusLoading } = usePracticeMenu(selectedInstrument, selectedLevel);
 
   // カメラ機能を起動して姿勢確認
   const openCameraForPostureCheck = () => {

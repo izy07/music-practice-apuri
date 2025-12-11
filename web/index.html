@@ -127,11 +127,40 @@
                                       (this.classList && (this.classList.contains('r-flex-13awgt0') || this.classList.contains('css-view-g5y9jx')));
           
           if (isBackgroundElement) {
+            // フォーカスがこの要素内にある場合は、フォーカスを外す
+            const activeElement = document.activeElement as HTMLElement;
+            if (activeElement && (this === activeElement || this.contains(activeElement))) {
+              // フォーカスをbodyに移動
+              if (activeElement.blur) {
+                activeElement.blur();
+              }
+              if (document.body && document.body.focus) {
+                document.body.focus();
+              }
+            }
+            
             // inert属性を設定して、aria-hiddenの代わりにする
             if (!this.hasAttribute('inert')) {
               this.setAttribute('inert', '');
             }
             return; // aria-hiddenの設定を完全にブロック
+          }
+          
+          // フォーカスがこの要素内にある場合もブロック（aria-hidden警告を防ぐため）
+          const activeElement = document.activeElement as HTMLElement;
+          if (activeElement && (this === activeElement || this.contains(activeElement))) {
+            // モーダル内の要素の場合は許可
+            if (!isInModal(activeElement)) {
+              // フォーカスを外す
+              if (activeElement.blur) {
+                activeElement.blur();
+              }
+              // inert属性を設定
+              if (!this.hasAttribute('inert')) {
+                this.setAttribute('inert', '');
+              }
+              return; // aria-hiddenの設定をブロック
+            }
           }
           
           // その他の場合も、フォーカス可能な要素が含まれている可能性があるため、inert属性を使用
@@ -203,9 +232,17 @@
       // aria-hidden警告を抑制（コンソール警告を無視）
       const originalWarn = console.warn;
       console.warn = function(...args) {
-        // aria-hiddenに関する警告は無視
-        if (args.length > 0 && typeof args[0] === 'string' && args[0].includes('aria-hidden')) {
-          return;
+        // aria-hiddenに関する警告は完全に無視
+        if (args.length > 0) {
+          const message = typeof args[0] === 'string' ? args[0] : String(args[0]);
+          const fullMessage = args.map(arg => String(arg)).join(' ');
+          if (message.includes('aria-hidden') || 
+              message.includes('Blocked aria-hidden') ||
+              fullMessage.includes('aria-hidden') ||
+              fullMessage.includes('Blocked aria-hidden') ||
+              fullMessage.includes('Ancestor with aria-hidden')) {
+            return;
+          }
         }
         originalWarn.apply(console, args);
       };

@@ -582,39 +582,85 @@ export default function GoalsScreen() {
     // TODO: 編集モードの実装
   };
 
-  // 実際の削除処理を実行する関数
-  const executeDeleteGoal = async (goalId: string) => {
-    logger.debug('executeDeleteGoal関数が呼ばれました', goalId);
+
+  const deleteGoal = async (goalId: string) => {
+    logger.debug('deleteGoal関数が呼ばれました', goalId);
+    
+    // 削除処理の重複実行を防ぐ
     if (isDeleting) {
       logger.debug('削除処理が既に実行中です');
       return;
     }
     
+    // goalIdを確実に保持するために、クロージャーではなく明示的に保存
+    const targetGoalId = goalId;
+    
+    // 目標のタイトルを取得（確認メッセージ用）
+    const goalToDelete = goals.find(g => g.id === targetGoalId) || completedGoals.find(g => g.id === targetGoalId);
+    const goalTitle = goalToDelete?.title || 'この目標';
+    
+    // 確認ダイアログを表示（Web環境ではwindow.confirmを使用）
+    const confirmDelete = Platform.OS === 'web'
+      ? window.confirm(`「${goalTitle}」を削除しますか？\n\nこの操作は取り消すことができません。`)
+      : await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            '目標を削除',
+            `「${goalTitle}」を削除しますか？\n\nこの操作は取り消すことができません。`,
+            [
+              { 
+                text: 'キャンセル', 
+                style: 'cancel',
+                onPress: () => {
+                  logger.debug('削除がキャンセルされました');
+                  resolve(false);
+                }
+              },
+              {
+                text: '削除',
+                style: 'destructive',
+                onPress: () => {
+                  resolve(true);
+                }
+              }
+            ]
+          );
+        });
+    
+    if (!confirmDelete) {
+      logger.debug('削除がキャンセルされました');
+      return;
+    }
+    
+    // 削除処理を実行
     setIsDeleting(true);
-    logger.debug('削除処理を開始します', goalId);
+    logger.debug('削除処理を開始します', targetGoalId);
     
     try {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       if (authError || !user) {
         logger.error('認証エラー', authError);
-        Alert.alert('エラー', '認証が必要です');
+        if (Platform.OS === 'web') {
+          window.alert('認証が必要です');
+        } else {
+          Alert.alert('エラー', '認証が必要です');
+        }
         setIsDeleting(false);
         return;
       }
 
-      logger.debug('目標を削除します', { goalId, userId: user.id });
+      logger.debug('目標を削除します', { goalId: targetGoalId, userId: user.id });
       // 目標を実際に削除
-      const deleteResult = await goalRepository.deleteGoal(goalId, user.id);
-      logger.debug('削除結果', deleteResult);
+      await goalRepository.deleteGoal(targetGoalId, user.id);
+      logger.debug('削除が完了しました');
       
       // ローカル状態からも即座に削除
       setGoals(prevGoals => {
-        const filtered = prevGoals.filter(goal => goal.id !== goalId);
+        const filtered = prevGoals.filter(goal => goal.id !== targetGoalId);
         logger.debug('ローカル状態から削除しました', { before: prevGoals.length, after: filtered.length });
         return filtered;
       });
       setCompletedGoals(prevGoals => {
-        const filtered = prevGoals.filter(goal => goal.id !== goalId);
+        const filtered = prevGoals.filter(goal => goal.id !== targetGoalId);
         logger.debug('達成済み目標から削除しました', { before: prevGoals.length, after: filtered.length });
         return filtered;
       });
@@ -625,60 +671,27 @@ export default function GoalsScreen() {
       await loadCompletedGoals();
       
       logger.debug('削除が完了しました');
-      Alert.alert('成功', '目標を削除しました');
+      
+      // 成功メッセージを表示（Web環境ではwindow.alertを使用）
+      if (Platform.OS === 'web') {
+        window.alert('目標を削除しました');
+      } else {
+        Alert.alert('成功', '目標を削除しました');
+      }
       setIsDeleting(false);
       
     } catch (error) {
       logger.error('削除エラー', error);
-      Alert.alert('エラー', `目標の削除に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
+      const errorMessage = error instanceof Error ? error.message : '不明なエラー';
+      
+      // エラーメッセージを表示（Web環境ではwindow.alertを使用）
+      if (Platform.OS === 'web') {
+        window.alert(`目標の削除に失敗しました: ${errorMessage}`);
+      } else {
+        Alert.alert('エラー', `目標の削除に失敗しました: ${errorMessage}`);
+      }
       setIsDeleting(false);
     }
-  };
-
-  const deleteGoal = async (goalId: string) => {
-    logger.debug('deleteGoal関数が呼ばれました', goalId);
-    console.log('deleteGoal関数が呼ばれました', goalId);
-    
-    // 削除処理の重複実行を防ぐ
-    if (isDeleting) {
-      logger.debug('削除処理が既に実行中です');
-      console.log('削除処理が既に実行中です');
-      return;
-    }
-    
-    // goalIdを確実に保持するために、クロージャーではなく明示的に保存
-    const targetGoalId = goalId;
-    
-    // 確認ダイアログを表示
-    Alert.alert(
-      '目標を削除',
-      '本当に削除しますか？',
-      [
-        { 
-          text: 'キャンセル', 
-          style: 'cancel',
-          onPress: () => {
-            logger.debug('削除がキャンセルされました');
-            console.log('削除がキャンセルされました');
-          }
-        },
-        {
-          text: '削除',
-          style: 'destructive',
-          onPress: () => {
-            logger.debug('削除が確認されました、executeDeleteGoalを実行します', targetGoalId);
-            console.log('削除が確認されました、executeDeleteGoalを実行します', targetGoalId);
-            // 非同期処理を即座に実行（awaitは不要、executeDeleteGoal内で処理）
-            executeDeleteGoal(targetGoalId).catch((error) => {
-              logger.error('executeDeleteGoalでエラーが発生しました', error);
-              console.error('executeDeleteGoalでエラーが発生しました', error);
-              setIsDeleting(false);
-            });
-          }
-        }
-      ],
-      { cancelable: true } // Web環境でも確実に動作するように
-    );
   };
 
   const getGoalTypeLabel = (type: string) => {

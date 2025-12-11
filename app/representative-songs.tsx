@@ -8,7 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { instrumentGuides } from '@/data/instrumentGuides';
 import logger from '@/lib/logger';
-import { getCached, setCached, createCacheKey } from '@/lib/simpleCache';
+import { practiceDataCache, PracticeDataCache } from '@/lib/cache/practiceDataCache';
 
 const { width } = Dimensions.get('window');
 
@@ -83,8 +83,8 @@ export default function RepresentativeSongsScreen() {
       setInstrument(instrumentData);
       
       // キャッシュから代表曲データを取得を試行
-      const cacheKey = createCacheKey('representative_songs', instrumentId);
-      const cachedSongs = getCached<RepresentativeSong[]>(cacheKey);
+      const cacheKey = PracticeDataCache.generateKey('representative_songs', { instrumentId });
+      const cachedSongs = practiceDataCache.get<RepresentativeSong[]>(cacheKey);
       if (cachedSongs) {
         logger.debug('[代表曲画面] キャッシュから代表曲を取得:', cachedSongs.length, '曲');
         setSongs(cachedSongs);
@@ -139,7 +139,7 @@ export default function RepresentativeSongsScreen() {
       if (songsData && songsData.length > 0) {
         logger.debug('[代表曲画面] データベースから代表曲を取得:', songsData.length, '曲');
         // キャッシュに保存
-        setCached(cacheKey, songsData);
+        practiceDataCache.set(cacheKey, songsData);
         setSongs(songsData);
         return;
       }
@@ -423,6 +423,9 @@ export default function RepresentativeSongsScreen() {
             {/* YouTubeボタン（youtube_urlがある場合） */}
             {selectedSong?.youtube_url && (
               <View style={styles.modalFooter}>
+                <Text style={[styles.youtubeLinkText, { color: currentTheme.textSecondary }]}>
+                  ここにYOUTUBEリンクへ飛びますか？
+                </Text>
                 <TouchableOpacity
                   style={[styles.youtubeButton, { backgroundColor: '#FF0000' }]}
                   onPress={handleOpenYouTube}
@@ -601,6 +604,11 @@ const styles = StyleSheet.create({
     padding: 20,
     borderTopWidth: 1,
     borderTopColor: '#E5E5E5',
+  },
+  youtubeLinkText: {
+    fontSize: 14,
+    marginBottom: 12,
+    textAlign: 'center',
   },
   youtubeButton: {
     flexDirection: 'row',

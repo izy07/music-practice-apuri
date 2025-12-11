@@ -84,6 +84,11 @@ export default function BeginnerGuideScreen() {
   };
 
   const renderSection = () => {
+    // currentGuideがnullの場合は何も表示しない
+    if (!currentGuide) {
+      return null;
+    }
+    
     switch (activeSection) {
       case 'faq':
         return (
@@ -456,6 +461,34 @@ export default function BeginnerGuideScreen() {
                 <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>保管方法</Text>
                 <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.maintenance.storage}</Text>
               </View>
+              
+              {(currentGuide.maintenance as any)?.shopFrequency && (
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>メンテナンス頻度の目安</Text>
+                  <Text style={[styles.infoText, { color: currentTheme.text }]}>{(currentGuide.maintenance as any).shopFrequency}</Text>
+                </View>
+              )}
+              
+              {(currentGuide.maintenance as any)?.cleaningFrequency && (
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>洗浄頻度の目安</Text>
+                  <Text style={[styles.infoText, { color: currentTheme.text }]}>{(currentGuide.maintenance as any).cleaningFrequency}</Text>
+                </View>
+              )}
+              
+              {currentGuide.maintenance.attention && (
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>注意事項</Text>
+                  <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.maintenance.attention}</Text>
+                </View>
+              )}
+              
+              {currentGuide.maintenance.supplies && (
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>必要な用品</Text>
+                  <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.maintenance.supplies}</Text>
+                </View>
+              )}
             </View>
           </View>
         );
@@ -638,11 +671,13 @@ export default function BeginnerGuideScreen() {
       )}
 
       {/* カメラモーダル */}
-      <PostureCameraModal
-        visible={showCameraModal}
-        onClose={() => setShowCameraModal(false)}
-        instrumentName={currentGuide.name}
-      />
+      {currentGuide && (
+        <PostureCameraModal
+          visible={showCameraModal}
+          onClose={() => setShowCameraModal(false)}
+          instrumentName={currentGuide.name}
+        />
+      )}
     </SafeAreaView>
   );
 }

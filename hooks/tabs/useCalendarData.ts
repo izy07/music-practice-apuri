@@ -8,7 +8,7 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 
 interface PracticeData {
-  [key: number]: {
+  [key: string]: { // キーを日付文字列（YYYY-MM-DD）に変更
     minutes: number;
     hasRecord: boolean; // 練習時間が記録されたか（タイマー、クイック、手動入力など）
     hasBasicPractice: boolean; // 基礎練（input_method: 'preset'）があるか
@@ -16,13 +16,13 @@ interface PracticeData {
 }
 
 interface RecordingsData {
-  [key: number]: {
+  [key: string]: { // キーを日付文字列（YYYY-MM-DD）に変更
     hasRecording: boolean;
   };
 }
 
 interface EventData {
-  [key: number]: Array<{
+  [key: string]: Array<{ // キーを日付文字列（YYYY-MM-DD）に変更
     id: string;
     title: string;
     description?: string;
@@ -117,10 +117,9 @@ export function useCalendarData(currentDate: Date) {
               }
             });
             
-            // 練習時間が記録された日を処理
+            // 練習時間が記録された日を処理（日付文字列をキーに使用）
             Object.entries(dailyTotals).forEach(([date, minutes]) => {
-              const day = parseInt(date.split('-')[2]);
-              newPracticeData[day] = { 
+              newPracticeData[date] = { 
                 minutes, 
                 hasRecord: dailyHasRecord[date] || false,
                 hasBasicPractice: dailyHasBasicPractice[date] || false
@@ -131,15 +130,14 @@ export function useCalendarData(currentDate: Date) {
             // 基礎練のみの日（時間が0だが基礎練がある日）も追加
             Object.entries(dailyHasBasicPractice).forEach(([date, hasBasicPractice]) => {
               if (hasBasicPractice && !dailyTotals[date]) {
-                const day = parseInt(date.split('-')[2]);
-                if (!newPracticeData[day]) {
-                  newPracticeData[day] = { 
+                if (!newPracticeData[date]) {
+                  newPracticeData[date] = { 
                     minutes: 0, 
                     hasRecord: false,
                     hasBasicPractice: true
                   };
                 } else {
-                  newPracticeData[day].hasBasicPractice = true;
+                  newPracticeData[date].hasBasicPractice = true;
                 }
               }
             });
@@ -185,10 +183,9 @@ export function useCalendarData(currentDate: Date) {
         }
       });
       
-      // 練習時間が記録された日を処理
+      // 練習時間が記録された日を処理（日付文字列をキーに使用）
       Object.entries(dailyTotals).forEach(([date, minutes]) => {
-        const day = parseInt(date.split('-')[2]);
-        newPracticeData[day] = { 
+        newPracticeData[date] = { 
           minutes, 
           hasRecord: dailyHasRecord[date] || false,
           hasBasicPractice: dailyHasBasicPractice[date] || false
@@ -199,15 +196,14 @@ export function useCalendarData(currentDate: Date) {
       // 基礎練のみの日（時間が0だが基礎練がある日）も追加
       Object.entries(dailyHasBasicPractice).forEach(([date, hasBasicPractice]) => {
         if (hasBasicPractice && !dailyTotals[date]) {
-          const day = parseInt(date.split('-')[2]);
-          if (!newPracticeData[day]) {
-            newPracticeData[day] = { 
+          if (!newPracticeData[date]) {
+            newPracticeData[date] = { 
               minutes: 0, 
               hasRecord: false,
               hasBasicPractice: true
             };
           } else {
-            newPracticeData[day].hasBasicPractice = true;
+            newPracticeData[date].hasBasicPractice = true;
           }
         }
       });
@@ -333,11 +329,12 @@ export function useCalendarData(currentDate: Date) {
         const newEvents: EventData = {};
         
         eventsData.forEach((event: { id: string; title: string; description?: string; date: string }) => {
-          const day = parseInt(event.date.split('-')[2]);
-          if (!newEvents[day]) {
-            newEvents[day] = [];
+          // 日付文字列（YYYY-MM-DD）をキーとして使用
+          const dateStr = event.date;
+          if (!newEvents[dateStr]) {
+            newEvents[dateStr] = [];
           }
-          newEvents[day].push({
+          newEvents[dateStr].push({
             id: event.id,
             title: event.title,
             description: event.description || undefined
@@ -447,8 +444,9 @@ export function useCalendarData(currentDate: Date) {
           
           // 現在表示している月と一致するか確認
           if (year === targetYear && month - 1 === targetMonth) {
-            newRecordingsData[day] = { hasRecording: true };
-            logger.debug(`録音データを日付 ${day} に追加 (recorded_at: ${recording.recorded_at}, localDate: ${localDateStr})`);
+            // 日付文字列（YYYY-MM-DD）をキーとして使用
+            newRecordingsData[localDateStr] = { hasRecording: true };
+            logger.debug(`録音データを日付 ${localDateStr} に追加 (recorded_at: ${recording.recorded_at})`);
           } else {
             logger.debug(`録音データをスキップ (recorded_at: ${recording.recorded_at}, localDate: ${localDateStr}, target: ${targetYear}-${targetMonth + 1})`);
           }

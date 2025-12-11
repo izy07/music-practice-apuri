@@ -139,20 +139,32 @@ export function PracticeDetailModal({
         }
       }
 
-      // 統計画面の更新通知を発火
+      // 即時反映: カレンダー画面への通知イベントを発火（楽観的更新）
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('practiceRecordUpdated', {
           detail: { 
             action: 'practice_saved',
-            content: selectedMenu.title
+            content: selectedMenu.title,
+            verified: false, // DB反映前なのでfalse
+            date: new Date().toISOString().split('T')[0] // 今日の日付
           }
         });
         window.dispatchEvent(event);
+        logger.debug('基礎練記録の即時反映イベントを発火:', selectedMenu.title);
       }
 
+      // モーダルを即座に閉じる（楽観的更新）
       onClose();
-      Alert.alert('保存完了', `${selectedMenu.title}の練習記録を保存しました！`);
+      
+      // 成功メッセージ（非ブロッキング）
+      Alert.alert('保存完了', `${selectedMenu.title}の練習記録を保存しました！`, [{ text: 'OK' }]);
+      
+      // コールバックを呼び出し
       onSaveComplete?.();
+      
+      // バックグラウンドでDB保存を確認（エラー時のみロールバック）
+      // 既に保存済みなので、ここではエラーログのみ
+      logger.debug('基礎練記録の保存が完了しました:', selectedMenu.title);
     } catch (error) {
       logger.error('練習記録保存エラー:', error);
       Alert.alert('エラー', '練習記録の保存に失敗しました');

@@ -81,7 +81,7 @@ export default function MyLibraryScreen() {
         logger.debug('楽曲読み込み成功:', { 
           totalCount: data?.length || 0, 
           filteredByStatus: filterStatus,
-          songs: data?.map(s => ({ id: s.id, title: s.title, status: s.status }))
+          songs: data?.map((s: any) => ({ id: s.id, title: s.title, status: s.status }))
         });
         
         // データを設定
@@ -89,11 +89,11 @@ export default function MyLibraryScreen() {
         setSongs(loadedSongs);
         
         // フィルターされた結果もログに記録
-        const filtered = loadedSongs.filter(song => song.status === filterStatus);
+        const filtered = loadedSongs.filter((song: Song) => song.status === filterStatus);
         logger.debug('フィルター後の楽曲数:', { 
           filterStatus, 
           count: filtered.length,
-          allStatuses: loadedSongs.map(s => s.status)
+          allStatuses: loadedSongs.map((s: Song) => s.status)
         });
       } else {
         logger.debug('楽曲読み込み: ユーザー未認証');
@@ -134,15 +134,31 @@ export default function MyLibraryScreen() {
 
       logger.debug('認証成功:', user.id);
 
+      // statusの値を検証（許可されている値のみ）
+      const validStatuses = ['want_to_play', 'learning', 'played', 'mastered'] as const;
+      const statusValue = formData.status && validStatuses.includes(formData.status as any) 
+        ? formData.status 
+        : 'want_to_play'; // 無効な値の場合はデフォルト値を使用
+      
+      if (!validStatuses.includes(statusValue as any)) {
+        logger.error('無効なstatus値:', { 
+          received: formData.status, 
+          usingDefault: statusValue 
+        });
+        Alert.alert('エラー', '無効なステータス値です。デフォルト値を使用します。');
+      }
+
       if (editingSong) {
         // 編集
         // artistが空の場合は空文字列を設定（NOT NULL制約のため）
+        // genreが空文字列の場合はnullに変換
+        const genreValue = formData.genre && formData.genre.trim() ? formData.genre.trim() : null;
         const updateData = {
           title: formData.title.trim(),
           artist: formData.artist.trim() || '', // NOT NULL制約のため空文字列をデフォルトに
-          genre: formData.genre || null,
+          genre: genreValue,
           difficulty: formData.difficulty,
-          status: formData.status,
+          status: statusValue,
           notes: formData.notes || null
         };
         logger.debug('曲を更新:', editingSong.id, updateData);
@@ -152,6 +168,14 @@ export default function MyLibraryScreen() {
           .eq('id', editingSong.id);
 
         if (error) {
+          logger.error('曲更新エラー詳細:', {
+            error,
+            errorCode: error.code,
+            errorMessage: error.message,
+            errorDetails: error.details,
+            errorHint: error.hint,
+            updateData
+          });
           ErrorHandler.handle(error, '曲更新', true);
           throw error;
         }
@@ -159,7 +183,7 @@ export default function MyLibraryScreen() {
         logger.debug('更新成功');
         
         // 更新されたステータスに合わせてフィルターを自動調整
-        setFilterStatus(formData.status);
+        setFilterStatus(statusValue);
         
         // リストを再読み込み（モーダルを閉じる前に実行してデータを確実に取得）
         await loadSongs();
@@ -173,13 +197,15 @@ export default function MyLibraryScreen() {
       } else {
         // 新規追加
         // artistが空の場合は空文字列を設定（NOT NULL制約のため）
+        // genreが空文字列の場合はnullに変換
+        const genreValue = formData.genre && formData.genre.trim() ? formData.genre.trim() : null;
         const songData = {
           user_id: user.id,
           title: formData.title.trim(),
           artist: formData.artist.trim() || '', // NOT NULL制約のため空文字列をデフォルトに
-          genre: formData.genre || null,
+          genre: genreValue,
           difficulty: formData.difficulty,
-          status: formData.status,
+          status: statusValue,
           notes: formData.notes || null
         };
         logger.debug('新規追加:', songData);
@@ -189,6 +215,14 @@ export default function MyLibraryScreen() {
           .insert(songData);
 
         if (error) {
+          logger.error('曲追加エラー詳細:', {
+            error,
+            errorCode: error.code,
+            errorMessage: error.message,
+            errorDetails: error.details,
+            errorHint: error.hint,
+            songData
+          });
           ErrorHandler.handle(error, '曲追加', true);
           throw error;
         }
@@ -196,7 +230,7 @@ export default function MyLibraryScreen() {
         logger.debug('追加成功');
         
         // 保存されたステータスに合わせてフィルターを自動調整
-        setFilterStatus(formData.status);
+        setFilterStatus(statusValue);
         
         // リストを再読み込み（モーダルを閉じる前に実行してデータを確実に取得）
         await loadSongs();
@@ -207,9 +241,9 @@ export default function MyLibraryScreen() {
         resetForm();
         
         // 保存成功のメッセージを表示
-        const statusText = formData.status === 'learning' ? '練習中の曲' : 
-                          formData.status === 'played' ? '演奏済みの曲' :
-                          formData.status === 'mastered' ? 'マスター済みの曲' : 
+        const statusText = statusValue === 'learning' ? '練習中の曲' : 
+                          statusValue === 'played' ? '演奏済みの曲' :
+                          statusValue === 'mastered' ? 'マスター済みの曲' : 
                           '弾きたい曲';
         Alert.alert('保存完了！', `${statusText}を追加しました`);
       }
@@ -362,7 +396,7 @@ export default function MyLibraryScreen() {
       artist: '',
       genre: '',
       difficulty: 'beginner' as 'beginner' | 'intermediate' | 'advanced',
-      status: 'want_to_play' as 'want_to_play' | 'learning' | 'mastered',
+      status: filterStatus, // 現在選択されているフィルターのステータスを使用
       notes: ''
     });
   };
@@ -375,7 +409,7 @@ export default function MyLibraryScreen() {
       artist: song.artist,
       genre: song.genre,
       difficulty: song.difficulty as 'beginner' | 'intermediate' | 'advanced',
-      status: song.status as 'want_to_play' | 'learning' | 'mastered',
+      status: song.status as 'want_to_play' | 'learning' | 'played' | 'mastered',
       notes: song.notes
     });
     setShowAddModal(true);
@@ -384,7 +418,15 @@ export default function MyLibraryScreen() {
   // 新規追加開始
   const startAdding = () => {
     setEditingSong(null);
-    resetForm();
+    // 現在のフィルターステータスを初期値として設定
+    setFormData({
+      title: '',
+      artist: '',
+      genre: '',
+      difficulty: 'beginner' as 'beginner' | 'intermediate' | 'advanced',
+      status: filterStatus, // 現在選択されているフィルターのステータスを使用
+      notes: ''
+    });
     setShowAddModal(true);
   };
 
@@ -608,7 +650,14 @@ export default function MyLibraryScreen() {
         visible={showAddModal}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setShowAddModal(false)}
+        onRequestClose={() => {
+          // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+          if (Platform.OS === 'web') {
+            const { blurActiveElement } = require('@/lib/modalFocusManager');
+            blurActiveElement();
+          }
+          setShowAddModal(false);
+        }}
       >
         <SafeAreaView style={[styles.modalContainer, { backgroundColor: currentTheme.background }]}>
           <View 
@@ -620,7 +669,14 @@ export default function MyLibraryScreen() {
           >
             <View style={[styles.modalHeader, { borderBottomColor: currentTheme.secondary }]}>
               <TouchableOpacity
-                onPress={() => setShowAddModal(false)}
+                onPress={() => {
+                  // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+                  if (Platform.OS === 'web') {
+                    const { blurActiveElement } = require('@/lib/modalFocusManager');
+                    blurActiveElement();
+                  }
+                  setShowAddModal(false);
+                }}
                 style={styles.modalCloseButton}
               >
                 <Text style={[styles.modalCloseText, { color: currentTheme.textSecondary }]}>
@@ -630,6 +686,7 @@ export default function MyLibraryScreen() {
               <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
                 {editingSong ? '曲を編集' : (
                   formData.status === 'learning' ? '練習中の曲を追加' : 
+                  formData.status === 'played' ? '演奏済みの曲を追加' :
                   formData.status === 'mastered' ? 'マスター済みの曲を追加' : 
                   '弾きたい曲を追加'
                 )}
@@ -642,7 +699,6 @@ export default function MyLibraryScreen() {
                 <Text style={[styles.formLabel, { color: currentTheme.text }]}>曲名 *</Text>
                 <TextInput
                   id="song-title-input"
-                  name="song-title"
                   style={[styles.formInput, { 
                     backgroundColor: currentTheme.surface,
                     color: currentTheme.text,

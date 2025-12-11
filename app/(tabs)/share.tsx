@@ -31,7 +31,6 @@ export default function ShareScreen() {
   // UI状態管理
   const [showCreateOrg, setShowCreateOrg] = useState(false);
   const [showJoinOrg, setShowJoinOrg] = useState(false);
-  const [showAllOrgsMenu, setShowAllOrgsMenu] = useState(false);
   
   // 組織作成フォーム
   const [createForm, setCreateForm] = useState({
@@ -225,31 +224,63 @@ export default function ShareScreen() {
         {/* 組織一覧 */}
         <View style={styles.content}>
           <View style={styles.organizationsContainer}>
-            <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>{t('participatingOrganizations')}</Text>
+            <Text style={[styles.sectionTitle, { color: currentTheme.text, marginBottom: 4 }]}>参加中の全組織(全楽器)</Text>
             
-            {/* 全組織カード */}
-            <TouchableOpacity
-              style={[
-                styles.overviewCard,
-                { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary + '33', marginTop: 16 }
-              ]}
-              onPress={() => setShowAllOrgsMenu(true)}
-              activeOpacity={0.85}
-            >
-              <View style={[styles.overviewIcon, { backgroundColor: currentTheme.primary + '20' }]}> 
-                <Users size={20} color={currentTheme.primary} />
+            {/* 全組織メニュー */}
+            <View style={styles.menuContainer}>
+              <View style={styles.menuRow}>
+                {/* 練習日程 */}
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemHalf, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary + '33', marginTop: 8 }]}
+                  onPress={() => router.push('/calendar?allOrgs=true' as any)}
+                  activeOpacity={0.85}
+                >
+                  <View style={[styles.menuIcon, { backgroundColor: currentTheme.primary + '20' }]}>
+                    <Calendar size={20} color={currentTheme.primary} />
+                  </View>
+                  <View style={styles.menuTextContainer}>
+                    <Text style={[styles.menuTitle, { color: currentTheme.text }]}>練習{'\n'}日程</Text>
+                    <Text style={[styles.menuSubtitle, { color: currentTheme.textSecondary }]} numberOfLines={2}>{t('allOrganizationsCalendarDesc')}</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* 出欠登録 */}
+                <TouchableOpacity
+                  style={[styles.menuItem, styles.menuItemHalf, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary + '33', marginTop: 8, marginLeft: 12 }]}
+                  onPress={() => router.push('/attendance?allOrgs=true' as any)}
+                  activeOpacity={0.85}
+                >
+                  <View style={[styles.menuIcon, { backgroundColor: currentTheme.primary + '20' }]}>
+                    <CheckSquare size={20} color={currentTheme.primary} />
+                  </View>
+                  <View style={styles.menuTextContainer}>
+                    <Text style={[styles.menuTitle, { color: currentTheme.text }]}>出欠{'\n'}登録</Text>
+                    <Text style={[styles.menuSubtitle, { color: currentTheme.textSecondary }]} numberOfLines={2}>全組織の出欠管理</Text>
+                  </View>
+                </TouchableOpacity>
               </View>
-              <View style={styles.overviewTextBox}>
-                <Text style={[styles.overviewTitle, { color: currentTheme.text }]}>{t('allOrganizations')}</Text>
-                <Text style={[styles.overviewSubtitle, { color: currentTheme.textSecondary }]}>{t('allOrganizationsSubtitle')}</Text>
-              </View>
-              <View style={styles.overviewAction}>
-                <Text style={[styles.overviewActionText, { color: currentTheme.primary }]}>{t('open')}</Text>
-              </View>
-            </TouchableOpacity>
+
+              {/* 課題一覧 */}
+              <TouchableOpacity
+                style={[styles.menuItem, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary + '33', marginTop: 12 }]}
+                onPress={() => router.push('/tasks-all-orgs' as any)}
+                activeOpacity={0.85}
+              >
+                <View style={[styles.menuIcon, { backgroundColor: currentTheme.primary + '20' }]}>
+                  <ClipboardList size={24} color={currentTheme.primary} />
+                </View>
+                <View style={styles.menuTextContainer}>
+                  <Text style={[styles.menuTitle, { color: currentTheme.text }]}>{t('allOrganizationsTasks')}</Text>
+                  <Text style={[styles.menuSubtitle, { color: currentTheme.textSecondary }]}>{t('allOrganizationsTasksDesc')}</Text>
+                </View>
+                <View style={styles.menuArrow}>
+                  <Text style={[styles.menuArrowText, { color: currentTheme.textSecondary }]}>→</Text>
+                </View>
+              </TouchableOpacity>
+            </View>
             
             {/* 個別組織一覧 */}
-            <Text style={[styles.sectionTitle, { color: currentTheme.text, marginTop: 24, marginBottom: 12, fontSize: 16 }]}>{t('individualOrganizations')}</Text>
+            <Text style={[styles.sectionTitle, { color: currentTheme.text, marginTop: 8, marginBottom: 8, fontSize: 16 }]}>{t('individualOrganizations')}</Text>
             {loading ? (
               <Text style={[styles.loadingText, { color: currentTheme.textSecondary }]}>{t('loading')}</Text>
             ) : organizations.length === 0 ? (
@@ -268,7 +299,7 @@ export default function ShareScreen() {
                   activeOpacity={0.7}
                 >
                   <View style={[styles.orgIcon, { backgroundColor: currentTheme.primary }]}>
-                    <Users size={24} color="#FFFFFF" />
+                    <Users size={20} color="#FFFFFF" />
                   </View>
                   <View style={styles.orgContent}>
                     <Text style={[styles.orgName, { color: currentTheme.text }]}>
@@ -455,22 +486,22 @@ export default function ShareScreen() {
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>
                   組織ID *
                 </Text>
-                <TextInput
-                  style={[styles.textInput, { 
-                    backgroundColor: currentTheme.background,
-                    color: currentTheme.text,
+                  <TextInput
+                    style={[styles.textInput, { 
+                      backgroundColor: currentTheme.background,
+                      color: currentTheme.text,
                     borderColor: currentTheme.secondary
-                  }]}
+                    }]}
                   value={joinForm.organizationId}
                   onChangeText={(text) => setJoinForm(prev => ({ ...prev, organizationId: text }))}
                   placeholder="組織IDを入力してください（UUID形式）"
-                  placeholderTextColor={currentTheme.textSecondary}
+                    placeholderTextColor={currentTheme.textSecondary}
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
                 <Text style={[styles.inputHint, { color: currentTheme.textSecondary }]}>
                   組織の管理者から提供された組織IDを入力してください
-                </Text>
+                    </Text>
               </View>
 
               {/* パスワード入力 */}
@@ -599,94 +630,6 @@ export default function ShareScreen() {
         </View>
       </Modal>
 
-      {/* 全組織メニューモーダル */}
-      <Modal
-        visible={showAllOrgsMenu}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowAllOrgsMenu(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
-                {t('allOrganizationsMenu')}
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowAllOrgsMenu(false)}
-                style={styles.closeButtonContainer}
-              >
-                <Text style={[styles.closeButton, { color: currentTheme.text }]}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.menuContainer}>
-              {/* 練習日程 */}
-              <TouchableOpacity
-                style={[
-                  styles.menuItem,
-                  { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary + '33' }
-                ]}
-                onPress={() => {
-                  setShowAllOrgsMenu(false);
-                  router.push('/calendar?allOrgs=true' as any);
-                }}
-                activeOpacity={0.85}
-              >
-                <View style={[styles.menuIcon, { backgroundColor: currentTheme.primary + '20' }]}> 
-                  <Calendar size={24} color={currentTheme.primary} />
-                </View>
-                <View style={styles.menuTextContainer}>
-                  <Text style={[styles.menuTitle, { color: currentTheme.text }]}>{t('practiceSchedule')}</Text>
-                  <Text style={[styles.menuSubtitle, { color: currentTheme.textSecondary }]}>{t('allOrganizationsCalendarDesc')}</Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* 出欠登録 */}
-              <TouchableOpacity
-                style={[
-                  styles.menuItem,
-                  { backgroundColor: currentTheme.surface, borderColor: currentTheme.secondary + '33', marginTop: 12 }
-                ]}
-                onPress={() => {
-                  setShowAllOrgsMenu(false);
-                  router.push('/attendance?allOrgs=true' as any);
-                }}
-                activeOpacity={0.85}
-              >
-                <View style={[styles.menuIcon, { backgroundColor: currentTheme.secondary + '20' }]}> 
-                  <CheckSquare size={24} color={currentTheme.secondary} />
-                </View>
-                <View style={styles.menuTextContainer}>
-                  <Text style={[styles.menuTitle, { color: currentTheme.text }]}>{t('allOrganizationsAttendance')}</Text>
-                  <Text style={[styles.menuSubtitle, { color: currentTheme.textSecondary }]}>{t('allOrganizationsAttendanceDesc')}</Text>
-                </View>
-              </TouchableOpacity>
-
-              {/* 課題一覧 */}
-              <TouchableOpacity
-                style={[
-                  styles.menuItem,
-                  { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary + '33', marginTop: 12 }
-                ]}
-                onPress={() => {
-                  setShowAllOrgsMenu(false);
-                  router.push('/tasks-all-orgs' as any);
-                }}
-                activeOpacity={0.85}
-              >
-                <View style={[styles.menuIcon, { backgroundColor: currentTheme.primary + '20' }]}> 
-                  <ClipboardList size={24} color={currentTheme.primary} />
-                </View>
-                <View style={styles.menuTextContainer}>
-                  <Text style={[styles.menuTitle, { color: currentTheme.text }]}>{t('allOrganizationsTasks')}</Text>
-                  <Text style={[styles.menuSubtitle, { color: currentTheme.textSecondary }]}>{t('allOrganizationsTasksDesc')}</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -752,7 +695,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   organizationsContainer: {
-    marginBottom: 16,
+    marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 20,
@@ -784,18 +727,18 @@ const styles = StyleSheet.create({
   orgCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
+    padding: 12,
     borderRadius: 16,
-    marginBottom: 12,
+    marginBottom: 8,
     elevation: 4,
   },
   orgIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   orgContent: {
     flex: 1,
@@ -803,19 +746,19 @@ const styles = StyleSheet.create({
   orgName: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   orgDescription: {
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   orgDate: {
     fontSize: 12,
     fontWeight: '500',
   },
   orgArrow: {
-    marginLeft: 16,
+    marginLeft: 8,
   },
   arrow: {
     fontSize: 20,
@@ -874,7 +817,12 @@ const styles = StyleSheet.create({
   overviewAction: { marginLeft: 12 },
   overviewActionText: { fontSize: 14, fontWeight: '700' },
   menuContainer: {
-    padding: 20,
+    marginBottom: 8,
+    marginHorizontal: 12,
+  },
+  menuRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   menuItem: {
     flexDirection: 'row',
@@ -884,24 +832,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     elevation: 2,
   },
+  menuItemHalf: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+  },
   menuIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    marginRight: 8,
   },
   menuTextContainer: {
     flex: 1,
   },
   menuTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 2,
+    lineHeight: 20,
   },
   menuSubtitle: {
-    fontSize: 12,
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  menuArrow: {
+    marginLeft: 8,
+  },
+  menuArrowText: {
+    fontSize: 18,
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,

@@ -142,10 +142,11 @@ export const createPracticeSession = async (
       full_payload: JSON.stringify(insertPayload)
     });
     
+    // 必要なフィールドのみ取得（パフォーマンス最適化）
     const { data, error } = await supabase
       .from('practice_sessions')
       .insert(insertPayload)
-      .select()
+      .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, created_at')
       .single();
     
     // 保存後のデータを確認
@@ -227,22 +228,24 @@ export const updatePracticeSession = async (
       ...updatesWithoutTimestamp,
     };
     
+    // 必要なフィールドのみ取得（パフォーマンス最適化）
     const { data, error } = await supabase
       .from('practice_sessions')
       .update(payload)
       .eq('id', sessionId)
-      .select()
+      .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, created_at')
       .single();
     
     if (error) {
       // updated_atカラムが存在しないエラーの場合は、payloadから除外して再試行
       if (error.code === 'PGRST204' && error.message?.includes('updated_at')) {
         logger.warn(`[${REPOSITORY_CONTEXT}] updatePracticeSession:updated_at column not found, retrying without it`);
+        // 必要なフィールドのみ取得（パフォーマンス最適化）
         const { data: retryData, error: retryError } = await supabase
           .from('practice_sessions')
           .update(updatesWithoutTimestamp)
           .eq('id', sessionId)
-          .select()
+          .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, created_at')
           .single();
         
         if (retryError) {
@@ -402,7 +405,7 @@ export const savePracticeSessionWithIntegration = async (
       ? (rawInputMethod as ValidInputMethod)
       : 'manual';
     
-    // 指定された日付の既存の練習記録を取得
+    // 指定された日付の既存の練習記録を取得（必要なフィールドのみ）
     let query = supabase
       .from('practice_sessions')
       .select('id, duration_minutes, input_method, content, instrument_id')
@@ -675,9 +678,10 @@ export const getPracticeSessionsByDate = async (
   instrumentId?: string | null
 ): Promise<{ data: PracticeSession[] | null; error: SupabaseError }> => {
   try {
+    // 必要なフィールドのみ取得（パフォーマンス最適化）
     let query = supabase
       .from('practice_sessions')
-      .select('*')
+      .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, created_at')
       .eq('user_id', userId)
       .eq('practice_date', practiceDate);
     

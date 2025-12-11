@@ -18,7 +18,7 @@ import { supabase } from '@/lib/supabase';
 import EventCalendar from './EventCalendar';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
-import { disableBackgroundFocus, enableBackgroundFocus, focusFirstElement } from '@/lib/modalFocusManager';
+import { disableBackgroundFocus, enableBackgroundFocus, focusFirstElement, blurActiveElement } from '@/lib/modalFocusManager';
 
 interface Event {
   id: string;
@@ -119,31 +119,59 @@ export default function EventModal({
 
       if (event) {
         // 既存イベントの更新
+        // dateとevent_dateの両方を設定（テーブルスキーマの互換性のため）
+        const updateData: {
+          title: string;
+          date: string;
+          event_date?: string;
+          description: string | null;
+          updated_at: string;
+        } = {
+          title: title.trim(),
+          date,
+          description: description.trim() || null,
+          updated_at: new Date().toISOString(),
+        };
+        
+        // event_dateカラムが存在する場合は、dateと同じ値を設定
+        if (date) {
+          updateData.event_date = date;
+        }
+        
         const { error } = await supabase
           .from('events')
-          .update({
-            title: title.trim(),
-            date,
-            description: description.trim() || null,
-            updated_at: new Date().toISOString(),
-          })
+          .update(updateData)
           .eq('id', event.id);
 
         if (error) throw error;
-        logger.debug('イベントを更新しました', { eventId: event.id, date });
+        logger.debug('イベントを更新しました', { eventId: event.id, date, event_date: updateData.event_date });
       } else {
         // 新規イベントの作成
+        // dateとevent_dateの両方を設定（テーブルスキーマの互換性のため）
+        const insertData: {
+          user_id: string;
+          title: string;
+          date: string;
+          event_date?: string;
+          description: string | null;
+        } = {
+          user_id: user.id,
+          title: title.trim(),
+          date,
+          description: description.trim() || null,
+        };
+        
+        // event_dateカラムが存在する場合は、dateと同じ値を設定
+        if (date) {
+          insertData.event_date = date;
+        }
+        
         const { error } = await supabase
           .from('events')
-          .insert({
-            user_id: user.id,
-            title: title.trim(),
-            date,
-            description: description.trim() || null,
-          });
+          .insert(insertData);
 
         if (error) throw error;
-        logger.debug('イベントを登録しました', { date });
+        logger.debug('イベントを登録しました', { date, event_date: insertData.event_date });
       }
 
       // コールバックを先に実行してからモーダルを閉じる（データベース反映を待つため）
@@ -152,6 +180,8 @@ export default function EventModal({
       
       // モーダルを閉じる前に少し待機（データベース反映を確実にするため）
       await new Promise(resolve => setTimeout(resolve, 200));
+      // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+      blurActiveElement();
       onClose();
     } catch (error) {
       ErrorHandler.handle(error, 'イベント保存', true);
@@ -196,6 +226,8 @@ export default function EventModal({
               logger.debug('イベントを削除しました、コールバックを実行します');
               onEventSaved();
               logger.debug('onEventSavedコールバックを実行しました');
+              // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+              blurActiveElement();
               onClose();
               
               // 削除成功のアラートは削除後に表示
@@ -222,6 +254,8 @@ export default function EventModal({
 
   const handleClose = () => {
     resetForm();
+    // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+    blurActiveElement();
     onClose();
   };
 

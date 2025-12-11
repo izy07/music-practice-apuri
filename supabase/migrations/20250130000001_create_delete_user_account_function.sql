@@ -58,3 +58,4 @@ COMMENT ON FUNCTION delete_user_account() IS 'ユーザーアカウントのデ�
 
 
 
+
