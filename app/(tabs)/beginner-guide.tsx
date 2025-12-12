@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, BookOpen, Music, Target, Heart, History, Star, Play, Wrench, Lightbulb, Youtube, Image as ImageIcon, Camera } from 'lucide-react-native';
@@ -7,14 +7,48 @@ import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
 import PostureCameraModal from '@/components/PostureCameraModal';
-// 動的インポートで遅延読み込み（軽量化）
+// 動的インポートで遅延読み込み（軽量化・オフライン対応）
 let instrumentGuides: any = null;
-const loadInstrumentGuides = async () => {
-  if (!instrumentGuides) {
-    const module = await import('@/data/instrumentGuides');
-    instrumentGuides = module.instrumentGuides;
+let isLoading = false;
+let loadPromise: Promise<any> | null = null;
+
+const loadInstrumentGuides = async (): Promise<any> => {
+  // 既に読み込まれている場合は即座に返す
+  if (instrumentGuides && typeof instrumentGuides === 'object' && Object.keys(instrumentGuides).length > 0) {
+    return instrumentGuides;
   }
-  return instrumentGuides;
+
+  // 既に読み込み中の場合は、そのPromiseを返す
+  if (isLoading && loadPromise) {
+    return loadPromise;
+  }
+
+  // 新しい読み込みを開始
+  isLoading = true;
+  loadPromise = (async () => {
+    try {
+      // 動的インポートを実行
+      const module = await import('@/data/instrumentGuides');
+      const guides = module.instrumentGuides;
+      
+      // データの検証
+      if (guides && typeof guides === 'object' && Object.keys(guides).length > 0) {
+        instrumentGuides = guides;
+        isLoading = false;
+        loadPromise = null;
+        return guides;
+      } else {
+        throw new Error('ガイドデータが空または無効です');
+      }
+    } catch (error) {
+      isLoading = false;
+      loadPromise = null;
+      logger.error('loadInstrumentGuides エラー:', error);
+      throw error;
+    }
+  })();
+
+  return loadPromise;
 };
 import { styles } from '@/lib/tabs/beginner-guide/styles';
 import { createShadowStyle } from '@/lib/shadowStyles';
@@ -33,73 +67,178 @@ export default function BeginnerGuideScreen() {
   const [guidesLoaded, setGuidesLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // 楽器データを動的インポートで読み込み（オフライン対応付き）
+  // 楽器データを動的インポートで読み込み（オフライン対応付き・根本的解決版）
   useEffect(() => {
+    let isMounted = true;
+    let timeoutId: NodeJS.Timeout | null = null;
+
     const loadGuides = async () => {
       try {
-        // まずキャッシュから読み込みを試行（オフライン対応）
+        // まずキャッシュから読み込みを試行（オフライン対応・最優先）
+        let loadedFromCache = false;
         try {
           const cachedData = await AsyncStorage.getItem('instrumentGuides_cache');
           if (cachedData) {
-            const parsed = JSON.parse(cachedData);
-            instrumentGuides = parsed;
-            setGuidesLoaded(true);
-            logger.debug('ガイドデータをキャッシュから読み込みました');
-            // バックグラウンドで最新データを読み込んで更新
-            loadInstrumentGuides().then((guides) => {
-              if (guides) {
-                AsyncStorage.setItem('instrumentGuides_cache', JSON.stringify(guides)).catch(() => {
-                  // キャッシュ保存エラーは無視
+            try {
+              const parsed = JSON.parse(cachedData);
+              // データの検証を強化
+              if (
+                parsed && 
+                typeof parsed === 'object' && 
+                !Array.isArray(parsed) &&
+                Object.keys(parsed).length > 0 &&
+                Object.values(parsed).some((guide: any) => guide && typeof guide === 'object')
+              ) {
+                instrumentGuides = parsed;
+                loadedFromCache = true;
+                if (isMounted) {
+                  setGuidesLoaded(true);
+                  setLoadError(null);
+                }
+                logger.debug('✅ ガイドデータをキャッシュから読み込みました', {
+                  keys: Object.keys(parsed).length
                 });
-                instrumentGuides = guides;
+              } else {
+                logger.warn('⚠️ キャッシュデータが無効です。再読み込みします。');
+                // 無効なキャッシュを削除
+                await AsyncStorage.removeItem('instrumentGuides_cache').catch(() => {});
               }
-            }).catch(() => {
-              // 最新データの読み込みエラーは無視（キャッシュを使用）
-            });
-            return;
+            } catch (parseError) {
+              logger.warn('⚠️ キャッシュデータのパースエラー:', parseError);
+              // 破損したキャッシュを削除
+              await AsyncStorage.removeItem('instrumentGuides_cache').catch(() => {});
+            }
           }
         } catch (cacheError) {
-          // キャッシュ読み込みエラーは無視して続行
           logger.debug('キャッシュ読み込みエラー（無視）:', cacheError);
         }
 
+        // キャッシュから読み込めた場合は、バックグラウンドで最新データを更新
+        if (loadedFromCache) {
+          // バックグラウンドで最新データを読み込んで更新（非ブロッキング）
+          loadInstrumentGuides()
+            .then((guides) => {
+              if (guides && isMounted) {
+                try {
+                  AsyncStorage.setItem('instrumentGuides_cache', JSON.stringify(guides)).catch(() => {
+                    // キャッシュ保存エラーは無視
+                  });
+                  instrumentGuides = guides;
+                  logger.debug('✅ ガイドデータを最新版に更新しました');
+                } catch (updateError) {
+                  logger.debug('キャッシュ更新エラー（無視）:', updateError);
+                }
+              }
+            })
+            .catch((error) => {
+              // 最新データの読み込みエラーは無視（キャッシュを使用）
+              logger.debug('最新データの読み込みエラー（無視）:', error);
+            });
+          return;
+        }
+
         // キャッシュがない場合は動的インポートで読み込み
-        const guides = await loadInstrumentGuides();
-        if (guides) {
+        logger.debug('📥 ガイドデータを動的インポートで読み込み中...');
+        
+        // タイムアウトを設定（15秒）
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error('ガイドデータの読み込みがタイムアウトしました（15秒）'));
+          }, 15000);
+        });
+
+        const guides = await Promise.race([
+          loadInstrumentGuides(),
+          timeoutPromise
+        ]);
+        
+        if (timeoutId) clearTimeout(timeoutId);
+        
+        // データの検証を強化
+        if (
+          guides && 
+          typeof guides === 'object' && 
+          !Array.isArray(guides) &&
+          Object.keys(guides).length > 0 &&
+          Object.values(guides).some((guide: any) => guide && typeof guide === 'object')
+        ) {
           // キャッシュに保存（オフライン対応）
           try {
             await AsyncStorage.setItem('instrumentGuides_cache', JSON.stringify(guides));
-            logger.debug('ガイドデータをキャッシュに保存しました');
+            logger.debug('✅ ガイドデータをキャッシュに保存しました');
           } catch (saveError) {
-            // キャッシュ保存エラーは無視
             logger.debug('キャッシュ保存エラー（無視）:', saveError);
           }
-          setGuidesLoaded(true);
-        } else {
-          throw new Error('ガイドデータの読み込みに失敗しました');
-        }
-      } catch (error) {
-        logger.error('ガイドデータ読み込みエラー:', error);
-        ErrorHandler.handle(error, 'ガイドデータ読み込み', false);
-        setLoadError('ガイドデータの読み込みに失敗しました。オフラインの場合は、次回オンライン時に再試行してください。');
-        
-        // エラー時もキャッシュがあれば使用
-        try {
-          const cachedData = await AsyncStorage.getItem('instrumentGuides_cache');
-          if (cachedData) {
-            const parsed = JSON.parse(cachedData);
-            instrumentGuides = parsed;
+          
+          if (isMounted) {
             setGuidesLoaded(true);
             setLoadError(null);
-            logger.debug('エラー時、キャッシュからガイドデータを読み込みました');
+            logger.debug('✅ ガイドデータの読み込みが完了しました');
           }
-        } catch (cacheError) {
-          // キャッシュ読み込みエラーは無視
+        } else {
+          throw new Error('ガイドデータが無効です（空または不正な形式）');
+        }
+      } catch (error: any) {
+        if (timeoutId) clearTimeout(timeoutId);
+        
+        logger.error('❌ ガイドデータ読み込みエラー:', error);
+        ErrorHandler.handle(error, 'ガイドデータ読み込み', false);
+        
+        // エラー時もキャッシュがあれば使用（最後の手段）
+        if (!instrumentGuides || Object.keys(instrumentGuides).length === 0) {
+          try {
+            const cachedData = await AsyncStorage.getItem('instrumentGuides_cache');
+            if (cachedData) {
+              try {
+                const parsed = JSON.parse(cachedData);
+                if (
+                  parsed && 
+                  typeof parsed === 'object' && 
+                  !Array.isArray(parsed) &&
+                  Object.keys(parsed).length > 0
+                ) {
+                  instrumentGuides = parsed;
+                  if (isMounted) {
+                    setGuidesLoaded(true);
+                    setLoadError(null);
+                    logger.debug('✅ エラー時、キャッシュからガイドデータを復元しました');
+                    return;
+                  }
+                }
+              } catch (parseError) {
+                logger.debug('エラー時のキャッシュパースエラー:', parseError);
+              }
+            }
+          } catch (cacheError) {
+            logger.debug('エラー時のキャッシュ読み込みエラー:', cacheError);
+          }
+        } else {
+          // 既にinstrumentGuidesが設定されている場合は成功として扱う
+          if (isMounted) {
+            setGuidesLoaded(true);
+            setLoadError(null);
+            logger.debug('✅ 既存のガイドデータを使用します');
+            return;
+          }
+        }
+        
+        // キャッシュもなく、既存データもない場合はエラーを表示
+        if (isMounted) {
+          const errorMessage = error?.message || 'ガイドデータの読み込みに失敗しました';
+          setLoadError(`${errorMessage}。オフラインの場合は、次回オンライン時に再試行してください。`);
+          setGuidesLoaded(true); // エラー表示のため、読み込み完了として扱う
+          logger.error('❌ ガイドデータの読み込みに完全に失敗しました');
         }
       }
     };
 
     loadGuides();
+
+    // クリーンアップ
+    return () => {
+      isMounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, []);
 
   // 楽器ID(選択ID) → 楽器キーへの変換
@@ -131,9 +270,36 @@ export default function BeginnerGuideScreen() {
     return map[id] || 'violin';
   };
 
-  const currentGuide = guidesLoaded && instrumentGuides 
-    ? (instrumentGuides[getInstrumentKey() as keyof typeof instrumentGuides] || instrumentGuides.violin)
-    : null;
+  // ガイドデータの取得（より堅牢な検証）
+  const currentGuide = useMemo(() => {
+    if (!guidesLoaded || !instrumentGuides) {
+      return null;
+    }
+    
+    // instrumentGuidesが有効なオブジェクトか確認
+    if (typeof instrumentGuides !== 'object' || Array.isArray(instrumentGuides) || Object.keys(instrumentGuides).length === 0) {
+      logger.warn('⚠️ instrumentGuidesが無効です');
+      return null;
+    }
+    
+    const instrumentKey = getInstrumentKey();
+    const guide = instrumentGuides[instrumentKey as keyof typeof instrumentGuides];
+    
+    // ガイドが存在し、有効なオブジェクトか確認
+    if (guide && typeof guide === 'object' && !Array.isArray(guide)) {
+      return guide;
+    }
+    
+    // フォールバック: バイオリンのガイドを使用
+    const fallbackGuide = instrumentGuides.violin;
+    if (fallbackGuide && typeof fallbackGuide === 'object' && !Array.isArray(fallbackGuide)) {
+      logger.debug(`⚠️ ${instrumentKey}のガイドが見つからないため、バイオリンのガイドを使用します`);
+      return fallbackGuide;
+    }
+    
+    logger.warn('⚠️ フォールバックガイドも見つかりません');
+    return null;
+  }, [guidesLoaded, instrumentGuides, selectedInstrument]);
   
 
   const goBack = () => {
@@ -1121,9 +1287,57 @@ export default function BeginnerGuideScreen() {
         </ScrollView>
       </View>
 
-      {!guidesLoaded || !currentGuide ? (
+      {!guidesLoaded ? (
         <View style={[styles.content, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
           <Text style={{ color: currentTheme.text, fontSize: 16 }}>{t('loading')}</Text>
+        </View>
+      ) : loadError ? (
+        <View style={[styles.content, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+          <Text style={{ color: currentTheme.text, fontSize: 16, textAlign: 'center', marginBottom: 16 }}>
+            {loadError}
+          </Text>
+          <TouchableOpacity
+            style={{ padding: 12, backgroundColor: currentTheme.primary, borderRadius: 8 }}
+            onPress={() => {
+              setGuidesLoaded(false);
+              setLoadError(null);
+              // 再読み込み
+              const loadGuides = async () => {
+                try {
+                  const cachedData = await AsyncStorage.getItem('instrumentGuides_cache');
+                  if (cachedData) {
+                    const parsed = JSON.parse(cachedData);
+                    if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
+                      instrumentGuides = parsed;
+                      setGuidesLoaded(true);
+                      setLoadError(null);
+                      return;
+                    }
+                  }
+                  const guides = await loadInstrumentGuides();
+                  if (guides) {
+                    instrumentGuides = guides;
+                    setGuidesLoaded(true);
+                    setLoadError(null);
+                  }
+                } catch (error) {
+                  setLoadError('再読み込みに失敗しました');
+                  setGuidesLoaded(true);
+                }
+              };
+              loadGuides();
+            }}
+          >
+            <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '600' }}>
+              {language === 'en' ? 'Retry' : '再試行'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : !currentGuide ? (
+        <View style={[styles.content, { justifyContent: 'center', alignItems: 'center', padding: 20 }]}>
+          <Text style={{ color: currentTheme.text, fontSize: 16 }}>
+            {language === 'en' ? 'Guide data not found' : 'ガイドデータが見つかりません'}
+          </Text>
         </View>
       ) : (
         <ScrollView 

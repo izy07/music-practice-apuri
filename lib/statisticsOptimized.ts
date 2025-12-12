@@ -38,7 +38,7 @@ const fetchPracticeRecordsOptimized = async () => {
     query = query
       .gte('practice_date', thirtyDaysAgo.toISOString().split('T')[0])
       .order('practice_date', { ascending: false })
-      .limit(1000); // 最大1000件に制限
+      .limit(100); // ページネーション対応: メモリ使用量削減のため100件に制限
     
     const { data, error } = await query;
     

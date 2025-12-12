@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import { supabase } from './supabase';
 import logger from './logger';
 import { ErrorHandler } from './errorHandler';
@@ -33,8 +33,16 @@ export interface NotificationSettings {
 export class NotificationService {
   private static instance: NotificationService;
   private settings: NotificationSettings | null = null;
+  private appState: string = 'active'; // アプリの状態を追跡
 
-  private constructor() {}
+  private constructor() {
+    // アプリの状態を監視（バックグラウンド処理の最適化）
+    if (typeof AppState !== 'undefined') {
+      AppState.addEventListener('change', (nextAppState) => {
+        this.appState = nextAppState;
+      });
+    }
+  }
 
   public static getInstance(): NotificationService {
     if (!NotificationService.instance) {
@@ -187,6 +195,12 @@ export class NotificationService {
 
   // 通知を送信
   async sendNotification(title: string, body: string, options?: NotificationOptions): Promise<boolean> {
+    // バックグラウンド時は通知を送信しない（バッテリー消費削減）
+    if (this.appState !== 'active') {
+      logger.debug('アプリがバックグラウンドのため、通知をスキップします');
+      return false;
+    }
+    
     try {
       // おやすみ時間のチェック
       if (this.settings?.quiet_hours_enabled && this.isInQuietHours()) {
@@ -227,14 +241,15 @@ export class NotificationService {
         }
 
         if (Notification.permission === 'granted') {
-          // アイコンパスを動的に解決（開発環境と本番環境で異なる）
+          // アイコンパスを動的に解決（開発環境と本番環境で異なる、WebP形式を優先）
           const getIconPath = () => {
-            if (typeof window === 'undefined') return '/assets/images/icon.png';
+            if (typeof window === 'undefined') return '/assets/images/icon.webp';
             
             const hostname = window.location.hostname;
             const paths = [
-              '/_expo/static/assets/images/icon.png', // 開発環境（Expo Web）
-              '/assets/images/icon.png', // 本番環境
+              '/_expo/static/assets/images/icon.webp', // 開発環境（Expo Web）- WebP形式
+              '/assets/images/icon.webp', // 本番環境 - WebP形式
+              '/assets/images/icon.png', // PNG形式（フォールバック）
               '/images/icon.png', // publicディレクトリ（フォールバック）
             ];
             

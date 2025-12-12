@@ -7,9 +7,6 @@ import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { safeGoBack } from '@/lib/navigationUtils';
-import { db } from '@/lib/firebase';
-import { getAuth } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
 import SafeView from '@/components/SafeView';
 import * as ImagePicker from 'expo-image-picker';
 import logger from '@/lib/logger';
@@ -162,6 +159,33 @@ export default function ProfileSettingsScreen() {
                     { id: '1', name: '' },
                   ]
             );
+          }
+          
+          // 経歴・実績データを読み込み（Supabaseから）
+          // 型安全なアクセス: career_dataの存在を確認
+          const profileWithCareer = profile as { career_data?: {
+            pastOrganizationsUi?: Array<{ id?: string; name: string; startYm: string; endYm: string }>;
+            awardsUi?: Array<{ id?: string; title: string; dateYm: string; result: string }>;
+            performancesUi?: Array<{ id?: string; title: string }>;
+          } };
+          
+          if (profileWithCareer?.career_data) {
+            const careerData = profileWithCareer.career_data;
+            if (careerData.pastOrganizationsUi && Array.isArray(careerData.pastOrganizationsUi)) {
+              setPastOrgs(careerData.pastOrganizationsUi.length > 0 
+                ? careerData.pastOrganizationsUi 
+                : [{ id: undefined, name: '', startYm: '', endYm: '' }]);
+            }
+            if (careerData.awardsUi && Array.isArray(careerData.awardsUi)) {
+              setAwardsEdit(careerData.awardsUi.length > 0 
+                ? careerData.awardsUi 
+                : [{ id: undefined, title: '', dateYm: '', result: '' }]);
+            }
+            if (careerData.performancesUi && Array.isArray(careerData.performancesUi)) {
+              setPerformancesEdit(careerData.performancesUi.length > 0 
+                ? careerData.performancesUi 
+                : [{ id: undefined, title: '' }]);
+            }
           }
         } else {
           // プロフィールが存在しない場合でも、新規登録時のニックネームを表示
@@ -1358,25 +1382,39 @@ export default function ProfileSettingsScreen() {
             ))}
           </View>
           
-          {/* 経歴・実績 保存ボタン（Firebase） */}
+          {/* 経歴・実績 保存ボタン（Supabase） */}
           <TouchableOpacity
             style={[styles.saveAllButton, { backgroundColor: currentTheme.primary }]}
             onPress={async () => {
               try {
-                const auth = getAuth();
-                const uid = auth.currentUser?.uid || currentUser?.id;
+                const { data: { user } } = await supabase.auth.getUser();
+                const uid = user?.id || currentUser?.id;
                 if (!uid) {
                   Alert.alert('エラー', 'ログインが必要です');
                   return;
                 }
-                await setDoc(doc(db, 'profiles', uid), {
-                  pastOrganizationsUi: pastOrgs,
-                  awardsUi: awardsEdit,
-                  performancesUi: performancesEdit,
-                }, { merge: true });
+                
+                // Supabaseのuser_profilesテーブルに経歴・実績データを保存
+                const { error } = await supabase
+                  .from('user_profiles')
+                  .upsert({
+                    user_id: uid,
+                    career_data: {
+                      pastOrganizationsUi: pastOrgs,
+                      awardsUi: awardsEdit,
+                      performancesUi: performancesEdit,
+                    },
+                    updated_at: new Date().toISOString(),
+                  }, { onConflict: 'user_id' });
+                
+                if (error) {
+                  throw error;
+                }
                 
                 Alert.alert('保存完了', '経歴・実績を保存しました');
               } catch (e) {
+                logger.error('経歴・実績の保存エラー:', e);
+                ErrorHandler.handle(e, '経歴・実績の保存', false);
                 Alert.alert('エラー', '保存に失敗しました');
               }
             }}

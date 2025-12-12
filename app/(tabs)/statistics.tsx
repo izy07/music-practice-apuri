@@ -13,6 +13,7 @@ import { getPracticeSessionsByDateRange } from '@/repositories/practiceSessionRe
 import { formatMinutesToHours } from '@/lib/dateUtils';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import { practiceDataCache, PracticeDataCache } from '@/lib/cache/practiceDataCache';
+import logger from '@/lib/logger';
 
 const { width } = Dimensions.get('window');
 
@@ -114,7 +115,13 @@ export default function StatisticsScreen() {
 
   // 練習記録データを取得（キャッシュ付き）
   const fetchPracticeRecords = React.useCallback(async () => {
-    if (!user) return;
+    // Nullチェック: userとuser.idの存在を確認
+    if (!user?.id) {
+      logger.warn('[統計画面] ユーザーがログインしていません');
+      setPracticeRecords([]);
+      setLoading(false);
+      return;
+    }
     
     try {
       setLoading(true);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Platform, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Plus, Music, Edit3, Trash2, Star, Play, Clock, CheckCircle2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -638,78 +638,86 @@ export default function MyLibraryScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            filteredSongs.map(song => (
-              <View key={song.id} style={[styles.songCard, { backgroundColor: currentTheme.surface }]}>
-                <View style={styles.songHeader}>
-                  <View style={styles.songInfo}>
-                    <Text style={[styles.songTitle, { color: currentTheme.text }]} numberOfLines={1}>
-                      {song.title}
-                    </Text>
-                    {song.artist && song.artist.trim() ? (
-                      <Text style={[styles.songComposer, { color: currentTheme.textSecondary }]} numberOfLines={1}>
-                        {song.artist}
+            <FlatList
+              data={filteredSongs}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item: song }) => (
+                <View style={[styles.songCard, { backgroundColor: currentTheme.surface }]}>
+                  <View style={styles.songHeader}>
+                    <View style={styles.songInfo}>
+                      <Text style={[styles.songTitle, { color: currentTheme.text }]} numberOfLines={1}>
+                        {song.title}
                       </Text>
+                      {song.artist && song.artist.trim() ? (
+                        <Text style={[styles.songComposer, { color: currentTheme.textSecondary }]} numberOfLines={1}>
+                          {song.artist}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View style={styles.songActions}>
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => {
+                          logger.debug('編集ボタンが押されました:', song.id);
+                          startEditing(song);
+                        }}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Edit3 size={18} color={currentTheme.textSecondary} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.deleteButton]}
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          logger.debug('削除ボタンタッチイベント発生:', { songId: song.id, title: song.title });
+                          deleteSong(song);
+                        }}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Trash2 size={18} color="#F44336" />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.songMetaRow}>
+                    {song.genre && song.genre.trim() ? (
+                      <View style={styles.metaChip}>
+                        <Text style={[styles.metaChipText, { color: currentTheme.textSecondary }]}>
+                          {song.genre}
+                        </Text>
+                      </View>
                     ) : null}
-                  </View>
-                  <View style={styles.songActions}>
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => {
-                        logger.debug('編集ボタンが押されました:', song.id);
-                        startEditing(song);
-                      }}
-                      activeOpacity={0.7}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Edit3 size={18} color={currentTheme.textSecondary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.actionButton, styles.deleteButton]}
-                      onPress={(e) => {
-                        e.stopPropagation();
-                        logger.debug('削除ボタンタッチイベント発生:', { songId: song.id, title: song.title });
-                        deleteSong(song);
-                      }}
-                      activeOpacity={0.7}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    >
-                      <Trash2 size={18} color="#F44336" />
-                    </TouchableOpacity>
-                  </View>
-                </View>
-                
-                <View style={styles.songMetaRow}>
-                  {song.genre && song.genre.trim() ? (
                     <View style={styles.metaChip}>
                       <Text style={[styles.metaChipText, { color: currentTheme.textSecondary }]}>
-                        {song.genre}
+                        {getDifficultyText(song.difficulty)}
                       </Text>
                     </View>
-                  ) : null}
-                  <View style={styles.metaChip}>
-                    <Text style={[styles.metaChipText, { color: currentTheme.textSecondary }]}>
-                      {getDifficultyText(song.difficulty)}
-                    </Text>
+                    <TouchableOpacity
+                      onPress={() => showStatusSelection(song)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.statusBadge, { backgroundColor: getStatusColor(song.status) }]}>
+                        <Text style={styles.statusText}>
+                          {getStatusText(song.status)}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
                   </View>
-                  <TouchableOpacity
-                    onPress={() => showStatusSelection(song)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.statusBadge, { backgroundColor: getStatusColor(song.status) }]}>
-                      <Text style={styles.statusText}>
-                        {getStatusText(song.status)}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
+                  
+                  {song.notes && song.notes.trim() ? (
+                    <Text style={[styles.notesText, { color: currentTheme.textSecondary }]} numberOfLines={2}>
+                      {song.notes}
+                    </Text>
+                  ) : null}
                 </View>
-                
-                {song.notes && song.notes.trim() ? (
-                  <Text style={[styles.notesText, { color: currentTheme.textSecondary }]} numberOfLines={2}>
-                    {song.notes}
-                  </Text>
-                ) : null}
-              </View>
-            ))
+              )}
+              scrollEnabled={false}
+              removeClippedSubviews={true}
+              maxToRenderPerBatch={10}
+              windowSize={5}
+            />
           )}
         </View>
       </ScrollView>

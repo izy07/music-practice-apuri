@@ -10,6 +10,7 @@ import {
   savePracticeSessionWithIntegration,
   getPracticeSessionsByDate,
   getPracticeSessionsByDateRange,
+  PracticeSession,
 } from '@/repositories/practiceSessionRepository';
 import { safeServiceExecute, ServiceResult } from './baseService';
 import logger from '@/lib/logger';
@@ -38,7 +39,7 @@ export class PracticeService {
   async getTodaySessions(
     userId: string,
     instrumentId?: string | null
-  ): Promise<ServiceResult<any[]>> {
+  ): Promise<ServiceResult<PracticeSession[]>> {
     return safeServiceExecute(
       async () => {
         logger.debug(`[${SERVICE_CONTEXT}] getTodaySessions:start`, { userId, instrumentId });
@@ -66,7 +67,7 @@ export class PracticeService {
     userId: string,
     practiceDate: string,
     instrumentId?: string | null
-  ): Promise<ServiceResult<any[]>> {
+  ): Promise<ServiceResult<PracticeSession[]>> {
     return safeServiceExecute(
       async () => {
         logger.debug(`[${SERVICE_CONTEXT}] getSessionsByDate:start`, { 
@@ -99,8 +100,8 @@ export class PracticeService {
     startDate: string,
     endDate?: string,
     instrumentId?: string | null,
-    limit: number = 1000
-  ): Promise<ServiceResult<any[]>> {
+    limit: number = 100 // ページネーション対応: メモリ使用量削減のため100件に制限
+  ): Promise<ServiceResult<PracticeSession[]>> {
     return safeServiceExecute(
       async () => {
         logger.debug(`[${SERVICE_CONTEXT}] getSessionsByDateRange:start`, { 
@@ -188,7 +189,7 @@ export class PracticeService {
    */
   async createSession(
     params: CreatePracticeParams
-  ): Promise<ServiceResult<any>> {
+  ): Promise<ServiceResult<PracticeSession>> {
     // バリデーション
     if (params.minutes <= 0) {
       return {

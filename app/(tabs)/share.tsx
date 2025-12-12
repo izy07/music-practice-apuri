@@ -290,33 +290,40 @@ export default function ShareScreen() {
                 <Text style={[styles.emptyStateText, { color: currentTheme.textSecondary }]}>{t('noOrganizationsYetSubtitle')}</Text>
               </View>
             ) : (
-              // 重複を除去
-              Array.from(new Map(organizations.map(o => [o.id, o])).values()).map((org) => (
-                <TouchableOpacity
-                  key={org.id}
-                  style={[styles.orgCard, { backgroundColor: currentTheme.surface }]}
-                  onPress={() => selectOrganization(org)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.orgIcon, { backgroundColor: currentTheme.primary }]}>
-                    <Users size={20} color="#FFFFFF" />
-                  </View>
-                  <View style={styles.orgContent}>
-                    <Text style={[styles.orgName, { color: currentTheme.text }]}>
-                      {org.name}
-                    </Text>
-                    <Text style={[styles.orgDescription, { color: currentTheme.textSecondary }]}>
-                      {org.description || t('noDescription')}
-                    </Text>
-                    <Text style={[styles.orgDate, { color: currentTheme.primary }]}>
-                      {`${t('createdDate')}: ${org.created_at ? new Date(org.created_at).toLocaleDateString(t('language') === 'en' ? 'en-US' : 'ja-JP') : t('unknown')}`}
-                    </Text>
-                  </View>
-                  <View style={styles.orgArrow}>
-                    <Text style={[styles.arrow, { color: currentTheme.textSecondary }]}>›</Text>
-                  </View>
-                </TouchableOpacity>
-              ))
+              // 重複を除去してFlatListで仮想化
+              <FlatList
+                data={Array.from(new Map(organizations.map(o => [o.id, o])).values())}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item: org }) => (
+                  <TouchableOpacity
+                    style={[styles.orgCard, { backgroundColor: currentTheme.surface }]}
+                    onPress={() => selectOrganization(org)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.orgIcon, { backgroundColor: currentTheme.primary }]}>
+                      <Users size={20} color="#FFFFFF" />
+                    </View>
+                    <View style={styles.orgContent}>
+                      <Text style={[styles.orgName, { color: currentTheme.text }]}>
+                        {org.name}
+                      </Text>
+                      <Text style={[styles.orgDescription, { color: currentTheme.textSecondary }]}>
+                        {org.description || t('noDescription')}
+                      </Text>
+                      <Text style={[styles.orgDate, { color: currentTheme.primary }]}>
+                        {`${t('createdDate')}: ${org.created_at ? new Date(org.created_at).toLocaleDateString(t('language') === 'en' ? 'en-US' : 'ja-JP') : t('unknown')}`}
+                      </Text>
+                    </View>
+                    <View style={styles.orgArrow}>
+                      <Text style={[styles.arrow, { color: currentTheme.textSecondary }]}>›</Text>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                scrollEnabled={false}
+                removeClippedSubviews={true}
+                maxToRenderPerBatch={10}
+                windowSize={5}
+              />
             )}
           </View>
         </View>

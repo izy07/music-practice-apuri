@@ -14,8 +14,9 @@
       const getIconPath = () => {
         const hostname = window.location.hostname;
         const paths = [
-          '/_expo/static/assets/images/icon.png', // 開発環境（Expo Web）
-          '/assets/images/icon.png', // 本番環境
+          '/_expo/static/assets/images/icon.webp', // 開発環境（Expo Web）- WebP形式
+          '/assets/images/icon.webp', // 本番環境 - WebP形式
+          '/assets/images/icon.png', // PNG形式（フォールバック）
           '/images/icon.png', // publicディレクトリ（フォールバック）
         ];
         
@@ -33,23 +34,34 @@
       const existingLinks = document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"]');
       existingLinks.forEach(link => link.remove());
       
-      // 新しいfaviconリンクを追加
+      // 新しいfaviconリンクを追加（WebP形式を優先、PNG形式をフォールバック）
       const link = document.createElement('link');
       link.rel = 'icon';
-      link.type = 'image/png';
+      link.type = 'image/webp';
       link.href = iconPath;
+      link.onerror = function() {
+        // WebPがサポートされていない場合はPNG形式にフォールバック
+        this.href = iconPath.replace('.webp', '.png');
+        this.type = 'image/png';
+      };
       document.head.appendChild(link);
       
       const shortcutLink = document.createElement('link');
       shortcutLink.rel = 'shortcut icon';
-      shortcutLink.type = 'image/png';
+      shortcutLink.type = 'image/webp';
       shortcutLink.href = iconPath;
+      shortcutLink.onerror = function() {
+        // WebPがサポートされていない場合はPNG形式にフォールバック
+        this.href = iconPath.replace('.webp', '.png');
+        this.type = 'image/png';
+      };
       document.head.appendChild(shortcutLink);
     })();
   </script>
   <!-- フォールバック用の静的リンク（JavaScriptが無効な場合用、エラーを抑制） -->
-  <link rel="icon" type="image/png" href="/assets/images/icon.png" onerror="this.href='/_expo/static/assets/images/icon.png'; this.onerror=null;" />
-  <link rel="shortcut icon" type="image/png" href="/assets/images/icon.png" onerror="this.href='/_expo/static/assets/images/icon.png'; this.onerror=null;" />
+  <!-- WebP形式を優先、PNG形式にフォールバック -->
+  <link rel="icon" type="image/webp" href="/assets/images/icon.webp" onerror="this.href='/assets/images/icon.png'; this.type='image/png'; this.onerror=function(){this.href='/_expo/static/assets/images/icon.png';};" />
+  <link rel="shortcut icon" type="image/webp" href="/assets/images/icon.webp" onerror="this.href='/assets/images/icon.png'; this.type='image/png'; this.onerror=function(){this.href='/_expo/static/assets/images/icon.png';};" />
   <title>Music Practice</title>
   <script>
     // 開発時のコンソールメッセージを早期に抑制（DOMレベル、Reactロード前）

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Alert, ScrollView, Platform } from 'react-native';
-import { X, Save, Mic, Video, Trash2 } from 'lucide-react-native';
+import { X, Save, Mic, Video, Trash2, Calendar } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import AudioRecorder from './AudioRecorder';
 import { supabase } from '@/lib/supabase';
@@ -125,6 +125,7 @@ interface PracticeRecordModalProps {
   visible: boolean;
   onClose: () => void;
   selectedDate: Date | null;
+  events?: Array<{id: string, title: string, description?: string}>; // 選択された日付のイベント
   onSave?: (minutes: number, content?: string, audioUrl?: string, videoUrl?: string) => void | Promise<void>;
   onRecordingSaved?: () => void; // 録音保存後のコールバック
   onRefresh?: number; // データ再読み込みのトリガー（数値が変更されると再読み込み）
@@ -134,6 +135,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   visible, 
   onClose, 
   selectedDate,
+  events = [],
   onSave,
   onRecordingSaved,
   onRefresh
@@ -1183,9 +1185,43 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           <Text style={styles.dateText}>{formatDate(selectedDate)}</Text>
 
+          {/* イベント表示 */}
+          {events && events.length > 0 && (
+            <View style={[styles.eventsContainer, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary + '30' }]}>
+              <View style={styles.eventsHeader}>
+                <View style={[styles.eventsIconContainer, { backgroundColor: currentTheme.primary + '15' }]}>
+                  <Calendar size={12} color={currentTheme.primary} />
+                </View>
+                <Text style={[styles.eventsTitle, { color: currentTheme.text }]}>イベント</Text>
+              </View>
+              <View style={styles.eventsList}>
+                {events.map((event, index) => (
+                  <View 
+                    key={event.id} 
+                    style={[
+                      styles.eventItem, 
+                      { 
+                        borderLeftColor: currentTheme.primary,
+                        backgroundColor: index % 2 === 0 ? 'transparent' : currentTheme.primary + '08',
+                        marginBottom: index === events.length - 1 ? 0 : 4,
+                      }
+                    ]}
+                  >
+                    <Text style={[styles.eventTitle, { color: currentTheme.text }]}>{event.title}</Text>
+                    {event.description && (
+                      <Text style={[styles.eventDescription, { color: currentTheme.textSecondary }]}>
+                        {event.description}
+                      </Text>
+                    )}
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
           {/* 既存の記録がある場合の表示 */}
           {existingRecord && (
-            <View style={styles.existingRecordContainer}>
+            <View style={[styles.existingRecordContainer, { marginTop: events && events.length > 0 ? 16 : 0 }]}>
               <Text style={styles.existingRecordTitle}>既存の記録</Text>
               <View style={styles.existingRecordContent}>
                 <Text style={styles.existingRecordText}>
@@ -1195,7 +1231,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             </View>
           )}
 
-          <View style={[styles.inputGroup, { marginTop: -16 }]}>
+          <View style={[styles.inputGroup, { marginTop: existingRecord ? -16 : (events && events.length > 0 ? 0 : 0) }]}>
             <Text style={styles.label}>
               練習時間
               {existingRecord && (
@@ -1728,11 +1764,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   dateText: {
-    fontSize: 16,
-    fontWeight: '400',
-    color: '#666666',
-    textAlign: 'center',
-    marginBottom: 12,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333333',
+    marginBottom: 16,
+    textAlign: 'left',
+    paddingHorizontal: 4,
   },
   inputGroup: {
     marginBottom: 12,
@@ -2190,25 +2227,6 @@ const styles = StyleSheet.create({
     borderWidth: 0.5,
     borderColor: '#E0E0E0',
   },
-  timeButtonRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 0.5,
-  },
-  timeButtonRowLast: {
-    borderBottomWidth: 0,
-  },
-  timeButtonLabel: {
-    fontSize: 14,
-    color: '#666666',
-  },
-  timeButtonValue: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
   timePickerModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -2273,6 +2291,66 @@ const styles = StyleSheet.create({
   timePickerModalButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  eventsContainer: {
+    marginTop: 0,
+    marginBottom: 16,
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    ...(Platform.OS === 'web' ? {
+      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+    } : {
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.04,
+      shadowRadius: 2,
+      elevation: 1,
+    }),
+  },
+  eventsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 0.5,
+    borderBottomColor: '#E5E5E5',
+  },
+  eventsIconContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eventsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    letterSpacing: 0.1,
+  },
+  eventsList: {
+    gap: 0,
+  },
+  eventItem: {
+    paddingLeft: 10,
+    paddingRight: 6,
+    paddingVertical: 6,
+    borderLeftWidth: 2.5,
+    borderRadius: 4,
+    marginLeft: 0,
+  },
+  eventTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 2,
+    letterSpacing: 0,
+  },
+  eventDescription: {
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: 1,
+    opacity: 0.75,
   },
 });
 

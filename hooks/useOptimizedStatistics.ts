@@ -202,12 +202,13 @@ export const useOptimizedStatistics = (
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
+      // ページネーション: 100件ずつ取得（メモリ使用量削減）
       const result = await practiceService.getSessionsByDateRange(
         userId,
         thirtyDaysAgo.toISOString().split('T')[0],
         undefined,
         currentInstrumentId,
-        1000
+        100
       );
       
       if (!result.success || result.error) {

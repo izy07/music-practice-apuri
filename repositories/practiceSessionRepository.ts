@@ -439,15 +439,28 @@ export const savePracticeSessionWithIntegration = async (
       if (timeRecords.length > 0) {
         // 時間を加算する記録がある場合
         const existing = timeRecords[0];
+        
+        // Nullチェック: existing.idが存在しない場合はエラー
+        if (!existing?.id) {
+          logger.error(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:existing-record-has-no-id`, {
+            existing,
+            timeRecordsCount: timeRecords.length
+          });
+          return { success: false, error: { message: '既存レコードにIDがありません', code: 'MISSING_RECORD_ID' } };
+        }
+        
         // 時間を加算する記録の時間のみを合計（基礎練は除外）
-        const existingTotalMinutes = timeRecords.reduce((sum, record) => sum + (record.duration_minutes || 0), 0);
+        const existingTotalMinutes = timeRecords.reduce((sum, record) => {
+          const minutes = record?.duration_minutes;
+          return sum + (typeof minutes === 'number' && minutes >= 0 ? minutes : 0);
+        }, 0);
       const totalMinutes = existingTotalMinutes + minutes;
       
         // 既存の記録を更新（すべての時間記録のcontentを結合）
         // すべての時間記録のcontentを結合（基礎練は除外）
         const allContents = timeRecords
-          .map(record => cleanContentFromTimeDetails(record.content))
-          .filter(content => content && content.trim() !== '')
+          .map(record => record?.content ? cleanContentFromTimeDetails(record.content) : null)
+          .filter((content): content is string => Boolean(content && typeof content === 'string' && content.trim() !== ''))
           .concat([existingContentPrefix])
           .filter((content, index, arr) => arr.indexOf(content) === index); // 重複を除去
         
@@ -476,7 +489,7 @@ export const savePracticeSessionWithIntegration = async (
           preservingBasicPractice: basicPracticeRecords.length > 0
       });
       
-      const { error: updateError } = await updatePracticeSession(existing.id!, updateData);
+      const { error: updateError } = await updatePracticeSession(existing.id, updateData);
       
       if (updateError) {
         // ErrorHandler.handle(updateError, `${REPOSITORY_CONTEXT}:savePracticeSessionWithIntegration:update`, false);
@@ -486,7 +499,11 @@ export const savePracticeSessionWithIntegration = async (
         // 他の時間を加算する記録を削除（統合のため）
         // 基礎練の記録は削除しない
         if (timeRecords.length > 1) {
-          const otherRecordIds = timeRecords.slice(1).map(record => record.id!).filter(Boolean);
+          // 型安全な配列操作: null/undefinedを除外し、型ガードを使用
+          const otherRecordIds = timeRecords
+            .slice(1)
+            .map(record => record?.id)
+            .filter((id): id is string => typeof id === 'string' && id.length > 0);
         if (otherRecordIds.length > 0) {
           logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:deleting-duplicate-records`, {
             count: otherRecordIds.length,
@@ -629,7 +646,7 @@ export const getPracticeSessionsByDateRange = async (
   startDate: string,
   endDate?: string,
   instrumentId?: string | null,
-  limit: number = 1000
+  limit: number = 100 // ページネーション対応: メモリ使用量削減のため100件に制限
 ): Promise<{ data: PracticeSession[] | null; error: SupabaseError }> => {
   try {
     let query = supabase

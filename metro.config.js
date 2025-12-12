@@ -32,6 +32,43 @@ if (!config.server) {
   config.server = {};
 }
 
+// favicon.icoリクエストを処理するカスタムミドルウェアを追加
+// enhanceMiddlewareは既存のミドルウェアをラップする関数
+const originalEnhanceMiddleware = config.server.enhanceMiddleware;
+config.server.enhanceMiddleware = (middleware, server) => {
+  // 既存のenhanceMiddlewareがあれば実行
+  const enhancedMiddleware = originalEnhanceMiddleware 
+    ? originalEnhanceMiddleware(middleware, server)
+    : middleware;
+  
+  // favicon.icoリクエストを根本的に解決: 常に204 No Contentを返す
+  // これにより、500エラーを完全に回避し、ブラウザのfaviconリクエストを静かに処理する
+  return (req, res, next) => {
+    const url = req.url || '';
+    
+    // favicon.icoリクエストを最優先で処理（enhancedMiddlewareより先に）
+    if (url === '/favicon.ico' || url.startsWith('/favicon')) {
+      // すべての処理をスキップして、即座に204を返す（根本的な解決）
+      // これにより、ファイルシステムアクセスやエラーの可能性を完全に排除
+      try {
+        if (!res.headersSent) {
+          res.writeHead(204, {
+            'Content-Type': 'text/plain',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+          });
+          res.end();
+        }
+      } catch (e) {
+        // レスポンス送信エラーは完全に無視（エラーを発生させない）
+      }
+      return; // ここで確実に処理を終了
+    }
+    
+    // favicon.ico以外のリクエストは通常のミドルウェアに渡す
+    return enhancedMiddleware(req, res, next);
+  };
+};
+
 // 既存のrewriteRequestUrlを保持しつつ、新しい関数を追加
 const originalRewriteRequestUrl = config.server.rewriteRequestUrl;
 
@@ -83,6 +120,9 @@ config.server.rewriteRequestUrl = (url) => {
   // originalRewriteRequestUrlが存在しない場合（Expo Routerのデフォルト動作）
   // 静的ファイル（拡張子付き）や内部API（/_）はそのまま返す
   const hasFileExtension = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json|map|html|bundle)$/i.test(url);
+  
+  // /favicon.icoリクエストはenhanceMiddlewareで処理されるため、ここではスキップ
+  // （rewriteRequestUrlで処理すると、Metroがファイルを提供できないため500エラーになる）
   
   // /assets/パスを処理（開発環境でのアセット提供）
   if (url.startsWith('/assets/')) {

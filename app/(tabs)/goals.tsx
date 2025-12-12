@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Linking, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Linking, Platform, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, Target, Calendar, CircleCheck as CheckCircle, Edit3, Trash2, CheckCircle2, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { Plus, Target, Calendar, CircleCheck as CheckCircle, Edit3, Trash2, CheckCircle2, CalendarDays } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
@@ -12,6 +12,7 @@ import { COMMON_STYLES } from '@/lib/styles';
 import logger from '@/lib/logger';
 import { styles } from '@/lib/tabs/goals/styles';
 import { CompletedGoalsSection } from './goals/components/_CompletedGoalsSection';
+import GoalsCalendar from './goals/components/GoalsCalendar';
 import { goalRepository } from '@/repositories/goalRepository';
 import { getUserProfile } from '@/repositories/userRepository';
 import { OfflineStorage, isOnline } from '@/lib/offlineStorage';
@@ -465,37 +466,6 @@ export default function GoalsScreen() {
     }, [isAuthenticated, user, loadGoals, loadCompletedGoals, loadUserProfile]) // 依存配列に含めて最新の関数を参照
   );
 
-  // カレンダー関連の関数
-  const getDaysInMonth = (date: Date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const daysInMonth = lastDay.getDate();
-    const startingDay = firstDay.getDay();
-    
-    const days: Array<{ day: number; isCurrentMonth: boolean; date: Date }> = [];
-    
-    // 前月の日付
-    for (let i = 0; i < startingDay; i++) {
-      const prevMonth = new Date(year, month - 1, 0);
-      const day = prevMonth.getDate() - startingDay + i + 1;
-      days.push({ day, isCurrentMonth: false, date: new Date(year, month - 1, day) });
-    }
-    
-    // 今月の日付
-    for (let i = 1; i <= daysInMonth; i++) {
-      days.push({ day: i, isCurrentMonth: true, date: new Date(year, month, i) });
-    }
-    
-    // 翌月の日付（7の倍数になるまで）
-    const remainingDays = 42 - days.length;
-    for (let i = 1; i <= remainingDays; i++) {
-      days.push({ day: i, isCurrentMonth: false, date: new Date(year, month + 1, i) });
-    }
-    
-    return days;
-  };
 
   const selectDate = (date: Date) => {
     // タイムゾーンの問題を回避するため、ローカル時間で日付を取得
@@ -1521,60 +1491,14 @@ export default function GoalsScreen() {
       </ScrollView>
 
       {/* ミニカレンダーモーダル */}
-      <Modal
+      <GoalsCalendar
         visible={showCalendar}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowCalendar(false)}
-      >
-        <View style={styles.calendarOverlay}>
-          <View style={styles.calendarModal}>
-            <View style={styles.calendarHeader}>
-              <TouchableOpacity onPress={() => changeMonth('prev')}>
-                <ChevronLeft size={24} color="#666666" />
-              </TouchableOpacity>
-              <Text style={styles.calendarTitle}>
-                {currentMonth.getFullYear()}年{currentMonth.getMonth() + 1}月
-              </Text>
-              <TouchableOpacity onPress={() => changeMonth('next')}>
-                <ChevronRight size={24} color="#666666" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.calendarGrid}>
-              {getDaysInMonth(currentMonth).map((dayData, index) => {
-                const formattedDayDate = `${dayData.date.getFullYear()}-${String(dayData.date.getMonth() + 1).padStart(2, '0')}-${String(dayData.date.getDate()).padStart(2, '0')}`;
-                
-                return (
-                  <TouchableOpacity
-                    key={index}
-                    style={[
-                      styles.calendarDay,
-                      !dayData.isCurrentMonth && styles.calendarDayOtherMonth,
-                    ]}
-                    onPress={() => selectDate(dayData.date)}
-                  >
-                    <Text style={[
-                      styles.calendarDayText,
-                      { color: dayData.isCurrentMonth ? currentTheme.text : currentTheme.textSecondary },
-                    ]}>
-                      {dayData.day}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* 閉じるボタン */}
-            <TouchableOpacity
-              style={[styles.calendarCloseButton, { backgroundColor: currentTheme.primary }]}
-              onPress={() => setShowCalendar(false)}
-            >
-              <Text style={styles.calendarCloseButtonText}>閉じる</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        currentMonth={currentMonth}
+        onClose={() => setShowCalendar(false)}
+        onSelectDate={selectDate}
+        onChangeMonth={changeMonth}
+        currentTheme={currentTheme}
+      />
 
     </SafeAreaView>
   );

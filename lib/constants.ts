@@ -56,7 +56,7 @@ export const UI = {
  */
 export const DATA = {
   /** 練習記録の最大取得件数 */
-  MAX_PRACTICE_RECORDS: 1000,
+  MAX_PRACTICE_RECORDS: 100, // ページネーション対応: メモリ使用量削減のため100件に制限
   /** ページネーションのデフォルト件数 */
   DEFAULT_PAGE_SIZE: 20,
 } as const;

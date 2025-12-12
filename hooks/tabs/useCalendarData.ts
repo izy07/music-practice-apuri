@@ -113,7 +113,7 @@ export function useCalendarData(currentDate: Date) {
             return;
           }
 
-          if (sessions) {
+          if (sessions && Array.isArray(sessions)) {
             const newPracticeData: PracticeData = {};
             let total = 0;
             
@@ -121,20 +121,33 @@ export function useCalendarData(currentDate: Date) {
             const dailyHasRecord: { [date: string]: boolean } = {}; // 練習時間が記録されたか（タイマー、クイック、手動入力など）
             const dailyHasBasicPractice: { [date: string]: boolean } = {}; // 基礎練があるか
             
-            sessions.forEach((session: { practice_date: string; duration_minutes: number; input_method?: string }) => {
-              const date = session.practice_date;
+            sessions.forEach((session: { practice_date?: string; duration_minutes?: number; input_method?: string }) => {
+              // Null/Undefinedチェック: 安全にアクセス
+              const date = session?.practice_date;
+              const minutes = session?.duration_minutes;
+              const inputMethod = session?.input_method;
+              
+              // 有効な日付と分数のみ処理
+              if (!date || typeof date !== 'string' || date.trim() === '') {
+                return;
+              }
+              
+              if (typeof minutes !== 'number' || isNaN(minutes) || minutes < 0) {
+                return;
+              }
+              
               if (!dailyTotals[date]) {
                 dailyTotals[date] = 0;
               }
               
               // 基礎練（input_method: 'preset'）の処理
-              if (session.input_method === 'preset') {
+              if (inputMethod === 'preset') {
                 dailyHasBasicPractice[date] = true;
                 // 基礎練は時間を加算しない
               } else {
                 // タイマー、クイック、手動入力など、練習時間が記録された場合
-                dailyTotals[date] += session.duration_minutes;
-                if (session.duration_minutes > 0) {
+                dailyTotals[date] += minutes;
+                if (minutes > 0) {
                   dailyHasRecord[date] = true;
                 }
               }

@@ -13,7 +13,7 @@ const config: ExpoConfig = {
   },
   android: {
     adaptiveIcon: {
-      foregroundImage: './assets/images/icon.png',
+      foregroundImage: './assets/images/icon.webp', // WebP形式に最適化（44.1%削減）
       backgroundColor: '#FFFFFF',
     },
     package: 'com.musicpractice.app',
@@ -21,7 +21,7 @@ const config: ExpoConfig = {
   web: {
     bundler: 'metro', // WebプラットフォームでもMetroを使用（Webpackとの競合を避ける）
     output: 'static', // 静的エクスポート用（GitHub Pagesデプロイに必要）
-    favicon: './assets/images/favicon.png',
+    favicon: './assets/images/favicon.webp', // WebP形式に最適化（6.8%削減）
     // GitHub Pages用のベースパス設定
     baseUrl: process.env.EXPO_PUBLIC_WEB_BASE || '/',
   },
@@ -35,7 +35,7 @@ const config: ExpoConfig = {
     [
       'expo-notifications',
       {
-        icon: './assets/images/icon.png',
+        icon: './assets/images/icon.webp', // WebP形式に最適化
         color: '#1976D2',
         sounds: [],
         mode: 'production',

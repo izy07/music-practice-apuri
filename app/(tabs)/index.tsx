@@ -728,6 +728,13 @@ export default function CalendarScreen() {
     setShowPracticeRecord(true);
   }, [setSelectedDate, setShowPracticeRecord]);
 
+  // 選択された日付のイベントを取得
+  const getEventsForDate = useCallback((date: Date | null): Array<{id: string, title: string, description?: string}> => {
+    if (!date) return [];
+    const dateStr = formatLocalDate(date);
+    return events[dateStr] || [];
+  }, [events]);
+
   const handleEventSelection = useCallback((event: {id: string, title: string, description?: string}) => {
     setSelectedEvent(event);
     setShowEventModal(true);
@@ -1010,6 +1017,7 @@ export default function CalendarScreen() {
         visible={uiState.showPracticeRecord}
         onClose={() => setShowPracticeRecord(false)}
         selectedDate={uiState.selectedDate}
+        events={getEventsForDate(uiState.selectedDate)}
         onSave={async (minutes, content, audioUrl, videoUrl) => {
           // 保存処理を実行
           try {
