@@ -33,7 +33,8 @@ const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOi
 
 // 実行環境でURLを選択
 const isDev = process.env.NODE_ENV !== 'production';
-const isWeb = Platform.OS === 'web';
+// Web環境の検出を強化（GitHub Pages経由でも確実に検出）
+const isWeb = Platform.OS === 'web' || (typeof window !== 'undefined' && typeof document !== 'undefined');
 
 // 端末(Expo Go/実機)ではトンネル接続時に 127.0.0.1 へ到達できないため、
 // デフォルトでクラウドSupabaseを使う。明示的にローカルを使いたい場合のみ環境変数で切替。
