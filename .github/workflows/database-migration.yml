@@ -46,7 +46,11 @@ jobs:
       - name: Supabase CLI のインストール
         run: |
           set +e  # エラーで停止しないように設定
+          set +o pipefail  # パイプエラーでも停止しない
           echo "📦 Supabase CLIをインストールします..."
+          
+          # 念のため、作業ディレクトリのsupabaseを完全に無視（何もしない）
+          # エラーが発生する可能性があるため、一切触らない
           
           # システムから既存のSupabase CLIを削除（エラーを無視）
           sudo rm -f /usr/local/bin/supabase 2>/dev/null || true

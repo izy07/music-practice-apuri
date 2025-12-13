@@ -109,15 +109,24 @@ jobs:
 
       - name: Supabase CLI のインストール
         run: |
+          # デバッグモードを有効化
+          set -x  # 実行コマンドを表示
           set +e  # エラーで停止しないように設定
           set +o pipefail  # パイプエラーでも停止しない
+          
           echo "📦 Supabase CLIをインストールします..."
+          echo "📊 現在のディレクトリ: $(pwd)"
+          echo "📊 作業ディレクトリの内容:"
+          ls -la | head -20 || true
           
           # 念のため、作業ディレクトリのsupabaseを完全に無視（何もしない）
           # エラーが発生する可能性があるため、一切触らない
+          echo "⚠️  作業ディレクトリのsupabaseには一切触りません"
           
           # システムから既存のSupabase CLIを削除（エラーを無視）
+          echo "🗑️  システムから既存のSupabase CLIを削除します..."
           sudo rm -f /usr/local/bin/supabase 2>/dev/null || true
+          echo "✅ システムのクリーンアップ完了"
           
           # 最新バージョンのSupabase CLIをインストール
           VERSION=$(curl -s https://api.github.com/repos/supabase/cli/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
