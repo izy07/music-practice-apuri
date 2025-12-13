@@ -46,19 +46,61 @@ jobs:
       - name: Supabase CLI のインストール
         run: |
           echo "📦 Supabase CLIをインストールします..."
-          # 既存のファイル/ディレクトリを削除（エラーを防ぐため）
-          rm -rf supabase supabase.tar.gz || true
+          
+          # 作業ディレクトリをクリーンアップ（確実に削除）
+          if [ -d supabase ]; then
+            echo "🗑️  既存のsupabaseディレクトリを削除します..."
+            rm -rf supabase
+          fi
+          if [ -f supabase ]; then
+            echo "🗑️  既存のsupabaseファイルを削除します..."
+            rm -f supabase
+          fi
+          if [ -f supabase.tar.gz ]; then
+            echo "🗑️  既存のsupabase.tar.gzを削除します..."
+            rm -f supabase.tar.gz
+          fi
+          
+          # システムから既存のSupabase CLIを削除
           sudo rm -f /usr/local/bin/supabase || true
+          
           # 最新バージョンのSupabase CLIをインストール
+          # 一時ディレクトリでダウンロードと展開
+          TEMP_DIR=$(mktemp -d)
+          cd "$TEMP_DIR"
+          
           curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz -o supabase.tar.gz || {
             echo "❌ Supabase CLIのダウンロードに失敗しました"
+            rm -rf "$TEMP_DIR"
             exit 1
           }
-          tar -xzf supabase.tar.gz
-          sudo mv supabase /usr/local/bin/
-          rm -f supabase.tar.gz
+          
+          tar -xzf supabase.tar.gz || {
+            echo "❌ Supabase CLIの展開に失敗しました"
+            rm -rf "$TEMP_DIR"
+            exit 1
+          }
+          
+          # バイナリをシステムにインストール
+          if [ -f supabase ]; then
+            sudo mv supabase /usr/local/bin/supabase || {
+              echo "❌ Supabase CLIのインストールに失敗しました"
+              rm -rf "$TEMP_DIR"
+              exit 1
+            }
+          else
+            echo "❌ supabaseバイナリが見つかりません"
+            rm -rf "$TEMP_DIR"
+            exit 1
+          fi
+          
+          # 一時ディレクトリをクリーンアップ
+          cd -
+          rm -rf "$TEMP_DIR"
+          
+          # インストール確認
           supabase --version || {
-            echo "❌ Supabase CLIのインストールに失敗しました"
+            echo "❌ Supabase CLIのインストール確認に失敗しました"
             exit 1
           }
           echo "✅ Supabase CLIのインストールが完了しました"
