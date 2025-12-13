@@ -79,11 +79,47 @@ export default function SignupScreen() {
       });
       
       if (error) {
-        // ユーザーが既に存在する場合の処理
-        if (error.message?.includes('User already registered') || 
-            error.message?.includes('already exists') ||
-            error.code === 'signup_disabled') {
-          logger.debug('ユーザーが既に存在します - メール確認状況を確認');
+        // エラーの詳細をログに記録（デバッグ用）
+        logger.debug('新規登録エラー詳細:', {
+          code: error.code,
+          message: error.message,
+          status: (error as any).status,
+          fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+        });
+        
+        // ユーザーが既に存在する場合の処理（根本的に厳密なチェック）
+        const errorMessage = error.message || '';
+        const errorCode = error.code || '';
+        const errorStatus = (error as any).status;
+        
+        // 根本的に厳密な判定：Supabaseの公式エラーコードのみをチェック
+        // Supabaseの公式ドキュメントによると、既存ユーザーのエラーコードは 'user_already_exists'
+        // エラーメッセージの文字列マッチングは、完全一致または特定のパターンのみ（誤判定を防ぐ）
+        const isUserAlreadyExists = 
+          errorCode === 'user_already_exists' ||
+          errorCode === 'user_already_registered'; // 後方互換性のため残す
+        
+        // signup_disabledは「登録済み」ではなく「新規登録が無効」なので別扱い
+        const isSignupDisabled = errorCode === 'signup_disabled';
+        
+        // エラーメッセージの文字列マッチング（完全一致パターンのみ、誤判定を防ぐ）
+        const lowerMessage = errorMessage.toLowerCase();
+        const hasExactAlreadyRegisteredMessage = 
+          lowerMessage === 'user already registered' ||
+          lowerMessage === 'email address is already registered' ||
+          lowerMessage === 'user already exists' ||
+          lowerMessage.includes('user already registered') && !lowerMessage.includes('not') && !lowerMessage.includes('cannot');
+        
+        // 最終判定：エラーコードが明確な場合のみ「登録済み」と判定
+        const isUserAlreadyRegistered = isUserAlreadyExists || (hasExactAlreadyRegisteredMessage && errorCode);
+        
+        if (isUserAlreadyRegistered) {
+          logger.debug('✅ ユーザーが既に存在します（厳密な判定）:', {
+            code: errorCode,
+            message: errorMessage,
+            isUserAlreadyExists,
+            hasExactAlreadyRegisteredMessage
+          });
           setIsLoading(false);
           
           const userMessage = 'このメールアドレスは既に登録されています。\n\nメール確認が済んでいない場合は、Inbucket（http://127.0.0.1:54324）でメールを確認するか、ログイン画面から再度ログインしてください。';
@@ -92,10 +128,29 @@ export default function SignupScreen() {
           return { success: false, error: userMessage };
         }
         
-        const errorMessage = error.message || '新規登録に失敗しました';
-        setError(errorMessage);
+        if (isSignupDisabled) {
+          logger.debug('⚠️ 新規登録が無効化されています:', {
+            code: errorCode,
+            message: errorMessage
+          });
+          setIsLoading(false);
+          const disabledMessage = '新規登録は現在無効になっています。管理者にお問い合わせください。';
+          setError(disabledMessage);
+          return { success: false, error: disabledMessage };
+        }
+        
+        // その他のエラーの場合は、エラーメッセージをそのまま表示（「登録済み」と誤判定しない）
+        const genericErrorMessage = errorMessage || '新規登録に失敗しました';
+        logger.warn('⚠️ 新規登録エラー（既存ユーザー以外）:', {
+          code: errorCode,
+          status: errorStatus,
+          message: errorMessage,
+          isUserAlreadyExists,
+          hasExactAlreadyRegisteredMessage
+        });
+        setError(genericErrorMessage);
         setIsLoading(false);
-        return { success: false, error: errorMessage };
+        return { success: false, error: genericErrorMessage };
       }
       
       if (!data.user) {
@@ -346,23 +401,28 @@ export default function SignupScreen() {
         }
       } else {
         logger.debug('❌ 新規登録失敗');
-        const errorMessage = result.error || '登録に失敗しました。メールが既に登録済みか、入力内容に誤りがあります。';
+        const errorMessage = result.error || '登録に失敗しました。入力内容を確認してください。';
         
-        // error変数とuiError変数の両方に設定して確実に表示
-        setError(errorMessage);
-        setUiError(errorMessage);
+        // 既に登録されているユーザーの場合はログイン画面への誘導（根本的に厳密なチェック）
+        // エラーメッセージの文字列マッチングは、完全一致または特定のパターンのみ（誤判定を防ぐ）
+        const lowerErrorMessage = errorMessage.toLowerCase();
+        const isAlreadyRegisteredMessage = 
+          errorMessage.includes('既に登録されています') ||
+          lowerErrorMessage === 'user already registered' ||
+          lowerErrorMessage === 'email address is already registered' ||
+          lowerErrorMessage === 'user already exists' ||
+          (lowerErrorMessage.includes('user already registered') && !lowerErrorMessage.includes('not') && !lowerErrorMessage.includes('cannot'));
         
-        // 画面下のフィールドにも明示的にエラー表示
-        setFormErrors(prev => ({
-          ...prev,
-          email: errorMessage,
-          password: errorMessage.toLowerCase().includes('password') ? errorMessage : prev.password,
-        }));
-        
-        // 既に登録されているユーザーの場合はログイン画面への誘導
-        if (errorMessage.includes('既に登録されています') || 
-            errorMessage.includes('already exists') || 
-            errorMessage.includes('User already registered')) {
+        if (isAlreadyRegisteredMessage) {
+          // 既存ユーザーの場合のみ、エラーメッセージを設定
+          setError(errorMessage);
+          setUiError(errorMessage);
+          
+          // 画面下のフィールドにも明示的にエラー表示
+          setFormErrors(prev => ({
+            ...prev,
+            email: errorMessage,
+          }));
           // 少し遅延してからアラートを表示（UI更新を待つ）
           setTimeout(() => {
             Alert.alert(
@@ -381,9 +441,21 @@ export default function SignupScreen() {
             );
           }, 100);
         } else {
-          // その他のエラーの場合は新規登録画面に留まる（既に新規登録画面にいるため、何もしない）
-          // エラーメッセージは既に表示されている
-          logger.debug('⚠️ 新規登録失敗 - 新規登録画面に留まります');
+          // その他のエラーの場合は新規登録画面に留まる
+          logger.debug('⚠️ 新規登録失敗（既存ユーザー以外のエラー） - 新規登録画面に留まります', {
+            errorMessage
+          });
+          
+          // error変数とuiError変数の両方に設定して確実に表示
+          setError(errorMessage);
+          setUiError(errorMessage);
+          
+          // 画面下のフィールドにも明示的にエラー表示（パスワード関連エラーのみ）
+          setFormErrors(prev => ({
+            ...prev,
+            email: errorMessage.toLowerCase().includes('email') ? errorMessage : prev.email,
+            password: errorMessage.toLowerCase().includes('password') ? errorMessage : prev.password,
+          }));
         }
       }
     } catch (error) {

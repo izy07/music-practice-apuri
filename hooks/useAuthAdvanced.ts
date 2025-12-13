@@ -1229,7 +1229,13 @@ const getAuthErrorMessage = (error: unknown): string => {
   const errorCode = errorObj?.code ?? errorObj?.status;
   const errorMessage = errorObj?.message ?? (typeof error === 'string' ? error : String(error));
   
-  // メッセージベースの判定（Supabaseの既定文言）
+  // 根本的に厳密な判定：エラーコードを優先
+  // エラーコードが明確な場合のみ「登録済み」と判定
+  if (errorCode === 'user_already_exists' || errorCode === 'user_already_registered') {
+    return 'このメールアドレスは既に登録されています';
+  }
+  
+  // メッセージベースの判定（Supabaseの既定文言、誤判定を防ぐ）
   const message = errorMessage.toLowerCase();
   if (message.includes('user not found') || message.includes('user does not exist')) {
     return 'このユーザーは登録されていません';
@@ -1237,9 +1243,21 @@ const getAuthErrorMessage = (error: unknown): string => {
   if (message.includes('invalid login credentials')) {
     return 'メールアドレスまたはパスワードが正しくありません';
   }
-  if (message.includes('user already registered') || message.includes('already exists') || message.includes('email address is already in use')) {
+  
+  // エラーメッセージの文字列マッチング（完全一致パターンのみ、誤判定を防ぐ）
+  // 広すぎる判定（例: 'already exists'だけ）は削除
+  const hasExactAlreadyRegisteredMessage = 
+    message === 'user already registered' ||
+    message === 'email address is already registered' ||
+    message === 'user already exists' ||
+    message === 'email address is already in use' ||
+    (message.includes('user already registered') && !message.includes('not') && !message.includes('cannot'));
+  
+  // エラーコードが存在する場合のみ、メッセージベースの判定を使用（誤判定を防ぐ）
+  if (errorCode && hasExactAlreadyRegisteredMessage) {
     return 'このメールアドレスは既に登録されています';
   }
+  
   if (message.includes('email not confirmed')) {
     return 'メールアドレスの確認が完了していません';
   }

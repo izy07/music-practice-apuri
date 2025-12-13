@@ -42,18 +42,36 @@ export function getAuthErrorMessage(error: unknown): string {
     case 'email_rate_limit_exceeded':
       return 'メール送信の上限に達しました。しばらく待ってから再試行してください';
     default:
-      // エラーメッセージから日本語メッセージを抽出
+      // エラーメッセージから日本語メッセージを抽出（根本的に厳密な判定）
       const lowerMessage = errorMessage.toLowerCase();
+      
+      // エラーコードが明確な場合のみ「登録済み」と判定
+      if (errorCode === 'user_already_exists' || errorCode === 'user_already_registered') {
+        return 'このメールアドレスは既に登録されています';
+      }
+      
+      // エラーメッセージの文字列マッチング（完全一致パターンのみ、誤判定を防ぐ）
       if (lowerMessage.includes('user not found') || lowerMessage.includes('user does not exist')) {
         return 'このユーザーは登録されていません';
       }
-      if (errorMessage.includes('User already registered') || errorMessage.includes('already exists')) {
+      
+      // 広すぎる判定を削除：'already exists'だけでは誤判定の可能性がある
+      // 完全一致または特定のパターンのみをチェック
+      const hasExactAlreadyRegisteredMessage = 
+        lowerMessage === 'user already registered' ||
+        lowerMessage === 'email address is already registered' ||
+        lowerMessage === 'user already exists' ||
+        (lowerMessage.includes('user already registered') && !lowerMessage.includes('not') && !lowerMessage.includes('cannot'));
+      
+      // エラーコードが存在する場合のみ、メッセージベースの判定を使用（誤判定を防ぐ）
+      if (errorCode && hasExactAlreadyRegisteredMessage) {
         return 'このメールアドレスは既に登録されています';
       }
-      if (errorMessage.includes('Password')) {
+      
+      if (errorMessage.includes('Password') && !lowerMessage.includes('already')) {
         return 'パスワードが正しくありません';
       }
-      if (errorMessage.includes('Email')) {
+      if (errorMessage.includes('Email') && !lowerMessage.includes('already')) {
         return 'メールアドレスが正しくありません';
       }
       return errorMessage || '認証エラーが発生しました';

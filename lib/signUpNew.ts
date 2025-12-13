@@ -31,7 +31,7 @@ function normalizeEmail(email: string): string {
 }
 
 /**
- * エラーメッセージを日本語に変換
+ * エラーメッセージを日本語に変換（根本的に厳密な判定）
  */
 function translateError(error: any): string {
   if (!error || !error.message) {
@@ -39,17 +39,29 @@ function translateError(error: any): string {
   }
 
   const message = error.message.toLowerCase();
+  const errorCode = error.code || '';
 
-  // 既に登録済みのメールアドレスのエラーを検出
-  if (message.includes('already registered') || 
-      message.includes('user already registered') ||
-      message.includes('email already registered') ||
-      (message.includes('already') && message.includes('registered')) ||
-      message.includes('user already exists') ||
-      (message.includes('email') && message.includes('already') && message.includes('in use'))) {
+  // 根本的に厳密な判定：Supabaseの公式エラーコードを優先
+  // エラーコードが明確な場合のみ「登録済み」と判定
+  if (errorCode === 'user_already_exists' || errorCode === 'user_already_registered') {
     return 'このメールアドレスは既に登録されています。ログイン画面からログインしてください。';
   }
-  if (message.includes('invalid email') || message.includes('email')) {
+
+  // エラーメッセージの文字列マッチング（完全一致パターンのみ、誤判定を防ぐ）
+  // 広すぎる判定（例: 'already'と'registered'を含む）は削除
+  const hasExactAlreadyRegisteredMessage = 
+    message === 'user already registered' ||
+    message === 'email address is already registered' ||
+    message === 'user already exists' ||
+    (message.includes('user already registered') && !message.includes('not') && !message.includes('cannot'));
+
+  // エラーコードが存在する場合のみ、メッセージベースの判定を使用（誤判定を防ぐ）
+  if (errorCode && hasExactAlreadyRegisteredMessage) {
+    return 'このメールアドレスは既に登録されています。ログイン画面からログインしてください。';
+  }
+
+  // その他のエラーの判定（誤って「登録済み」と判定しない）
+  if (message.includes('invalid email') && !message.includes('already')) {
     return 'メールアドレスの形式が正しくありません。';
   }
   if (message.includes('password') && (message.includes('weak') || message.includes('short') || message.includes('minimum'))) {
@@ -58,7 +70,6 @@ function translateError(error: any): string {
   if (message.includes('network') || message.includes('fetch') || message.includes('connection')) {
     return 'ネットワーク接続に問題があります。接続を確認してください。';
   }
-  // タイムアウトエラーメッセージを削除
 
   return error.message;
 }
