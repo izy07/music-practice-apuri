@@ -545,7 +545,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           
           if (!recordingError && recordings && recordings.length > 0) {
             // 指定されたIDの録音が見つかった場合は終了
-            const found = recordings.find(r => r.id === savedRecordingId);
+            const found = recordings.find((r: any) => r.id === savedRecordingId);
             if (found) {
               logger.debug(`録音記録を読み込みました（試行${attempt + 1}/3）:`, {
                 id: found.id,
@@ -1065,7 +1065,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       }
       
       // すべてのセッションIDを削除（時間詳細も含めてすべて削除）
-      const sessionIds = sessions.map(s => s.id);
+      const sessionIds = sessions.map((s: any) => s.id);
       const { error } = await supabase
         .from('practice_sessions')
         .delete()
@@ -1196,7 +1196,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             
             // すべてのセッションIDを削除（時間詳細も含めてすべて削除）
             if (sessions && sessions.length > 0) {
-              const sessionIds = sessions.map(s => s.id);
+              const sessionIds = sessions.map((s: any) => s.id);
               logger.debug('練習セッションを削除します:', sessionIds);
               const { error } = await supabase
                 .from('practice_sessions')
