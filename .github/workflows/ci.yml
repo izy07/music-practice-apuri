@@ -1,0 +1,514 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  # テストジョブ（データベースなし）
+  test:
+    name: テスト実行（単体テスト）
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: |
+          echo "📦 依存関係をインストールします..."
+          npm ci --legacy-peer-deps || {
+            echo "❌ 依存関係のインストールに失敗しました"
+            echo "📊 package-lock.jsonの整合性を確認してください"
+            exit 1
+          }
+          echo "✅ 依存関係のインストールが完了しました"
+
+      - name: テスト実行（モック使用）
+        run: |
+          echo "🧪 テストを実行します..."
+          npm run test:ci 2>&1 | tee /tmp/test-output.log || {
+            echo "❌ テストが失敗しました"
+            echo "📊 テスト結果の最後の50行:"
+            tail -50 /tmp/test-output.log || echo "ログファイルが見つかりません"
+            echo "📊 カバレッジレポート:"
+            if [ -f coverage/lcov.info ]; then
+              echo "カバレッジファイルが生成されました"
+            else
+              echo "⚠️ カバレッジファイルが生成されませんでした"
+            fi
+            exit 1
+          }
+          echo "✅ テストが完了しました"
+        env:
+          NODE_ENV: test
+          CI: 'true'
+          GITHUB_ACTIONS: 'true'
+        timeout-minutes: 15
+
+      - name: カバレッジレポートのアップロード
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # データベース統合テスト
+  test-database:
+    name: データベース統合テスト
+    runs-on: ubuntu-latest
+    needs: test
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'failure')
+    # testジョブの失敗時も実行（統合テストは独立しているため）
+    
+    # PostgreSQLサービスコンテナは削除（Supabaseが独自のPostgreSQLコンテナを起動するため不要）
+    # ポート競合を避けるため、Supabaseのconfig.tomlで設定されたポート（54322）を使用
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Docker セットアップ
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker サービスの確認
+        run: |
+          echo "🐳 Dockerサービスの状態を確認します..."
+          docker --version || {
+            echo "❌ Dockerが利用できません"
+            exit 1
+          }
+          echo "✅ Dockerが利用可能です"
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: |
+          echo "📦 依存関係をインストールします..."
+          npm ci --legacy-peer-deps || {
+            echo "❌ 依存関係のインストールに失敗しました"
+            echo "📊 package-lock.jsonの整合性を確認してください"
+            exit 1
+          }
+          echo "✅ 依存関係のインストールが完了しました"
+
+      - name: Supabase CLI のインストール
+        run: |
+          # デバッグモードを有効化
+          set -x  # 実行コマンドを表示
+          set +e  # エラーで停止しないように設定
+          set +o pipefail  # パイプエラーでも停止しない
+          
+          echo "📦 Supabase CLIをインストールします..."
+          echo "📊 現在のディレクトリ: $(pwd)"
+          echo "📊 作業ディレクトリの内容:"
+          ls -la | head -20 || true
+          
+          # 念のため、作業ディレクトリのsupabaseを完全に無視（何もしない）
+          # エラーが発生する可能性があるため、一切触らない
+          echo "⚠️  作業ディレクトリのsupabaseには一切触りません"
+          
+          # システムから既存のSupabase CLIを削除（エラーを無視）
+          echo "🗑️  システムから既存のSupabase CLIを削除します..."
+          sudo rm -f /usr/local/bin/supabase 2>/dev/null || true
+          echo "✅ システムのクリーンアップ完了"
+          
+          # 最新バージョンのSupabase CLIをインストール
+          VERSION=$(curl -s https://api.github.com/repos/supabase/cli/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "📌 インストールするバージョン: $VERSION"
+          
+          # 一時ディレクトリでダウンロードと展開（作業ディレクトリを完全に無視）
+          TEMP_DIR=$(mktemp -d)
+          echo "📁 一時ディレクトリ: $TEMP_DIR"
+          cd "$TEMP_DIR"
+          
+          curl -fsSL "https://github.com/supabase/cli/releases/download/${VERSION}/supabase_linux_amd64.tar.gz" -o supabase.tar.gz || {
+            echo "❌ Supabase CLIのダウンロードに失敗しました"
+            cd -
+            rm -rf "$TEMP_DIR" 2>/dev/null || true
+            exit 1
+          }
+          
+          tar -xzf supabase.tar.gz || {
+            echo "❌ Supabase CLIの展開に失敗しました"
+            cd -
+            rm -rf "$TEMP_DIR" 2>/dev/null || true
+            exit 1
+          }
+          
+          # バイナリをシステムにインストール
+          if [ -f supabase ]; then
+            sudo mv supabase /usr/local/bin/supabase || {
+              echo "❌ Supabase CLIのインストールに失敗しました"
+              cd -
+              rm -rf "$TEMP_DIR" 2>/dev/null || true
+              exit 1
+            }
+          else
+            echo "❌ supabaseバイナリが見つかりません"
+            cd -
+            rm -rf "$TEMP_DIR" 2>/dev/null || true
+            exit 1
+          fi
+          
+          # 一時ディレクトリをクリーンアップ
+          cd -
+          rm -rf "$TEMP_DIR" 2>/dev/null || true
+          set -e  # エラーで停止する設定に戻す
+          
+          # インストール確認
+          supabase --version || {
+            echo "❌ Supabase CLIのインストール確認に失敗しました"
+            exit 1
+          }
+          echo "✅ Supabase CLIのインストールが完了しました"
+
+      - name: Supabase ローカル環境の起動
+        run: |
+          echo "🚀 Supabaseローカル環境を起動します..."
+          
+          # Dockerが利用可能か確認
+          docker --version || {
+            echo "❌ Dockerが利用できません"
+            exit 1
+          }
+          
+          # 既存のSupabaseコンテナを停止（存在する場合）
+          supabase stop || echo "⚠️ 既存のコンテナが見つかりませんでした（新規起動を続行）"
+          
+          # クリーンアップ（念のため）
+          docker ps -a | grep supabase | awk '{print $1}' | xargs -r docker rm -f || true
+          
+          # Supabaseを初期化（初回起動の場合）
+          if [ ! -f supabase/.temp/config.toml ]; then
+            echo "📦 Supabaseを初期化します..."
+            supabase init || echo "⚠️ 初期化に失敗しましたが、続行します"
+          fi
+          
+          # Supabaseを起動
+          echo "⏳ Supabaseを起動中..."
+          if supabase start; then
+            echo "✅ Supabaseの起動コマンドが成功しました"
+          else
+            echo "❌ Supabaseの起動に失敗しました"
+            echo "📊 デバッグ情報:"
+            echo "Dockerコンテナ一覧:"
+            docker ps -a | head -20
+            echo "Supabase関連コンテナ:"
+            docker ps -a | grep supabase || echo "Supabaseコンテナが見つかりません"
+            echo "Dockerログ（最新のコンテナ）:"
+            SUPABASE_CONTAINER=$(docker ps -a | grep supabase | head -1 | awk '{print $1}')
+            if [ -n "$SUPABASE_CONTAINER" ]; then
+              docker logs "$SUPABASE_CONTAINER" 2>&1 | tail -50 || echo "ログ取得に失敗"
+            fi
+            exit 1
+          fi
+          
+          echo "⏳ Supabaseの起動を待機中..."
+          sleep 20
+          
+          # 最大10回までリトライしてステータスを確認
+          for i in {1..10}; do
+            echo "📊 Supabaseステータス確認 (試行 $i/10)..."
+            if supabase status > /dev/null 2>&1; then
+              echo "✅ Supabaseが正常に起動しました"
+              supabase status
+              break
+            else
+              if [ $i -eq 10 ]; then
+                echo "⚠️ ステータス取得に失敗しました"
+                supabase status || true
+                echo "📊 Dockerコンテナ状態:"
+                docker ps -a | grep supabase || echo "Supabaseコンテナが見つかりません"
+                exit 1
+              else
+                echo "⏳ 待機中... ($i/10)"
+                sleep 5
+              fi
+            fi
+          done
+        env:
+          SUPABASE_DB_PASSWORD: postgres
+        timeout-minutes: 15
+
+      - name: データベースマイグレーションの実行
+        run: |
+          echo "🔄 データベースマイグレーションを実行します..."
+          # Supabaseが起動していることを確認
+          if ! supabase status > /dev/null 2>&1; then
+            echo "❌ Supabaseが起動していません"
+            supabase status || true
+            exit 1
+          fi
+          
+          supabase db reset || {
+            echo "❌ マイグレーションに失敗しました"
+            echo "📊 デバッグ情報:"
+            echo "Supabaseステータス:"
+            supabase status || echo "ステータス取得に失敗"
+            echo "データベース差分:"
+            supabase db diff --schema public || echo "db diffの実行に失敗しました"
+            echo "マイグレーションファイル一覧:"
+            ls -la supabase/migrations/ || echo "マイグレーションディレクトリが見つかりません"
+            exit 1
+          }
+          echo "✅ データベースマイグレーション完了"
+        timeout-minutes: 10
+
+      - name: データベース状態の確認
+        run: |
+          echo "📊 データベーステーブル一覧:"
+          supabase db diff --schema public || true
+        continue-on-error: true
+
+      - name: 統合テスト実行
+        run: |
+          echo "🧪 統合テストを実行します..."
+          # Supabaseが起動していることを確認
+          if ! supabase status > /dev/null 2>&1; then
+            echo "❌ Supabaseが起動していません"
+            supabase status || true
+            echo "📊 Dockerコンテナ一覧:"
+            docker ps -a | grep supabase || echo "Supabaseコンテナが見つかりません"
+            exit 1
+          fi
+          
+          echo "📊 Supabaseステータス確認:"
+          supabase status || echo "⚠️ ステータス取得に失敗しましたが、続行します"
+          
+          npm run test:ci -- __tests__/integration/ 2>&1 | tee /tmp/integration-test-output.log || {
+            echo "❌ 統合テストが失敗しました"
+            echo "📊 テストログの最後の100行:"
+            tail -100 /tmp/integration-test-output.log || echo "ログファイルが見つかりません"
+            echo "📊 Supabaseステータス:"
+            supabase status || echo "ステータス取得に失敗"
+            echo "📊 Dockerコンテナログ:"
+            SUPABASE_CONTAINER=$(docker ps -a | grep supabase | head -1 | awk '{print $1}')
+            if [ -n "$SUPABASE_CONTAINER" ]; then
+              docker logs "$SUPABASE_CONTAINER" 2>&1 | tail -50 || echo "ログ取得に失敗"
+            else
+              echo "Supabaseコンテナが見つかりません"
+            fi
+            exit 1
+          }
+          echo "✅ 統合テストが完了しました"
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0
+          NODE_ENV: test
+          CI: 'true'
+          GITHUB_ACTIONS: 'true'
+        timeout-minutes: 15
+
+      - name: Supabase ローカル環境の停止
+        if: always()
+        run: supabase stop || true
+
+  # Lint チェック
+  lint:
+    name: コード品質チェック
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: |
+          echo "📦 依存関係をインストールします..."
+          npm ci --legacy-peer-deps || {
+            echo "❌ 依存関係のインストールに失敗しました"
+            echo "📊 package-lock.jsonの整合性を確認してください"
+            exit 1
+          }
+          echo "✅ 依存関係のインストールが完了しました"
+
+      - name: 型チェック
+        run: |
+          echo "🔍 TypeScript型チェックを実行します..."
+          npx tsc --noEmit 2>&1 | tee /tmp/tsc-errors.log || {
+            echo "❌ 型チェックに失敗しました"
+            echo "📊 エラー詳細:"
+            cat /tmp/tsc-errors.log | head -50
+            exit 1
+          }
+          echo "✅ 型チェックが完了しました"
+        continue-on-error: false
+
+  # ビルドチェック
+  build:
+    name: ビルド確認
+    runs-on: ubuntu-latest
+    needs: [test, lint]
+    # testとlintの両方が成功した場合のみ実行（失敗時はスキップ）
+    if: needs.test.result == 'success' && needs.lint.result == 'success'
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: |
+          echo "📦 依存関係をインストールします..."
+          echo "📊 現在のディレクトリ: $(pwd)"
+          echo "📊 package.jsonの存在確認:"
+          ls -la package.json || echo "❌ package.jsonが見つかりません"
+          echo "📊 package.jsonのscriptsセクション:"
+          cat package.json | grep -A 15 '"scripts"' || echo "❌ scriptsセクションが見つかりません"
+          
+          # package-lock.jsonの存在確認
+          if [ -f package-lock.json ]; then
+            echo "✅ package-lock.jsonが存在します"
+          else
+            echo "⚠️  package-lock.jsonが存在しません。npm installを実行します..."
+            npm install --legacy-peer-deps
+          fi
+          
+          npm ci --legacy-peer-deps || {
+            echo "❌ npm ciに失敗しました。npm installを試行します..."
+            npm install --legacy-peer-deps || {
+              echo "❌ 依存関係のインストールに失敗しました"
+              echo "📊 package-lock.jsonの整合性を確認してください"
+              exit 1
+            }
+          }
+          echo "✅ 依存関係のインストールが完了しました"
+          
+          echo "📊 インストール後のpackage.jsonスクリプト確認:"
+          cat package.json | grep -A 15 '"scripts"' || echo "❌ scriptsセクションが見つかりません"
+          echo "📊 利用可能なnpmスクリプト:"
+          npm run 2>&1 | head -30 || echo "⚠️  npm runの実行に失敗しましたが、続行します"
+
+      - name: Web ビルド
+        run: |
+          echo "🏗️ Webビルドを実行します..."
+          echo "📊 現在のディレクトリ: $(pwd)"
+          echo "📊 環境変数確認:"
+          echo "  EXPO_PUBLIC_SUPABASE_URL: ${EXPO_PUBLIC_SUPABASE_URL:0:30}..."
+          echo "  NODE_ENV: $NODE_ENV"
+          
+          echo "📊 package.jsonの完全な内容確認:"
+          cat package.json || echo "❌ package.jsonの読み込みに失敗"
+          
+          echo "📊 build:webスクリプトの確認:"
+          cat package.json | grep -A 2 '"build:web"' || echo "❌ build:webスクリプトが見つかりません"
+          
+          echo "📊 利用可能なnpmスクリプト一覧:"
+          npm run 2>&1 || echo "⚠️  npm runの実行に失敗"
+          
+          echo "📊 build:webスクリプトの直接実行:"
+          npm run build:web || {
+            echo "❌ ビルドに失敗しました"
+            echo "📊 デバッグ情報:"
+            echo "現在のディレクトリ: $(pwd)"
+            echo "package.jsonの存在:"
+            ls -la package.json || echo "package.jsonが存在しません"
+            echo "package.jsonのscriptsセクション:"
+            cat package.json | grep -A 15 '"scripts"' || echo "scriptsセクションが見つかりません"
+            echo "distディレクトリの状態:"
+            ls -la dist/ 2>&1 || echo "distディレクトリが存在しません"
+            exit 1
+          }
+          
+          echo "✅ ビルドが完了しました"
+          echo "📁 ビルド成果物の確認:"
+          if [ -d dist ]; then
+            echo "  distディレクトリが存在します"
+            ls -la dist/ | head -20
+            [ -f dist/index.html ] && echo "  ✅ index.html が存在します" || echo "  ❌ index.html が見つかりません"
+          else
+            echo "  ❌ distディレクトリが存在しません"
+            exit 1
+          fi
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || 'https://uteeqkpsezbabdmritkn.supabase.co' }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0ZWVxa3BzZXpiYWJkbXJpdGtuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDQyNDUsImV4cCI6MjA3MDcyMDI0NX0.3wITO5E53yW2spDHi99ngaA0SRqnsJbAYzdT7DDa1tM' }}
+          NODE_ENV: production
+        timeout-minutes: 20
+
+      - name: ビルド成果物のアップロード
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: dist/
+          retention-days: 7
+          if-no-files-found: warn
+
+  # セキュリティチェック
+  security:
+    name: セキュリティ監査
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 依存関係のインストール
+        run: |
+          echo "📦 依存関係をインストールします..."
+          npm ci --legacy-peer-deps || {
+            echo "❌ 依存関係のインストールに失敗しました"
+            echo "📊 package-lock.jsonの整合性を確認してください"
+            exit 1
+          }
+          echo "✅ 依存関係のインストールが完了しました"
+
+      - name: 脆弱性チェック
+        run: npm audit --production
+        continue-on-error: true
+
+      - name: テストデータ漏洩チェック
+        run: |
+          echo "🔍 テストデータの漏洩をチェックします..."
+          if grep -r "test@example.com" supabase/migrations/ 2>/dev/null; then
+            echo "⚠️ テストデータがマイグレーションに含まれています"
+            exit 1
+          fi
+          echo "✅ テストデータの漏洩なし"
+        continue-on-error: false
+
+      - name: 環境変数チェック
+        run: |
+          echo "🔍 ハードコードされた認証情報をチェックします..."
+          if grep -r "testpassword123" app/ components/ lib/ 2>/dev/null; then
+            echo "⚠️ ハードコードされたパスワードが検出されました"
+            exit 1
+          fi
+          echo "✅ ハードコードされた認証情報なし"
+        continue-on-error: false
+
