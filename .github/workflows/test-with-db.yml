@@ -45,8 +45,17 @@ jobs:
       - name: Supabase CLI のインストール
         run: |
           echo "📦 Supabase CLIをインストールします..."
-          curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz | tar -xz
+          # 既存のファイル/ディレクトリを削除（エラーを防ぐため）
+          rm -rf supabase supabase.tar.gz || true
+          sudo rm -f /usr/local/bin/supabase || true
+          # 最新バージョンのSupabase CLIをインストール
+          curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz -o supabase.tar.gz || {
+            echo "❌ Supabase CLIのダウンロードに失敗しました"
+            exit 1
+          }
+          tar -xzf supabase.tar.gz
           sudo mv supabase /usr/local/bin/
+          rm -f supabase.tar.gz
           supabase --version || {
             echo "❌ Supabase CLIのインストールに失敗しました"
             exit 1

@@ -110,9 +110,9 @@ jobs:
       - name: Supabase CLI のインストール
         run: |
           echo "📦 Supabase CLIをインストールします..."
-          # 既存のファイルを削除（エラーを防ぐため）
-          rm -f supabase supabase.tar.gz
-          sudo rm -f /usr/local/bin/supabase
+          # 既存のファイル/ディレクトリを削除（エラーを防ぐため）
+          rm -rf supabase supabase.tar.gz || true
+          sudo rm -f /usr/local/bin/supabase || true
           # 最新バージョンのSupabase CLIをインストール
           VERSION=$(curl -s https://api.github.com/repos/supabase/cli/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
           echo "📌 インストールするバージョン: $VERSION"
@@ -132,49 +132,70 @@ jobs:
       - name: Supabase ローカル環境の起動
         run: |
           echo "🚀 Supabaseローカル環境を起動します..."
+          
+          # Dockerが利用可能か確認
+          docker --version || {
+            echo "❌ Dockerが利用できません"
+            exit 1
+          }
+          
           # 既存のSupabaseコンテナを停止（存在する場合）
           supabase stop || echo "⚠️ 既存のコンテナが見つかりませんでした（新規起動を続行）"
           
           # クリーンアップ（念のため）
           docker ps -a | grep supabase | awk '{print $1}' | xargs -r docker rm -f || true
           
-          # Supabaseを起動（config.tomlの設定を使用：DBポート54322）
+          # Supabaseを初期化（初回起動の場合）
+          if [ ! -f supabase/.temp/config.toml ]; then
+            echo "📦 Supabaseを初期化します..."
+            supabase init || echo "⚠️ 初期化に失敗しましたが、続行します"
+          fi
+          
+          # Supabaseを起動
           echo "⏳ Supabaseを起動中..."
-          supabase start || {
+          if supabase start; then
+            echo "✅ Supabaseの起動コマンドが成功しました"
+          else
             echo "❌ Supabaseの起動に失敗しました"
             echo "📊 デバッグ情報:"
             echo "Dockerコンテナ一覧:"
+            docker ps -a | head -20
+            echo "Supabase関連コンテナ:"
             docker ps -a | grep supabase || echo "Supabaseコンテナが見つかりません"
-            echo "Dockerログ:"
-            docker logs supabase_db_uteeqkpsezbabdmritkn 2>&1 | tail -50 || echo "ログ取得に失敗"
+            echo "Dockerログ（最新のコンテナ）:"
+            SUPABASE_CONTAINER=$(docker ps -a | grep supabase | head -1 | awk '{print $1}')
+            if [ -n "$SUPABASE_CONTAINER" ]; then
+              docker logs "$SUPABASE_CONTAINER" 2>&1 | tail -50 || echo "ログ取得に失敗"
+            fi
             exit 1
-          }
+          fi
           
           echo "⏳ Supabaseの起動を待機中..."
-          sleep 15
+          sleep 20
           
-          # 最大5回までリトライしてステータスを確認
-          for i in {1..5}; do
-            echo "📊 Supabaseステータス確認 (試行 $i/5)..."
+          # 最大10回までリトライしてステータスを確認
+          for i in {1..10}; do
+            echo "📊 Supabaseステータス確認 (試行 $i/10)..."
             if supabase status > /dev/null 2>&1; then
               echo "✅ Supabaseが正常に起動しました"
               supabase status
               break
             else
-              if [ $i -eq 5 ]; then
-                echo "⚠️ ステータス取得に失敗しましたが、続行します"
+              if [ $i -eq 10 ]; then
+                echo "⚠️ ステータス取得に失敗しました"
                 supabase status || true
+                echo "📊 Dockerコンテナ状態:"
+                docker ps -a | grep supabase || echo "Supabaseコンテナが見つかりません"
+                exit 1
               else
-                echo "⏳ 待機中... ($i/5)"
+                echo "⏳ 待機中... ($i/10)"
                 sleep 5
               fi
             fi
           done
         env:
           SUPABASE_DB_PASSWORD: postgres
-          # config.tomlで54322に設定されているため、環境変数で上書きしない
-          # SUPABASE_DB_PORTは設定しない（config.tomlの設定を使用）
-        timeout-minutes: 10
+        timeout-minutes: 15
 
       - name: データベースマイグレーションの実行
         run: |
@@ -228,7 +249,12 @@ jobs:
             echo "📊 Supabaseステータス:"
             supabase status || echo "ステータス取得に失敗"
             echo "📊 Dockerコンテナログ:"
-            docker logs supabase_db_uteeqkpsezbabdmritkn 2>&1 | tail -50 || echo "ログ取得に失敗"
+            SUPABASE_CONTAINER=$(docker ps -a | grep supabase | head -1 | awk '{print $1}')
+            if [ -n "$SUPABASE_CONTAINER" ]; then
+              docker logs "$SUPABASE_CONTAINER" 2>&1 | tail -50 || echo "ログ取得に失敗"
+            else
+              echo "Supabaseコンテナが見つかりません"
+            fi
             exit 1
           }
           echo "✅ 統合テストが完了しました"
@@ -312,11 +338,31 @@ jobs:
       - name: Web ビルド
         run: |
           echo "🏗️ Webビルドを実行します..."
+          echo "📊 環境変数確認:"
+          echo "  EXPO_PUBLIC_SUPABASE_URL: ${EXPO_PUBLIC_SUPABASE_URL:0:30}..."
+          echo "  NODE_ENV: $NODE_ENV"
+          
           npm run build:web || {
             echo "❌ ビルドに失敗しました"
+            echo "📊 デバッグ情報:"
+            echo "現在のディレクトリ: $(pwd)"
+            echo "package.jsonのbuild:webスクリプト:"
+            cat package.json | grep -A 1 '"build:web"' || echo "スクリプトが見つかりません"
+            echo "distディレクトリの状態:"
+            ls -la dist/ 2>&1 || echo "distディレクトリが存在しません"
             exit 1
           }
+          
           echo "✅ ビルドが完了しました"
+          echo "📁 ビルド成果物の確認:"
+          if [ -d dist ]; then
+            echo "  distディレクトリが存在します"
+            ls -la dist/ | head -20
+            [ -f dist/index.html ] && echo "  ✅ index.html が存在します" || echo "  ❌ index.html が見つかりません"
+          else
+            echo "  ❌ distディレクトリが存在しません"
+            exit 1
+          fi
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || 'https://uteeqkpsezbabdmritkn.supabase.co' }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0ZWVxa3BzZXpiYWJkbXJpdGtuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDQyNDUsImV4cCI6MjA3MDcyMDI0NX0.3wITO5E53yW2spDHi99ngaA0SRqnsJbAYzdT7DDa1tM' }}
