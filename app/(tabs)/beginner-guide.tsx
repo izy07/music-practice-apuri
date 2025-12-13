@@ -82,7 +82,6 @@ const loadInstrumentGuides = async (): Promise<any> => {
 import { styles } from '@/lib/tabs/beginner-guide/styles';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 
 export default function BeginnerGuideScreen() {
