@@ -7,7 +7,11 @@ import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
 import PostureCameraModal from '@/components/PostureCameraModal';
-// 動的インポートで遅延読み込み（軽量化・オフライン対応）
+import logger from '@/lib/logger';
+// Web環境（GitHub Pages等）では直接インポートを使用（動的インポートが動作しない場合があるため）
+// モバイル環境では動的インポートで遅延読み込み（軽量化）
+import { instrumentGuides as staticInstrumentGuides } from '@/data/instrumentGuides';
+
 let instrumentGuides: any = null;
 let isLoading = false;
 let loadPromise: Promise<any> | null = null;
@@ -27,9 +31,29 @@ const loadInstrumentGuides = async (): Promise<any> => {
   isLoading = true;
   loadPromise = (async () => {
     try {
-      // 動的インポートを実行
-      const module = await import('@/data/instrumentGuides');
-      const guides = module.instrumentGuides;
+      let guides: any;
+      
+      // Web環境（GitHub Pages等）では直接インポートを使用（動的インポートが動作しない場合があるため）
+      // モバイル環境では動的インポートを使用（ファイルサイズ削減）
+      if (Platform.OS === 'web') {
+        // Web環境では直接インポートを使用（ビルド時にバンドルに含まれる）
+        guides = staticInstrumentGuides as any;
+        logger.debug('✅ Web環境: 直接インポートからガイドデータを取得', {
+          keys: Object.keys(guides).length
+        });
+      } else {
+        // モバイル環境では動的インポートを使用
+        try {
+          const module = await import('@/data/instrumentGuides');
+          guides = module.instrumentGuides;
+          logger.debug('✅ モバイル環境: 動的インポートからガイドデータを取得', {
+            keys: Object.keys(guides).length
+          });
+        } catch (dynamicImportError) {
+          logger.error('❌ 動的インポートに失敗:', dynamicImportError);
+          throw dynamicImportError;
+        }
+      }
       
       // データの検証
       if (guides && typeof guides === 'object' && Object.keys(guides).length > 0) {
@@ -70,7 +94,7 @@ export default function BeginnerGuideScreen() {
   // 楽器データを動的インポートで読み込み（オフライン対応付き・根本的解決版）
   useEffect(() => {
     let isMounted = true;
-    let timeoutId: NodeJS.Timeout | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const loadGuides = async () => {
       try {
@@ -92,7 +116,7 @@ export default function BeginnerGuideScreen() {
                 instrumentGuides = parsed;
                 loadedFromCache = true;
                 if (isMounted) {
-                  setGuidesLoaded(true);
+      setGuidesLoaded(true);
                   setLoadError(null);
                 }
                 logger.debug('✅ ガイドデータをキャッシュから読み込みました', {
