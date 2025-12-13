@@ -44,33 +44,29 @@ jobs:
 
       - name: Supabase CLI のインストール
         run: |
+          set +e  # エラーで停止しないように設定
           echo "📦 Supabase CLIをインストールします..."
           
-          # 作業ディレクトリをクリーンアップ（確実に削除、エラーを無視）
-          echo "🗑️  作業ディレクトリをクリーンアップします..."
-          rm -rf supabase supabase.tar.gz 2>/dev/null || true
-          # 念のため、個別にも削除を試みる（エラーを無視）
-          [ -d supabase ] && rm -rf supabase || true
-          [ -f supabase ] && rm -f supabase || true
-          [ -f supabase.tar.gz ] && rm -f supabase.tar.gz || true
-          
-          # システムから既存のSupabase CLIを削除
-          sudo rm -f /usr/local/bin/supabase || true
+          # システムから既存のSupabase CLIを削除（エラーを無視）
+          sudo rm -f /usr/local/bin/supabase 2>/dev/null || true
           
           # 最新バージョンのSupabase CLIをインストール
-          # 一時ディレクトリでダウンロードと展開
+          # 一時ディレクトリでダウンロードと展開（作業ディレクトリを完全に無視）
           TEMP_DIR=$(mktemp -d)
+          echo "📁 一時ディレクトリ: $TEMP_DIR"
           cd "$TEMP_DIR"
           
           curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz -o supabase.tar.gz || {
             echo "❌ Supabase CLIのダウンロードに失敗しました"
-            rm -rf "$TEMP_DIR"
+            cd -
+            rm -rf "$TEMP_DIR" 2>/dev/null || true
             exit 1
           }
           
           tar -xzf supabase.tar.gz || {
             echo "❌ Supabase CLIの展開に失敗しました"
-            rm -rf "$TEMP_DIR"
+            cd -
+            rm -rf "$TEMP_DIR" 2>/dev/null || true
             exit 1
           }
           
@@ -78,18 +74,21 @@ jobs:
           if [ -f supabase ]; then
             sudo mv supabase /usr/local/bin/supabase || {
               echo "❌ Supabase CLIのインストールに失敗しました"
-              rm -rf "$TEMP_DIR"
+              cd -
+              rm -rf "$TEMP_DIR" 2>/dev/null || true
               exit 1
             }
           else
             echo "❌ supabaseバイナリが見つかりません"
-            rm -rf "$TEMP_DIR"
+            cd -
+            rm -rf "$TEMP_DIR" 2>/dev/null || true
             exit 1
           fi
           
           # 一時ディレクトリをクリーンアップ
           cd -
-          rm -rf "$TEMP_DIR"
+          rm -rf "$TEMP_DIR" 2>/dev/null || true
+          set -e  # エラーで停止する設定に戻す
           
           # インストール確認
           supabase --version || {
