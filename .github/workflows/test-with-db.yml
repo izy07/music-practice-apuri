@@ -46,19 +46,13 @@ jobs:
         run: |
           echo "📦 Supabase CLIをインストールします..."
           
-          # 作業ディレクトリをクリーンアップ（確実に削除）
-          if [ -d supabase ]; then
-            echo "🗑️  既存のsupabaseディレクトリを削除します..."
-            rm -rf supabase
-          fi
-          if [ -f supabase ]; then
-            echo "🗑️  既存のsupabaseファイルを削除します..."
-            rm -f supabase
-          fi
-          if [ -f supabase.tar.gz ]; then
-            echo "🗑️  既存のsupabase.tar.gzを削除します..."
-            rm -f supabase.tar.gz
-          fi
+          # 作業ディレクトリをクリーンアップ（確実に削除、エラーを無視）
+          echo "🗑️  作業ディレクトリをクリーンアップします..."
+          rm -rf supabase supabase.tar.gz 2>/dev/null || true
+          # 念のため、個別にも削除を試みる（エラーを無視）
+          [ -d supabase ] && rm -rf supabase || true
+          [ -f supabase ] && rm -f supabase || true
+          [ -f supabase.tar.gz ] && rm -f supabase.tar.gz || true
           
           # システムから既存のSupabase CLIを削除
           sudo rm -f /usr/local/bin/supabase || true
