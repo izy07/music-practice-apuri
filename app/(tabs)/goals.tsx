@@ -1250,24 +1250,11 @@ export default function GoalsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}> 
-          <Text style={[styles.title, { color: currentTheme.text }]}>
-            {(() => {
-              // 優先順位: userProfile.nickname > user.name > 'ユーザー'
-              const nickname = userProfile?.nickname && userProfile.nickname.trim().length > 0
-                ? userProfile.nickname.trim()
-                : (user?.name && String(user.name).trim().length > 0
-                  ? String(user.name).trim()
-                  : 'ユーザー');
-              return `${nickname}の目標`;
-            })()}
-          </Text>
-        </View>
 
         {/* 1. 個人目標セクション */}
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <View style={styles.sectionHeader}>
-            <Target size={24} color={currentTheme.primary} />
+            <Target size={26} color={currentTheme.primary} />
             <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
               {(() => {
                 // 優先順位: userProfile.nickname > user.name > '個人目標'
@@ -1313,7 +1300,7 @@ export default function GoalsScreen() {
             style={[styles.addGoalButton, { backgroundColor: currentTheme.primary }]}
             onPress={() => router.push('/add-goal')}
           >
-            <Plus size={20} color="#FFFFFF" />
+            <Plus size={22} color="#FFFFFF" />
             <Text style={[styles.addButtonText, { color: '#FFFFFF' }]}>目標を追加</Text>
           </TouchableOpacity>
         </View>
