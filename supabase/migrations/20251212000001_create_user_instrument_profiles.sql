@@ -69,3 +69,4 @@ CREATE POLICY user_instrument_profiles_delete_own
   ON public.user_instrument_profiles
   FOR DELETE
   USING (auth.uid() = user_id);
+

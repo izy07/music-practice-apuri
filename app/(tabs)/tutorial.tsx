@@ -52,7 +52,7 @@ export default function TutorialScreen() {
     {
       icon: '📊',
       title: '練習を「見える化」',
-      description: '• ワンタップで練習記録\n• カレンダーで練習時間・内容を管理\n• 目標設定で進捗を可視化\n• モチベーション維持で確かな上達\n\n🎨 カレンダー上のマーク：\n• 練習時間のみ：濃いカスタムカラー\n• 録音のみ：赤\n• 両方記録：薄いカスタムカラー',
+      description: '• ワンタップで練習記録\n• カレンダーで練習時間・内容を管理\n• 目標設定で進捗を可視化\n• モチベーション維持で確かな上達',
       gradientColors: ['#f093fb', '#f5576c'],
     },
     {
@@ -469,7 +469,7 @@ export default function TutorialScreen() {
                 },
               ]}
             >
-              <Text style={styles.calendarMarkTitle}>カレンダー上のマーク</Text>
+              <Text style={styles.calendarMarkTitle}>🎨 カレンダー上のマーク</Text>
               <View style={styles.markExamplesContainer}>
                 <View style={styles.markExample}>
                   <View style={[styles.markDot, { backgroundColor: currentTheme.primary }]} />

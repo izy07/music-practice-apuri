@@ -132,6 +132,44 @@ const getSupabaseClient = () => {
       try {
         const response = await fetch(url, options);
         
+        // 400エラーの詳細をログ出力（user_profiles更新エラーのデバッグ用）
+        if (response.status === 400) {
+          const urlObj = new URL(url);
+          const pathname = urlObj.pathname;
+          
+          // user_profilesテーブルへのPATCHリクエストの場合、エラーの詳細を取得してログ出力
+          if (pathname.includes('/user_profiles') && (options?.method === 'PATCH' || options?.method === 'PUT')) {
+            try {
+              // エラーレスポンスのボディを取得（クローンして読み取る）
+              const responseClone = response.clone();
+              const errorBody = await responseClone.json().catch(() => null);
+              
+              logger.warn('user_profiles更新400エラー（詳細）:', {
+                url: url,
+                method: options?.method,
+                pathname: pathname,
+                status: response.status,
+                statusText: response.statusText,
+                errorBody: errorBody,
+                requestBody: options?.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : null,
+                headers: Object.fromEntries(response.headers.entries()),
+                timestamp: new Date().toISOString(),
+                possibleCauses: [
+                  'RLSポリシーが正しく設定されていない',
+                  '外部キー制約違反（selected_instrument_idが存在しないinstruments.idを参照）',
+                  'カラムが存在しない',
+                  'データ型が合わない',
+                  '必須フィールドが欠けている',
+                  'リクエストボディが不正'
+                ]
+              });
+            } catch (logError) {
+              // ログ出力エラーは無視
+              logger.debug('400エラーの詳細取得に失敗:', logError);
+            }
+          }
+        }
+        
         // 404エラーを静かに処理（フォールバック方法で処理されるため）
         if (response.status === 404) {
           const urlObj = new URL(url);

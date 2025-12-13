@@ -1536,9 +1536,9 @@ export default function TimerScreen() {
                 <TextInput
                   ref={timerHoursInputRef}
                   style={{
-                    width: 60,
+                    width: 45,
                     paddingVertical: 10,
-                    paddingHorizontal: 8,
+                    paddingHorizontal: 6,
                     borderRadius: 8,
                     borderWidth: 1.5,
                     borderColor: timerHours ? currentTheme.primary : currentTheme.secondary,
@@ -1583,9 +1583,9 @@ export default function TimerScreen() {
                 <TextInput
                   ref={timerMinutesInputRef}
                   style={{
-                    width: 60,
+                    width: 40,
                     paddingVertical: 10,
-                    paddingHorizontal: 8,
+                    paddingHorizontal: 6,
                     borderRadius: 8,
                     borderWidth: 1.5,
                     borderColor: timerMinutes ? currentTheme.primary : currentTheme.secondary,
@@ -1692,15 +1692,6 @@ export default function TimerScreen() {
                   </Text>
                 </View>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <TouchableOpacity
-                    style={[styles.testSoundButton, { backgroundColor: currentTheme.secondary }]}
-                    onPress={() => {
-                      logger.debug('テストサウンドボタン押下');
-                      playNotificationSound();
-                    }}
-                  >
-                    <Text style={[styles.testSoundButtonText, { color: currentTheme.text }]}>テスト</Text>
-                  </TouchableOpacity>
                   <Switch
                     value={settings.soundOn}
                     onValueChange={async (v) => {
@@ -1816,9 +1807,10 @@ export default function TimerScreen() {
                   ref={timerHoursInputRef}
                   style={{
                     flex: 1,
-                    minWidth: 60,
+                    minWidth: 40,
+                    maxWidth: 45,
                     paddingVertical: 10,
-                    paddingHorizontal: 8,
+                    paddingHorizontal: 6,
                     borderRadius: 8,
                     borderWidth: 1.5,
                     borderColor: timerHours ? currentTheme.primary : '#666666',
@@ -1866,9 +1858,10 @@ export default function TimerScreen() {
                   ref={timerMinutesInputRef}
                   style={{
                     flex: 1,
-                    minWidth: 60,
+                    minWidth: 40,
+                    maxWidth: 45,
                     paddingVertical: 10,
-                    paddingHorizontal: 8,
+                    paddingHorizontal: 6,
                     borderRadius: 8,
                     borderWidth: 1.5,
                     borderColor: timerMinutes ? currentTheme.primary : '#666666',

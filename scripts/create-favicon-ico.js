@@ -46,3 +46,4 @@ try {
   console.error(`エラー: favicon.icoの作成に失敗しました:`, error.message);
   process.exit(1);
 }
+

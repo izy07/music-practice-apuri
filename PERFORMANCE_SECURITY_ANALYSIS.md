@@ -657,3 +657,4 @@ export function isPracticeSession(value: unknown): value is PracticeSession {
 4. **型安全性**: `any`型の削減と型ガード関数の活用で改善可能
 
 優先度の高い項目から順に実装することを推奨します。
+

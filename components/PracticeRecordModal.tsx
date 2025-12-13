@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Alert, ScrollView, Platform } from 'react-native';
-import { X, Save, Mic, Video, Trash2, Calendar } from 'lucide-react-native';
+import { X, Save, Mic, Video, Trash2, Calendar, Play, Pause } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import AudioRecorder from './AudioRecorder';
 import { supabase } from '@/lib/supabase';
@@ -11,6 +11,7 @@ import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { getPracticeSessionsByDate } from '@/repositories/practiceSessionRepository';
 import { cleanContentFromTimeDetails } from '@/lib/utils/contentCleaner';
 import logger from '@/lib/logger';
+import { ErrorHandler } from '@/lib/errorHandler';
 import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 
@@ -162,7 +163,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
     id: string;
     title: string;
     duration: number;
+    file_path?: string; // 録音ファイルのパス（再生用）
   } | null>(null);
+  const [playingRecordingId, setPlayingRecordingId] = useState<string | null>(null);
+  const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [practiceBreakdown, setPracticeBreakdown] = useState<Array<{ method: string; minutes: number }>>([]);
   const [isRecordingJustSaved, setIsRecordingJustSaved] = useState(false); // 録音保存直後フラグ
@@ -258,6 +262,105 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   useEffect(() => {
     isRecordingJustSavedRef.current = isRecordingJustSaved;
   }, [isRecordingJustSaved]);
+
+  // Audio要素のクリーンアップ（メモリリーク防止）
+  useEffect(() => {
+    return () => {
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.src = '';
+        setAudioElement(null);
+        logger.debug('Audioオブジェクトをクリーンアップ');
+      }
+    };
+  }, [audioElement]);
+
+  // 録音再生機能
+  const playRecording = async (recordingId: string, filePath: string) => {
+    if (Platform.OS !== 'web') {
+      Alert.alert('再生機能', '再生機能はWeb環境でのみ利用できます');
+      return;
+    }
+
+    if (playingRecordingId === recordingId) {
+      // 現在再生中の録音を停止
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.currentTime = 0;
+      }
+      setPlayingRecordingId(null);
+      setAudioElement(null);
+      return;
+    }
+
+    try {
+      // 他の録音を停止
+      if (audioElement) {
+        audioElement.pause();
+        audioElement.currentTime = 0;
+      }
+
+      logger.debug('録音再生開始:', filePath);
+
+      // ファイルパスの検証
+      if (!filePath || filePath.trim() === '') {
+        logger.error('録音再生エラー: ファイルパスが空です');
+        Alert.alert('エラー', '録音ファイルのパスが無効です');
+        return;
+      }
+
+      // Supabase Storageから録音を取得
+      const { data: { publicUrl } } = supabase.storage
+        .from('recordings')
+        .getPublicUrl(filePath);
+
+      logger.debug('録音URL:', publicUrl);
+
+      // publicUrlの検証
+      if (!publicUrl || publicUrl.trim() === '') {
+        logger.error('録音再生エラー: publicUrlが空です', { filePath, publicUrl });
+        Alert.alert('エラー', '録音ファイルのURLを取得できませんでした');
+        return;
+      }
+
+      const audio = new Audio(publicUrl);
+      // src属性を明示的に設定（念のため）
+      audio.src = publicUrl;
+      audio.onended = () => {
+        logger.debug('録音再生終了');
+        setPlayingRecordingId(null);
+        setAudioElement(null);
+      };
+      audio.onerror = (e) => {
+        // エラーイベントの詳細を取得
+        const errorMessage = audio.error 
+          ? `エラーコード: ${audio.error.code}, メッセージ: ${audio.error.message || '不明なエラー'}`
+          : '不明なエラー';
+        logger.error('録音再生エラー:', {
+          error: errorMessage,
+          filePath,
+          publicUrl,
+          errorCode: audio.error?.code,
+          errorMessage: audio.error?.message
+        });
+        // エラーハンドラーには詳細なエラー情報を渡す
+        const errorObj = new Error(errorMessage);
+        ErrorHandler.handle(errorObj, '録音再生', false);
+        Alert.alert('エラー', '録音の再生に失敗しました。ファイルが見つからない可能性があります。');
+        setPlayingRecordingId(null);
+        setAudioElement(null);
+      };
+
+      await audio.play();
+      logger.debug('録音再生中');
+      setPlayingRecordingId(recordingId);
+      setAudioElement(audio);
+    } catch (error) {
+      logger.error('録音再生エラー:', error);
+      ErrorHandler.handle(error, '録音再生', false);
+      Alert.alert('エラー', '録音の再生に失敗しました');
+    }
+  };
 
   // 練習記録を読み込む（リポジトリを使用）
   const loadPracticeSessions = useCallback(async () => {
@@ -483,7 +586,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             setExistingRecording({
               id: matchingRecording.id,
               title: matchingRecording.title || '無題の録音',
-              duration: matchingRecording.duration_seconds || 0
+              duration: matchingRecording.duration_seconds || 0,
+              file_path: matchingRecording.file_path // 再生用にfile_pathを保存
             });
             setAudioUrl('');
             logger.debug('録音記録を読み込みました:', {
@@ -1248,10 +1352,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             
             {/* 練習時間入力（開始時刻・終了時刻） */}
             <View style={styles.customTimeInputContainer}>
-              <Text style={[styles.customTimeLabel, { color: currentTheme.text }]}>
-                練習時間を入力
-              </Text>
-              
               {/* 開始時刻・終了時刻ボタン */}
               <View style={styles.timeRangeContainer}>
                 <TouchableOpacity
@@ -1347,20 +1447,50 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 <Text style={styles.recordingDurationText}>
                   録音時間: {Math.floor(existingRecording.duration / 60)}分{existingRecording.duration % 60}秒
                 </Text>
-                <TouchableOpacity
-                  style={styles.rerecordButtonInExisting}
-                  onPress={() => {
-                    // 録音画面に移動する前に、現在のフォーム状態と録音状態を保存
-                    setFormStateBeforeRecording({
-                      minutes: minutes,
-                      content: content,
-                      existingRecording: existingRecording
-                    });
-                    setShowAudioRecorder(true);
-                  }}
-                >
-                  <Text style={styles.rerecordButtonText}>再録音</Text>
-                </TouchableOpacity>
+                <View style={styles.recordingActions}>
+                  {/* 再生ボタン */}
+                  {existingRecording.file_path ? (
+                    <TouchableOpacity
+                      style={[styles.playButton, { 
+                        backgroundColor: playingRecordingId === existingRecording.id 
+                          ? '#FF9800' 
+                          : currentTheme.primary 
+                      }]}
+                      onPress={() => {
+                        if (existingRecording.file_path) {
+                          playRecording(existingRecording.id, existingRecording.file_path);
+                        }
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      {playingRecordingId === existingRecording.id ? (
+                        <>
+                          <Pause size={16} color="#FFFFFF" />
+                          <Text style={styles.playButtonText}>停止</Text>
+                        </>
+                      ) : (
+                        <>
+                          <Play size={16} color="#FFFFFF" />
+                          <Text style={styles.playButtonText}>再生</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  ) : null}
+                  <TouchableOpacity
+                    style={styles.rerecordButtonInExisting}
+                    onPress={() => {
+                      // 録音画面に移動する前に、現在のフォーム状態と録音状態を保存
+                      setFormStateBeforeRecording({
+                        minutes: minutes,
+                        content: content,
+                        existingRecording: existingRecording
+                      });
+                      setShowAudioRecorder(true);
+                    }}
+                  >
+                    <Text style={styles.rerecordButtonText}>再録音</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ) : audioUrl && !existingRecording ? (
               // 新しく録音したがまだ保存していない場合
@@ -1803,7 +1933,23 @@ const styles = StyleSheet.create({
   timeButtonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 0,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  timeButtonRowLast: {
+    borderBottomWidth: 0,
+  },
+  timeButtonLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  timeButtonValue: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   timeButton: {
     flex: 1,
@@ -1838,7 +1984,7 @@ const styles = StyleSheet.create({
   customTimeInputContainer: {
     marginTop: 12,
     marginBottom: 8,
-    padding: 12,
+    padding: 16,
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
     borderWidth: 1,
@@ -2068,6 +2214,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#C8E6C8',
   },
+  recordingActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 8,
+  },
+  playButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    minWidth: 80,
+  },
+  playButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '500',
+  },
   rerecordButtonInExisting: {
     backgroundColor: '#F0F0F0',
     borderRadius: 6,
@@ -2224,8 +2390,9 @@ const styles = StyleSheet.create({
     marginTop: 12,
     borderRadius: 8,
     overflow: 'hidden',
-    borderWidth: 0.5,
+    borderWidth: 1,
     borderColor: '#E0E0E0',
+    backgroundColor: '#FFFFFF',
   },
   timePickerModalOverlay: {
     flex: 1,

@@ -44,28 +44,46 @@ config.server.enhanceMiddleware = (middleware, server) => {
   // favicon.icoリクエストを根本的に解決: 常に204 No Contentを返す
   // これにより、500エラーを完全に回避し、ブラウザのfaviconリクエストを静かに処理する
   return (req, res, next) => {
-    const url = req.url || '';
+    // req.urlとreq.pathの両方をチェック（より確実に）
+    const url = (req.url || req.path || '').split('?')[0]; // クエリパラメータを除去
     
     // favicon.icoリクエストを最優先で処理（enhancedMiddlewareより先に）
     if (url === '/favicon.ico' || url.startsWith('/favicon')) {
       // すべての処理をスキップして、即座に204を返す（根本的な解決）
       // これにより、ファイルシステムアクセスやエラーの可能性を完全に排除
-      try {
-        if (!res.headersSent) {
-          res.writeHead(204, {
-            'Content-Type': 'text/plain',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-          });
-          res.end();
+      // エラーハンドリングを最優先で実装
+      const sendNoContent = () => {
+        try {
+          if (!res.headersSent && !res.finished) {
+            res.statusCode = 204;
+            res.setHeader('Content-Type', 'text/plain');
+            res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+            res.setHeader('Pragma', 'no-cache');
+            res.setHeader('Expires', '0');
+            res.end();
+          }
+        } catch (e) {
+          // レスポンス送信エラーは完全に無視（エラーを発生させない）
+          // エラーログも出力しない（faviconエラーは一般的で、ログを汚染しない）
         }
-      } catch (e) {
-        // レスポンス送信エラーは完全に無視（エラーを発生させない）
-      }
-      return; // ここで確実に処理を終了
+      };
+      
+      // 即座に204を返す（すべてのエラーケースを考慮）
+      sendNoContent();
+      return; // ここで確実に処理を終了（enhancedMiddlewareを呼ばない）
     }
     
     // favicon.ico以外のリクエストは通常のミドルウェアに渡す
-    return enhancedMiddleware(req, res, next);
+    try {
+      return enhancedMiddleware(req, res, next);
+    } catch (middlewareError) {
+      // enhancedMiddlewareでエラーが発生した場合も処理
+      if (!res.headersSent && !res.finished) {
+        res.statusCode = 500;
+        res.end('Internal Server Error');
+      }
+      return;
+    }
   };
 };
 
@@ -73,6 +91,14 @@ config.server.enhanceMiddleware = (middleware, server) => {
 const originalRewriteRequestUrl = config.server.rewriteRequestUrl;
 
 config.server.rewriteRequestUrl = (url) => {
+  // favicon.icoリクエストを最優先で処理（根本的な解決）
+  // これにより、Metroがfavicon.icoを処理しようとせず、enhanceMiddlewareで204を返す
+  if (url === '/favicon.ico' || url.startsWith('/favicon')) {
+    // favicon.icoを特別なパスにリライトして、enhanceMiddlewareで確実に処理されるようにする
+    // 実際には、enhanceMiddlewareで処理されるため、ここではそのまま返す
+    return url;
+  }
+  
   // バンドルリクエスト（.bundle、/node_modules/、entry.bundle）からHermesパラメータを削除
   const isBundleRequest = url.includes('.bundle') || url.includes('/node_modules/') || url.includes('entry.bundle');
   
@@ -119,7 +145,9 @@ config.server.rewriteRequestUrl = (url) => {
   
   // originalRewriteRequestUrlが存在しない場合（Expo Routerのデフォルト動作）
   // 静的ファイル（拡張子付き）や内部API（/_）はそのまま返す
-  const hasFileExtension = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json|map|html|bundle)$/i.test(url);
+  // 注意: favicon.icoは除外（enhanceMiddlewareで処理される）
+  const isFavicon = url === '/favicon.ico' || url.startsWith('/favicon');
+  const hasFileExtension = !isFavicon && /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot|json|map|html|bundle)$/i.test(url);
   
   // /favicon.icoリクエストはenhanceMiddlewareで処理されるため、ここではスキップ
   // （rewriteRequestUrlで処理すると、Metroがファイルを提供できないため500エラーになる）

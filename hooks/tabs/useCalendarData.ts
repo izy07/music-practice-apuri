@@ -523,15 +523,26 @@ export function useCalendarData(currentDate: Date) {
         today: formatLocalDate(new Date())
       });
       
-      // より広い範囲で取得（タイムゾーンの問題を回避するため、前後1日を含める）
+      // より広い範囲で取得（タイムゾーンの問題を回避するため、前後2日を含める）
       const extendedStart = new Date(startOfMonth);
-      extendedStart.setDate(extendedStart.getDate() - 1);
+      extendedStart.setDate(extendedStart.getDate() - 2);
       extendedStart.setHours(0, 0, 0, 0);
       
       const extendedEnd = new Date(endOfMonth);
-      extendedEnd.setDate(extendedEnd.getDate() + 1);
+      extendedEnd.setDate(extendedEnd.getDate() + 2);
       extendedEnd.setHours(23, 59, 59, 999);
       
+      logger.debug('🔍 録音データ取得範囲:', {
+        startOfMonth: startOfMonth.toISOString(),
+        endOfMonth: endOfMonth.toISOString(),
+        extendedStart: extendedStart.toISOString(),
+        extendedEnd: extendedEnd.toISOString(),
+        targetYear: currentDate.getFullYear(),
+        targetMonth: currentDate.getMonth() + 1
+      });
+      
+      // 楽器IDのフィルタリングを柔軟にする
+      // 現在の楽器IDの録音 + 楽器IDがnullの録音の両方を含める
       let query = supabase
         .from('recordings')
         .select('recorded_at, instrument_id')
@@ -541,7 +552,8 @@ export function useCalendarData(currentDate: Date) {
         .not('recorded_at', 'is', null); // recorded_atがnullのレコードを除外
       
       if (currentInstrumentId) {
-        query = query.eq('instrument_id', currentInstrumentId);
+        // 現在の楽器IDの録音 + 楽器IDがnullの録音の両方を含める
+        query = query.or(`instrument_id.eq.${currentInstrumentId},instrument_id.is.null`);
       } else {
         // 楽器IDがnullの録音のみを含める
         query = query.is('instrument_id', null);
@@ -563,10 +575,10 @@ export function useCalendarData(currentDate: Date) {
 
       logger.debug('📊 取得した録音データ:', {
         count: recordings?.length || 0,
-        recordings: recordings?.map(r => ({
-          recorded_at: r.recorded_at,
-          instrument_id: r.instrument_id,
-          localDate: r.recorded_at ? formatLocalDate(new Date(r.recorded_at)) : null
+        recordings: recordings?.map((rec: { recorded_at: string; instrument_id?: string | null }) => ({
+          recorded_at: rec.recorded_at,
+          instrument_id: rec.instrument_id,
+          localDate: rec.recorded_at ? formatLocalDate(new Date(rec.recorded_at)) : null
         }))
       });
 
@@ -583,17 +595,27 @@ export function useCalendarData(currentDate: Date) {
           const localDateStr = formatLocalDate(recordedDate);
           const [year, month, day] = localDateStr.split('-').map(Number);
           
-          // 現在表示している月と一致するか確認
-          if (year === targetYear && month - 1 === targetMonth) {
+          // 現在表示している月と一致するか確認（月の比較を修正）
+          // monthは1-12の値なので、targetMonth（0-11）と比較する際は month - 1 を使用
+          if (year === targetYear && (month - 1) === targetMonth) {
             // 日付文字列（YYYY-MM-DD）をキーとして使用
+            // 同じ日に複数の録音がある場合でも、hasRecording: trueを設定（上書き）
             newRecordingsData[localDateStr] = { hasRecording: true };
-            logger.debug(`録音データを日付 ${localDateStr} に追加 (recorded_at: ${recording.recorded_at})`);
+            logger.debug(`✅ 録音データを日付 ${localDateStr} に追加 (recorded_at: ${recording.recorded_at}, instrument_id: ${recording.instrument_id})`);
           } else {
-            logger.debug(`録音データをスキップ (recorded_at: ${recording.recorded_at}, localDate: ${localDateStr}, target: ${targetYear}-${targetMonth + 1})`);
+            // デバッグログを削減（過去の月のデータは正常な動作）
+            if (year === targetYear && Math.abs((month - 1) - targetMonth) <= 1) {
+              logger.debug(`録音データをスキップ (recorded_at: ${recording.recorded_at}, localDate: ${localDateStr}, target: ${targetYear}-${targetMonth + 1})`);
+            }
           }
         });
         
-        logger.debug('📅 最終的な録音データ:', newRecordingsData);
+        logger.debug('📅 最終的な録音データ:', {
+          count: Object.keys(newRecordingsData).length,
+          dates: Object.keys(newRecordingsData).sort(),
+          targetMonth: `${targetYear}-${targetMonth + 1}`,
+          totalRecordings: recordings.length
+        });
         setRecordingsData(newRecordingsData);
       } else {
         logger.debug('録音データが見つかりませんでした');

@@ -21,10 +21,12 @@ export interface UserProfile {
   avatar_url?: string;
   selected_instrument_id?: string;
   organization?: string;
+  current_organization?: string;
   birthday?: string; // 誕生日（YYYY-MM-DD形式）
   current_age?: number; // 現在の年齢（自動計算）
   music_start_age?: number; // 音楽開始年齢
   music_experience_years?: number; // 演奏歴年数（自動計算）
+  custom_instrument_name?: string; // カスタム楽器名
   created_at: string;
   updated_at: string;
 }

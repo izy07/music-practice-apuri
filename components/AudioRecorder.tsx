@@ -643,8 +643,36 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         audioElementRef.current = null;
       }
 
-      logger.debug('Audio要素を作成します', { audioUrl: audioUrl.substring(0, 50) + '...' });
-      const audioElement = new Audio(audioUrl);
+      // ファイルパスの検証
+      if (!audioUrl || audioUrl.trim() === '') {
+        logger.error('再生エラー: audioUrlが空です');
+        Alert.alert('再生エラー', '再生する録音データがありません');
+        return;
+      }
+
+      // audioUrlがSupabase Storageのパスの場合は、publicUrlを取得
+      let playbackUrl = audioUrl;
+      if (audioUrl && !audioUrl.startsWith('http') && !audioUrl.startsWith('blob:') && !audioUrl.startsWith('data:')) {
+        // Supabase Storageのパスの場合
+        logger.debug('Supabase Storageから録音URLを取得します', { filePath: audioUrl });
+        const { data: { publicUrl } } = supabase.storage
+          .from('recordings')
+          .getPublicUrl(audioUrl);
+        playbackUrl = publicUrl;
+        logger.debug('録音URLを取得しました', { publicUrl });
+      }
+
+      // publicUrlの検証
+      if (!playbackUrl || playbackUrl.trim() === '') {
+        logger.error('再生エラー: playbackUrlが空です', { audioUrl, playbackUrl });
+        Alert.alert('再生エラー', '録音ファイルのURLを取得できませんでした');
+        return;
+      }
+
+      logger.debug('Audio要素を作成します', { playbackUrl: playbackUrl.substring(0, 50) + '...' });
+      const audioElement = new Audio(playbackUrl);
+      // src属性を明示的に設定（念のため）
+      audioElement.src = playbackUrl;
       audioElementRef.current = audioElement;
 
       // エラーハンドリング
@@ -889,50 +917,52 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* 録音コントロール */}
-        <View style={styles.recordingSection}>
-          <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            録音コントロール
-          </Text>
-          
-          <View style={styles.recordingControls}>
-            {!isRecording ? (
-              <TouchableOpacity
-                style={[styles.recordButton, { backgroundColor: currentTheme.primary }]}
-                onPress={() => {
-                  logger.debug('録音ボタンがタップされました');
-                  startRecording();
-                }}
-                activeOpacity={0.8}
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Mic size={24} color="#FFFFFF" />
-                <Text style={styles.recordButtonText}>録音開始</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity
-                style={[styles.stopButton, { backgroundColor: '#FF4444' }]}
-                onPress={() => stopRecording('manual')}
-              >
-                <MicOff size={24} color="#FFFFFF" />
-                <Text style={styles.stopButtonText}>録音停止</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* 録音時間表示 */}
-          <View style={styles.timeDisplay}>
-            <Text style={[styles.timeText, { color: currentTheme.text }]}>
-              {isRecording ? '録音中: ' : '録音時間: '}
-              {isRecording ? formatTime(recordingTime) : formatTime(recordingDuration)}
+        {/* 録音コントロール（録音前のみ表示、録音後は非表示） */}
+        {!audioUrl && (
+          <View style={styles.recordingSection}>
+            <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
+              録音コントロール
             </Text>
-            {isRecording && (
-              <Text style={[styles.maxTimeText, { color: currentTheme.textSecondary }]}>
-                最大: {formatTime(MAX_RECORDING_TIME)}
+            
+            <View style={styles.recordingControls}>
+              {!isRecording ? (
+                <TouchableOpacity
+                  style={[styles.recordButton, { backgroundColor: currentTheme.primary }]}
+                  onPress={() => {
+                    logger.debug('録音ボタンがタップされました');
+                    startRecording();
+                  }}
+                  activeOpacity={0.8}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Mic size={24} color="#FFFFFF" />
+                  <Text style={styles.recordButtonText}>録音開始</Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.stopButton, { backgroundColor: '#FF4444' }]}
+                  onPress={() => stopRecording('manual')}
+                >
+                  <MicOff size={24} color="#FFFFFF" />
+                  <Text style={styles.stopButtonText}>録音停止</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+
+            {/* 録音時間表示 */}
+            <View style={styles.timeDisplay}>
+              <Text style={[styles.timeText, { color: currentTheme.text }]}>
+                {isRecording ? '録音中: ' : '録音時間: '}
+                {isRecording ? formatTime(recordingTime) : formatTime(recordingDuration)}
               </Text>
-            )}
+              {isRecording && (
+                <Text style={[styles.maxTimeText, { color: currentTheme.textSecondary }]}>
+                  最大: {formatTime(MAX_RECORDING_TIME)}
+                </Text>
+              )}
+            </View>
           </View>
-        </View>
+        )}
 
         {/* 録音データ表示 */}
         {audioUrl && (

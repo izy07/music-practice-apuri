@@ -25,6 +25,7 @@ export interface UserProfile {
   current_age?: number;
   music_start_age?: number;
   music_experience_years?: number;
+  custom_instrument_name?: string;
   created_at?: string;
   updated_at?: string;
 }

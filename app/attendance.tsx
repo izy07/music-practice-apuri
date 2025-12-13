@@ -10,6 +10,7 @@ import { PracticeScheduleManager, AttendanceManager, PracticeSchedule, Attendanc
 import { organizationRepository } from '@/repositories/organizationRepository';
 import { attendanceRepository } from '@/repositories/attendanceRepository';
 import { supabase } from '@/lib/supabase';
+import { safeGoBack } from '@/lib/navigationUtils';
 
 type UnifiedSchedule = PracticeSchedule & {
   organization_id: string;
@@ -310,7 +311,10 @@ export default function AttendanceScreen() {
       
       {/* ヘッダー */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => {
+          const fallbackRoute = isAllOrgsMode ? '/(tabs)/org-overview' : '/(tabs)/share';
+          safeGoBack(fallbackRoute);
+        }}>
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>

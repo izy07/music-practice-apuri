@@ -13,6 +13,7 @@ import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import type { PracticeType } from '@/types/organization';
+import { safeGoBack } from '@/lib/navigationUtils';
 
 type UnifiedSchedule = PracticeSchedule & {
   organization_id: string;
@@ -292,7 +293,10 @@ export default function CalendarScreen() {
       
       {/* ヘッダー */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
+        <TouchableOpacity onPress={() => {
+          const fallbackRoute = isAllOrgsMode ? '/(tabs)/org-overview' : '/(tabs)/share';
+          safeGoBack(fallbackRoute);
+        }}>
           <Text style={[styles.backButton, { color: currentTheme.primary }]}>← 戻る</Text>
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>

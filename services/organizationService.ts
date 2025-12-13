@@ -219,14 +219,16 @@ export class OrganizationService {
         // メンバーシップはデータベーストリガー（SECURITY DEFINER）によって自動的に作成される
         // アプリケーション側からの明示的な作成は不要（RLSポリシーエラーを回避するため）
         // トリガーが正しく動作していることを確認するため、指数バックオフでメンバーシップの存在を確認
+        // 注意: この確認は非同期で実行されるため、メンバーシップが見つからなくても組織作成は成功する
         try {
-          // メンバーシップが作成されるまで最大5回リトライ（指数バックオフ: 200ms, 400ms, 800ms, 1600ms, 3200ms）
+          // メンバーシップが作成されるまで最大3回リトライ（指数バックオフ: 100ms, 200ms, 400ms）
+          // トリガーは通常即座に実行されるため、短い遅延で十分
           let membershipFound = false;
-          const baseDelay = 200; // ベース遅延時間（ms）
-          const maxRetries = 5;
+          const baseDelay = 100; // ベース遅延時間（ms）
+          const maxRetries = 3;
           
           for (let retry = 0; retry < maxRetries; retry++) {
-            // 指数バックオフ: 200ms, 400ms, 800ms, 1600ms, 3200ms
+            // 指数バックオフ: 100ms, 200ms, 400ms
             const delay = baseDelay * Math.pow(2, retry);
             await new Promise(resolve => setTimeout(resolve, delay));
             
@@ -237,7 +239,8 @@ export class OrganizationService {
             );
             
             if (membershipCheck.data) {
-              logger.info(`[${SERVICE_CONTEXT}] createOrganization:membership confirmed (created by trigger)`, {
+              // メンバーシップが見つかった場合のみログ出力（成功時のみ）
+              logger.debug(`[${SERVICE_CONTEXT}] createOrganization:membership confirmed (created by trigger)`, {
                 organizationId: createdOrganization.id,
                 userId: user.id,
                 membershipId: membershipCheck.data.id,
@@ -248,21 +251,12 @@ export class OrganizationService {
             }
           }
           
-          if (!membershipFound) {
-            // メンバーシップが存在しない場合はデバッグログ（警告レベルを下げる）
-            // トリガーが後で作成する可能性があるため、警告ではなくデバッグログに変更
-            logger.debug(`[${SERVICE_CONTEXT}] createOrganization:membership not found after creation (may be created by trigger later)`, {
-              organizationId: createdOrganization.id,
-              userId: user.id,
-              hint: 'データベーストリガーが正しく動作しているか確認してください',
-            });
-          }
+          // メンバーシップが見つからない場合でもログを出力しない
+          // トリガーは非同期で実行されるため、後で作成される可能性がある
+          // 組織作成自体は成功しているため、警告は不要
         } catch (checkError: any) {
           // メンバーシップ確認の失敗は組織作成を失敗させない
-          logger.debug(`[${SERVICE_CONTEXT}] createOrganization:membership check failed (non-fatal)`, {
-            error: checkError,
-            organizationId: createdOrganization.id,
-          });
+          // エラーログも出力しない（非致命的なエラーのため）
         }
 
         logger.info(`[${SERVICE_CONTEXT}] createOrganization:success`, {

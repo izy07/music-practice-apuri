@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert, Share, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert, Share, Switch, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar, Users, CheckSquare, Plus, Settings, Home, Share as ShareIcon, Copy, ClipboardList } from 'lucide-react-native';
 import { useRouter } from 'expo-router';

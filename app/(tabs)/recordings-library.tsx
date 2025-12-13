@@ -211,6 +211,13 @@ export default function RecordingsLibraryScreen() {
 
       logger.debug('録音再生開始:', recording.file_path);
 
+      // ファイルパスの検証
+      if (!recording.file_path || recording.file_path.trim() === '') {
+        logger.error('録音再生エラー: ファイルパスが空です');
+        Alert.alert('エラー', '録音ファイルのパスが無効です');
+        return;
+      }
+
       // 新しい録音を再生
       const { data: { publicUrl } } = supabase.storage
         .from('recordings')
@@ -218,15 +225,36 @@ export default function RecordingsLibraryScreen() {
 
       logger.debug('録音URL:', publicUrl);
 
+      // publicUrlの検証
+      if (!publicUrl || publicUrl.trim() === '') {
+        logger.error('録音再生エラー: publicUrlが空です', { filePath: recording.file_path, publicUrl });
+        Alert.alert('エラー', '録音ファイルのURLを取得できませんでした');
+        return;
+      }
+
       const audio = new Audio(publicUrl);
+      // src属性を明示的に設定（念のため）
+      audio.src = publicUrl;
       audio.onended = () => {
         logger.debug('録音再生終了');
         setPlayingRecording(null);
         setAudioElement(null);
       };
       audio.onerror = (e) => {
-        logger.error('録音再生エラー:', e);
-        ErrorHandler.handle(e, '録音再生', false);
+        // エラーイベントの詳細を取得
+        const errorMessage = audio.error 
+          ? `エラーコード: ${audio.error.code}, メッセージ: ${audio.error.message || '不明なエラー'}`
+          : '不明なエラー';
+        logger.error('録音再生エラー:', {
+          error: errorMessage,
+          filePath: recording.file_path,
+          publicUrl,
+          errorCode: audio.error?.code,
+          errorMessage: audio.error?.message
+        });
+        // エラーハンドラーには詳細なエラー情報を渡す
+        const errorObj = new Error(errorMessage);
+        ErrorHandler.handle(errorObj, '録音再生', false);
         Alert.alert('エラー', '録音の再生に失敗しました。ファイルが見つからない可能性があります。');
         setPlayingRecording(null);
         setAudioElement(null);

@@ -8,6 +8,7 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
 import { PracticeScheduleManager, PracticeSchedule } from '@/lib/groupManagement';
 import { organizationRepository } from '@/repositories/organizationRepository';
+import { safeGoBack } from '@/lib/navigationUtils';
 
 type UnifiedEvent = PracticeSchedule & {
   organization_id: string;
@@ -124,7 +125,7 @@ export default function EventsScreen() {
           if (isAllOrgsMode) {
             router.replace('/(tabs)/org-overview' as any);
           } else {
-            router.back();
+            safeGoBack('/(tabs)/share');
           }
         }}>
           <ArrowLeft size={24} color={currentTheme.text} />

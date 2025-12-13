@@ -7,6 +7,7 @@ import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
 import { OrganizationManager, PracticeScheduleManager, Organization } from '@/lib/groupManagement';
+import { safeGoBack } from '@/lib/navigationUtils';
 
 export default function OrganizationDashboard() {
   const router = useRouter();
@@ -118,7 +119,7 @@ export default function OrganizationDashboard() {
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={() => safeGoBack('/(tabs)/share')}
         >
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>

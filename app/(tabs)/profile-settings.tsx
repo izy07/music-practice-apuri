@@ -138,8 +138,10 @@ export default function ProfileSettingsScreen() {
           }
           
           // 所属団体を読み込み（カンマ区切りから配列に変換）
-          if (profile.current_organization) {
-            const orgs = profile.current_organization.split(',').filter((name: string) => name.trim() !== '');
+          // current_organizationまたはorganizationのどちらかを使用
+          const organizationValue = (profile as any).current_organization || profile.organization;
+          if (organizationValue) {
+            const orgs = organizationValue.split(',').filter((name: string) => name.trim() !== '');
             setCurrentOrganizations(
               orgs.length > 0 
                 ? orgs.map((name: string, index: number) => ({ id: (index + 1).toString(), name: name.trim() }))
@@ -150,8 +152,9 @@ export default function ProfileSettingsScreen() {
           }
           
           // 楽器の種類を読み込み（カンマ区切りから配列に変換）
-          if (profile.custom_instrument_name) {
-            const types = profile.custom_instrument_name.split(',').filter((name: string) => name.trim() !== '');
+          const customInstrumentName = (profile as any).custom_instrument_name;
+          if (customInstrumentName) {
+            const types = customInstrumentName.split(',').filter((name: string) => name.trim() !== '');
             setInstrumentTypes(
               types.length > 0 
                 ? types.map((name: string, index: number) => ({ id: (index + 1).toString(), name: name.trim() }))
@@ -730,7 +733,9 @@ export default function ProfileSettingsScreen() {
 
       if (result.error) {
         // カラムが存在しないエラーの場合は警告として処理（基本情報は保存済みの可能性）
-        if (result.error.code === '42703' || result.error.message?.includes('column') || result.error.message?.includes('does not exist')) {
+        const errorCode = (result.error as any).code || (result.error as any).originalError?.code;
+        const errorMessage = result.error.message || (result.error as any).originalError?.message || '';
+        if (errorCode === '42703' || errorCode === 'PGRST204' || errorMessage.includes('column') || errorMessage.includes('does not exist') || errorMessage.includes('Could not find')) {
           logger.warn('一部のカラムが存在しないため、オプショナル情報は保存されませんでした:', result.error);
           // 基本情報は保存されている可能性があるため、成功として扱う
         } else {
@@ -743,6 +748,10 @@ export default function ProfileSettingsScreen() {
 
       // 認証プロフィール更新（他画面の表示名を即時反映）
       await fetchUserProfile();
+      
+      // プロフィール情報を再読み込み（次回ログイン時に反映されるように）
+      await loadCurrentUser();
+      
       Alert.alert('保存されました', '基本情報を保存しました');
     } catch (error) {
       logger.error('プロフィール保存エラー:', error);
@@ -1400,9 +1409,9 @@ export default function ProfileSettingsScreen() {
                   .upsert({
                     user_id: uid,
                     career_data: {
-                      pastOrganizationsUi: pastOrgs,
-                      awardsUi: awardsEdit,
-                      performancesUi: performancesEdit,
+                  pastOrganizationsUi: pastOrgs,
+                  awardsUi: awardsEdit,
+                  performancesUi: performancesEdit,
                     },
                     updated_at: new Date().toISOString(),
                   }, { onConflict: 'user_id' });

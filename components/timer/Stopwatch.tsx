@@ -311,9 +311,9 @@ const styles = StyleSheet.create({
   stopwatchControls: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     width: '100%',
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     marginBottom: 24,
     gap: 8,
   },
@@ -325,7 +325,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderRadius: 8,
-    gap: 6,
+    gap: 4,
+    maxWidth: '33%',
   },
   stopwatchControlButtonText: {
     fontSize: 14,

@@ -11,6 +11,39 @@
 // モーダルの開閉状態を追跡（複数のモーダルが同時に開いている場合に対応）
 let modalCount = 0;
 let rootElement: HTMLElement | null = null;
+let globalFocusListener: ((e: FocusEvent) => void) | null = null;
+
+/**
+ * グローバルなフォーカス監視を開始
+ */
+const startGlobalFocusMonitoring = () => {
+  if (typeof window === 'undefined' || globalFocusListener) return;
+  
+  globalFocusListener = () => {
+    // モーダルが開いている間のみ処理
+    if (modalCount > 0) {
+      const activeElement = document.activeElement as HTMLElement;
+      if (activeElement) {
+        // フォーカスがある要素の祖先にaria-hiddenがある場合、削除
+        let parent = activeElement.parentElement;
+        while (parent && parent !== document.body && parent !== document.documentElement) {
+          if (parent.getAttribute('aria-hidden') === 'true') {
+            // モーダル内の要素は除外
+            if (!parent.closest('[role="dialog"]') && 
+                !parent.closest('[aria-modal="true"]') &&
+                !parent.closest('[data-modal-content]')) {
+              parent.removeAttribute('aria-hidden');
+            }
+          }
+          parent = parent.parentElement;
+        }
+      }
+    }
+  };
+  
+  // フォーカスイベントを監視（キャプチャフェーズで実行）
+  document.addEventListener('focusin', globalFocusListener, true);
+};
 
 /**
  * ルート要素を取得（初回のみ）
@@ -43,18 +76,33 @@ export const disableBackgroundFocus = () => {
   // inert属性は、フォーカス可能な要素を自動的に無効化するため、
   // aria-hidden警告を根本的に解決します
   if (modalCount === 1) {
+    // グローバルなフォーカス監視を開始
+    startGlobalFocusMonitoring();
+    
     root.setAttribute('inert', '');
     
     // 背景のすべてのaria-hidden属性を即座に削除
     const removeAriaHidden = () => {
       const elementsWithAriaHidden = document.querySelectorAll('[aria-hidden="true"]');
+      const activeElement = document.activeElement as HTMLElement;
+      
       elementsWithAriaHidden.forEach((element) => {
         const htmlElement = element as HTMLElement;
         // モーダル内の要素は除外
         if (!htmlElement.closest('[role="dialog"]') && 
             !htmlElement.closest('[aria-modal="true"]') &&
             !htmlElement.closest('[data-modal-content]')) {
-          htmlElement.removeAttribute('aria-hidden');
+          // フォーカス可能な要素が含まれているか、またはフォーカス可能な要素自体の場合
+          const hasFocusable = htmlElement.querySelector(
+            'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          ) || htmlElement.matches('a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])');
+          
+          // 現在フォーカスがある要素の祖先の場合も削除
+          const containsFocusedElement = activeElement && (htmlElement.contains(activeElement) || htmlElement === activeElement);
+          
+          if (hasFocusable || containsFocusedElement) {
+            htmlElement.removeAttribute('aria-hidden');
+          }
         }
       });
     };
@@ -71,13 +119,37 @@ export const disableBackgroundFocus = () => {
     setTimeout(removeAriaHidden, 500);
     
     // 定期的にチェックして削除（モーダルが開いている間、継続的に監視）
+    // より頻繁にチェックして確実に削除（50ms間隔）
     const intervalId = setInterval(() => {
       if (modalCount === 0) {
         clearInterval(intervalId);
         return;
       }
       removeAriaHidden();
-    }, 100);
+      
+      // フォーカス可能な要素が含まれる要素からaria-hiddenを強制的に削除
+      const allElements = document.querySelectorAll('[aria-hidden="true"]');
+      allElements.forEach((element) => {
+        const htmlElement = element as HTMLElement;
+        // モーダル内の要素は除外
+        if (!htmlElement.closest('[role="dialog"]') && 
+            !htmlElement.closest('[aria-modal="true"]') &&
+            !htmlElement.closest('[data-modal-content]')) {
+          // フォーカス可能な要素が含まれているか、またはフォーカス可能な要素自体の場合
+          const hasFocusable = htmlElement.querySelector(
+            'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          ) || htmlElement.matches('a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])');
+          
+          // 現在フォーカスがある要素の祖先の場合も削除
+          const activeElement = document.activeElement as HTMLElement;
+          if (activeElement && (htmlElement.contains(activeElement) || htmlElement === activeElement)) {
+            htmlElement.removeAttribute('aria-hidden');
+          } else if (hasFocusable) {
+            htmlElement.removeAttribute('aria-hidden');
+          }
+        }
+      });
+    }, 50);
     
     // モーダルが閉じたときにintervalをクリアするため、グローバルに保存
     (window as any).__modalAriaHiddenInterval = intervalId;
@@ -96,8 +168,21 @@ export const disableBackgroundFocus = () => {
               const hasFocusableDescendant = target.querySelector(
                 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
               );
-              if (hasFocusableDescendant || target.matches('a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')) {
+              const isFocusable = target.matches('a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])');
+              
+              // 現在フォーカスがある要素の祖先の場合も削除
+              const activeElement = document.activeElement as HTMLElement;
+              const containsFocusedElement = activeElement && (target.contains(activeElement) || target === activeElement);
+              
+              if (hasFocusableDescendant || isFocusable || containsFocusedElement) {
+                // 即座に削除
                 target.removeAttribute('aria-hidden');
+                // 念のため、少し遅延して再度削除を試みる
+                setTimeout(() => {
+                  if (target.getAttribute('aria-hidden') === 'true') {
+                    target.removeAttribute('aria-hidden');
+                  }
+                }, 0);
               }
             }
           }
@@ -215,6 +300,9 @@ export const enableBackgroundFocus = () => {
       clearInterval((window as any).__modalAriaHiddenInterval);
       delete (window as any).__modalAriaHiddenInterval;
     }
+    
+    // グローバルフォーカスリスナーは残す（他のモーダルが開く可能性があるため）
+    // ただし、すべてのモーダルが閉じた場合は削除しても良いが、念のため残す
     
     // フォールバック: 無効化したフォーカス可能な要素を再有効化
     const disabledElements = document.querySelectorAll('[data-modal-disabled-tabindex]');

@@ -3,7 +3,7 @@
  * 練習メニューの表示と管理
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft } from 'lucide-react-native';
@@ -29,7 +29,7 @@ export default function BasicPracticeScreen() {
   const router = useRouter();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const { t } = useLanguage();
-  const { user } = useAuthAdvanced();
+  const { user, isAuthenticated } = useAuthAdvanced();
   const [selectedMenu, setSelectedMenu] = useState<PracticeItem | null>(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
@@ -46,8 +46,16 @@ export default function BasicPracticeScreen() {
     setShowLevelModal,
     handleLevelChange,
     handleLevelSelection,
+    checkUserLevel,
     levels,
   } = usePracticeLevel(selectedInstrument);
+
+  // ログイン時や画面表示時にレベルを確認（楽器が選択されている場合）
+  useEffect(() => {
+    if (isAuthenticated && user && selectedInstrument) {
+      checkUserLevel();
+    }
+  }, [isAuthenticated, user?.id, selectedInstrument, checkUserLevel]);
 
   // 練習メニュー管理フック（DB取得版、フォールバック付き）
   const { filteredPracticeMenus, loading: menusLoading } = usePracticeMenu(selectedInstrument, selectedLevel);

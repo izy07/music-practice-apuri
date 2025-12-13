@@ -79,3 +79,4 @@ export function isArray<T>(value: unknown, itemGuard?: (item: unknown) => item i
 export function isNonEmptyString(value: unknown): value is string {
   return isString(value) && value.trim().length > 0;
 }
+
