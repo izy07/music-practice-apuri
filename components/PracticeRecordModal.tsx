@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Alert, ScrollView, Platform, Linking } from 'react-native';
+// expo-audioをモバイル環境でのみインポート
+let useAudioPlayer: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    const audioModule = require('expo-audio');
+    useAudioPlayer = audioModule.useAudioPlayer;
+  } catch (error) {
+    // expo-audioが利用できない場合は無視
+  }
+}
 import { X, Save, Mic, Video, Trash2, Calendar, Play, Pause } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import AudioRecorder from './AudioRecorder';
@@ -167,6 +177,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   } | null>(null);
   const [playingRecordingId, setPlayingRecordingId] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  // モバイル環境での録音再生用のAudioPlayer（expo-audioが利用可能な場合のみ）
+  const mobileAudioPlayer = useAudioPlayer && Platform.OS !== 'web' ? useAudioPlayer() : null;
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [practiceBreakdown, setPracticeBreakdown] = useState<Array<{ method: string; minutes: number }>>([]);
   const [isRecordingJustSaved, setIsRecordingJustSaved] = useState(false); // 録音保存直後フラグ
@@ -278,21 +290,28 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   // 録音再生機能（Web環境とモバイル環境の両方に対応）
   const playRecording = async (recordingId: string, filePath: string) => {
     if (playingRecordingId === recordingId) {
-      // 現在再生中の録音を停止（Web環境のみ）
+      // 現在再生中の録音を停止
       if (Platform.OS === 'web' && audioElement) {
         audioElement.pause();
         audioElement.currentTime = 0;
+        setPlayingRecordingId(null);
+        setAudioElement(null);
+      } else if (Platform.OS !== 'web' && mobileAudioPlayer) {
+        mobileAudioPlayer.pause();
+        mobileAudioPlayer.seekTo(0);
+        setPlayingRecordingId(null);
       }
-      setPlayingRecordingId(null);
-      setAudioElement(null);
       return;
     }
 
     try {
-      // 他の録音を停止（Web環境のみ）
+      // 他の録音を停止
       if (Platform.OS === 'web' && audioElement) {
         audioElement.pause();
         audioElement.currentTime = 0;
+      } else if (Platform.OS !== 'web' && mobileAudioPlayer) {
+        mobileAudioPlayer.pause();
+        mobileAudioPlayer.seekTo(0);
       }
 
       logger.debug('録音再生開始:', filePath);
@@ -353,18 +372,49 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         setPlayingRecordingId(recordingId);
         setAudioElement(audio);
       } else {
-        // モバイル環境ではブラウザで開く（確実に再生できる）
-        try {
-          const canOpen = await Linking.canOpenURL(publicUrl);
-          if (canOpen) {
-            await Linking.openURL(publicUrl);
-            logger.debug('録音をブラウザで開きました（モバイル環境）');
-          } else {
+        // モバイル環境ではexpo-audioのAudioPlayerを使用
+        if (mobileAudioPlayer) {
+          try {
+            // useAudioPlayerフックを使用する場合、replaceメソッドでURLを設定
+            if (mobileAudioPlayer.replace) {
+              mobileAudioPlayer.replace(publicUrl);
+            } else if (mobileAudioPlayer.source) {
+              // 新しいAPIの場合
+              mobileAudioPlayer.source = { uri: publicUrl };
+            }
+            mobileAudioPlayer.play();
+            setPlayingRecordingId(recordingId);
+            logger.debug('録音再生中（モバイル環境、expo-audio）');
+          } catch (error) {
+            logger.error('録音再生エラー（モバイル、expo-audio）:', error);
+            // expo-audioが失敗した場合はブラウザで開く
+            try {
+              const canOpen = await Linking.canOpenURL(publicUrl);
+              if (canOpen) {
+                await Linking.openURL(publicUrl);
+                logger.debug('録音をブラウザで開きました（モバイル環境、フォールバック）');
+              } else {
+                Alert.alert('エラー', '録音ファイルを開けませんでした');
+              }
+            } catch (linkError) {
+              logger.error('録音URLを開くエラー:', linkError);
+              Alert.alert('エラー', '録音ファイルを開けませんでした');
+            }
+          }
+        } else {
+          // expo-audioが利用できない場合はブラウザで開く
+          try {
+            const canOpen = await Linking.canOpenURL(publicUrl);
+            if (canOpen) {
+              await Linking.openURL(publicUrl);
+              logger.debug('録音をブラウザで開きました（モバイル環境、フォールバック）');
+            } else {
+              Alert.alert('エラー', '録音ファイルを開けませんでした');
+            }
+          } catch (linkError) {
+            logger.error('録音URLを開くエラー:', linkError);
             Alert.alert('エラー', '録音ファイルを開けませんでした');
           }
-        } catch (linkError) {
-          logger.error('録音URLを開くエラー:', linkError);
-          Alert.alert('エラー', '録音ファイルを開けませんでした');
         }
       }
     } catch (error) {
@@ -1812,6 +1862,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   style={[styles.deleteModalButton, styles.deleteModalButtonDestructive]}
                   onPress={() => {
                     setShowDeleteModal(false);
+                    // 確認メッセージを表示してから削除を実行
                     deleteRecordingOnly();
                   }}
                 >
