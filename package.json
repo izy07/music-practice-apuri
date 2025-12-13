@@ -4,6 +4,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "start": "expo start",
+    "start:web": "expo start --web",
+    "start:ios": "expo start --ios",
+    "start:android": "expo start --android",
     "optimize-images": "node scripts/optimize-images-node.js",
     "create-favicon": "node scripts/create-favicon-ico.js",
     "test": "jest",
