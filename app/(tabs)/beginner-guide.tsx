@@ -35,11 +35,16 @@ const loadInstrumentGuides = async (): Promise<any> => {
       
       // Web環境（GitHub Pages等）では直接インポートを使用（動的インポートが動作しない場合があるため）
       // モバイル環境では動的インポートを使用（ファイルサイズ削減）
-      if (Platform.OS === 'web') {
+      // Web環境の検出を強化（Platform.OSとwindowの両方をチェック）
+      const isWeb = Platform.OS === 'web' || (typeof window !== 'undefined' && typeof document !== 'undefined');
+      
+      if (isWeb) {
         // Web環境では直接インポートを使用（ビルド時にバンドルに含まれる）
         guides = staticInstrumentGuides as any;
         logger.debug('✅ Web環境: 直接インポートからガイドデータを取得', {
-          keys: Object.keys(guides).length
+          keys: Object.keys(guides).length,
+          platform: Platform.OS,
+          hasWindow: typeof window !== 'undefined'
         });
       } else {
         // モバイル環境では動的インポートを使用
