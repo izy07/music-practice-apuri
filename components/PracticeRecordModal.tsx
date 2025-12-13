@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
-import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Alert, ScrollView, Platform } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, TextInput, Alert, ScrollView, Platform, Linking } from 'react-native';
 import { X, Save, Mic, Video, Trash2, Calendar, Play, Pause } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import AudioRecorder from './AudioRecorder';
@@ -275,16 +275,11 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
     };
   }, [audioElement]);
 
-  // 録音再生機能
+  // 録音再生機能（Web環境とモバイル環境の両方に対応）
   const playRecording = async (recordingId: string, filePath: string) => {
-    if (Platform.OS !== 'web') {
-      Alert.alert('再生機能', '再生機能はWeb環境でのみ利用できます');
-      return;
-    }
-
     if (playingRecordingId === recordingId) {
-      // 現在再生中の録音を停止
-      if (audioElement) {
+      // 現在再生中の録音を停止（Web環境のみ）
+      if (Platform.OS === 'web' && audioElement) {
         audioElement.pause();
         audioElement.currentTime = 0;
       }
@@ -294,8 +289,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
     }
 
     try {
-      // 他の録音を停止
-      if (audioElement) {
+      // 他の録音を停止（Web環境のみ）
+      if (Platform.OS === 'web' && audioElement) {
         audioElement.pause();
         audioElement.currentTime = 0;
       }
@@ -323,38 +318,55 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         return;
       }
 
-      const audio = new Audio(publicUrl);
-      // src属性を明示的に設定（念のため）
-      audio.src = publicUrl;
-      audio.onended = () => {
-        logger.debug('録音再生終了');
-        setPlayingRecordingId(null);
-        setAudioElement(null);
-      };
-      audio.onerror = (e) => {
-        // エラーイベントの詳細を取得
-        const errorMessage = audio.error 
-          ? `エラーコード: ${audio.error.code}, メッセージ: ${audio.error.message || '不明なエラー'}`
-          : '不明なエラー';
-        logger.error('録音再生エラー:', {
-          error: errorMessage,
-          filePath,
-          publicUrl,
-          errorCode: audio.error?.code,
-          errorMessage: audio.error?.message
-        });
-        // エラーハンドラーには詳細なエラー情報を渡す
-        const errorObj = new Error(errorMessage);
-        ErrorHandler.handle(errorObj, '録音再生', false);
-        Alert.alert('エラー', '録音の再生に失敗しました。ファイルが見つからない可能性があります。');
-        setPlayingRecordingId(null);
-        setAudioElement(null);
-      };
+      // Web環境ではAudio APIを使用
+      if (Platform.OS === 'web') {
+        const audio = new Audio(publicUrl);
+        // src属性を明示的に設定（念のため）
+        audio.src = publicUrl;
+        audio.onended = () => {
+          logger.debug('録音再生終了');
+          setPlayingRecordingId(null);
+          setAudioElement(null);
+        };
+        audio.onerror = (e) => {
+          // エラーイベントの詳細を取得
+          const errorMessage = audio.error 
+            ? `エラーコード: ${audio.error.code}, メッセージ: ${audio.error.message || '不明なエラー'}`
+            : '不明なエラー';
+          logger.error('録音再生エラー:', {
+            error: errorMessage,
+            filePath,
+            publicUrl,
+            errorCode: audio.error?.code,
+            errorMessage: audio.error?.message
+          });
+          // エラーハンドラーには詳細なエラー情報を渡す
+          const errorObj = new Error(errorMessage);
+          ErrorHandler.handle(errorObj, '録音再生', false);
+          Alert.alert('エラー', '録音の再生に失敗しました。ファイルが見つからない可能性があります。');
+          setPlayingRecordingId(null);
+          setAudioElement(null);
+        };
 
-      await audio.play();
-      logger.debug('録音再生中');
-      setPlayingRecordingId(recordingId);
-      setAudioElement(audio);
+        await audio.play();
+        logger.debug('録音再生中（Web環境）');
+        setPlayingRecordingId(recordingId);
+        setAudioElement(audio);
+      } else {
+        // モバイル環境ではブラウザで開く（確実に再生できる）
+        try {
+          const canOpen = await Linking.canOpenURL(publicUrl);
+          if (canOpen) {
+            await Linking.openURL(publicUrl);
+            logger.debug('録音をブラウザで開きました（モバイル環境）');
+          } else {
+            Alert.alert('エラー', '録音ファイルを開けませんでした');
+          }
+        } catch (linkError) {
+          logger.error('録音URLを開くエラー:', linkError);
+          Alert.alert('エラー', '録音ファイルを開けませんでした');
+        }
+      }
     } catch (error) {
       logger.error('録音再生エラー:', error);
       ErrorHandler.handle(error, '録音再生', false);
@@ -1090,34 +1102,53 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         return;
       }
 
-      const { error } = await deleteRecording(existingRecording.id);
-      if (error) {
-        Alert.alert('エラー', '演奏録音の削除に失敗しました');
-        return;
-      }
+      // 確認メッセージを表示（その日のカレンダー録音データも削除されることを明示）
+      Alert.alert(
+        '録音データの削除',
+        'この録音データを削除しますか？\n\nこの日のカレンダーに表示されている録音データも削除されます。\n\nこの操作は取り消すことができません。',
+        [
+          { text: 'キャンセル', style: 'cancel' },
+          { 
+            text: '削除', 
+            style: 'destructive', 
+            onPress: async () => {
+              try {
+                const { error } = await deleteRecording(existingRecording.id);
+                if (error) {
+                  Alert.alert('エラー', '演奏録音の削除に失敗しました');
+                  return;
+                }
 
-      // ローカル状態をリセット
-      setAudioUrl('');
-      setExistingRecording(null);
-      setAudioTitle('');
-      setAudioMemo('');
-      setIsAudioFavorite(false);
-      setAudioDuration(0);
+                // ローカル状態をリセット
+                setAudioUrl('');
+                setExistingRecording(null);
+                setAudioTitle('');
+                setAudioMemo('');
+                setIsAudioFavorite(false);
+                setAudioDuration(0);
 
-      // コールバックを呼び出してデータを更新
-      onRecordingSaved?.();
+                // コールバックを呼び出してデータを更新（カレンダーも更新される）
+                onRecordingSaved?.();
 
-      Alert.alert('削除完了', '演奏録音を削除しました', [
-        { text: 'OK', onPress: () => {
-          // 他の記録がない場合はモーダルを閉じる
-          if (!existingRecord) {
-            onClose();
+                Alert.alert('削除完了', '録音データを削除しました', [
+                  { text: 'OK', onPress: () => {
+                    // 他の記録がない場合はモーダルを閉じる
+                    if (!existingRecord) {
+                      onClose();
+                    }
+                  }}
+                ]);
+              } catch (error) {
+                logger.error('Error deleting recording:', error);
+                Alert.alert('エラー', '演奏録音の削除に失敗しました');
+              }
+            }
           }
-        }}
-      ]);
+        ]
+      );
     } catch (error) {
-      console.error('Error deleting recording:', error);
-      Alert.alert('エラー', '演奏録音の削除に失敗しました');
+      logger.error('Error in deleteRecordingOnly:', error);
+      Alert.alert('エラー', '削除処理に失敗しました');
     }
   };
 
