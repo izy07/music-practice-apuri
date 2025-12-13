@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert, Share, Switch, FlatList } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert, Share, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar, Users, CheckSquare, Plus, Settings, Home, Share as ShareIcon, Copy, ClipboardList } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -184,7 +184,12 @@ export default function ShareScreen() {
       <InstrumentHeader />
       
       {/* 全体をスクロール可能にする */}
-      <ScrollView style={styles.scrollContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.scrollContainer} 
+        contentContainerStyle={styles.scrollContentContainer}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled={true}
+      >
         {/* ヘッダー */}
         <View style={styles.header}>
           <View style={[styles.iconContainer, { backgroundColor: `${currentTheme.primary}20` }]}>
@@ -290,40 +295,33 @@ export default function ShareScreen() {
                 <Text style={[styles.emptyStateText, { color: currentTheme.textSecondary }]}>{t('noOrganizationsYetSubtitle')}</Text>
               </View>
             ) : (
-              // 重複を除去してFlatListで仮想化
-              <FlatList
-                data={Array.from(new Map(organizations.map(o => [o.id, o])).values())}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item: org }) => (
-                  <TouchableOpacity
-                    style={[styles.orgCard, { backgroundColor: currentTheme.surface }]}
-                    onPress={() => selectOrganization(org)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[styles.orgIcon, { backgroundColor: currentTheme.primary }]}>
-                      <Users size={20} color="#FFFFFF" />
-                    </View>
-                    <View style={styles.orgContent}>
-                      <Text style={[styles.orgName, { color: currentTheme.text }]}>
-                        {org.name}
-                      </Text>
-                      <Text style={[styles.orgDescription, { color: currentTheme.textSecondary }]}>
-                        {org.description || t('noDescription')}
-                      </Text>
-                      <Text style={[styles.orgDate, { color: currentTheme.primary }]}>
-                        {`${t('createdDate')}: ${org.created_at ? new Date(org.created_at).toLocaleDateString(t('language') === 'en' ? 'en-US' : 'ja-JP') : t('unknown')}`}
-                      </Text>
-                    </View>
-                    <View style={styles.orgArrow}>
-                      <Text style={[styles.arrow, { color: currentTheme.textSecondary }]}>›</Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
-                scrollEnabled={false}
-                removeClippedSubviews={true}
-                maxToRenderPerBatch={10}
-                windowSize={5}
-              />
+              // 重複を除去して通常のmapで表示（ScrollView内のためFlatListは使用しない）
+              Array.from(new Map(organizations.map(o => [o.id, o])).values()).map((org) => (
+                <TouchableOpacity
+                  key={org.id}
+                  style={[styles.orgCard, { backgroundColor: currentTheme.surface }]}
+                  onPress={() => selectOrganization(org)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.orgIcon, { backgroundColor: currentTheme.primary }]}>
+                    <Users size={20} color="#FFFFFF" />
+                  </View>
+                  <View style={styles.orgContent}>
+                    <Text style={[styles.orgName, { color: currentTheme.text }]}>
+                      {org.name}
+                    </Text>
+                    <Text style={[styles.orgDescription, { color: currentTheme.textSecondary }]}>
+                      {org.description || t('noDescription')}
+                    </Text>
+                    <Text style={[styles.orgDate, { color: currentTheme.primary }]}>
+                      {`${t('createdDate')}: ${org.created_at ? new Date(org.created_at).toLocaleDateString(t('language') === 'en' ? 'en-US' : 'ja-JP') : t('unknown')}`}
+                    </Text>
+                  </View>
+                  <View style={styles.orgArrow}>
+                    <Text style={[styles.arrow, { color: currentTheme.textSecondary }]}>›</Text>
+                  </View>
+                </TouchableOpacity>
+              ))
             )}
           </View>
         </View>
@@ -648,6 +646,10 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flex: 1,
     marginTop: -8,
+  },
+  scrollContentContainer: {
+    paddingBottom: 40,
+    flexGrow: 1,
   },
   header: {
     alignItems: 'center',
