@@ -219,11 +219,20 @@ export default function RecordingsLibraryScreen() {
       }
 
       // 新しい録音を再生
-      const { data: { publicUrl } } = supabase.storage
-        .from('recordings')
-        .getPublicUrl(recording.file_path);
-
-      logger.debug('録音URL:', publicUrl);
+      let publicUrl: string;
+      
+      try {
+        const urlResult = supabase.storage
+          .from('recordings')
+          .getPublicUrl(recording.file_path);
+        
+        publicUrl = urlResult.data.publicUrl;
+        logger.debug('録音URL取得成功:', { filePath: recording.file_path, publicUrl });
+      } catch (urlError) {
+        logger.error('録音URL取得エラー:', urlError);
+        Alert.alert('エラー', '録音ファイルのURLを取得できませんでした');
+        return;
+      }
 
       // publicUrlの検証
       if (!publicUrl || publicUrl.trim() === '') {
@@ -232,9 +241,21 @@ export default function RecordingsLibraryScreen() {
         return;
       }
 
+      // GitHub Pages環境でのCORS問題を回避するため、fetchで確認
+      try {
+        const testResponse = await fetch(publicUrl, { method: 'HEAD', mode: 'no-cors' });
+        logger.debug('録音ファイルアクセステスト:', { status: testResponse.status, url: publicUrl });
+      } catch (fetchError) {
+        logger.warn('録音ファイルアクセステスト失敗（続行）:', fetchError);
+      }
+
       const audio = new Audio(publicUrl);
       // src属性を明示的に設定（念のため）
       audio.src = publicUrl;
+      
+      // crossOrigin属性を設定してCORS問題を回避
+      audio.crossOrigin = 'anonymous';
+      
       audio.onended = () => {
         logger.debug('録音再生終了');
         setPlayingRecording(null);
@@ -250,17 +271,37 @@ export default function RecordingsLibraryScreen() {
           filePath: recording.file_path,
           publicUrl,
           errorCode: audio.error?.code,
-          errorMessage: audio.error?.message
+          errorMessage: audio.error?.message,
+          networkState: audio.networkState,
+          readyState: audio.readyState
         });
-        // エラーハンドラーには詳細なエラー情報を渡す
-        const errorObj = new Error(errorMessage);
-        ErrorHandler.handle(errorObj, '録音再生', false);
-        Alert.alert('エラー', '録音の再生に失敗しました。ファイルが見つからない可能性があります。');
+        
+        // CORSエラーの場合の特別な処理
+        if (audio.error?.code === 4 || audio.networkState === 3) {
+          logger.error('CORSまたはネットワークエラーの可能性があります');
+          Alert.alert(
+            '再生エラー', 
+            '録音の再生に失敗しました。\n\n考えられる原因:\n- CORS設定の問題\n- ネットワーク接続の問題\n- ファイルが存在しない\n\nSupabase Storageの設定を確認してください。'
+          );
+        } else {
+          Alert.alert('エラー', '録音の再生に失敗しました。ファイルが見つからない可能性があります。');
+        }
+        
         setPlayingRecording(null);
         setAudioElement(null);
       };
+      
+      // ロードイベントを追加
+      audio.onloadeddata = () => {
+        logger.debug('録音データのロード完了');
+      };
+      
+      audio.onloadstart = () => {
+        logger.debug('録音データのロード開始');
+      };
 
-      await audio.play();
+      try {
+        await audio.play();
       logger.debug('録音再生中');
       setPlayingRecording(recording.id);
       setAudioElement(audio);
