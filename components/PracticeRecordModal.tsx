@@ -349,105 +349,170 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
 
       // Web環境ではAudio APIを使用
       if (Platform.OS === 'web') {
-        // GitHub Pages環境でのCORS問題を回避するため、fetchでデータを取得してからBlob URLを作成
-        try {
-          logger.debug('録音データをfetchで取得します:', publicUrl);
-          const response = await fetch(publicUrl, {
-            method: 'GET',
-            headers: {
-              'Accept': 'audio/*',
-            },
-          });
-          
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        // Web環境（特にGitHub Pages）では、常にfetch + Blob URL方式を使用（CORS問題を根本的に回避）
+        const isWeb = typeof window !== 'undefined' && typeof document !== 'undefined';
+        const isGitHubPages = isWeb && window.location.hostname.includes('github.io');
+        
+        let blobUrl: string | null = null;
+        let retryCount = 0;
+        const maxRetries = 3;
+        
+        while (retryCount < maxRetries) {
+          try {
+            logger.debug(`録音データをfetchで取得します (試行 ${retryCount + 1}/${maxRetries}):`, {
+              publicUrl,
+              isGitHubPages,
+              hostname: window.location.hostname,
+              retryCount
+            });
+            
+            // fetchリクエスト（リトライ時は少し待機）
+            if (retryCount > 0) {
+              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+            }
+            
+            const response = await fetch(publicUrl, {
+              method: 'GET',
+              headers: {
+                'Accept': 'audio/*',
+                'Cache-Control': 'no-cache', // キャッシュを無効化
+              },
+              mode: 'cors', // CORSモードを明示的に指定
+              credentials: 'omit', // 認証情報を送信しない
+              cache: 'no-store', // キャッシュを無効化
+            });
+            
+            logger.debug('fetchレスポンス:', {
+              status: response.status,
+              statusText: response.statusText,
+              ok: response.ok,
+              contentType: response.headers.get('content-type'),
+              contentLength: response.headers.get('content-length'),
+            });
+            
+            if (!response.ok) {
+              const errorText = await response.text().catch(() => 'レスポンス本文を取得できませんでした');
+              throw new Error(`HTTP error! status: ${response.status}, statusText: ${response.statusText}, body: ${errorText.substring(0, 200)}`);
+            }
+            
+            // レスポンスが空でないことを確認
+            const contentLength = response.headers.get('content-length');
+            if (contentLength && parseInt(contentLength) === 0) {
+              throw new Error('レスポンスが空です');
+            }
+            
+            const blob = await response.blob();
+            
+            // Blobが空でないことを確認
+            if (blob.size === 0) {
+              throw new Error('Blobが空です');
+            }
+            
+            logger.debug('Blob作成成功:', {
+              blobSize: blob.size,
+              blobType: blob.type || 'application/octet-stream',
+              isGitHubPages
+            });
+            
+            blobUrl = URL.createObjectURL(blob);
+            logger.debug('Blob URLを作成しました:', blobUrl);
+            
+            // Audio要素を作成
+            const audio = new Audio(blobUrl);
+            audio.src = blobUrl;
+            audio.preload = 'auto';
+            
+            // エラーハンドリングを設定（Blob URL解放を含む）
+            const cleanup = () => {
+              if (blobUrl) {
+                URL.revokeObjectURL(blobUrl);
+                blobUrl = null;
+              }
+            };
+            
+            audio.onended = () => {
+              logger.debug('録音再生終了');
+              cleanup();
+              setPlayingRecordingId(null);
+              setAudioElement(null);
+            };
+            
+            audio.onerror = (e) => {
+              const errorMessage = audio.error 
+                ? `エラーコード: ${audio.error.code}, メッセージ: ${audio.error.message || '不明なエラー'}`
+                : '不明なエラー';
+              logger.error('録音再生エラー:', {
+                error: errorMessage,
+                filePath,
+                publicUrl,
+                blobUrl,
+                errorCode: audio.error?.code,
+                errorMessage: audio.error?.message,
+                networkState: audio.networkState,
+                readyState: audio.readyState,
+                isGitHubPages
+              });
+              
+              cleanup();
+              
+              // エラーメッセージを改善
+              let alertMessage = '録音の再生に失敗しました。';
+              if (audio.error?.code === 4) {
+                alertMessage += '\n\nCORSエラーが発生しました。Supabase StorageのCORS設定を確認してください。';
+              } else if (audio.networkState === 3) {
+                alertMessage += '\n\nネットワークエラーが発生しました。インターネット接続を確認してください。';
+              } else {
+                alertMessage += '\n\nファイルが見つからない可能性があります。';
+              }
+              
+              Alert.alert('再生エラー', alertMessage);
+              setPlayingRecordingId(null);
+              setAudioElement(null);
+            };
+            
+            // ロードイベントを追加
+            audio.onloadeddata = () => {
+              logger.debug('録音データのロード完了');
+            };
+            
+            audio.onloadstart = () => {
+              logger.debug('録音データのロード開始');
+            };
+            
+            audio.oncanplay = () => {
+              logger.debug('録音データの再生準備完了');
+            };
+            
+            // 再生を開始
+            await audio.play();
+            logger.debug('録音再生中（Web環境、Blob URL使用）', { isGitHubPages });
+            setPlayingRecordingId(recordingId);
+            setAudioElement(audio);
+            
+            // 成功したらループを抜ける
+            break;
+          } catch (fetchError) {
+            retryCount++;
+            logger.error(`fetchで録音データを取得できませんでした (試行 ${retryCount}/${maxRetries}):`, {
+              error: fetchError,
+              errorMessage: fetchError instanceof Error ? fetchError.message : String(fetchError),
+              errorStack: fetchError instanceof Error ? fetchError.stack : undefined,
+              publicUrl,
+              isGitHubPages,
+              hostname: window.location.hostname,
+              retryCount
+            });
+            
+            // 最後の試行でも失敗した場合
+            if (retryCount >= maxRetries) {
+              logger.error('すべてのリトライが失敗しました');
+              Alert.alert(
+                '再生エラー',
+                '録音の再生に失敗しました。\n\n考えられる原因:\n- ネットワーク接続の問題\n- Supabase StorageのCORS設定の問題\n- ファイルが存在しない\n\nインターネット接続とSupabase Storageの設定を確認してください。'
+              );
+              return;
+            }
           }
-          
-          const blob = await response.blob();
-          const blobUrl = URL.createObjectURL(blob);
-          logger.debug('Blob URLを作成しました:', blobUrl);
-          
-          const audio = new Audio(blobUrl);
-          // src属性を明示的に設定（念のため）
-          audio.src = blobUrl;
-          
-          audio.onended = () => {
-            logger.debug('録音再生終了');
-            // Blob URLを解放
-            URL.revokeObjectURL(blobUrl);
-            setPlayingRecordingId(null);
-            setAudioElement(null);
-          };
-          audio.onerror = (e) => {
-            // エラーイベントの詳細を取得
-            const errorMessage = audio.error 
-              ? `エラーコード: ${audio.error.code}, メッセージ: ${audio.error.message || '不明なエラー'}`
-              : '不明なエラー';
-            logger.error('録音再生エラー:', {
-              error: errorMessage,
-              filePath,
-              publicUrl,
-              blobUrl,
-              errorCode: audio.error?.code,
-              errorMessage: audio.error?.message,
-              networkState: audio.networkState,
-              readyState: audio.readyState
-            });
-            
-            // Blob URLを解放
-            URL.revokeObjectURL(blobUrl);
-            
-            Alert.alert('エラー', '録音の再生に失敗しました。ファイルが見つからない可能性があります。');
-            setPlayingRecordingId(null);
-            setAudioElement(null);
-          };
-          
-          // ロードイベントを追加
-          audio.onloadeddata = () => {
-            logger.debug('録音データのロード完了');
-          };
-          
-          audio.onloadstart = () => {
-            logger.debug('録音データのロード開始');
-          };
-
-          await audio.play();
-          logger.debug('録音再生中（Web環境、Blob URL使用）');
-          setPlayingRecordingId(recordingId);
-          setAudioElement(audio);
-        } catch (fetchError) {
-          logger.error('fetchで録音データを取得できませんでした、直接URLを試行します:', fetchError);
-          // fetchが失敗した場合は直接URLを試行（フォールバック）
-          const audio = new Audio(publicUrl);
-          audio.src = publicUrl;
-          audio.crossOrigin = 'anonymous';
-          
-          audio.onended = () => {
-            logger.debug('録音再生終了');
-            setPlayingRecordingId(null);
-            setAudioElement(null);
-          };
-          audio.onerror = (e) => {
-            const errorMessage = audio.error 
-              ? `エラーコード: ${audio.error.code}, メッセージ: ${audio.error.message || '不明なエラー'}`
-              : '不明なエラー';
-            logger.error('録音再生エラー（直接URL）:', {
-              error: errorMessage,
-              filePath,
-              publicUrl,
-              errorCode: audio.error?.code,
-              errorMessage: audio.error?.message
-            });
-            
-            Alert.alert('エラー', '録音の再生に失敗しました。ファイルが見つからない可能性があります。');
-            setPlayingRecordingId(null);
-            setAudioElement(null);
-          };
-          
-          await audio.play();
-          logger.debug('録音再生中（Web環境、直接URL使用）');
-          setPlayingRecordingId(recordingId);
-          setAudioElement(audio);
         }
       } else {
         // モバイル環境ではexpo-audioのAudioPlayerを使用

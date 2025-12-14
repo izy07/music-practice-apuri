@@ -237,8 +237,16 @@ export default function CalendarScreen() {
   const createScheduleInternal = async (addToCalendar: boolean) => {
     setLoading(true);
     try {
+      // organization_idのバリデーション（空文字列を拒否）
+      const organizationId = orgId as string;
+      if (!organizationId || organizationId.trim() === '') {
+        Alert.alert('エラー', '組織が選択されていません。組織管理画面から組織を選択してください。');
+        setLoading(false);
+        return;
+      }
+
       const result = await PracticeScheduleManager.createSchedule({
-        organization_id: (orgId as string) || '',
+        organization_id: organizationId,
         title: createForm.title.trim(),
         practice_date: selectedDate ? formatLocalDate(selectedDate) : formatLocalDate(new Date()),
         practice_type: createForm.practiceType as any,
