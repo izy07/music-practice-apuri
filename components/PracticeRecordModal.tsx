@@ -178,6 +178,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   const [playingRecordingId, setPlayingRecordingId] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   // モバイル環境での録音再生用のAudioPlayer（expo-audioが利用可能な場合のみ）
+  // useAudioPlayerは後でURLを設定するため、初期化時は空でOK
   const mobileAudioPlayer = useAudioPlayer && Platform.OS !== 'web' ? useAudioPlayer() : null;
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [practiceBreakdown, setPracticeBreakdown] = useState<Array<{ method: string; minutes: number }>>([]);
@@ -346,85 +347,130 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         return;
       }
 
-      // GitHub Pages環境でのCORS問題を回避するため、fetchで確認
-      try {
-        const testResponse = await fetch(publicUrl, { method: 'HEAD', mode: 'no-cors' });
-        logger.debug('録音ファイルアクセステスト:', { status: testResponse.status, url: publicUrl });
-      } catch (fetchError) {
-        logger.warn('録音ファイルアクセステスト失敗（続行）:', fetchError);
-      }
-
       // Web環境ではAudio APIを使用
       if (Platform.OS === 'web') {
-        const audio = new Audio(publicUrl);
-        // src属性を明示的に設定（念のため）
-        audio.src = publicUrl;
-        
-        // crossOrigin属性を設定してCORS問題を回避
-        audio.crossOrigin = 'anonymous';
-        
-        audio.onended = () => {
-          logger.debug('録音再生終了');
-          setPlayingRecordingId(null);
-          setAudioElement(null);
-        };
-        audio.onerror = (e) => {
-          // エラーイベントの詳細を取得
-          const errorMessage = audio.error 
-            ? `エラーコード: ${audio.error.code}, メッセージ: ${audio.error.message || '不明なエラー'}`
-            : '不明なエラー';
-          logger.error('録音再生エラー:', {
-            error: errorMessage,
-            filePath,
-            publicUrl,
-            errorCode: audio.error?.code,
-            errorMessage: audio.error?.message,
-            networkState: audio.networkState,
-            readyState: audio.readyState
+        // GitHub Pages環境でのCORS問題を回避するため、fetchでデータを取得してからBlob URLを作成
+        try {
+          logger.debug('録音データをfetchで取得します:', publicUrl);
+          const response = await fetch(publicUrl, {
+            method: 'GET',
+            headers: {
+              'Accept': 'audio/*',
+            },
           });
           
-          // CORSエラーの場合の特別な処理
-          if (audio.error?.code === 4 || audio.networkState === 3) {
-            logger.error('CORSまたはネットワークエラーの可能性があります');
-            Alert.alert(
-              '再生エラー', 
-              '録音の再生に失敗しました。\n\n考えられる原因:\n- CORS設定の問題\n- ネットワーク接続の問題\n- ファイルが存在しない\n\nSupabase Storageの設定を確認してください。'
-            );
-          } else {
-            Alert.alert('エラー', '録音の再生に失敗しました。ファイルが見つからない可能性があります。');
+          if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
           }
           
-          setPlayingRecordingId(null);
-          setAudioElement(null);
-        };
-        
-        // ロードイベントを追加
-        audio.onloadeddata = () => {
-          logger.debug('録音データのロード完了');
-        };
-        
-        audio.onloadstart = () => {
-          logger.debug('録音データのロード開始');
-        };
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          logger.debug('Blob URLを作成しました:', blobUrl);
+          
+          const audio = new Audio(blobUrl);
+          // src属性を明示的に設定（念のため）
+          audio.src = blobUrl;
+          
+          audio.onended = () => {
+            logger.debug('録音再生終了');
+            // Blob URLを解放
+            URL.revokeObjectURL(blobUrl);
+            setPlayingRecordingId(null);
+            setAudioElement(null);
+          };
+          audio.onerror = (e) => {
+            // エラーイベントの詳細を取得
+            const errorMessage = audio.error 
+              ? `エラーコード: ${audio.error.code}, メッセージ: ${audio.error.message || '不明なエラー'}`
+              : '不明なエラー';
+            logger.error('録音再生エラー:', {
+              error: errorMessage,
+              filePath,
+              publicUrl,
+              blobUrl,
+              errorCode: audio.error?.code,
+              errorMessage: audio.error?.message,
+              networkState: audio.networkState,
+              readyState: audio.readyState
+            });
+            
+            // Blob URLを解放
+            URL.revokeObjectURL(blobUrl);
+            
+            Alert.alert('エラー', '録音の再生に失敗しました。ファイルが見つからない可能性があります。');
+            setPlayingRecordingId(null);
+            setAudioElement(null);
+          };
+          
+          // ロードイベントを追加
+          audio.onloadeddata = () => {
+            logger.debug('録音データのロード完了');
+          };
+          
+          audio.onloadstart = () => {
+            logger.debug('録音データのロード開始');
+          };
 
-        await audio.play();
-        logger.debug('録音再生中（Web環境）');
-        setPlayingRecordingId(recordingId);
-        setAudioElement(audio);
+          await audio.play();
+          logger.debug('録音再生中（Web環境、Blob URL使用）');
+          setPlayingRecordingId(recordingId);
+          setAudioElement(audio);
+        } catch (fetchError) {
+          logger.error('fetchで録音データを取得できませんでした、直接URLを試行します:', fetchError);
+          // fetchが失敗した場合は直接URLを試行（フォールバック）
+          const audio = new Audio(publicUrl);
+          audio.src = publicUrl;
+          audio.crossOrigin = 'anonymous';
+          
+          audio.onended = () => {
+            logger.debug('録音再生終了');
+            setPlayingRecordingId(null);
+            setAudioElement(null);
+          };
+          audio.onerror = (e) => {
+            const errorMessage = audio.error 
+              ? `エラーコード: ${audio.error.code}, メッセージ: ${audio.error.message || '不明なエラー'}`
+              : '不明なエラー';
+            logger.error('録音再生エラー（直接URL）:', {
+              error: errorMessage,
+              filePath,
+              publicUrl,
+              errorCode: audio.error?.code,
+              errorMessage: audio.error?.message
+            });
+            
+            Alert.alert('エラー', '録音の再生に失敗しました。ファイルが見つからない可能性があります。');
+            setPlayingRecordingId(null);
+            setAudioElement(null);
+          };
+          
+          await audio.play();
+          logger.debug('録音再生中（Web環境、直接URL使用）');
+          setPlayingRecordingId(recordingId);
+          setAudioElement(audio);
+        }
       } else {
         // モバイル環境ではexpo-audioのAudioPlayerを使用
         if (mobileAudioPlayer) {
           try {
+            logger.debug('モバイル環境で録音を再生します（expo-audio）:', publicUrl);
             // useAudioPlayerフックを使用する場合、replaceメソッドでURLを設定
-            if (mobileAudioPlayer.replace) {
+            if (typeof mobileAudioPlayer.replace === 'function') {
               mobileAudioPlayer.replace(publicUrl);
+              mobileAudioPlayer.play();
+              setPlayingRecordingId(recordingId);
+              logger.debug('録音再生中（モバイル環境、expo-audio、replace使用）');
             } else if (mobileAudioPlayer.source) {
               // 新しいAPIの場合
               mobileAudioPlayer.source = { uri: publicUrl };
+              mobileAudioPlayer.play();
+              setPlayingRecordingId(recordingId);
+              logger.debug('録音再生中（モバイル環境、expo-audio、source使用）');
+            } else {
+              // replaceもsourceもない場合は、新しいuseAudioPlayerインスタンスを作成
+              logger.warn('useAudioPlayerにreplaceもsourceもありません。ブラウザで開きます。');
+              throw new Error('useAudioPlayer API not available');
             }
-            mobileAudioPlayer.play();
-            setPlayingRecordingId(recordingId);
-            logger.debug('録音再生中（モバイル環境、expo-audio）');
           } catch (error) {
             logger.error('録音再生エラー（モバイル、expo-audio）:', error);
             // expo-audioが失敗した場合はブラウザで開く
@@ -444,6 +490,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         } else {
           // expo-audioが利用できない場合はブラウザで開く
           try {
+            logger.debug('expo-audioが利用できないため、ブラウザで開きます:', publicUrl);
             const canOpen = await Linking.canOpenURL(publicUrl);
             if (canOpen) {
               await Linking.openURL(publicUrl);
