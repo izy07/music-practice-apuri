@@ -111,7 +111,7 @@ try {
   }
   
   // CSPメタタグが存在しない場合は追加
-  const cspMetaTag = '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: https:; font-src \'self\' data:; connect-src \'self\' https:; frame-src \'self\' https:; object-src \'none\'; base-uri \'self\'; form-action \'self\';" />';
+  const cspMetaTag = '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'; script-src \'self\' \'unsafe-inline\'; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: https:; font-src \'self\' data:; connect-src \'self\' https:; frame-src \'self\' https:; media-src \'self\' blob: data: https://uteeqkpsezbabdmritkn.supabase.co https://*.supabase.co; object-src \'none\'; base-uri \'self\'; form-action \'self\';" />';
   if (!content.includes('Content-Security-Policy')) {
     // viewportメタタグの後にCSPメタタグを追加
     content = content.replace(
