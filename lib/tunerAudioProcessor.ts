@@ -118,11 +118,19 @@ export const getNoteFromFrequency = (
   const note = NOTE_NAMES[noteIndex];
   const noteJa = NOTE_NAMES_JA[noteIndex];
 
-  // セントの計算（一般的なチューナーの標準的な方法）
-  // セント = (実数のMIDI note - 最も近い半音のMIDI note) * 100
+  // セントの計算（より正確な方法：周波数比から直接計算）
+  // セント = 1200 * log2(実測周波数 / 基準周波数)
+  // 基準周波数は最も近い半音の周波数
   // 1セント = 半音の1/100
   // 正の値 = 高い、負の値 = 低い
-  const cents = (noteNumber - nearestMidi) * 100;
+  
+  // 基準音の周波数を計算（最も近い半音）
+  const referenceNoteNumber = nearestMidi;
+  const semitonesFromA4 = referenceNoteNumber - a4NoteNumber;
+  const referenceFrequency = a4Freq * Math.pow(2, semitonesFromA4 / 12);
+  
+  // 周波数比からセントを計算（より正確）
+  const cents = 1200 * Math.log2(frequency / referenceFrequency);
   const absCents = Math.abs(cents);
 
   // プロ仕様のチューニング品質判定

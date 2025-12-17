@@ -989,8 +989,8 @@ export const goalRepository = {
     // completed_atカラムをnullに設定（エラー時は除外）
     updateData.completed_at = null;
     
-    // 進捗が100%の場合は99%に戻す（100%のままでは達成済みとして扱われる可能性があるため）
-    updateData.progress_percentage = 99;
+    // 進捗が100%の場合は90%に戻す（未達成に戻すため）
+    updateData.progress_percentage = 90;
     
     let { error } = await supabase
       .from('goals')
@@ -1004,7 +1004,7 @@ export const goalRepository = {
       
       if (isCompletedError) {
         // is_completedまたはcompleted_atカラムが存在しない場合、除外して再試行
-        const retryData: any = { progress_percentage: 99 };
+        const retryData: any = { progress_percentage: 90 };
         
         // completed_atのエラーの場合、除外
         if (error.message?.includes('completed_at')) {

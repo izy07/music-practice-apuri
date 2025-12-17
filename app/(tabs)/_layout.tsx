@@ -4,7 +4,7 @@ import { useLanguage } from '../../components/LanguageContext';
 import { useInstrumentTheme } from '../../components/InstrumentThemeContext';
 import { useSegments } from 'expo-router';
 import { useAuthAdvanced } from '../../hooks/useAuthAdvanced';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 
 // タブのアイコンとタイトルを定義（順序: 目標、タイマー、カレンダー、チューナー、音楽団体、その他）
 const TAB_CONFIG = [
@@ -112,9 +112,9 @@ export default function TabLayout() {
             backgroundColor: currentTheme.surface,
             borderTopWidth: 1,
             borderTopColor: currentTheme.secondary,
-            height: 70,
-            paddingTop: 10,
-            paddingBottom: 10,
+            height: Platform.OS === 'web' ? 70 : 80, // スマホでは高さを増やす
+            paddingTop: Platform.OS === 'web' ? 10 : 8,
+            paddingBottom: Platform.OS === 'web' ? 10 : 8,
             paddingHorizontal: 0,
             paddingLeft: 0,
             paddingRight: 0,
@@ -163,11 +163,13 @@ export default function TabLayout() {
           
           // ラベルのスタイル
           tabBarLabelStyle: {
-            fontSize: 12,
+            fontSize: Platform.OS === 'web' ? 12 : 10, // スマホでは少し小さく
             fontWeight: '500',
-            marginTop: 4,
+            marginTop: Platform.OS === 'web' ? 4 : 2,
             marginBottom: 0,
             textAlign: 'center',
+            minHeight: 14, // 最小高さを確保
+            lineHeight: 14, // 行の高さを設定
           },
           
           // アイコンのスタイル

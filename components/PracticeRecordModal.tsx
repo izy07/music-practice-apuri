@@ -1294,14 +1294,63 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
     }
   };
 
-  const deleteRecordingOnly = async () => {
+  const deleteRecordingOnly = async (recordingIndex?: number) => {
     try {
       if (existingRecordings.length === 0) {
         Alert.alert('情報', '削除できる演奏録音がありません');
         return;
       }
 
-      // 確認メッセージを表示（その日のカレンダー録音データも削除されることを明示）
+      // 特定の録音を削除する場合
+      if (recordingIndex !== undefined && existingRecordings[recordingIndex]) {
+        const recording = existingRecordings[recordingIndex];
+        Alert.alert(
+          '録音データの削除',
+          `録音${recordingIndex + 1}を削除しますか？\n\nこの日のカレンダーに表示されている録音データも削除されます。\n\nこの操作は取り消すことができません。`,
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { 
+              text: '削除', 
+              style: 'destructive', 
+              onPress: async () => {
+                try {
+                  const { error } = await deleteRecording(recording.id);
+                  if (error) {
+                    Alert.alert('エラー', '録音の削除に失敗しました');
+                    return;
+                  }
+
+                  // ローカル状態から削除
+                  setExistingRecordings(prev => prev.filter((_, idx) => idx !== recordingIndex));
+                  setAudioUrl('');
+                  setAudioTitle('');
+                  setAudioMemo('');
+                  setIsAudioFavorite(false);
+                  setAudioDuration(0);
+
+                  // コールバックを呼び出してデータを更新（カレンダーも更新される）
+                  onRecordingSaved?.();
+
+                  Alert.alert('削除完了', '録音データを削除しました', [
+                    { text: 'OK', onPress: () => {
+                      // 他の記録がない場合はモーダルを閉じる
+                      if (!existingRecord && existingRecordings.length === 1) {
+                        onClose();
+                      }
+                    }}
+                  ]);
+                } catch (error) {
+                  logger.error('Error deleting recording:', error);
+                  Alert.alert('エラー', '演奏録音の削除に失敗しました');
+                }
+              }
+            }
+          ]
+        );
+        return;
+      }
+
+      // すべての録音を削除する場合
       const recordingCount = existingRecordings.length;
       Alert.alert(
         '録音データの削除',
@@ -1743,6 +1792,15 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                           >
                             <Text style={styles.rerecordButtonText}>再録音</Text>
                           </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.deleteRecordingButtonInExisting}
+                            onPress={() => {
+                              deleteRecordingOnly(slotIndex);
+                            }}
+                          >
+                            <Trash2 size={16} color="#FF4444" />
+                            <Text style={styles.deleteRecordingButtonTextInExisting}>削除</Text>
+                          </TouchableOpacity>
                         </View>
                       </View>
                     );
@@ -2081,16 +2139,49 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
               )}
               
               {existingRecordings.length > 0 && (
-                <TouchableOpacity
-                  style={[styles.deleteModalButton, styles.deleteModalButtonDestructive]}
-                  onPress={() => {
-                    setShowDeleteModal(false);
-                    // 確認メッセージを表示してから削除を実行
-                    deleteRecordingOnly();
-                  }}
-                >
-                  <Text style={styles.deleteModalButtonText}>録音のみ削除</Text>
-                </TouchableOpacity>
+                <>
+                  {existingRecordings.length === 1 ? (
+                    <TouchableOpacity
+                      style={[styles.deleteModalButton, styles.deleteModalButtonDestructive]}
+                      onPress={() => {
+                        setShowDeleteModal(false);
+                        deleteRecordingOnly(0);
+                      }}
+                    >
+                      <Text style={styles.deleteModalButtonText}>録音1を削除</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <>
+                      <TouchableOpacity
+                        style={[styles.deleteModalButton, styles.deleteModalButtonDestructive]}
+                        onPress={() => {
+                          setShowDeleteModal(false);
+                          deleteRecordingOnly(0);
+                        }}
+                      >
+                        <Text style={styles.deleteModalButtonText}>録音1を削除</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.deleteModalButton, styles.deleteModalButtonDestructive]}
+                        onPress={() => {
+                          setShowDeleteModal(false);
+                          deleteRecordingOnly(1);
+                        }}
+                      >
+                        <Text style={styles.deleteModalButtonText}>録音2を削除</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.deleteModalButton, styles.deleteModalButtonDestructive]}
+                        onPress={() => {
+                          setShowDeleteModal(false);
+                          deleteRecordingOnly();
+                        }}
+                      >
+                        <Text style={styles.deleteModalButtonText}>録音すべて削除</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </>
               )}
               
               {existingRecord && existingRecordings.length > 0 && (
@@ -2565,6 +2656,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     marginTop: 8,
     alignSelf: 'flex-start',
+  },
+  deleteRecordingButtonInExisting: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFE5E5',
+    borderRadius: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+  },
+  deleteRecordingButtonTextInExisting: {
+    color: '#FF4444',
+    fontSize: 14,
+    fontWeight: '500',
   },
   recordingInfoHeader: {
     flexDirection: 'row',

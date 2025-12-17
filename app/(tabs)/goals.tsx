@@ -745,7 +745,7 @@ export default function GoalsScreen() {
           ...currentGoal,
           is_completed: false,
           completed_at: undefined,
-          progress_percentage: 99, // 100%から99%に戻す
+          progress_percentage: 90, // 100%から90%に戻す
         };
         setCompletedGoals(prev => prev.filter(g => g.id !== goalId));
         setGoals(prevGoals => [uncompletedGoal, ...prevGoals]);
