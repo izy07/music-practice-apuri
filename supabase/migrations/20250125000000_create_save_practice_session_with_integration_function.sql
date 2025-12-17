@@ -100,3 +100,5 @@ GRANT EXECUTE ON FUNCTION save_practice_session_with_integration TO authenticate
 
 
 
+
+

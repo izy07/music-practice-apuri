@@ -13,3 +13,5 @@ BEGIN
   RAISE NOTICE '打楽器の名称をドラムに更新しました';
 END $$;
 
+
+

@@ -31,3 +31,5 @@ COMMENT ON CONSTRAINT user_settings_user_id_key ON user_settings IS 'ユーザ�
 
 
 
+
+

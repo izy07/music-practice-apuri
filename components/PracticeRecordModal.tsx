@@ -163,18 +163,21 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   const [audioMemo, setAudioMemo] = useState('');
   const [isAudioFavorite, setIsAudioFavorite] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
+  const [audioRecordingType, setAudioRecordingType] = useState<'performance' | 'lesson'>('performance'); // 録音種類
   const [existingRecord, setExistingRecord] = useState<{
     id: string;
     minutes: number;
     content: string | null;
   } | null>(null);
   const [timerMinutes, setTimerMinutes] = useState<number>(0); // タイマーで計測した時間
-  const [existingRecording, setExistingRecording] = useState<{
+  const [existingRecordings, setExistingRecordings] = useState<Array<{
     id: string;
     title: string;
     duration: number;
     file_path?: string; // 録音ファイルのパス（再生用）
-  } | null>(null);
+    recording_type?: 'performance' | 'lesson'; // 録音種類
+  }>>([]); // 1日に最大2個の録音を管理
+  const [selectedRecordingSlot, setSelectedRecordingSlot] = useState<number | null>(null); // 選択中の録音スロット
   const [playingRecordingId, setPlayingRecordingId] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   // モバイル環境での録音再生用のAudioPlayer（expo-audioが利用可能な場合のみ）
@@ -186,7 +189,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   const [formStateBeforeRecording, setFormStateBeforeRecording] = useState<{
     minutes: string;
     content: string;
-    existingRecording: typeof existingRecording;
+    existingRecordings: typeof existingRecordings;
   } | null>(null); // 録音画面に移動する前のフォーム状態と録音状態
   
   // 開始時刻・終了時刻の状態（デフォルト値を設定）
@@ -197,8 +200,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   const [timePickerHours, setTimePickerHours] = useState(0);
   const [timePickerMinutes, setTimePickerMinutes] = useState(0);
   
-  // 無限ループを防ぐため、existingRecordingとisRecordingJustSavedの最新値を保持
-  const existingRecordingRef = useRef(existingRecording);
+  // 無限ループを防ぐため、existingRecordingsとisRecordingJustSavedの最新値を保持
+  const existingRecordingsRef = useRef(existingRecordings);
   const isRecordingJustSavedRef = useRef(isRecordingJustSaved);
   
   // 時間・分入力欄のref（後方互換性のため残す）
@@ -269,8 +272,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   
   // 最新値を更新
   useEffect(() => {
-    existingRecordingRef.current = existingRecording;
-  }, [existingRecording]);
+    existingRecordingsRef.current = existingRecordings;
+  }, [existingRecordings]);
   
   useEffect(() => {
     isRecordingJustSavedRef.current = isRecordingJustSaved;
@@ -722,8 +725,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
     }
   }, [user, selectedDate, selectedInstrument]);
 
-  // 録音記録を読み込む（簡素化）
-  const loadRecording = useCallback(async (savedRecordingId?: string, currentExistingRecording?: typeof existingRecording, currentIsRecordingJustSaved?: boolean) => {
+  // 録音記録を読み込む（最大2個まで）
+  const loadRecording = useCallback(async (savedRecordingId?: string, currentExistingRecordings?: typeof existingRecordings, currentIsRecordingJustSaved?: boolean) => {
     if (!user || !selectedDate) return;
 
     try {
@@ -774,92 +777,49 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
 
       if (recordingError) {
         // エラーは無視（既存録音の読み込み失敗は致命的ではない）
-        // ただし、savedRecordingIdが指定されている場合は、existingRecordingを保持
-        if (savedRecordingId && currentExistingRecording && currentExistingRecording.id === savedRecordingId) {
-          logger.debug('録音記録の読み込みエラーですが、既存の録音状態を保持します:', {
-            savedRecordingId,
-            existingRecordingId: currentExistingRecording.id
-          });
-        }
         return;
       }
 
       if (recordings && recordings.length > 0) {
-        // 最初の録音を使用（既に日付でフィルタリング済み）
-        const matchingRecording = recordings[0];
+        // 最大2個の録音を取得（最新の2個）
+        const recordingsList = recordings.slice(0, 2).map((r: any) => ({
+          id: r.id,
+          title: r.title || '無題の録音',
+          duration: r.duration_seconds || 0,
+          file_path: r.file_path,
+          recording_type: r.recording_type || 'performance'
+        }));
         
-        if (matchingRecording) {
-          // 保存した録音IDが指定されている場合、そのIDを優先的に使用
-          // または、既にexistingRecordingが設定されている場合（録音保存直後など）は、上書きしない
-          // ただし、IDが一致する場合は更新する（データベースから最新情報を取得）
-          const shouldUpdate = savedRecordingId 
-            ? matchingRecording.id === savedRecordingId
-            : (!currentExistingRecording || currentExistingRecording.id === matchingRecording.id);
-          
-          if (shouldUpdate) {
-            setExistingRecording({
-              id: matchingRecording.id,
-              title: matchingRecording.title || '無題の録音',
-              duration: matchingRecording.duration_seconds || 0,
-              file_path: matchingRecording.file_path // 再生用にfile_pathを保存
-            });
-            setAudioUrl('');
-            logger.debug('録音記録を読み込みました:', {
-              id: matchingRecording.id,
-              savedRecordingId
-            });
-          } else if (savedRecordingId && currentExistingRecording && currentExistingRecording.id === savedRecordingId) {
-            // savedRecordingIdが指定されているが、データベースから見つからない場合でも、
-            // 既にexistingRecordingが設定されている場合は保持する
-            logger.debug('録音記録が見つかりませんでしたが、既存の録音状態を保持します:', {
-              savedRecordingId,
-              existingRecordingId: currentExistingRecording.id,
-              foundRecordingId: matchingRecording.id
-            });
-          }
-        } else if (!savedRecordingId && !currentIsRecordingJustSaved) {
-          // 日付が一致せず、保存直後でもない場合はクリア
-          setExistingRecording(null);
-          setAudioUrl('');
-        }
+        setExistingRecordings(recordingsList);
+        setAudioUrl('');
+        logger.debug('録音記録を読み込みました:', {
+          count: recordingsList.length,
+          recordings: recordingsList
+        });
       } else {
         // 録音が見つからない場合
-        if (savedRecordingId && currentExistingRecording && currentExistingRecording.id === savedRecordingId) {
-          // savedRecordingIdが指定されているが、データベースから見つからない場合でも、
-          // 既にexistingRecordingが設定されている場合は保持する（データベース反映の遅延を考慮）
-          logger.debug('録音記録が見つかりませんでしたが、既存の録音状態を保持します（データベース反映待ち）:', {
-            savedRecordingId,
-            existingRecordingId: currentExistingRecording.id
-          });
-        } else if (!savedRecordingId && !currentIsRecordingJustSaved) {
+        if (!savedRecordingId && !currentIsRecordingJustSaved) {
           // 保存直後でもなく、savedRecordingIdも指定されていない場合はクリア
-          setExistingRecording(null);
+          setExistingRecordings([]);
           setAudioUrl('');
         }
       }
     } catch (error) {
       // エラーは無視（録音記録の読み込み失敗は致命的ではない）
-      // ただし、savedRecordingIdが指定されている場合は、existingRecordingを保持
-      if (savedRecordingId && currentExistingRecording && currentExistingRecording.id === savedRecordingId) {
-        logger.debug('録音記録の読み込みエラーですが、既存の録音状態を保持します:', {
-          savedRecordingId,
-          existingRecordingId: currentExistingRecording.id,
-          error
-        });
-      }
+      logger.debug('録音記録の読み込みエラー:', error);
     }
   }, [user, selectedDate, selectedInstrument]);
 
   // 既存記録を読み込む（統合関数）
-  // 注意: existingRecordingとisRecordingJustSavedは依存配列に含めない（無限ループを防ぐため）
+  // 注意: existingRecordingsとisRecordingJustSavedは依存配列に含めない（無限ループを防ぐため）
   // 代わりに、useRefで最新の値を参照
   const loadExistingRecord = useCallback(async (savedRecordingId?: string) => {
     // useRefで最新の値を取得
-    const currentExistingRecording = existingRecordingRef.current;
+    const currentExistingRecordings = existingRecordingsRef.current;
     const currentIsRecordingJustSaved = isRecordingJustSavedRef.current;
     await Promise.all([
       loadPracticeSessions(),
-      loadRecording(savedRecordingId, currentExistingRecording, currentIsRecordingJustSaved)
+      loadRecording(savedRecordingId, currentExistingRecordings, currentIsRecordingJustSaved)
     ]);
   }, [loadPracticeSessions, loadRecording]);
 
@@ -872,9 +832,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         setMinutes(formStateBeforeRecording.minutes);
         setContent(formStateBeforeRecording.content);
         // 録音状態も復元
-        if (formStateBeforeRecording.existingRecording) {
-          setExistingRecording(formStateBeforeRecording.existingRecording);
-        }
+        setExistingRecordings(formStateBeforeRecording.existingRecordings);
         // フォーム状態をクリア
         setFormStateBeforeRecording(null);
         // 録音状態を保持してデータを再読み込み
@@ -882,7 +840,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       } else {
         // 通常のモーダルオープン時はリセット
         setExistingRecord(null);
-        setExistingRecording(null);
+        setExistingRecordings([]);
         setMinutes('');
         setContent('');
         setAudioUrl('');
@@ -942,13 +900,14 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         // 録音データをデータベースに保存
         const { data: savedRecording, error: saveError } = await saveRecording({
           user_id: user.id,
-          instrument_id: selectedInstrument || null, // 現在の楽器IDを追加
+          instrument_id: getInstrumentId(selectedInstrument) || null, // 現在の楽器IDを追加
           title: audioTitle || '録音',
           memo: audioMemo || null,
           file_path: path,
           duration_seconds: audioDuration || null,
           is_favorite: isAudioFavorite,
           recorded_at: recordedAt.toISOString(),
+          recording_type: audioRecordingType, // 録音種類を追加
         });
 
         if (saveError) {
@@ -960,14 +919,24 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           const recordingState = {
             id: savedRecording.id,
             title: audioTitle || '録音',
-            duration: audioDuration || 0
+            duration: audioDuration || 0,
+            recording_type: audioRecordingType
           };
-          // 即座にexistingRecordingを設定してUIに反映
-          setExistingRecording(recordingState);
+          // 既存の録音リストに追加（最大2個まで）
+          setExistingRecordings(prev => {
+            const updated = [...prev];
+            // 同じIDの録音が既にある場合は更新、なければ追加
+            const index = updated.findIndex(r => r.id === savedRecording.id);
+            if (index >= 0) {
+              updated[index] = recordingState;
+            } else if (updated.length < 2) {
+              updated.push(recordingState);
+            }
+            return updated;
+          });
           setIsRecordingJustSaved(true); // 録音保存直後フラグを設定
           
           // 録音済み情報を表示するため、一時的な録音データはクリア
-          // 録音済み表示条件: existingRecording && !audioUrl && !videoUrl
           setAudioUrl(''); // 録音済みとして表示するため、一時的なURLをクリア
           setVideoUrl(''); // 動画URLもクリア
           
@@ -981,6 +950,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           setAudioMemo('');
           setIsAudioFavorite(false);
           setAudioDuration(0);
+          setAudioRecordingType('performance'); // デフォルトにリセット
           
           // 録音保存後、フォーム状態を復元（録音前に入力していた情報を保持）
           if (formStateBeforeRecording) {
@@ -1044,18 +1014,33 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
     duration: number;
     audioUrl: string;
     recordingId?: string;
+    recordingType?: 'performance' | 'lesson'; // 録音種類
   }) => {
-    // 録音保存後、existingRecordingの状態を更新して録音情報を表示
+    // 録音保存後、existingRecordingsの状態を更新して録音情報を表示
     if (audioData.recordingId) {
       // 録音が保存された場合は、即座に状態を直接更新してUIに反映
-      setExistingRecording({
+      const newRecording = {
         id: audioData.recordingId,
         title: audioData.title,
-        duration: audioData.duration
+        duration: audioData.duration,
+        recording_type: audioData.recordingType || 'performance'
+      };
+      
+      // 既存の録音リストに追加（最大2個まで）
+      setExistingRecordings(prev => {
+        const updated = [...prev];
+        // 同じIDの録音が既にある場合は更新、なければ追加
+        const index = updated.findIndex(r => r.id === audioData.recordingId);
+        if (index >= 0) {
+          updated[index] = newRecording;
+        } else if (updated.length < 2) {
+          updated.push(newRecording);
+        }
+        return updated;
       });
+      
       setIsRecordingJustSaved(true); // 録音保存直後フラグを設定
       // 録音済み情報を表示するため、一時的な録音データはクリア
-      // 録音済み表示条件: existingRecording && !audioUrl && !videoUrl
       setAudioUrl(''); // 録音済みとして表示するため、一時的なURLをクリア
       setVideoUrl(''); // 動画URLもクリア
       
@@ -1075,11 +1060,13 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       setAudioMemo('');
       setIsAudioFavorite(false);
       setAudioDuration(0);
+      setSelectedRecordingSlot(null); // 録音スロットをクリア
       
       logger.debug('録音情報を即座に状態に設定しました（録音済み状態を表示）:', {
         id: audioData.recordingId,
         title: audioData.title,
         duration: audioData.duration,
+        recordingType: audioData.recordingType,
         audioUrl: '',
         videoUrl: '',
         willShow: true
@@ -1088,7 +1075,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       // 録音保存後、データを再取得（データベース反映を待つため少し遅延）
       if (visible && selectedDate) {
         // データベース反映を待つため、少し遅延してから読み込む
-        // loadExistingRecordは既にloadRecordingを含んでいるので、loadRecordingを個別に呼ぶ必要はない
         setTimeout(async () => {
           // フォーム状態を一時保存（loadExistingRecordで上書きされる可能性があるため）
           const savedMinutes = formStateBeforeRecording?.minutes || minutes;
@@ -1668,64 +1654,69 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 : '演奏記録'}
             </Text>
             
-            {/* 録音済み情報がある場合：一つの枠に統合 */}
-            {existingRecording && !audioUrl && !videoUrl ? (
-              <View style={styles.existingRecordingContainer}>
-                <View style={styles.recordingInfoHeader}>
-                  <Mic size={16} color="#8B4513" />
-                  <Text style={styles.existingRecordingText}>
-                    録音済み: {existingRecording.title}
-                  </Text>
-                </View>
-                <Text style={styles.recordingDurationText}>
-                  録音時間: {Math.floor(existingRecording.duration / 60)}分{existingRecording.duration % 60}秒
-                </Text>
-                <View style={styles.recordingActions}>
-                  {/* 再生ボタン */}
-                  {existingRecording.file_path ? (
-                    <TouchableOpacity
-                      style={[styles.playButton, { 
-                        backgroundColor: playingRecordingId === existingRecording.id 
-                          ? '#FF9800' 
-                          : currentTheme.primary 
-                      }]}
-                      onPress={() => {
-                        if (existingRecording.file_path) {
-                          playRecording(existingRecording.id, existingRecording.file_path);
-                        }
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      {playingRecordingId === existingRecording.id ? (
-                        <>
-                          <Pause size={16} color="#FFFFFF" />
-                          <Text style={styles.playButtonText}>停止</Text>
-                        </>
-                      ) : (
-                        <>
-                          <Play size={16} color="#FFFFFF" />
-                          <Text style={styles.playButtonText}>再生</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  ) : null}
-                  <TouchableOpacity
-                    style={styles.rerecordButtonInExisting}
-                    onPress={() => {
-                      // 録音画面に移動する前に、現在のフォーム状態と録音状態を保存
-                      setFormStateBeforeRecording({
-                        minutes: minutes,
-                        content: content,
-                        existingRecording: existingRecording
-                      });
-                      setShowAudioRecorder(true);
-                    }}
-                  >
-                    <Text style={styles.rerecordButtonText}>再録音</Text>
-                  </TouchableOpacity>
-                </View>
+            {/* 録音済み情報がある場合：複数の録音を表示 */}
+            {existingRecordings.length > 0 && !audioUrl && !videoUrl ? (
+              <View style={styles.existingRecordingsContainer}>
+                {existingRecordings.map((recording, index) => (
+                  <View key={recording.id} style={styles.existingRecordingContainer}>
+                    <View style={styles.recordingInfoHeader}>
+                      <Mic size={16} color="#8B4513" />
+                      <Text style={styles.existingRecordingText}>
+                        録音{index + 1}: {recording.title}
+                      </Text>
+                    </View>
+                    <Text style={styles.recordingDurationText}>
+                      録音時間: {Math.floor(recording.duration / 60)}分{recording.duration % 60}秒
+                    </Text>
+                    <View style={styles.recordingActions}>
+                      {/* 再生ボタン */}
+                      {recording.file_path ? (
+                        <TouchableOpacity
+                          style={[styles.playButton, { 
+                            backgroundColor: playingRecordingId === recording.id 
+                              ? '#FF9800' 
+                              : currentTheme.primary 
+                          }]}
+                          onPress={() => {
+                            if (recording.file_path) {
+                              playRecording(recording.id, recording.file_path);
+                            }
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          {playingRecordingId === recording.id ? (
+                            <>
+                              <Pause size={16} color="#FFFFFF" />
+                              <Text style={styles.playButtonText}>停止</Text>
+                            </>
+                          ) : (
+                            <>
+                              <Play size={16} color="#FFFFFF" />
+                              <Text style={styles.playButtonText}>再生</Text>
+                            </>
+                          )}
+                        </TouchableOpacity>
+                      ) : null}
+                      <TouchableOpacity
+                        style={styles.rerecordButtonInExisting}
+                        onPress={() => {
+                          // 録音画面に移動する前に、現在のフォーム状態と録音状態を保存
+                          setFormStateBeforeRecording({
+                            minutes: minutes,
+                            content: content,
+                            existingRecordings: existingRecordings
+                          });
+                          setSelectedRecordingSlot(index);
+                          setShowAudioRecorder(true);
+                        }}
+                      >
+                        <Text style={styles.rerecordButtonText}>再録音</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
               </View>
-            ) : audioUrl && !existingRecording ? (
+            ) : audioUrl && existingRecordings.length === 0 ? (
               // 新しく録音したがまだ保存していない場合
               <View style={styles.audioInfo}>
                 <View style={styles.audioHeader}>
@@ -1750,8 +1741,9 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                       setFormStateBeforeRecording({
                         minutes: minutes,
                         content: content,
-                        existingRecording: existingRecording
+                        existingRecordings: existingRecordings
                       });
+                      setSelectedRecordingSlot(existingRecordings.length < 2 ? existingRecordings.length : 0);
                       setShowAudioRecorder(true);
                     }}
                   >
@@ -1776,24 +1768,47 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 </TouchableOpacity>
               </View>
             ) : (
-              // 録音済み情報がない場合：録音ボタンと動画URL入力
+              // 録音済み情報がない場合：2つの録音ボタンと動画URL入力
               <View style={styles.mediaSelectionContainer}>
-                <TouchableOpacity
-                  style={styles.mediaOptionButton}
-                  onPress={() => {
-                    // 録音画面に移動する前に、現在のフォーム状態と録音状態を保存
-                    setFormStateBeforeRecording({
-                      minutes: minutes,
-                      content: content,
-                      existingRecording: existingRecording
-                    });
-                    setShowAudioRecorder(true);
-                  }}
-                >
-                  <Mic size={24} color="#8B4513" />
-                  <Text style={styles.mediaOptionText}>録音で記録</Text>
-                  <Text style={styles.mediaOptionSubtext}>音声を録音して保存</Text>
-                </TouchableOpacity>
+                {/* 2つの録音ボタン */}
+                <View style={styles.recordingButtonsContainer}>
+                  {[0, 1].map((slotIndex) => {
+                    const existingRec = existingRecordings[slotIndex];
+                    return (
+                      <TouchableOpacity
+                        key={slotIndex}
+                        style={[
+                          styles.mediaOptionButton,
+                          existingRec && styles.mediaOptionButtonFilled
+                        ]}
+                        onPress={() => {
+                          // 録音画面に移動する前に、現在のフォーム状態と録音状態を保存
+                          setFormStateBeforeRecording({
+                            minutes: minutes,
+                            content: content,
+                            existingRecordings: existingRecordings
+                          });
+                          setSelectedRecordingSlot(slotIndex);
+                          setShowAudioRecorder(true);
+                        }}
+                      >
+                        <Mic size={24} color="#8B4513" />
+                        <Text style={styles.mediaOptionText}>
+                          録音{slotIndex + 1}で記録
+                        </Text>
+                        {existingRec ? (
+                          <Text style={styles.mediaOptionSubtext}>
+                            {existingRec.title} ({Math.floor(existingRec.duration / 60)}分{existingRec.duration % 60}秒)
+                          </Text>
+                        ) : (
+                          <Text style={styles.mediaOptionSubtext}>
+                            音声を録音して保存
+                          </Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
                 
                 <View style={styles.mediaDivider}>
                   <Text style={styles.dividerText}>または</Text>
@@ -1854,14 +1869,14 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           
           {/* 削除ボタン（既存の記録または録音がある場合のみ表示） */}
           {useMemo(() => {
-            const shouldShow = !!(existingRecord || existingRecording);
+            const shouldShow = !!(existingRecord || existingRecordings.length > 0);
             logger.debug('削除ボタン表示条件:', {
               existingRecord: !!existingRecord,
-              existingRecording: !!existingRecording,
+              existingRecordingsCount: existingRecordings.length,
               shouldShow
             });
             return shouldShow;
-          }, [existingRecord, existingRecording]) && (
+          }, [existingRecord, existingRecordings]) && (
             <TouchableOpacity
               style={styles.deleteButtonFooter}
               onPress={handleDeleteRecord}
@@ -1890,9 +1905,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             if (formStateBeforeRecording) {
               setMinutes(formStateBeforeRecording.minutes);
               setContent(formStateBeforeRecording.content);
-              if (formStateBeforeRecording.existingRecording) {
-                setExistingRecording(formStateBeforeRecording.existingRecording);
-              }
+              setExistingRecordings(formStateBeforeRecording.existingRecordings);
               setFormStateBeforeRecording(null);
             }
           }}
@@ -1902,9 +1915,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             if (formStateBeforeRecording) {
               setMinutes(formStateBeforeRecording.minutes);
               setContent(formStateBeforeRecording.content);
-              if (formStateBeforeRecording.existingRecording) {
-                setExistingRecording(formStateBeforeRecording.existingRecording);
-              }
+              setExistingRecordings(formStateBeforeRecording.existingRecordings);
               setFormStateBeforeRecording(null);
             }
           }}
@@ -2268,7 +2279,13 @@ const styles = StyleSheet.create({
   mediaSelectionContainer: {
     marginBottom: 12,
   },
+  recordingButtonsContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
   mediaOptionButton: {
+    flex: 1,
     flexDirection: 'column',
     alignItems: 'center',
     backgroundColor: '#F8F8F8',
@@ -2278,6 +2295,10 @@ const styles = StyleSheet.create({
     gap: 6,
     borderWidth: 0.5,
     borderColor: '#D0D0D0',
+  },
+  mediaOptionButtonFilled: {
+    backgroundColor: '#E8F5E8',
+    borderColor: '#C8E6C8',
   },
   mediaOptionButtonSecondary: {
     backgroundColor: '#F5F5F5',
@@ -2440,11 +2461,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1976D2',
   },
+  existingRecordingsContainer: {
+    marginBottom: 12,
+    gap: 12,
+  },
   existingRecordingContainer: {
     backgroundColor: '#E8F5E8',
     borderRadius: 8,
     padding: 12,
-    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#C8E6C8',
   },

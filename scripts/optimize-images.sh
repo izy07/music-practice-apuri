@@ -73,3 +73,4 @@ echo "画像アセットの最適化が完了しました！"
 echo ""
 echo "注意: app.config.tsとweb/index.htmlでWebP形式への参照を更新する必要があります。"
 
+

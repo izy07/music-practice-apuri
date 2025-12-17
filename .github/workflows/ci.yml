@@ -191,60 +191,191 @@ jobs:
           # 既存のSupabaseコンテナを停止（存在する場合）
           supabase stop || echo "⚠️ 既存のコンテナが見つかりませんでした（新規起動を続行）"
           
-          # クリーンアップ（念のため）
+          # すべてのPostgreSQLコンテナを停止（最も確実な方法：コンテナ名で検索）
+          echo "🔍 すべてのPostgreSQLコンテナを確認します..."
+          # コンテナ名にpostgresを含むものを検索（xargsを使用して確実に停止）
+          docker ps -a --format "{{.ID}} {{.Names}}" | grep -i postgres | awk '{print $1}' | xargs -r -I {} sh -c 'echo "  停止中: {}"; docker stop {} 2>/dev/null || true; docker rm -f {} 2>/dev/null || true' || true
+          
+          # ポート5432を使用しているコンテナを停止（PostgreSQLコンテナの競合を回避）
+          echo "🔍 ポート5432を使用しているコンテナを確認します..."
+          # より確実に検出するため、複数の方法で検索
+          PORT_5432_CONTAINERS=$(docker ps -a --filter "publish=5432" --format "{{.ID}}" 2>/dev/null || true)
+          if [ -z "$PORT_5432_CONTAINERS" ]; then
+            # 別の方法で検索：ポートマッピングで5432を含むコンテナ
+            PORT_5432_CONTAINERS=$(docker ps -a --format "{{.ID}} {{.Ports}}" | grep "5432" | awk '{print $1}' || true)
+          fi
+          if [ -n "$PORT_5432_CONTAINERS" ]; then
+            echo "⚠️ ポート5432を使用しているコンテナが見つかりました。停止します..."
+            echo "$PORT_5432_CONTAINERS" | xargs -r -I {} sh -c 'echo "  停止中: {}"; docker stop {} 2>/dev/null || true; docker rm -f {} 2>/dev/null || true' || true
+          fi
+          
+          # SupabaseのPostgreSQLコンテナを明示的に停止（エラーメッセージに表示されたパターンに対応）
+          echo "🔍 Supabase PostgreSQLコンテナ（postgres17パターン）を確認します..."
+          SUPABASE_POSTGRES=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -E "(postgres17|supabase.*postgres|_postgres17_)" | awk '{print $1}' || true)
+          if [ -n "$SUPABASE_POSTGRES" ]; then
+            echo "⚠️ Supabase PostgreSQLコンテナが見つかりました。停止します..."
+            echo "$SUPABASE_POSTGRES" | xargs -r -I {} sh -c 'echo "  停止中: {}"; docker stop {} 2>/dev/null || true; docker rm -f {} 2>/dev/null || true' || true
+          fi
+          
+          # エラーメッセージに表示される可能性のあるコンテナIDパターンを直接停止
+          # パターン: /<hash>_postgres17_<number>
+          echo "🔍 Supabase PostgreSQLコンテナ（ハッシュパターン）を確認します..."
+          HASH_POSTGRES_CONTAINERS=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -E "[a-f0-9]+_postgres17_[0-9]+" | awk '{print $1}' || true)
+          if [ -n "$HASH_POSTGRES_CONTAINERS" ]; then
+            echo "⚠️ ハッシュパターンのPostgreSQLコンテナが見つかりました。停止します..."
+            echo "$HASH_POSTGRES_CONTAINERS" | xargs -r -I {} sh -c 'echo "  停止中: {}"; docker stop {} 2>/dev/null || true; docker rm -f {} 2>/dev/null || true' || true
+          fi
+          
+          # Supabase関連のコンテナをクリーンアップ
+          echo "🔍 Supabase関連のコンテナを確認します..."
+          SUPABASE_CONTAINERS=$(docker ps -a --filter "name=supabase" --format "{{.ID}}" || true)
+          if [ -n "$SUPABASE_CONTAINERS" ]; then
+            echo "⚠️ Supabaseコンテナが見つかりました。停止します..."
+            echo "$SUPABASE_CONTAINERS" | xargs -r docker stop || true
+            echo "$SUPABASE_CONTAINERS" | xargs -r docker rm -f || true
+          fi
+          
+          # 念のため、すべてのSupabaseコンテナを削除
           docker ps -a | grep supabase | awk '{print $1}' | xargs -r docker rm -f || true
           
-          # Supabaseを初期化（初回起動の場合）
-          if [ ! -f supabase/.temp/config.toml ]; then
-            echo "📦 Supabaseを初期化します..."
-            supabase init || echo "⚠️ 初期化に失敗しましたが、続行します"
+          # すべてのコンテナをリストアップして、postgres17を含むものを停止（最終手段）
+          echo "🔍 すべてのコンテナを確認し、postgres17を含むものを停止します..."
+          ALL_POSTGRES17=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -i "postgres17" | awk '{print $1}' || true)
+          if [ -n "$ALL_POSTGRES17" ]; then
+            echo "⚠️ postgres17を含むコンテナが見つかりました。停止します..."
+            echo "$ALL_POSTGRES17" | xargs -r -I {} sh -c 'echo "  停止中: {}"; docker stop {} 2>/dev/null || true; docker rm -f {} 2>/dev/null || true' || true
           fi
           
-          # Supabaseを起動
-          echo "⏳ Supabaseを起動中..."
-          if supabase start; then
-            echo "✅ Supabaseの起動コマンドが成功しました"
-          else
-            echo "❌ Supabaseの起動に失敗しました"
-            echo "📊 デバッグ情報:"
-            echo "Dockerコンテナ一覧:"
-            docker ps -a | head -20
-            echo "Supabase関連コンテナ:"
-            docker ps -a | grep supabase || echo "Supabaseコンテナが見つかりません"
-            echo "Dockerログ（最新のコンテナ）:"
-            SUPABASE_CONTAINER=$(docker ps -a | grep supabase | head -1 | awk '{print $1}')
-            if [ -n "$SUPABASE_CONTAINER" ]; then
-              docker logs "$SUPABASE_CONTAINER" 2>&1 | tail -50 || echo "ログ取得に失敗"
-            fi
-            exit 1
-          fi
+          # すべてのコンテナをリストアップして、ポート5432を使用しているものを確認
+          echo "🔍 すべてのコンテナのポート使用状況を確認します..."
+          docker ps -a --format "{{.ID}} {{.Names}} {{.Ports}}" | grep "5432" || echo "ポート5432を使用しているコンテナは見つかりませんでした"
           
-          echo "⏳ Supabaseの起動を待機中..."
-          sleep 20
-          
-          # 最大10回までリトライしてステータスを確認
-          for i in {1..10}; do
-            echo "📊 Supabaseステータス確認 (試行 $i/10)..."
-            if supabase status > /dev/null 2>&1; then
-              echo "✅ Supabaseが正常に起動しました"
-              supabase status
+          # ポート5432が解放されるまで待機（最大15秒、より長く待機）
+          echo "⏳ ポート5432が解放されるまで待機します..."
+          for i in {1..15}; do
+            PORT_IN_USE=$(docker ps --format "{{.Ports}}" | grep "5432" || true)
+            if [ -z "$PORT_IN_USE" ]; then
+              echo "✅ ポート5432が解放されました"
               break
             else
-              if [ $i -eq 10 ]; then
-                echo "⚠️ ステータス取得に失敗しました"
-                supabase status || true
+              if [ $i -eq 15 ]; then
+                echo "⚠️ ポート5432がまだ使用されています。強制的に続行します..."
+                # ポートを使用しているプロセスを確認（参考情報）
+                echo "ポート5432を使用しているプロセス:"
+                docker ps --format "{{.ID}} {{.Names}} {{.Ports}}" | grep "5432" || echo "見つかりませんでした"
+              else
+                echo "  待機中... ($i/15)"
+                sleep 1
+              fi
+            fi
+          done
+          
+          # Docker環境が安定するまで少し待機
+          echo "⏳ Docker環境が安定するまで待機中..."
+          sleep 3
+          
+          # Supabaseを初期化（必ず実行して確実に初期化）
+          echo "📦 Supabaseを初期化します..."
+          supabase init 2>&1 | tee /tmp/supabase-init.log || {
+            echo "⚠️ 初期化に失敗しましたが、続行します"
+            echo "初期化ログ:"
+            cat /tmp/supabase-init.log || echo "ログファイルが見つかりません"
+          }
+          
+          # Supabaseディレクトリの確認
+          echo "📊 Supabaseディレクトリの状態:"
+          ls -la supabase/ || echo "supabaseディレクトリが見つかりません"
+          ls -la supabase/.temp/ 2>/dev/null || echo "supabase/.tempディレクトリが見つかりません"
+          
+          # config.tomlの確認
+          if [ -f supabase/config.toml ]; then
+            echo "✅ config.tomlが存在します"
+          else
+            echo "⚠️ config.tomlが見つかりません"
+          fi
+          
+          # Supabaseを起動（--debugフラグで詳細ログを出力）
+          echo "⏳ Supabaseを起動中（デバッグモード）..."
+          supabase start --debug 2>&1 | tee /tmp/supabase-start.log || {
+            START_EXIT_CODE=$?
+            echo "❌ Supabaseの起動に失敗しました（終了コード: $START_EXIT_CODE）"
+            echo "📊 起動ログの最後の200行:"
+            tail -200 /tmp/supabase-start.log || echo "ログファイルが見つかりません"
+            echo "📊 Dockerコンテナ一覧（全コンテナ）:"
+            docker ps -a | head -30
+            echo "📊 Supabase関連コンテナ:"
+            docker ps -a | grep -i supabase || echo "Supabaseコンテナが見つかりません"
+            echo "📊 PostgreSQL関連コンテナ:"
+            docker ps -a | grep -i postgres || echo "PostgreSQLコンテナが見つかりません"
+            echo "📊 すべてのコンテナのポート使用状況:"
+            docker ps -a --format "{{.ID}} {{.Names}} {{.Ports}}" | grep -E "(5432|54321|54322)" || echo "関連ポートを使用しているコンテナは見つかりませんでした"
+            echo "📊 Dockerログ（Supabase関連コンテナ）:"
+            SUPABASE_CONTAINERS=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -i supabase | awk '{print $1}' || true)
+            if [ -n "$SUPABASE_CONTAINERS" ]; then
+              echo "$SUPABASE_CONTAINERS" | while read -r container_id; do
+                if [ -n "$container_id" ]; then
+                  echo "--- コンテナ $container_id のログ ---"
+                  docker logs "$container_id" 2>&1 | tail -100 || echo "ログ取得に失敗"
+                fi
+              done
+            fi
+            echo "📊 Dockerログ（PostgreSQL関連コンテナ）:"
+            POSTGRES_CONTAINERS=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -i postgres | awk '{print $1}' || true)
+            if [ -n "$POSTGRES_CONTAINERS" ]; then
+              echo "$POSTGRES_CONTAINERS" | while read -r container_id; do
+                if [ -n "$container_id" ]; then
+                  echo "--- コンテナ $container_id のログ ---"
+                  docker logs "$container_id" 2>&1 | tail -100 || echo "ログ取得に失敗"
+                fi
+              done
+            fi
+            echo "📊 Supabaseステータス:"
+            supabase status 2>&1 || echo "ステータス取得に失敗"
+            exit 1
+          }
+          
+          echo "✅ Supabaseの起動コマンドが成功しました"
+          
+          echo "⏳ Supabaseの起動を待機中..."
+          sleep 30  # 20秒から30秒に延長（より確実に起動を待つ）
+          
+          # 最大15回までリトライしてステータスを確認（より長く待機）
+          for i in {1..15}; do
+            echo "📊 Supabaseステータス確認 (試行 $i/15)..."
+            STATUS_OUTPUT=$(supabase status 2>&1)
+            STATUS_EXIT_CODE=$?
+            if [ $STATUS_EXIT_CODE -eq 0 ]; then
+              echo "✅ Supabaseが正常に起動しました"
+              echo "$STATUS_OUTPUT"
+              break
+            else
+              if [ $i -eq 15 ]; then
+                echo "⚠️ ステータス取得に失敗しました（15回試行後）"
+                echo "ステータス出力:"
+                echo "$STATUS_OUTPUT"
                 echo "📊 Dockerコンテナ状態:"
-                docker ps -a | grep supabase || echo "Supabaseコンテナが見つかりません"
+                docker ps -a | grep -i supabase || echo "Supabaseコンテナが見つかりません"
+                echo "📊 すべてのDockerコンテナ:"
+                docker ps -a | head -30
+                echo "📊 Supabaseコンテナのログ（最新）:"
+                SUPABASE_CONTAINER=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -i supabase | head -1 | awk '{print $1}' || true)
+                if [ -n "$SUPABASE_CONTAINER" ]; then
+                  docker logs "$SUPABASE_CONTAINER" 2>&1 | tail -100 || echo "ログ取得に失敗"
+                fi
                 exit 1
               else
-                echo "⏳ 待機中... ($i/10)"
-                sleep 5
+                echo "⏳ 待機中... ($i/15) - ステータス: $STATUS_EXIT_CODE"
+                if [ $i -le 5 ]; then
+                  sleep 3  # 最初の5回は3秒待機
+                else
+                  sleep 5  # その後は5秒待機
+                fi
               fi
             fi
           done
         env:
           SUPABASE_DB_PASSWORD: postgres
-        timeout-minutes: 15
+        timeout-minutes: 20  # 15分から20分に延長
 
       - name: データベースマイグレーションの実行
         run: |

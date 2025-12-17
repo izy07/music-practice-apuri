@@ -114,3 +114,4 @@ CREATE TRIGGER sync_organization_columns_trigger
   FOR EACH ROW
   EXECUTE FUNCTION public.sync_organization_columns();
 
+

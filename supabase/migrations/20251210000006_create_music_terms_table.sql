@@ -33,3 +33,5 @@ COMMENT ON COLUMN music_terms.category IS 'カテゴリ（例：楽器、記号�
 COMMENT ON COLUMN music_terms.related_terms IS '関連用語の配列（JSONB）';
 
 
+
+

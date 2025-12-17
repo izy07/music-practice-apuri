@@ -59,3 +59,5 @@ COMMENT ON COLUMN user_push_tokens.device_id IS 'デバイスID（オプショ�
 
 
 
+
+

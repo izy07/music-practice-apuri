@@ -60,7 +60,7 @@ config.server.enhanceMiddleware = (middleware, server) => {
             res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
             res.setHeader('Pragma', 'no-cache');
             res.setHeader('Expires', '0');
-            res.end();
+        res.end();
           }
         } catch (e) {
           // レスポンス送信エラーは完全に無視（エラーを発生させない）
@@ -71,11 +71,11 @@ config.server.enhanceMiddleware = (middleware, server) => {
       // 即座に204を返す（すべてのエラーケースを考慮）
       sendNoContent();
       return; // ここで確実に処理を終了（enhancedMiddlewareを呼ばない）
-    }
+      }
     
     // favicon.ico以外のリクエストは通常のミドルウェアに渡す
     try {
-      return enhancedMiddleware(req, res, next);
+    return enhancedMiddleware(req, res, next);
     } catch (middlewareError) {
       // enhancedMiddlewareでエラーが発生した場合も処理
       if (!res.headersSent && !res.finished) {

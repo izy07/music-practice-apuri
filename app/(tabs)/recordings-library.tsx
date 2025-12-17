@@ -50,6 +50,7 @@ export default function RecordingsLibraryScreen() {
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [recordingTypeFilter, setRecordingTypeFilter] = useState<'all' | 'performance' | 'lesson'>('all'); // 録音種類フィルター
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
@@ -72,7 +73,7 @@ export default function RecordingsLibraryScreen() {
   useFocusEffect(
     React.useCallback(() => {
       loadRecordings();
-    }, [entitlement, selectedInstrument])
+    }, [entitlement, selectedInstrument, recordingTypeFilter])
   );
 
   const loadRecordings = async () => {
@@ -110,7 +111,7 @@ export default function RecordingsLibraryScreen() {
         const instrumentId = selectedInstrument || null;
         logger.debug('録音データ取得開始', { userId: user.id, instrumentId });
         
-        const { data, error } = await listAllRecordings(user.id, instrumentId);
+        const { data, error } = await listAllRecordings(user.id, instrumentId, undefined, recordingTypeFilter === 'all' ? null : recordingTypeFilter);
         if (error) {
           logger.error('録音データ取得エラー:', error);
           ErrorHandler.handle(error, '録音データ読み込み', true);
@@ -632,6 +633,69 @@ export default function RecordingsLibraryScreen() {
                 <X size={18} color={currentTheme.textSecondary} />
               </TouchableOpacity>
             )}
+          </View>
+        )}
+
+        {/* 録音種類フィルター */}
+        {recordings.length > 0 && (
+          <View style={[styles.timeFilterContainer, { backgroundColor: currentTheme.surface }]}>
+            <Text style={[styles.timeFilterTitle, { color: currentTheme.text }]}>
+              録音種類
+            </Text>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.timeFilterButtons}
+            >
+              <TouchableOpacity
+                style={[
+                  styles.timeFilterButton,
+                  {
+                    backgroundColor: recordingTypeFilter === 'all' ? currentTheme.primary : currentTheme.secondary,
+                  }
+                ]}
+                onPress={() => setRecordingTypeFilter('all')}
+              >
+                <Text style={[
+                  styles.timeFilterButtonText,
+                  { color: recordingTypeFilter === 'all' ? currentTheme.surface : currentTheme.text }
+                ]}>
+                  全て
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.timeFilterButton,
+                  {
+                    backgroundColor: recordingTypeFilter === 'performance' ? currentTheme.primary : currentTheme.secondary,
+                  }
+                ]}
+                onPress={() => setRecordingTypeFilter('performance')}
+              >
+                <Text style={[
+                  styles.timeFilterButtonText,
+                  { color: recordingTypeFilter === 'performance' ? currentTheme.surface : currentTheme.text }
+                ]}>
+                  演奏録音
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.timeFilterButton,
+                  {
+                    backgroundColor: recordingTypeFilter === 'lesson' ? currentTheme.primary : currentTheme.secondary,
+                  }
+                ]}
+                onPress={() => setRecordingTypeFilter('lesson')}
+              >
+                <Text style={[
+                  styles.timeFilterButtonText,
+                  { color: recordingTypeFilter === 'lesson' ? currentTheme.surface : currentTheme.text }
+                ]}>
+                  レッスン録音
+                </Text>
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         )}
 

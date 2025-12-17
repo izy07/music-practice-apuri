@@ -31,6 +31,7 @@ interface AudioRecorderProps {
     duration: number;
     audioUrl: string;
     recordingId?: string; // 保存された録音ID（オプション）
+    recordingType?: 'performance' | 'lesson'; // 録音種類
   }) => void;
   onClose: () => void;
   onRecordingSaved?: () => void; // 録音保存後のコールバック
@@ -55,6 +56,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const [selectedSongId, setSelectedSongId] = useState<string | null>(null);
   const [songs, setSongs] = useState<Array<{id: string, title: string, artist: string}>>([]);
   const [showSongSelector, setShowSongSelector] = useState(false);
+  const [recordingType, setRecordingType] = useState<'performance' | 'lesson'>('performance'); // 録音種類
   
   // Web Audio API用の参照
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -66,8 +68,8 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const microphoneStreamRef = useRef<MediaStream | null>(null);
   const isRecordingRef = useRef(false); // 最新のisRecording状態を保持
 
-  // 録音時間の制限（1分 = 60秒）
-  const MAX_RECORDING_TIME = 60;
+  // 録音時間の制限（1時間 = 3600秒）
+  const MAX_RECORDING_TIME = 3600;
 
   // isRecordingの最新値をrefに保持
   useEffect(() => {
@@ -479,7 +481,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
           const elapsedTime = Math.round((Date.now() - startTime) / 1000);
           setRecordingTime(elapsedTime);
           
-          // 59秒に達したら自動的に録音を停止開始（60秒を超えないようにする）
+          // 最大時間の1秒前に達したら自動的に録音を停止開始（最大時間を超えないようにする）
           // Math.roundによる丸め誤差とMediaRecorder停止処理の遅延を考慮して1秒前に停止開始
           if (elapsedTime >= MAX_RECORDING_TIME - 1) {
             logger.debug('録音時間が最大時間に近づきました。自動停止を開始します。', {
@@ -615,9 +617,10 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
 
     // 停止時の通知（自動停止の場合のみ）
     if (cause === 'auto') {
+      const maxMinutes = Math.floor(MAX_RECORDING_TIME / 60);
       Alert.alert(
         '録音停止',
-        '最大1分に達したため自動停止しました'
+        `最大${maxMinutes}分に達したため自動停止しました`
       );
     }
   };
@@ -796,6 +799,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         duration_seconds: finalDuration,
         is_favorite: isFavorite,
         recorded_at: recordedAt.toISOString(),
+        recording_type: recordingType, // 録音種類を追加
       });
 
       if (saveError) {
@@ -823,7 +827,8 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         isFavorite: isFavorite,
         duration: finalDuration,
         audioUrl: filePath || audioUrl || '', // 保存されたファイルパスまたは元のURL
-        recordingId: savedRecording?.id // 保存された録音ID
+        recordingId: savedRecording?.id, // 保存された録音ID
+        recordingType: recordingType // 録音種類を追加
       };
       
       // onSaveコールバックを呼び出して録音データを渡す
@@ -1006,6 +1011,49 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
             <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
               録音情報
             </Text>
+            
+            {/* 録音種類選択 */}
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: currentTheme.text }]}>録音種類</Text>
+              <View style={styles.recordingTypeContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.recordingTypeButton,
+                    {
+                      backgroundColor: recordingType === 'performance' 
+                        ? currentTheme.primary 
+                        : currentTheme.secondary,
+                    }
+                  ]}
+                  onPress={() => setRecordingType('performance')}
+                >
+                  <Text style={[
+                    styles.recordingTypeButtonText,
+                    { color: recordingType === 'performance' ? currentTheme.surface : currentTheme.text }
+                  ]}>
+                    演奏録音
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.recordingTypeButton,
+                    {
+                      backgroundColor: recordingType === 'lesson' 
+                        ? currentTheme.primary 
+                        : currentTheme.secondary,
+                    }
+                  ]}
+                  onPress={() => setRecordingType('lesson')}
+                >
+                  <Text style={[
+                    styles.recordingTypeButtonText,
+                    { color: recordingType === 'lesson' ? currentTheme.surface : currentTheme.text }
+                  ]}>
+                    レッスン録音
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
             
             {/* タイトル入力 */}
             <View style={styles.inputGroup}>
@@ -1309,5 +1357,22 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.7,
+  },
+  recordingTypeContainer: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  recordingTypeButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  recordingTypeButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

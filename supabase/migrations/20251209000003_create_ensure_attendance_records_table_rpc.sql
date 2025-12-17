@@ -201,3 +201,5 @@ GRANT EXECUTE ON FUNCTION ensure_attendance_records_table() TO authenticated;
 GRANT EXECUTE ON FUNCTION ensure_attendance_records_table() TO anon;
 
 
+
+

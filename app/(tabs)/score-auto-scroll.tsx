@@ -44,7 +44,7 @@ export default function ScoreAutoScrollScreen() {
   const [showDriveModal, setShowDriveModal] = React.useState<boolean>(false);
   const [driveSelected, setDriveSelected] = React.useState<Record<string, boolean>>({});
 
-  const buildHtml = (url: string) => {
+  const buildHtml = (url: string, includeFullDocument: boolean = true) => {
     // Google Docs Viewer経由でリモートPDFを埋め込み（CORS回避）。ローカル/直接URLは <embed> を試行。
     const isRemote = /^https?:\/\//.test(url);
     const viewerUrl = `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(url)}`;
@@ -52,17 +52,7 @@ export default function ScoreAutoScrollScreen() {
       ? `<iframe src="${viewerUrl}" style="width:100%;height:100%;border:0;"></iframe>`
       : `<embed src="${url}" type="application/pdf" style="width:100%;height:100%;" />`;
 
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-  <style>
-    html, body { margin:0; padding:0; height:100%; overflow:auto; background:#ffffff; }
-    #root { position:relative; width:100%; height:100%; }
-  </style>
-</head>
-<body>
-  <div id="root">${embedHtml}</div>
+    const content = `<div id="root">${embedHtml}</div>
   <script>
     (function(){
       window.__scrollTimer = null;
@@ -89,13 +79,20 @@ export default function ScoreAutoScrollScreen() {
       window.stopAutoScroll = stopAutoScroll;
       true;
     })();
-  </script>
-</body>
-</html>`;
-  };
+  </script>`;
 
-  const buildHtmlForBase64 = (base64: string) => {
-    const dataUrl = `data:application/pdf;base64,${base64}`;
+    // Web環境では完全なHTMLドキュメントを返さない（React error #418を回避）
+    if (Platform.OS === 'web' || !includeFullDocument) {
+      return `<div style="margin:0;padding:0;height:100%;overflow:auto;background:#ffffff;">
+  <style>
+    html, body { margin:0; padding:0; height:100%; overflow:auto; background:#ffffff; }
+    #root { position:relative; width:100%; height:100%; }
+  </style>
+  ${content}
+</div>`;
+    }
+
+    // ネイティブ環境では完全なHTMLドキュメントを返す
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -106,7 +103,14 @@ export default function ScoreAutoScrollScreen() {
   </style>
 </head>
 <body>
-  <div id="root"><embed src="${dataUrl}" type="application/pdf" style="width:100%;height:100%;" /></div>
+  ${content}
+</body>
+</html>`;
+  };
+
+  const buildHtmlForBase64 = (base64: string, includeFullDocument: boolean = true) => {
+    const dataUrl = `data:application/pdf;base64,${base64}`;
+    const content = `<div id="root"><embed src="${dataUrl}" type="application/pdf" style="width:100%;height:100%;" /></div>
   <script>
     (function(){
       window.__scrollTimer = null;
@@ -132,7 +136,31 @@ export default function ScoreAutoScrollScreen() {
       window.stopAutoScroll = stopAutoScroll;
       true;
     })();
-  </script>
+  </script>`;
+
+    // Web環境では完全なHTMLドキュメントを返さない（React error #418を回避）
+    if (Platform.OS === 'web' || !includeFullDocument) {
+      return `<div style="margin:0;padding:0;height:100%;overflow:auto;background:#ffffff;">
+  <style>
+    html, body { margin:0; padding:0; height:100%; overflow:auto; background:#ffffff; }
+    #root { position:relative; width:100%; height:100%; }
+  </style>
+  ${content}
+</div>`;
+    }
+
+    // ネイティブ環境では完全なHTMLドキュメントを返す
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <style>
+    html, body { margin:0; padding:0; height:100%; overflow:auto; background:#ffffff; }
+    #root { position:relative; width:100%; height:100%; }
+  </style>
+</head>
+<body>
+  ${content}
 </body>
 </html>`;
   };
@@ -214,7 +242,8 @@ export default function ScoreAutoScrollScreen() {
     setCurrentDocIndex(0);
   };
 
-  const currentHtmlSource = () => {
+  // useMemoでHTMLソースをメモ化（再レンダリングを防ぐ）
+  const currentHtmlSource = React.useMemo(() => {
     const hasLocal = localDocs.length > 0 && localDocs[currentDocIndex];
     if (hasLocal) {
       const doc = localDocs[currentDocIndex];
@@ -222,7 +251,7 @@ export default function ScoreAutoScrollScreen() {
       return { html: '<html><body>読み込み中...</body></html>' } as const;
     }
     return { html: buildHtml(pdfUrl) } as const;
-  };
+  }, [localDocs, currentDocIndex, pdfUrl]);
 
   const ensureGoogleClientId = (): string | null => {
     const clientId = process.env.EXPO_PUBLIC_GOOGLE_OAUTH_CLIENT_ID as string | undefined;
@@ -415,7 +444,7 @@ export default function ScoreAutoScrollScreen() {
         <WebView
           ref={webviewRef}
           originWhitelist={["*"]}
-          source={currentHtmlSource()}
+          source={currentHtmlSource}
           style={{ flex: 1, backgroundColor: currentTheme.surface }}
         />
       </View>

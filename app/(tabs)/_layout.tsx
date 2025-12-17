@@ -9,11 +9,6 @@ import { View, ActivityIndicator } from 'react-native';
 // タブのアイコンとタイトルを定義
 const TAB_CONFIG = [
   {
-    name: 'index',
-    icon: Calendar,
-    titleKey: 'calendar',
-  },
-  {
     name: 'timer',
     icon: Timer,
     titleKey: 'timer',
@@ -22,6 +17,11 @@ const TAB_CONFIG = [
     name: 'goals',
     icon: Target,
     titleKey: 'goals',
+  },
+  {
+    name: 'index',
+    icon: Calendar,
+    titleKey: 'calendar',
   },
   {
     name: 'tuner',

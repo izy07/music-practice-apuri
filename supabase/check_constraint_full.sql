@@ -32,3 +32,5 @@ SELECT
 -- ALTER TABLE my_songs ADD CONSTRAINT my_songs_status_check 
 --   CHECK (status IN ('want_to_play', 'learning', 'played', 'mastered'));
 
+
+

@@ -73,18 +73,18 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
 
       // まずローカルキャッシュから読み込み（楽器ごと）
       try {
-        const cached = await AsyncStorage.getItem(cacheKey);
+      const cached = await AsyncStorage.getItem(cacheKey);
         logger.debug('ローカルキャッシュ確認（楽器ごと）:', { cached, cacheKey, instrumentId });
 
         if (cached && cached !== '' && (cached === 'beginner' || cached === 'intermediate' || cached === 'advanced')) {
           const level = cached as PracticeLevel;
           setUserLevel(level);
           setSelectedLevel(level);
-          setHasSelectedLevel(true);
-          setIsFirstTime(false);
-          setShowLevelModal(false);
+        setHasSelectedLevel(true);
+        setIsFirstTime(false);
+        setShowLevelModal(false);
           logger.debug('✅ ローカルキャッシュからレベル復元（楽器ごと）:', { level, cacheKey, instrumentId });
-          return;
+        return;
         } else if (cached) {
           // 無効な値がキャッシュされている場合は削除
           logger.warn('⚠️ 無効なキャッシュ値を検出、削除します:', { cached, cacheKey });
@@ -284,11 +284,11 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
 
         // 後方互換性のため、全体のpractice_levelも更新
         try {
-          const result = await updatePracticeLevel(user.id, level);
-          if (result.error) {
+        const result = await updatePracticeLevel(user.id, level);
+        if (result.error) {
             ErrorHandler.handle(result.error, 'データベース保存（全体）', false);
-          } else {
-            logger.debug('データベースに保存完了（全体）:', level);
+        } else {
+          logger.debug('データベースに保存完了（全体）:', level);
           }
         } catch (updateError) {
           logger.warn('全体レベルの保存エラー（無視）:', updateError);
@@ -337,8 +337,8 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
       })
       .catch((error) => {
         logger.error('❌ ローカルストレージ更新エラー:', error);
-        ErrorHandler.handle(error, 'ローカルストレージ保存', false);
-      });
+      ErrorHandler.handle(error, 'ローカルストレージ保存', false);
+    });
     
     // データベース更新（楽器ごとと全体の両方）
     supabase.auth.getUser().then(async ({ data: { user } }) => {
@@ -370,11 +370,11 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
 
         // 後方互換性のため、全体のpractice_levelも更新
         try {
-          const result = await updatePracticeLevel(user.id, newLevel);
-          if (result.error) {
+        const result = await updatePracticeLevel(user.id, newLevel);
+        if (result.error) {
             ErrorHandler.handle(result.error, 'データベース更新（全体）', false);
-          } else {
-            logger.debug('データベースに更新完了（全体）:', newLevel);
+        } else {
+          logger.debug('データベースに更新完了（全体）:', newLevel);
           }
         } catch (updateError) {
           logger.warn('全体レベルの更新エラー（無視）:', updateError);
@@ -389,23 +389,23 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
     let isMounted = true;
     
     const checkLevel = async () => {
-      // 楽器が選択されている場合のみチェック
-      const instrumentId = getInstrumentId(selectedInstrument);
-      if (instrumentId) {
+    // 楽器が選択されている場合のみチェック
+    const instrumentId = getInstrumentId(selectedInstrument);
+    if (instrumentId) {
         logger.debug('🔍 楽器変更を検出、レベル確認を開始:', { instrumentId, selectedInstrument });
         await checkUserLevel();
         if (isMounted) {
           logger.debug('✅ レベル確認完了');
         }
-      } else {
-        // 楽器が選択されていない場合はモーダルを非表示
+    } else {
+      // 楽器が選択されていない場合はモーダルを非表示
         if (isMounted) {
-          setShowLevelModal(false);
-          setSelectedLevel('beginner');
-          setUserLevel(null);
-          setHasSelectedLevel(false);
-          setIsFirstTime(false);
-        }
+      setShowLevelModal(false);
+      setSelectedLevel('beginner');
+      setUserLevel(null);
+      setHasSelectedLevel(false);
+      setIsFirstTime(false);
+    }
       }
     };
     

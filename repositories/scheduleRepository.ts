@@ -94,6 +94,17 @@ export const scheduleRepository = {
         throw new Error('認証が必要です');
       }
 
+      // organization_idのバリデーション（空文字列を拒否）
+      if (!schedule.organization_id || schedule.organization_id.trim() === '') {
+        throw new Error('組織IDが指定されていません。組織を選択してください。');
+      }
+
+      // UUID形式の簡易チェック（空文字列を除外）
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(schedule.organization_id)) {
+        throw new Error('無効な組織IDです。');
+      }
+
       // notesとdescriptionの両方をサポート
       // テーブルにはdescriptionとnotesの両方がある可能性がある
       const insertData: Record<string, unknown> = {

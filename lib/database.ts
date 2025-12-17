@@ -571,6 +571,7 @@ export const saveRecording = async (record: {
   duration_seconds?: number | null;
   is_favorite?: boolean;
   recorded_at?: string | null;
+  recording_type?: 'performance' | 'lesson'; // 録音種類
 }) => {
   try {
     logger.debug('録音保存開始:', {
@@ -592,6 +593,7 @@ export const saveRecording = async (record: {
       is_favorite: record.is_favorite ?? false,
       recorded_at: record.recorded_at ?? new Date().toISOString(),
       created_at: new Date().toISOString(),
+      recording_type: record.recording_type ?? 'performance', // デフォルトは演奏録音
     };
 
     logger.debug('保存ペイロード:', payload);
@@ -643,7 +645,8 @@ export const listRecordingsByMonth = async (
 export const listAllRecordings = async (
   userId: string,
   instrumentId?: string | null,
-  range?: { from: number; to: number }
+  range?: { from: number; to: number },
+  recordingType?: 'performance' | 'lesson' | null // 録音種類でフィルタリング
 ) => {
   try {
     let query = supabase
@@ -654,6 +657,11 @@ export const listAllRecordings = async (
     // 楽器IDが指定されている場合はフィルタリング
     if (instrumentId) {
       query = query.eq('instrument_id', instrumentId);
+    }
+    
+    // 録音種類が指定されている場合はフィルタリング
+    if (recordingType) {
+      query = query.eq('recording_type', recordingType);
     }
     
     query = query.order('recorded_at', { ascending: false });
