@@ -6,37 +6,43 @@ import { useSegments } from 'expo-router';
 import { useAuthAdvanced } from '../../hooks/useAuthAdvanced';
 import { View, ActivityIndicator } from 'react-native';
 
-// タブのアイコンとタイトルを定義
+// タブのアイコンとタイトルを定義（順序: 目標、タイマー、カレンダー、チューナー、音楽団体、その他）
 const TAB_CONFIG = [
   {
-    name: 'index',
-    icon: Calendar,
-    titleKey: 'calendar',
+    name: 'goals',
+    icon: Target,
+    titleKey: 'goals',
+    label: '目標',
   },
   {
     name: 'timer',
     icon: Timer,
     titleKey: 'timer',
+    label: 'タイマー',
   },
   {
-    name: 'goals',
-    icon: Target,
-    titleKey: 'goals',
+    name: 'index',
+    icon: Calendar,
+    titleKey: 'calendar',
+    label: 'カレンダー',
   },
   {
     name: 'tuner',
     icon: Zap,
     titleKey: 'tuner',
+    label: 'チューナー',
   },
   {
     name: 'share',
     icon: Share2,
     titleKey: 'share',
+    label: '音楽団体',
   },
   {
     name: 'settings',
     icon: Settings,
     titleKey: 'settings',
+    label: 'その他',
   },
 ] as const;
 
@@ -192,7 +198,7 @@ export default function TabLayout() {
             key={tab.name}
             name={tab.name}
             options={{
-              title: t(tab.titleKey),
+              title: tab.label || t(tab.titleKey), // 日本語ラベルを優先使用
               tabBarIcon: ({ size, color }) => (
                 <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                   <IconComponent size={size ? size * 1.3 : 32} color={color} />

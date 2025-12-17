@@ -191,6 +191,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
     content: string;
     existingRecordings: typeof existingRecordings;
   } | null>(null); // 録音画面に移動する前のフォーム状態と録音状態
+  const [initialAudioRecorderType, setInitialAudioRecorderType] = useState<'performance' | 'lesson'>('performance'); // AudioRecorderの初期録音種類
   
   // 開始時刻・終了時刻の状態（デフォルト値を設定）
   const [startTime, setStartTime] = useState<{ hours: number; minutes: number } | null>({ hours: 13, minutes: 0 });
@@ -1677,64 +1678,98 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             {/* 録音済み情報がある場合：複数の録音を表示 */}
             {existingRecordings.length > 0 && !audioUrl && !videoUrl ? (
               <View style={styles.existingRecordingsContainer}>
-                {existingRecordings.map((recording, index) => (
-                  <View key={recording.id} style={styles.existingRecordingContainer}>
-                    <View style={styles.recordingInfoHeader}>
-                      <Mic size={16} color="#8B4513" />
-                      <Text style={styles.existingRecordingText}>
-                        録音{index + 1}: {recording.title}
-                      </Text>
-                    </View>
-                    <Text style={styles.recordingDurationText}>
-                      録音時間: {Math.floor(recording.duration / 60)}分{recording.duration % 60}秒
-                    </Text>
-                    <View style={styles.recordingActions}>
-                      {/* 再生ボタン */}
-                      {recording.file_path ? (
+                {/* 録音1と録音2を常に2つ表示 */}
+                {[0, 1].map((slotIndex) => {
+                  const recording = existingRecordings[slotIndex];
+                  if (recording) {
+                    // 録音済みの場合
+                    return (
+                      <View key={recording.id} style={styles.existingRecordingContainer}>
+                        <View style={styles.recordingInfoHeader}>
+                          <Mic size={16} color="#8B4513" />
+                          <Text style={styles.existingRecordingText}>
+                            録音{slotIndex + 1}: {recording.title}
+                          </Text>
+                        </View>
+                        <Text style={styles.recordingDurationText}>
+                          録音時間: {Math.floor(recording.duration / 60)}分{recording.duration % 60}秒
+                        </Text>
+                        {recording.recording_type && (
+                          <Text style={styles.recordingTypeText}>
+                            種類: {recording.recording_type === 'lesson' ? 'レッスン録音' : '演奏録音'}
+                          </Text>
+                        )}
+                        <View style={styles.recordingActions}>
+                          {/* 再生ボタン */}
+                          {recording.file_path ? (
+                            <TouchableOpacity
+                              style={[styles.playButton, { 
+                                backgroundColor: playingRecordingId === recording.id 
+                                  ? '#FF9800' 
+                                  : currentTheme.primary 
+                              }]}
+                              onPress={() => {
+                                if (recording.file_path) {
+                                  playRecording(recording.id, recording.file_path);
+                                }
+                              }}
+                              activeOpacity={0.7}
+                            >
+                              {playingRecordingId === recording.id ? (
+                                <>
+                                  <Pause size={16} color="#FFFFFF" />
+                                  <Text style={styles.playButtonText}>停止</Text>
+                                </>
+                              ) : (
+                                <>
+                                  <Play size={16} color="#FFFFFF" />
+                                  <Text style={styles.playButtonText}>再生</Text>
+                                </>
+                              )}
+                            </TouchableOpacity>
+                          ) : null}
+                          <TouchableOpacity
+                            style={styles.rerecordButtonInExisting}
+                            onPress={() => {
+                              // 録音画面に移動する前に、現在のフォーム状態と録音状態を保存
+                              setFormStateBeforeRecording({
+                                minutes: minutes,
+                                content: content,
+                                existingRecordings: existingRecordings
+                              });
+                              setSelectedRecordingSlot(slotIndex);
+                              setShowAudioRecorder(true);
+                            }}
+                          >
+                            <Text style={styles.rerecordButtonText}>再録音</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  } else {
+                    // 録音されていない場合、録音ボタンを表示
+                    return (
+                      <View key={`empty-${slotIndex}`} style={styles.emptyRecordingSlot}>
                         <TouchableOpacity
-                          style={[styles.playButton, { 
-                            backgroundColor: playingRecordingId === recording.id 
-                              ? '#FF9800' 
-                              : currentTheme.primary 
-                          }]}
+                          style={styles.recordButton}
                           onPress={() => {
-                            if (recording.file_path) {
-                              playRecording(recording.id, recording.file_path);
-                            }
+                            setFormStateBeforeRecording({
+                              minutes: minutes,
+                              content: content,
+                              existingRecordings: existingRecordings
+                            });
+                            setSelectedRecordingSlot(slotIndex);
+                            setInitialAudioRecorderType('performance');
+                            setShowAudioRecorder(true);
                           }}
-                          activeOpacity={0.7}
                         >
-                          {playingRecordingId === recording.id ? (
-                            <>
-                              <Pause size={16} color="#FFFFFF" />
-                              <Text style={styles.playButtonText}>停止</Text>
-                            </>
-                          ) : (
-                            <>
-                              <Play size={16} color="#FFFFFF" />
-                              <Text style={styles.playButtonText}>再生</Text>
-                            </>
-                          )}
+                          <Mic size={20} color="#8B4513" />
+                          <Text style={styles.recordButtonText}>録音で記録{slotIndex + 1}</Text>
                         </TouchableOpacity>
-                      ) : null}
-                      <TouchableOpacity
-                        style={styles.rerecordButtonInExisting}
-                        onPress={() => {
-                          // 録音画面に移動する前に、現在のフォーム状態と録音状態を保存
-                          setFormStateBeforeRecording({
-                            minutes: minutes,
-                            content: content,
-                            existingRecordings: existingRecordings
-                          });
-                          setSelectedRecordingSlot(index);
-                          setShowAudioRecorder(true);
-                        }}
-                      >
-                        <Text style={styles.rerecordButtonText}>再録音</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
+                      </View>
+                    );
+                  }
+                })}
               </View>
             ) : audioUrl && existingRecordings.length === 0 ? (
               // 新しく録音したがまだ保存していない場合
@@ -1945,6 +1980,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           }}
           onRecordingSaved={onRecordingSaved}
           selectedDate={selectedDate}
+          initialRecordingType={initialAudioRecorderType}
         />
       </Modal>
 
@@ -2547,6 +2583,34 @@ const styles = StyleSheet.create({
     color: '#4CAF50',
     fontWeight: '500',
     marginLeft: 22,
+    marginTop: 4,
+  },
+  recordingTypeText: {
+    fontSize: 12,
+    color: '#8B4513',
+    fontWeight: '500',
+    marginLeft: 22,
+    marginTop: 4,
+  },
+  emptyRecordingSlot: {
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderStyle: 'dashed',
+  },
+  recordButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+  },
+  recordButtonText: {
+    fontSize: 14,
+    color: '#8B4513',
+    fontWeight: '600',
   },
   timerIndicator: {
     fontSize: 14,
