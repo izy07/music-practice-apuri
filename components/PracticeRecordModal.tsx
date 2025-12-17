@@ -1193,14 +1193,14 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   const handleDeleteRecord = () => {
     logger.debug('削除ボタンが押されました', {
       existingRecord: !!existingRecord,
-      existingRecording: !!existingRecording,
+      existingRecordingsCount: existingRecordings.length,
       existingRecordId: existingRecord?.id,
-      existingRecordingId: existingRecording?.id
+      existingRecordingsIds: existingRecordings.map(r => r.id)
     });
     
     // 削除可能な項目を確認
     const canDeletePractice = !!existingRecord;
-    const canDeleteRecording = !!existingRecording;
+    const canDeleteRecording = existingRecordings.length > 0;
 
     if (!canDeletePractice && !canDeleteRecording) {
       Alert.alert('情報', '削除できる項目がありません');
@@ -1285,15 +1285,16 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
 
   const deleteRecordingOnly = async () => {
     try {
-      if (!existingRecording) {
+      if (existingRecordings.length === 0) {
         Alert.alert('情報', '削除できる演奏録音がありません');
         return;
       }
 
       // 確認メッセージを表示（その日のカレンダー録音データも削除されることを明示）
+      const recordingCount = existingRecordings.length;
       Alert.alert(
         '録音データの削除',
-        'この録音データを削除しますか？\n\nこの日のカレンダーに表示されている録音データも削除されます。\n\nこの操作は取り消すことができません。',
+        `${recordingCount}個の録音データを削除しますか？\n\nこの日のカレンダーに表示されている録音データも削除されます。\n\nこの操作は取り消すことができません。`,
         [
           { text: 'キャンセル', style: 'cancel' },
           { 
@@ -1301,15 +1302,19 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             style: 'destructive', 
             onPress: async () => {
               try {
-                const { error } = await deleteRecording(existingRecording.id);
-                if (error) {
-                  Alert.alert('エラー', '演奏録音の削除に失敗しました');
+                // すべての録音を削除
+                const deletePromises = existingRecordings.map(recording => deleteRecording(recording.id));
+                const results = await Promise.all(deletePromises);
+                
+                const errors = results.filter(r => r && r.error);
+                if (errors.length > 0) {
+                  Alert.alert('エラー', `${errors.length}個の録音の削除に失敗しました`);
                   return;
                 }
 
                 // ローカル状態をリセット
                 setAudioUrl('');
-                setExistingRecording(null);
+                setExistingRecordings([]);
                 setAudioTitle('');
                 setAudioMemo('');
                 setIsAudioFavorite(false);
@@ -1405,17 +1410,21 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             }
 
             // 録音ファイルも削除
-            if (existingRecording) {
-              logger.debug('録音を削除します:', existingRecording.id);
-              const { error: recordingError } = await deleteRecording(existingRecording.id);
-              if (recordingError) {
-                logger.error('録音の削除エラー:', recordingError);
-                recordingDeleteError = recordingError;
+            if (existingRecordings.length > 0) {
+              logger.debug('録音を削除します:', existingRecordings.map(r => r.id));
+              // すべての録音を削除
+              const deletePromises = existingRecordings.map(recording => deleteRecording(recording.id));
+              const results = await Promise.all(deletePromises);
+              
+              const errors = results.filter(r => r && r.error);
+              if (errors.length > 0) {
+                logger.error('録音の削除エラー:', errors);
+                recordingDeleteError = errors[0].error;
               } else {
                 recordingDeleteSuccess = true;
                 logger.debug('録音の削除に成功しました');
                 setAudioUrl('');
-                setExistingRecording(null);
+                setExistingRecordings([]);
               }
             } else {
               // 削除する録音がない場合も成功とみなす
@@ -2020,7 +2029,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 </TouchableOpacity>
               )}
               
-              {existingRecording && (
+              {existingRecordings.length > 0 && (
                 <TouchableOpacity
                   style={[styles.deleteModalButton, styles.deleteModalButtonDestructive]}
                   onPress={() => {
@@ -2033,13 +2042,13 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 </TouchableOpacity>
               )}
               
-              {existingRecord && existingRecording && (
+              {existingRecord && existingRecordings.length > 0 && (
                 <TouchableOpacity
                   style={[styles.deleteModalButton, styles.deleteModalButtonDestructive]}
                   onPress={() => {
                     logger.debug('両方削除ボタンが押されました', {
                       existingRecord: !!existingRecord,
-                      existingRecording: !!existingRecording
+                      existingRecordingsCount: existingRecordings.length
                     });
                     setShowDeleteModal(false);
                     deleteBoth();
