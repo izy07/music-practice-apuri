@@ -584,6 +584,7 @@ export default function CalendarScreen() {
             duration_seconds: null,
             is_favorite: false,
             recorded_at: practiceDate.toISOString(),
+            recording_type: 'performance', // デフォルトは演奏録音
           });
           logger.info('録音/動画を録音ライブラリに保存しました');
         } catch (recordingError) {

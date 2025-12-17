@@ -9,6 +9,11 @@ import { View, ActivityIndicator } from 'react-native';
 // タブのアイコンとタイトルを定義
 const TAB_CONFIG = [
   {
+    name: 'index',
+    icon: Calendar,
+    titleKey: 'calendar',
+  },
+  {
     name: 'timer',
     icon: Timer,
     titleKey: 'timer',
@@ -17,11 +22,6 @@ const TAB_CONFIG = [
     name: 'goals',
     icon: Target,
     titleKey: 'goals',
-  },
-  {
-    name: 'index',
-    icon: Calendar,
-    titleKey: 'calendar',
   },
   {
     name: 'tuner',
@@ -44,7 +44,6 @@ const TAB_CONFIG = [
 const VISIBLE_TAB_NAMES = TAB_CONFIG.map(tab => tab.name);
 
 // 非表示にするタブ（タブバーに表示されない画面）
-// 注意: basic-practiceは削除（index.tsxが直接Screenとして認識されるため重複を避ける）
 const HIDDEN_TABS = [
   'statistics',
   'instrument-selection',
@@ -57,7 +56,7 @@ const HIDDEN_TABS = [
   'music-dictionary',
   'my-library',
   'recordings-library',
-  // 'main-settings', // 一時的にコメントアウト - キャッシュがクリアされたら再度有効化
+  'main-settings',
   'terms-of-service',
   'privacy-policy',
   'legal-info',
@@ -66,7 +65,7 @@ const HIDDEN_TABS = [
   'pricing-plans',
   'score-auto-scroll',
   'help-support',
-  // 'basic-practice', // 削除: index.tsxが直接Screenとして認識されるため重複を避ける
+  'basic-practice',
   'room',
   'support',
   'org-overview',
@@ -77,7 +76,6 @@ export default function TabLayout() {
   const { currentTheme } = useInstrumentTheme();
   const segments = useSegments();
   const { isAuthenticated, isLoading } = useAuthAdvanced();
-  const { Platform } = require('react-native');
 
   // 特定の画面ではタブバーを非表示
   const shouldHideTabBar = segments.some(
@@ -85,9 +83,13 @@ export default function TabLayout() {
   );
 
   // 認証チェック
-  // 読み込み中でもコンテンツを表示（リロード時も現在の画面を維持）
-  // 未認証で読み込み完了した場合のみ、認証画面に遷移（app/_layout.tsxで処理される）
-  // 読み込み中は常にコンテンツを表示
+  if (isLoading || !isAuthenticated) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={currentTheme.primary} />
+      </View>
+    );
+  }
 
   return (
     <Tabs
@@ -222,8 +224,6 @@ export default function TabLayout() {
           }}
         />
       ))}
-      
-      {/* basic-practiceは登録しない（index.tsxが自動的にbasic-practiceとして認識される） */}
     </Tabs>
   );
 }

@@ -1061,6 +1061,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       setIsAudioFavorite(false);
       setAudioDuration(0);
       setSelectedRecordingSlot(null); // 録音スロットをクリア
+      // recordingTypeも保存（次回の録音保存時に使用）
+      if (audioData.recordingType) {
+        setAudioRecordingType(audioData.recordingType);
+      }
       
       logger.debug('録音情報を即座に状態に設定しました（録音済み状態を表示）:', {
         id: audioData.recordingId,
@@ -1105,6 +1109,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       setIsAudioFavorite(audioData.isFavorite);
       setAudioDuration(audioData.duration);
       setAudioUrl(audioData.audioUrl);
+      // recordingTypeも保存
+      if (audioData.recordingType) {
+        setAudioRecordingType(audioData.recordingType);
+      }
     }
     
     setVideoUrl(''); // 録音されたら動画URLをクリア
@@ -1122,6 +1130,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       setAudioMemo('');
       setIsAudioFavorite(false);
       setAudioDuration(0);
+      setAudioRecordingType('performance'); // デフォルトにリセット
     }
   };
 
@@ -1234,8 +1243,9 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         .eq('user_id', user.id)
         .eq('practice_date', practiceDate);
       
-      if (selectedInstrument) {
-        query = query.eq('instrument_id', selectedInstrument);
+      const instrumentId = getInstrumentId(selectedInstrument);
+      if (instrumentId) {
+        query = query.eq('instrument_id', instrumentId);
       } else {
         query = query.is('instrument_id', null);
       }
@@ -1373,8 +1383,9 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
               .eq('user_id', user.id)
               .eq('practice_date', practiceDate);
             
-            if (selectedInstrument) {
-              query = query.eq('instrument_id', selectedInstrument);
+            const instrumentId = getInstrumentId(selectedInstrument);
+            if (instrumentId) {
+              query = query.eq('instrument_id', instrumentId);
             } else {
               query = query.is('instrument_id', null);
             }
@@ -1735,6 +1746,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 </View>
                 {audioMemo && <Text style={styles.audioMemo}>{audioMemo}</Text>}
                 <Text style={styles.audioDuration}>録音時間: {Math.floor(audioDuration / 60)}分{audioDuration % 60}秒</Text>
+                {/* 録音種類表示 */}
+                <Text style={styles.audioRecordingTypeText}>
+                  種類: {audioRecordingType === 'performance' ? '演奏録音' : 'レッスン録音'}
+                </Text>
                 <View style={styles.audioButtons}>
                   <TouchableOpacity
                     style={styles.audioSaveButton}
@@ -2368,6 +2383,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666666',
     fontWeight: '400',
+    marginBottom: 6,
+  },
+  audioRecordingTypeText: {
+    fontSize: 13,
+    color: '#8B4513',
+    fontWeight: '500',
     marginBottom: 10,
   },
   rerecordButton: {

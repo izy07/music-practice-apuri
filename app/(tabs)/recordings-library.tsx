@@ -23,6 +23,7 @@ import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { safeGoBack } from '@/lib/navigationUtils';
 import { createShadowStyle } from '@/lib/shadowStyles';
+import { getInstrumentId } from '@/lib/instrumentUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -35,6 +36,7 @@ interface Recording {
   is_favorite: boolean;
   recorded_at: string;
   created_at: string;
+  recording_type?: 'performance' | 'lesson'; // 録音種類
 }
 
 type TimeFilter = 'all' | '1week' | '1month' | '3months' | '6months' | '1year';
@@ -108,8 +110,8 @@ export default function RecordingsLibraryScreen() {
       
       if (user) {
         // コンテキストから楽器IDを取得（DBアクセス不要）
-        const instrumentId = selectedInstrument || null;
-        logger.debug('録音データ取得開始', { userId: user.id, instrumentId });
+        const instrumentId = getInstrumentId(selectedInstrument) || null;
+        logger.debug('録音データ取得開始', { userId: user.id, instrumentId, selectedInstrument });
         
         const { data, error } = await listAllRecordings(user.id, instrumentId, undefined, recordingTypeFilter === 'all' ? null : recordingTypeFilter);
         if (error) {

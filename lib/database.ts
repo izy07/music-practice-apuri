@@ -416,7 +416,7 @@ export const getRecordingsByDate = async (
     
     let query = supabase
       .from('recordings')
-      .select('id, title, duration_seconds, file_path, recorded_at, instrument_id')
+      .select('id, title, duration_seconds, file_path, recorded_at, instrument_id, recording_type')
       .eq('user_id', userId)
       .gte('recorded_at', startOfDay.toISOString())
       .lte('recorded_at', endOfDay.toISOString());
@@ -605,8 +605,30 @@ export const saveRecording = async (record: {
       .single();
 
     if (error) {
-      ErrorHandler.handle(error, 'Supabase保存', false);
-      throw error;
+      // recording_typeカラムが存在しないエラーの場合、recording_typeなしで保存を試行
+      if (error.message?.includes('recording_type') || error.code === '42703' || error.message?.includes('column "recording_type" does not exist')) {
+        logger.warn('recording_typeカラムが存在しません。recording_typeなしで保存を試行します。', error);
+        // recording_typeを削除して再試行
+        const payloadWithoutType = { ...payload };
+        delete payloadWithoutType.recording_type;
+        
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('recordings')
+          .insert(payloadWithoutType)
+          .select()
+          .single();
+        
+        if (fallbackError) {
+          ErrorHandler.handle(fallbackError, 'Supabase保存（フォールバック）', false);
+          throw fallbackError;
+        }
+        
+        logger.debug('録音保存成功（recording_typeなし）:', fallbackData);
+        return { data: fallbackData, error: null };
+      } else {
+        ErrorHandler.handle(error, 'Supabase保存', false);
+        throw error;
+      }
     }
 
     logger.debug('録音保存成功:', data);
