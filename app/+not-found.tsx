@@ -68,26 +68,49 @@ export default function NotFoundScreen() {
           router.replace(pathWithoutBase as any);
         }, 100);
       } else {
-        // ルートパスに遷移
-        logger.debug('NotFoundScreen: ルートパスに遷移');
+        // ルートパスまたは存在しないパスの場合は、ログイン画面にリダイレクト
+        logger.debug('NotFoundScreen: ログイン画面にリダイレクト');
         setTimeout(() => {
-          router.replace('/' as any);
+          try {
+            router.replace('/auth/login' as any);
+          } catch (error) {
+            logger.error('NotFoundScreen: ログイン画面への遷移エラー', error);
+            // フォールバック: ルートパスに遷移
+            router.replace('/' as any);
+          }
         }, 100);
       }
+    } else {
+      // Web環境以外の場合もログイン画面にリダイレクト
+      logger.debug('NotFoundScreen: ログイン画面にリダイレクト（非Web環境）');
+      setTimeout(() => {
+        try {
+          router.replace('/auth/login' as any);
+        } catch (error) {
+          logger.error('NotFoundScreen: ログイン画面への遷移エラー', error);
+          router.replace('/' as any);
+        }
+      }, 100);
     }
   }, [router, segments]);
   
   const handleGoHome = () => {
-    // ルートパスに遷移（認証フローで適切な画面にリダイレクトされる）
-    router.replace('/' as any);
+    // ログイン画面に遷移
+    try {
+      router.replace('/auth/login' as any);
+    } catch (error) {
+      logger.error('NotFoundScreen: ログイン画面への遷移エラー', error);
+      // フォールバック: ルートパスに遷移
+      router.replace('/' as any);
+    }
   };
   
   return (
     <>
       <Stack.Screen options={{ title: 'Oops!' }} />
       <View style={styles.container}>
-        <Text style={styles.text}>This screen doesn't exist.</Text>
-        <Text style={styles.subText}>リダイレクト中...</Text>
+        <Text style={styles.text}>ページが見つかりません</Text>
+        <Text style={styles.subText}>ログイン画面にリダイレクト中...</Text>
         <TouchableOpacity onPress={handleGoHome} style={styles.link}>
           <Text style={styles.linkText}>Go to home screen!</Text>
         </TouchableOpacity>

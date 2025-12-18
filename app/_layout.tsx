@@ -629,7 +629,16 @@ function RootLayoutContent() {
       // ルートパス（/）にアクセスした場合も、ログイン画面にリダイレクト
       if (isAtRoot || !isInAuthGroup) {
         logger.debug('未認証ユーザー - ログイン画面にリダイレクト', { isAtRoot, isInAuthGroup });
-        router.replace('/auth/login');
+        try {
+          router.replace('/auth/login');
+        } catch (error) {
+          logger.error('ログイン画面への遷移エラー:', error);
+          // エラー時はルートパスに遷移（認証フローで自動的にログイン画面にリダイレクトされる）
+          if (isAtRoot) {
+            return; // 既にルートにいる場合は何もしない
+          }
+          router.replace('/');
+        }
       }
       return;
     }
