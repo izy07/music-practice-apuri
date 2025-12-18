@@ -1,11 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Globe } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useLanguage } from '@/components/LanguageContext';
+import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { safeGoBack } from '@/lib/navigationUtils';
 import { saveLanguageSetting } from '@/lib/database';
+import { getInstrumentSpecificSettings, saveInstrumentSpecificSettings } from '@/repositories/userSettingsRepository';
 import { supabase } from '@/lib/supabase';
 
 // 多言語対応のテキスト
@@ -35,8 +37,32 @@ const getTexts = (lang: 'ja' | 'en') => ({
 export default function LanguageSettingsScreen() {
   const router = useRouter();
   const { language, setLanguage } = useLanguage();
+  const { selectedInstrument } = useInstrumentTheme();
   const [selectedLanguage, setSelectedLanguage] = useState(language);
   const [isLoading, setIsLoading] = useState(false);
+  
+  // 楽器ごとの言語設定を読み込む
+  useEffect(() => {
+    const loadInstrumentLanguage = async () => {
+      if (!selectedInstrument) return;
+      
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        
+        const instrumentSettingsResult = await getInstrumentSpecificSettings(user.id, selectedInstrument);
+        if (instrumentSettingsResult.data && instrumentSettingsResult.data.language) {
+          setSelectedLanguage(instrumentSettingsResult.data.language);
+          await setLanguage(instrumentSettingsResult.data.language);
+        }
+      } catch (error) {
+        // エラーは無視（デフォルト言語を使用）
+        console.warn('楽器ごとの言語設定読み込みエラー:', error);
+      }
+    };
+    
+    loadInstrumentLanguage();
+  }, [selectedInstrument, setLanguage]);
   
   // フォールバックテーマを定義
   const fallbackTheme = {
@@ -79,9 +105,31 @@ export default function LanguageSettingsScreen() {
         return;
       }
 
-      const { error: dbError } = await saveLanguageSetting(user.id, newLanguage);
-      if (dbError) {
-        Alert.alert(texts.warning, texts.errorMessages.saveFailed);
+      // 楽器ごとの言語設定を保存（楽器が選択されている場合）
+      if (selectedInstrument) {
+        const instrumentSettingsResult = await getInstrumentSpecificSettings(user.id, selectedInstrument);
+        const existingSettings = instrumentSettingsResult.data || {};
+        
+        const updatedSettings = {
+          ...existingSettings,
+          language: newLanguage,
+        };
+        
+        const saveResult = await saveInstrumentSpecificSettings(
+          user.id,
+          selectedInstrument,
+          updatedSettings
+        );
+        
+        if (saveResult.error) {
+          Alert.alert(texts.warning, texts.errorMessages.saveFailed);
+        }
+      } else {
+        // 楽器が選択されていない場合は、従来通り共通の言語設定を保存
+        const { error: dbError } = await saveLanguageSetting(user.id, newLanguage);
+        if (dbError) {
+          Alert.alert(texts.warning, texts.errorMessages.saveFailed);
+        }
       }
 
       await setLanguage(newLanguage);
@@ -90,7 +138,7 @@ export default function LanguageSettingsScreen() {
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, texts, setLanguage]);
+  }, [isLoading, texts, setLanguage, selectedInstrument]);
 
   const goBack = useCallback(() => {
     safeGoBack('/(tabs)/settings', true); // 強制的にsettings画面に戻る

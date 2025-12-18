@@ -445,6 +445,24 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         .maybeSingle();
       
       if (profileError) {
+        // 認証エラーの場合はログイン画面にリダイレクト
+        if (profileError.code === '401' || profileError.code === 'PGRST301' || profileError.message?.includes('JWT') || profileError.message?.includes('expired')) {
+          logger.warn('ユーザー取得エラー: 認証が無効です。ログイン画面にリダイレクトします。', { error: profileError });
+          // 認証状態をクリア
+          await supabase.auth.signOut();
+          updateAuthState({
+            user: null,
+            isAuthenticated: false,
+            isLoading: false,
+            isInitialized: true,
+            error: null,
+          });
+          // ログイン画面にリダイレクト
+          if (typeof router !== 'undefined') {
+            router.replace('/auth/login');
+          }
+          return null;
+        }
         // 400エラー（カラムが存在しない）の場合は、カラムが存在しないものとして処理
         if (profileError.status === 400 || profileError.code === 'PGRST116' || profileError.code === 'PGRST205') {
           // カラムが存在しないエラーの場合は、デフォルト値を使用して処理を続行

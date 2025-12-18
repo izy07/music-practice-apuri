@@ -103,8 +103,8 @@ export default function LoginScreen() {
       
       // 適切な画面に遷移
       if (canAccessMainApp()) {
-        logger.debug('メイン画面に遷移');
-        router.replace('/(tabs)/');
+        logger.debug('カレンダー画面に遷移');
+        router.replace('/(tabs)/index');
       } else if (needsTutorial()) {
         logger.debug('チュートリアル画面に遷移');
         router.replace('/(tabs)/tutorial');

@@ -11,7 +11,7 @@ import SafeView from '@/components/SafeView';
 import * as ImagePicker from 'expo-image-picker';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
-import { getUserProfile, upsertUserProfile, updateAvatarUrl, getCurrentUser, deleteBreakPeriod, deletePastOrganization, deleteAward, deletePerformance } from '@/repositories/userRepository';
+import { getUserProfile, upsertUserProfile, updateAvatarUrl, getCurrentUser, deleteBreakPeriod, deletePastOrganization, deleteAward, deletePerformance, getInstrumentSpecificProfileData, saveInstrumentSpecificProfileData } from '@/repositories/userRepository';
 import type { UserProfile } from '@/types/models';
 import { supabase } from '@/lib/supabase';
 import PastOrgEditorModal from '@/components/profile-settings/PastOrgEditorModal';
@@ -29,7 +29,7 @@ try {
 export default function ProfileSettingsScreen() {
   const router = useRouter();
   const { isAuthenticated, isLoading, fetchUserProfile } = useAuthAdvanced();
-  const { currentTheme } = useInstrumentTheme();
+  const { currentTheme, selectedInstrument } = useInstrumentTheme();
   
   // 全てのuseStateフックを最初に呼び出す
   const [loading, setLoading] = useState(false);
@@ -126,9 +126,9 @@ export default function ProfileSettingsScreen() {
           setDisplayName(resolvedNickname);
           setNickname(resolvedNickname); // 新規登録時のニックネームを表示
           setAvatarUrl(profile.avatar_url || null);
+          
+          // ニックネーム、現在の所属団体、年齢は楽器に関係なく共通データとして読み込む
           setCurrentAge(profile.current_age ? profile.current_age.toString() : '');
-          setMusicStartAge(profile.music_start_age ? profile.music_start_age.toString() : '');
-          setMusicExperienceYears(profile.music_experience_years || 0);
           const bday = profile.birthday ? new Date(profile.birthday) : null;
           setBirthday(bday);
           if (bday) {
@@ -151,43 +151,129 @@ export default function ProfileSettingsScreen() {
             );
           }
           
-          // 楽器の種類を読み込み（カンマ区切りから配列に変換）
-          const customInstrumentName = (profile as any).custom_instrument_name;
-          if (customInstrumentName) {
-            const types = customInstrumentName.split(',').filter((name: string) => name.trim() !== '');
-            setInstrumentTypes(
-              types.length > 0 
-                ? types.map((name: string, index: number) => ({ id: (index + 1).toString(), name: name.trim() }))
-                : [
-                    { id: '1', name: '' },
-                  ]
-            );
-          }
-          
-          // 経歴・実績データを読み込み（Supabaseから）
-          // 型安全なアクセス: career_dataの存在を確認
-          const profileWithCareer = profile as { career_data?: {
-            pastOrganizationsUi?: Array<{ id?: string; name: string; startYm: string; endYm: string }>;
-            awardsUi?: Array<{ id?: string; title: string; dateYm: string; result: string }>;
-            performancesUi?: Array<{ id?: string; title: string }>;
-          } };
-          
-          if (profileWithCareer?.career_data) {
-            const careerData = profileWithCareer.career_data;
-            if (careerData.pastOrganizationsUi && Array.isArray(careerData.pastOrganizationsUi)) {
-              setPastOrgs(careerData.pastOrganizationsUi.length > 0 
-                ? careerData.pastOrganizationsUi 
-                : [{ id: undefined, name: '', startYm: '', endYm: '' }]);
+          // 楽器ごとのデータを読み込む（現在選択されている楽器がある場合のみ）
+          if (selectedInstrument) {
+            const instrumentDataResult = await getInstrumentSpecificProfileData(user.id, selectedInstrument);
+            if (instrumentDataResult.data) {
+              const instrumentData = instrumentDataResult.data;
+              
+              // 楽器ごとのデータを設定
+              if (instrumentData.music_start_age !== undefined) {
+                setMusicStartAge(instrumentData.music_start_age.toString());
+              }
+              if (instrumentData.music_experience_years !== undefined) {
+                setMusicExperienceYears(instrumentData.music_experience_years);
+              }
+              if (instrumentData.custom_instrument_name) {
+                const types = instrumentData.custom_instrument_name.split(',').filter((name: string) => name.trim() !== '');
+                setInstrumentTypes(
+                  types.length > 0 
+                    ? types.map((name: string, index: number) => ({ id: (index + 1).toString(), name: name.trim() }))
+                    : [
+                        { id: '1', name: '' },
+                      ]
+                );
+              }
+              if (instrumentData.career_data) {
+                const careerData = instrumentData.career_data;
+                if (careerData.pastOrganizationsUi && Array.isArray(careerData.pastOrganizationsUi)) {
+                  setPastOrgs(careerData.pastOrganizationsUi.length > 0 
+                    ? careerData.pastOrganizationsUi 
+                    : [{ id: undefined, name: '', startYm: '', endYm: '' }]);
+                }
+                if (careerData.awardsUi && Array.isArray(careerData.awardsUi)) {
+                  setAwardsEdit(careerData.awardsUi.length > 0 
+                    ? careerData.awardsUi 
+                    : [{ id: undefined, title: '', dateYm: '', result: '' }]);
+                }
+                if (careerData.performancesUi && Array.isArray(careerData.performancesUi)) {
+                  setPerformancesEdit(careerData.performancesUi.length > 0 
+                    ? careerData.performancesUi 
+                    : [{ id: undefined, title: '' }]);
+                }
+              }
+            } else {
+              // 楽器ごとのデータが存在しない場合は、既存のデータを読み込む（後方互換性）
+              setMusicStartAge(profile.music_start_age ? profile.music_start_age.toString() : '');
+              setMusicExperienceYears(profile.music_experience_years || 0);
+              const customInstrumentName = (profile as any).custom_instrument_name;
+              if (customInstrumentName) {
+                const types = customInstrumentName.split(',').filter((name: string) => name.trim() !== '');
+                setInstrumentTypes(
+                  types.length > 0 
+                    ? types.map((name: string, index: number) => ({ id: (index + 1).toString(), name: name.trim() }))
+                    : [
+                        { id: '1', name: '' },
+                      ]
+                );
+              }
+              
+              // 経歴・実績データを読み込み（Supabaseから）
+              const profileWithCareer = profile as { career_data?: {
+                pastOrganizationsUi?: Array<{ id?: string; name: string; startYm: string; endYm: string }>;
+                awardsUi?: Array<{ id?: string; title: string; dateYm: string; result: string }>;
+                performancesUi?: Array<{ id?: string; title: string }>;
+              } };
+              
+              if (profileWithCareer?.career_data) {
+                const careerData = profileWithCareer.career_data;
+                if (careerData.pastOrganizationsUi && Array.isArray(careerData.pastOrganizationsUi)) {
+                  setPastOrgs(careerData.pastOrganizationsUi.length > 0 
+                    ? careerData.pastOrganizationsUi 
+                    : [{ id: undefined, name: '', startYm: '', endYm: '' }]);
+                }
+                if (careerData.awardsUi && Array.isArray(careerData.awardsUi)) {
+                  setAwardsEdit(careerData.awardsUi.length > 0 
+                    ? careerData.awardsUi 
+                    : [{ id: undefined, title: '', dateYm: '', result: '' }]);
+                }
+                if (careerData.performancesUi && Array.isArray(careerData.performancesUi)) {
+                  setPerformancesEdit(careerData.performancesUi.length > 0 
+                    ? careerData.performancesUi 
+                    : [{ id: undefined, title: '' }]);
+                }
+              }
             }
-            if (careerData.awardsUi && Array.isArray(careerData.awardsUi)) {
-              setAwardsEdit(careerData.awardsUi.length > 0 
-                ? careerData.awardsUi 
-                : [{ id: undefined, title: '', dateYm: '', result: '' }]);
+          } else {
+            // 楽器が選択されていない場合は、既存のデータを読み込む（後方互換性）
+            setMusicStartAge(profile.music_start_age ? profile.music_start_age.toString() : '');
+            setMusicExperienceYears(profile.music_experience_years || 0);
+            const customInstrumentName = (profile as any).custom_instrument_name;
+            if (customInstrumentName) {
+              const types = customInstrumentName.split(',').filter((name: string) => name.trim() !== '');
+              setInstrumentTypes(
+                types.length > 0 
+                  ? types.map((name: string, index: number) => ({ id: (index + 1).toString(), name: name.trim() }))
+                  : [
+                      { id: '1', name: '' },
+                    ]
+              );
             }
-            if (careerData.performancesUi && Array.isArray(careerData.performancesUi)) {
-              setPerformancesEdit(careerData.performancesUi.length > 0 
-                ? careerData.performancesUi 
-                : [{ id: undefined, title: '' }]);
+            
+            // 経歴・実績データを読み込み（Supabaseから）
+            const profileWithCareer = profile as { career_data?: {
+              pastOrganizationsUi?: Array<{ id?: string; name: string; startYm: string; endYm: string }>;
+              awardsUi?: Array<{ id?: string; title: string; dateYm: string; result: string }>;
+              performancesUi?: Array<{ id?: string; title: string }>;
+            } };
+            
+            if (profileWithCareer?.career_data) {
+              const careerData = profileWithCareer.career_data;
+              if (careerData.pastOrganizationsUi && Array.isArray(careerData.pastOrganizationsUi)) {
+                setPastOrgs(careerData.pastOrganizationsUi.length > 0 
+                  ? careerData.pastOrganizationsUi 
+                  : [{ id: undefined, name: '', startYm: '', endYm: '' }]);
+              }
+              if (careerData.awardsUi && Array.isArray(careerData.awardsUi)) {
+                setAwardsEdit(careerData.awardsUi.length > 0 
+                  ? careerData.awardsUi 
+                  : [{ id: undefined, title: '', dateYm: '', result: '' }]);
+              }
+              if (careerData.performancesUi && Array.isArray(careerData.performancesUi)) {
+                setPerformancesEdit(careerData.performancesUi.length > 0 
+                  ? careerData.performancesUi 
+                  : [{ id: undefined, title: '' }]);
+              }
             }
           }
         } else {
@@ -210,11 +296,12 @@ export default function ProfileSettingsScreen() {
   }, [isLoading]);
 
   // 現在のユーザー情報を取得（依存から isAuthenticated を外す）
+  // 楽器が変更されたときも再読み込み
   useEffect(() => {
     if (isLoading) return;
     if (!isAuthenticated) return; // 認証されていない場合は早期リターン
     loadCurrentUser();
-  }, [isLoading]);
+  }, [isLoading, selectedInstrument]);
 
   // 誕生日または音楽開始年齢が変更された時の処理
   useEffect(() => {
@@ -698,7 +785,7 @@ export default function ProfileSettingsScreen() {
         .map(org => org.name.trim())
         .join(',');
 
-      // 基本カラムのみを含める（存在しないカラムを除外）
+      // 基本カラムのみを含める（ニックネーム、現在の所属団体、年齢は共通データ）
       const upsertRow: Partial<UserProfile> = {
         user_id: currentUser.id,
         display_name: nickname.trim(),
@@ -709,27 +796,50 @@ export default function ProfileSettingsScreen() {
       // カラムが存在しない場合はエラーを無視して続行
       try {
         if (currentAge) upsertRow.current_age = parseInt(currentAge);
-        if (musicStartAge) upsertRow.music_start_age = parseInt(musicStartAge);
-        if (musicExperienceYears) upsertRow.music_experience_years = musicExperienceYears;
         if (birthday) upsertRow.birthday = birthday.toISOString().split('T')[0];
         if (organizationsString) upsertRow.organization = organizationsString;
-        // 楽器の種類をカンマ区切り文字列として保存
-        const instrumentTypesString = instrumentTypes
-          .map(item => item.name.trim())
-          .filter(name => name !== '')
-          .join(',');
-        if (instrumentTypesString) {
-          (upsertRow as any).custom_instrument_name = instrumentTypesString;
-        }
+        if (organizationsString) (upsertRow as any).current_organization = organizationsString;
       } catch (optionalColumnError) {
         // カラムが存在しない場合のエラーは無視（基本情報は保存される）
         logger.debug('オプショナルカラムの設定をスキップ（カラムが存在しない可能性）:', optionalColumnError);
       }
 
-      logger.debug('保存データ:', upsertRow);
+      logger.debug('保存データ（共通）:', upsertRow);
 
-      // user_id一意制約を使ってUPSERT
+      // user_id一意制約を使ってUPSERT（共通データ）
       const result = await upsertUserProfile(upsertRow);
+      
+      // 楽器ごとのデータを保存（現在選択されている楽器がある場合のみ）
+      if (selectedInstrument) {
+        const instrumentTypesString = instrumentTypes
+          .map(item => item.name.trim())
+          .filter(name => name !== '')
+          .join(',');
+        
+        const instrumentSpecificData = {
+          music_start_age: musicStartAge ? parseInt(musicStartAge) : undefined,
+          music_experience_years: musicExperienceYears || 0,
+          custom_instrument_name: instrumentTypesString || undefined,
+          career_data: {
+            pastOrganizationsUi: pastOrgs,
+            awardsUi: awardsEdit,
+            performancesUi: performancesEdit,
+          },
+        };
+        
+        const instrumentDataResult = await saveInstrumentSpecificProfileData(
+          currentUser.id,
+          selectedInstrument,
+          instrumentSpecificData
+        );
+        
+        if (instrumentDataResult.error) {
+          logger.warn('楽器ごとのデータ保存エラー:', instrumentDataResult.error);
+          // エラーは警告として扱う（共通データは保存済み）
+        } else {
+          logger.info('楽器ごとのデータ保存成功');
+        }
+      }
 
       if (result.error) {
         // カラムが存在しないエラーの場合は警告として処理（基本情報は保存済みの可能性）
@@ -1391,33 +1501,43 @@ export default function ProfileSettingsScreen() {
             ))}
           </View>
           
-          {/* 経歴・実績 保存ボタン（Supabase） */}
+          {/* 経歴・実績 保存ボタン（楽器ごとに保存） */}
           <TouchableOpacity
             style={[styles.saveAllButton, { backgroundColor: currentTheme.primary }]}
             onPress={async () => {
               try {
-                const { data: { user } } = await supabase.auth.getUser();
-                const uid = user?.id || currentUser?.id;
+                const uid = currentUser?.id;
                 if (!uid) {
                   Alert.alert('エラー', 'ログインが必要です');
                   return;
                 }
                 
-                // Supabaseのuser_profilesテーブルに経歴・実績データを保存
-                const { error } = await supabase
-                  .from('user_profiles')
-                  .upsert({
-                    user_id: uid,
-                    career_data: {
-                  pastOrganizationsUi: pastOrgs,
-                  awardsUi: awardsEdit,
-                  performancesUi: performancesEdit,
-                    },
-                    updated_at: new Date().toISOString(),
-                  }, { onConflict: 'user_id' });
+                if (!selectedInstrument) {
+                  Alert.alert('エラー', '楽器が選択されていません');
+                  return;
+                }
                 
-                if (error) {
-                  throw error;
+                // 楽器ごとのデータを取得して、経歴・実績を更新
+                const instrumentDataResult = await getInstrumentSpecificProfileData(uid, selectedInstrument);
+                const existingData = instrumentDataResult.data || {};
+                
+                const updatedInstrumentData = {
+                  ...existingData,
+                  career_data: {
+                    pastOrganizationsUi: pastOrgs,
+                    awardsUi: awardsEdit,
+                    performancesUi: performancesEdit,
+                  },
+                };
+                
+                const saveResult = await saveInstrumentSpecificProfileData(
+                  uid,
+                  selectedInstrument,
+                  updatedInstrumentData
+                );
+                
+                if (saveResult.error) {
+                  throw saveResult.error;
                 }
                 
                 Alert.alert('保存完了', '経歴・実績を保存しました');

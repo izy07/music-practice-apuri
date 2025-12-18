@@ -772,6 +772,95 @@ export const deletePerformance = async (
   );
 };
 
+/**
+ * 楽器ごとのプロフィールデータを取得
+ */
+export const getInstrumentSpecificProfileData = async (
+  userId: string,
+  instrumentId: string
+): Promise<RepositoryResult<any>> => {
+  return safeExecute(
+    async () => {
+      logger.debug(`[${REPOSITORY_CONTEXT}] getInstrumentSpecificProfileData:start`, { userId, instrumentId });
+      
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('instrument_specific_data')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      // instrument_specific_dataが存在しない場合は空のオブジェクトを返す
+      const instrumentData = data?.instrument_specific_data || {};
+      const result = instrumentData[instrumentId] || {};
+
+      logger.debug(`[${REPOSITORY_CONTEXT}] getInstrumentSpecificProfileData:success`);
+      return result;
+    },
+    `${REPOSITORY_CONTEXT}.getInstrumentSpecificProfileData`
+  );
+};
+
+/**
+ * 楽器ごとのプロフィールデータを保存
+ */
+export const saveInstrumentSpecificProfileData = async (
+  userId: string,
+  instrumentId: string,
+  data: any
+): Promise<RepositoryResult<void>> => {
+  return safeExecute(
+    async () => {
+      logger.debug(`[${REPOSITORY_CONTEXT}] saveInstrumentSpecificProfileData:start`, { userId, instrumentId, data });
+      
+      // 既存のinstrument_specific_dataを取得
+      const { data: profile, error: fetchError } = await supabase
+        .from('user_profiles')
+        .select('instrument_specific_data')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        throw fetchError;
+      }
+
+      // 既存のデータをマージ
+      const existingData = profile?.instrument_specific_data || {};
+      const updatedData = {
+        ...existingData,
+        [instrumentId]: data,
+      };
+
+      // プロフィールが存在しない場合はupsert、存在する場合はupdate
+      const { error } = profile
+        ? await supabase
+            .from('user_profiles')
+            .update({
+              instrument_specific_data: updatedData,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('user_id', userId)
+        : await supabase
+            .from('user_profiles')
+            .upsert({
+              user_id: userId,
+              instrument_specific_data: updatedData,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'user_id' });
+
+      if (error) {
+        throw error;
+      }
+
+      logger.debug(`[${REPOSITORY_CONTEXT}] saveInstrumentSpecificProfileData:success`);
+    },
+    `${REPOSITORY_CONTEXT}.saveInstrumentSpecificProfileData`
+  );
+};
+
 // 後方互換性のためのエクスポート
 export const userRepository = {
   getProfile: getUserProfile,
@@ -783,6 +872,8 @@ export const userRepository = {
   deletePastOrganization,
   deleteAward,
   deletePerformance,
+  getInstrumentSpecificProfileData,
+  saveInstrumentSpecificProfileData,
 };
 
 export default userRepository;

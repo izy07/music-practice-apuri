@@ -660,9 +660,9 @@ function RootLayoutContent() {
       return;
     }
     
-    // ルートパスまたは認証画面にいる場合はメイン画面に遷移
+    // ルートパスまたは認証画面にいる場合はカレンダー画面に遷移
     if (isAtRoot || isInAuthGroup) {
-      router.replace('/(tabs)/');
+      router.replace('/(tabs)/index');
       return;
     }
   }, [isReady, isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, needsTutorial, router, segments]);

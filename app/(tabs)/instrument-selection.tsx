@@ -558,8 +558,8 @@ export default function InstrumentSelectionScreen() {
       // 遷移直前にloadingをfalseにする（メッセージ表示を防ぐため）
       setLoading(false);
       
-      // 主要機能設定画面に戻る（router.back()を使用）
-      router.back();
+      // カレンダー画面に遷移
+      router.replace('/(tabs)/index');
 
     } catch (error) {
       Alert.alert('エラー', '楽器の保存に失敗しました');

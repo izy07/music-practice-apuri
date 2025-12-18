@@ -200,3 +200,92 @@ export const getLanguageSetting = async (
   );
 };
 
+/**
+ * 楽器ごとの設定を取得
+ */
+export const getInstrumentSpecificSettings = async (
+  userId: string,
+  instrumentId: string
+): Promise<RepositoryResult<any>> => {
+  return safeExecute(
+    async () => {
+      logger.debug(`[${REPOSITORY_CONTEXT}] getInstrumentSpecificSettings:start`, { userId, instrumentId });
+      
+      const { data, error } = await supabase
+        .from('user_settings')
+        .select('instrument_specific_settings')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116' && error.code !== 'PGRST205') {
+        throw error;
+      }
+
+      // instrument_specific_settingsが存在しない場合は空のオブジェクトを返す
+      const instrumentSettings = data?.instrument_specific_settings || {};
+      const result = instrumentSettings[instrumentId] || {};
+
+      logger.debug(`[${REPOSITORY_CONTEXT}] getInstrumentSpecificSettings:success`);
+      return result;
+    },
+    `${REPOSITORY_CONTEXT}.getInstrumentSpecificSettings`
+  );
+};
+
+/**
+ * 楽器ごとの設定を保存
+ */
+export const saveInstrumentSpecificSettings = async (
+  userId: string,
+  instrumentId: string,
+  settings: any
+): Promise<RepositoryResult<void>> => {
+  return safeExecute(
+    async () => {
+      logger.debug(`[${REPOSITORY_CONTEXT}] saveInstrumentSpecificSettings:start`, { userId, instrumentId, settings });
+      
+      // 既存のinstrument_specific_settingsを取得
+      const { data: existingSettings, error: fetchError } = await supabase
+        .from('user_settings')
+        .select('instrument_specific_settings')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (fetchError && fetchError.code !== 'PGRST116' && fetchError.code !== 'PGRST205') {
+        throw fetchError;
+      }
+
+      // 既存のデータをマージ
+      const existingData = existingSettings?.instrument_specific_settings || {};
+      const updatedData = {
+        ...existingData,
+        [instrumentId]: settings,
+      };
+
+      // 設定が存在しない場合はupsert、存在する場合はupdate
+      const { error } = existingSettings
+        ? await supabase
+            .from('user_settings')
+            .update({
+              instrument_specific_settings: updatedData,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('user_id', userId)
+        : await supabase
+            .from('user_settings')
+            .upsert({
+              user_id: userId,
+              instrument_specific_settings: updatedData,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'user_id' });
+
+      if (error) {
+        throw error;
+      }
+
+      logger.debug(`[${REPOSITORY_CONTEXT}] saveInstrumentSpecificSettings:success`);
+    },
+    `${REPOSITORY_CONTEXT}.saveInstrumentSpecificSettings`
+  );
+};
+

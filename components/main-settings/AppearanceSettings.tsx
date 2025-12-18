@@ -560,8 +560,7 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
       </View>
 
       {/* カスタムカラー設定 */}
-      {useCustomTheme && (
-        <View style={styles.customSection}>
+      <View style={styles.customSection}>
           <Text style={[styles.customTitle, { color: currentTheme?.text || '#2D3748' }]}>カスタムカラー設定</Text>
           
           <ColorPicker 
@@ -682,7 +681,6 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
             </TouchableOpacity>
           </View>
         </View>
-      )}
 
       {/* リセットボタン */}
       <TouchableOpacity

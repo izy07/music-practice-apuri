@@ -111,6 +111,7 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E5E5E5',
     marginBottom: 8,
+    marginTop: 0,
     marginHorizontal: 0,
     width: '100%',
     maxWidth: 500,

@@ -335,16 +335,16 @@ export default function TutorialScreen() {
         .maybeSingle();
 
       if (profile?.selected_instrument_id) {
-        logger.debug('楽器選択済み - メイン画面に遷移');
+        logger.debug('楽器選択済み - カレンダー画面に遷移');
         setTimeout(() => {
           try {
-            router.replace('/(tabs)/' as any);
-            logger.debug('メイン画面への遷移完了');
+            router.replace('/(tabs)/index');
+            logger.debug('カレンダー画面への遷移完了');
           } catch (navError) {
-            logger.error('メイン画面への遷移エラー:', navError);
-            Alert.alert('エラー', 'メイン画面への遷移に失敗しました');
+            logger.error('カレンダー画面への遷移エラー:', navError);
+            Alert.alert('エラー', 'カレンダー画面への遷移に失敗しました');
             if (typeof window !== 'undefined') {
-              navigateWithBasePath('/');
+              navigateWithBasePath('/index');
             }
           }
         }, 100);

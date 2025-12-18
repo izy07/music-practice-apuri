@@ -46,6 +46,37 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
   const [metronomeSoundType, setMetronomeSoundType] = useState<'click' | 'beep' | 'bell'>('click');
   const [isTimeSignatureModalVisible, setIsTimeSignatureModalVisible] = useState(false);
 
+  // メトロノーム設定の読み込み
+  useEffect(() => {
+    const loadMetronomeSettings = async () => {
+      try {
+        const { default: AsyncStorage } = await import('@react-native-async-storage/async-storage');
+        const savedSoundType = await AsyncStorage.getItem('metronome_sound_type');
+        if (savedSoundType === 'click' || savedSoundType === 'beep' || savedSoundType === 'bell') {
+          setMetronomeSoundType(savedSoundType);
+          logger.debug('メトロノーム音設定を読み込み:', savedSoundType);
+        }
+      } catch (error) {
+        logger.debug('メトロノーム音設定の読み込みエラー:', error);
+      }
+    };
+    loadMetronomeSettings();
+  }, []);
+
+  // メトロノーム音設定の保存
+  useEffect(() => {
+    const saveMetronomeSettings = async () => {
+      try {
+        const { default: AsyncStorage } = await import('@react-native-async-storage/async-storage');
+        await AsyncStorage.setItem('metronome_sound_type', metronomeSoundType);
+        logger.debug('メトロノーム音設定を保存:', metronomeSoundType);
+      } catch (error) {
+        logger.debug('メトロノーム音設定の保存エラー:', error);
+      }
+    };
+    saveMetronomeSettings();
+  }, [metronomeSoundType]);
+
   // メトロノーム用のref
   const metronomeIntervalRef = useRef<number | null>(null);
   const activeOscillatorsRef = useRef<OscillatorNode[]>([]);
