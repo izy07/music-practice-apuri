@@ -115,6 +115,7 @@ export const styles = StyleSheet.create({
     marginHorizontal: 0,
     width: '100%',
     maxWidth: 500,
+    paddingTop: 0,
     ...createShadowStyle({
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },

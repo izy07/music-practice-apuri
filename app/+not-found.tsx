@@ -1,7 +1,7 @@
-import { Stack, useRouter, useSegments } from 'expo-router';
-import { StyleSheet, Text, View, TouchableOpacity, Platform } from 'react-native';
+import { useRouter, useSegments } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import logger from '@/lib/logger';
+import { View, ActivityIndicator } from 'react-native';
 
 export default function NotFoundScreen() {
   const router = useRouter();
@@ -14,64 +14,57 @@ export default function NotFoundScreen() {
       return;
     }
     
-    // 認証画面にいる場合は何もしない（_layout.tsxのロジックに任せる）
-    if (segments.includes('auth')) {
-      logger.debug('NotFoundScreen: 認証画面にいるため何もしない', { segments });
-      hasRedirectedRef.current = true;
+    hasRedirectedRef.current = true;
+    
+    // 認証画面へのアクセスを試みている場合は、ログイン画面にリダイレクト
+    if (segments.includes('auth') || segments.length === 0) {
+      logger.debug('NotFoundScreen: 認証画面またはルートパス - ログイン画面にリダイレクト', { segments });
+      setTimeout(() => {
+        try {
+          router.replace('/auth/login' as any);
+        } catch (error) {
+          logger.error('NotFoundScreen: ログイン画面への遷移エラー', error);
+          // フォールバック: ルートパスに遷移
+          router.replace('/' as any);
+        }
+      }, 50);
       return;
     }
     
     // Web環境での処理
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    if (typeof window !== 'undefined') {
       const currentPath = window.location.pathname;
       
       // 認証画面のパスをチェック
       if (currentPath.includes('/auth/')) {
-        logger.debug('NotFoundScreen: 認証画面パスにいるため何もしない', { currentPath });
-        hasRedirectedRef.current = true;
-        return;
-      }
-      
-      // ルートパスの場合は_layout.tsxのロジックに任せる
-      if (currentPath === '/' || currentPath.endsWith('/index.html')) {
-        logger.debug('NotFoundScreen: ルートパスのため_layout.tsxのロジックに任せる');
-        hasRedirectedRef.current = true;
+        logger.debug('NotFoundScreen: 認証画面パス - ログイン画面にリダイレクト', { currentPath });
+        setTimeout(() => {
+          try {
+            router.replace('/auth/login' as any);
+          } catch (error) {
+            logger.error('NotFoundScreen: ログイン画面への遷移エラー', error);
+          }
+        }, 50);
         return;
       }
     }
     
     // その他の場合はルートパスに遷移（_layout.tsxが適切に処理する）
     logger.debug('NotFoundScreen: ルートパスに遷移', { segments });
-    hasRedirectedRef.current = true;
-    
     setTimeout(() => {
       try {
         router.replace('/' as any);
       } catch (error) {
         logger.error('NotFoundScreen: ルートパスへの遷移エラー', error);
       }
-    }, 100);
+    }, 50);
   }, [router, segments]);
   
-  const handleGoHome = () => {
-    try {
-      router.replace('/' as any);
-    } catch (error) {
-      logger.error('NotFoundScreen: ルートパスへの遷移エラー', error);
-    }
-  };
-  
+  // リダイレクト中はローディング表示
   return (
-    <>
-      <Stack.Screen options={{ title: 'Oops!' }} />
-      <View style={styles.container}>
-        <Text style={styles.text}>ページが見つかりません</Text>
-        <Text style={styles.subText}>リダイレクト中...</Text>
-        <TouchableOpacity onPress={handleGoHome} style={styles.link}>
-          <Text style={styles.linkText}>Go to home screen!</Text>
-        </TouchableOpacity>
-      </View>
-    </>
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <ActivityIndicator size="large" color="#007AFF" />
+    </View>
   );
 }
 

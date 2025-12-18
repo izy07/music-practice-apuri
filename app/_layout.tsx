@@ -627,13 +627,14 @@ function RootLayoutContent() {
     // 未認証ユーザー → ログイン画面にリダイレクト
     if (!isAuthenticated) {
       // 認証画面にいる場合は何もしない（ログイン画面を表示）
-      if (isInAuthGroup) {
-        logger.debug('未認証ユーザー・認証画面 - 画面を維持', { isAtRoot, isInAuthGroup });
+      // ただし、+not-found画面にいる場合はログイン画面にリダイレクト
+      if (isInAuthGroup && firstSegment !== '+not-found') {
+        logger.debug('未認証ユーザー・認証画面 - 画面を維持', { isAtRoot, isInAuthGroup, firstSegment });
         return;
       }
       
       // ルートパス（/）またはその他の画面にアクセスした場合は、ログイン画面にリダイレクト
-      logger.debug('未認証ユーザー - ログイン画面にリダイレクト', { isAtRoot, isInAuthGroup });
+      logger.debug('未認証ユーザー - ログイン画面にリダイレクト', { isAtRoot, isInAuthGroup, firstSegment });
       try {
         router.replace('/auth/login');
       } catch (error) {

@@ -70,6 +70,14 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
         const { default: AsyncStorage } = await import('@react-native-async-storage/async-storage');
         await AsyncStorage.setItem('metronome_sound_type', metronomeSoundType);
         logger.debug('メトロノーム音設定を保存:', metronomeSoundType);
+        
+        // 音の変更時にメトロノームが再生中なら再起動
+        if (isMetronomePlaying) {
+          stopMetronome();
+          setTimeout(() => {
+            startMetronome(false);
+          }, 100);
+        }
       } catch (error) {
         logger.debug('メトロノーム音設定の保存エラー:', error);
       }
