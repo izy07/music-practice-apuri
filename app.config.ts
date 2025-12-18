@@ -24,6 +24,8 @@ const config: ExpoConfig = {
     favicon: './assets/images/favicon.png', // PNG形式を使用（jimp-compactがWebPをサポートしていないため）
     // GitHub Pages用のベースパス設定
     baseUrl: process.env.EXPO_PUBLIC_WEB_BASE || '/',
+    // 出力ディレクトリを明示的に指定（Expo Routerのデフォルトはweb-build）
+    // 注意: expo exportコマンドの--output-dirオプションが動作しない場合のフォールバック
   },
   plugins: [
     'expo-router', 
