@@ -626,17 +626,20 @@ function RootLayoutContent() {
     
     // 未認証ユーザー → ログイン画面にリダイレクト
     if (!isAuthenticated) {
-      // ルートパス（/）にアクセスした場合も、ログイン画面にリダイレクト
-      if (isAtRoot || !isInAuthGroup) {
-        logger.debug('未認証ユーザー - ログイン画面にリダイレクト', { isAtRoot, isInAuthGroup });
-        try {
-          router.replace('/auth/login');
-        } catch (error) {
-          logger.error('ログイン画面への遷移エラー:', error);
-          // エラー時はルートパスに遷移（認証フローで自動的にログイン画面にリダイレクトされる）
-          if (isAtRoot) {
-            return; // 既にルートにいる場合は何もしない
-          }
+      // 認証画面にいる場合は何もしない（ログイン画面を表示）
+      if (isInAuthGroup) {
+        logger.debug('未認証ユーザー・認証画面 - 画面を維持', { isAtRoot, isInAuthGroup });
+        return;
+      }
+      
+      // ルートパス（/）またはその他の画面にアクセスした場合は、ログイン画面にリダイレクト
+      logger.debug('未認証ユーザー - ログイン画面にリダイレクト', { isAtRoot, isInAuthGroup });
+      try {
+        router.replace('/auth/login');
+      } catch (error) {
+        logger.error('ログイン画面への遷移エラー:', error);
+        // エラー時はルートパスに遷移（次回のuseEffectで再度リダイレクトを試みる）
+        if (!isAtRoot) {
           router.replace('/');
         }
       }
