@@ -78,12 +78,26 @@ jobs:
           echo "  GITHUB_PAGES_BASE: $GITHUB_PAGES_BASE"
           echo "  NODE_ENV: $NODE_ENV"
           
+          # 既存のdistディレクトリをクリーンアップ
+          if [ -d dist ]; then
+            echo "🧹 既存のdistディレクトリをクリーンアップします..."
+            rm -rf dist
+          fi
+          
+          # web-buildディレクトリもクリーンアップ（念のため）
+          if [ -d web-build ]; then
+            echo "🧹 既存のweb-buildディレクトリをクリーンアップします..."
+            rm -rf web-build
+          fi
+          
           npm run build:web:github || {
             echo "❌ ビルドが失敗しました"
             echo "📁 現在のディレクトリ:"
             pwd
             echo "📁 distディレクトリの内容:"
             ls -la dist/ 2>&1 || echo "distディレクトリが存在しません"
+            echo "📁 web-buildディレクトリの内容:"
+            ls -la web-build/ 2>&1 || echo "web-buildディレクトリが存在しません"
             echo "📁 scriptsディレクトリの内容:"
             ls -la scripts/ 2>&1 || echo "scriptsディレクトリが存在しません"
             echo "📋 npm run build:web:github の詳細エラー:"
@@ -93,6 +107,12 @@ jobs:
           echo "✅ ビルドが完了しました"
           echo "📁 ビルド後のdistディレクトリの内容:"
           ls -la dist/ || echo "⚠️  distディレクトリが存在しません"
+          
+          # web-buildディレクトリが存在する場合はdistにコピー（フォールバック）
+          if [ -d web-build ] && [ ! -d dist ]; then
+            echo "⚠️  web-buildディレクトリが存在するため、distにコピーします..."
+            cp -r web-build dist
+          fi
         env:
           EXPO_PUBLIC_WEB_BASE: /music-practice-apuri
           GITHUB_PAGES_BASE: /music-practice-apuri
