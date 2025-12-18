@@ -445,10 +445,10 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         .maybeSingle();
       
       if (profileError) {
-        // 認証エラーの場合はログイン画面にリダイレクト
+        // 認証エラーの場合は認証状態をクリア（_layout.tsxのロジックで自動的にログイン画面にリダイレクト）
         if (profileError.code === '401' || profileError.code === 'PGRST301' || profileError.message?.includes('JWT') || profileError.message?.includes('expired')) {
-          logger.warn('ユーザー取得エラー: 認証が無効です。ログイン画面にリダイレクトします。', { error: profileError });
-          // 認証状態をクリア
+          logger.warn('ユーザー取得エラー: 認証が無効です。認証状態をクリアします。', { error: profileError });
+          // 認証状態をクリア（_layout.tsxが自動的にログイン画面にリダイレクト）
           await supabase.auth.signOut();
           updateAuthState({
             user: null,
@@ -457,10 +457,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             isInitialized: true,
             error: null,
           });
-          // ログイン画面にリダイレクト
-          if (typeof router !== 'undefined') {
-            router.replace('/auth/login');
-          }
+          // ルーティングは_layout.tsxの既存ロジックに任せる（直接リダイレクトしない）
           return null;
         }
         // 400エラー（カラムが存在しない）の場合は、カラムが存在しないものとして処理
