@@ -67,6 +67,7 @@ jobs:
           fi
           
           echo "🔍 必要なスクリプトファイルを確認します..."
+          [ -f scripts/copy-web-build-to-dist.js ] && echo "✅ scripts/copy-web-build-to-dist.js が存在します" || echo "❌ scripts/copy-web-build-to-dist.js が見つかりません"
           [ -f scripts/create-robust-404.js ] && echo "✅ scripts/create-robust-404.js が存在します" || echo "❌ scripts/create-robust-404.js が見つかりません"
           [ -f scripts/fix-github-pages-paths.js ] && echo "✅ scripts/fix-github-pages-paths.js が存在します" || echo "❌ scripts/fix-github-pages-paths.js が見つかりません"
 
