@@ -52,17 +52,13 @@ CREATE INDEX IF NOT EXISTS idx_representative_songs_is_popular ON representative
 -- 4. RLS（Row Level Security）の有効化
 ALTER TABLE representative_songs ENABLE ROW LEVEL SECURITY;
 
--- 5. RLSポリシーの作成（存在しない場合のみ）
-DO $$
-BEGIN
-  -- 既存のポリシーを削除してから再作成（重複を避ける）
-  DROP POLICY IF EXISTS "Anyone can view representative songs" ON representative_songs;
-  DROP POLICY IF EXISTS "representative_songs_select_policy" ON representative_songs;
-  
-  -- 新しいポリシーを作成（全ユーザーが読み取り可能）
-  CREATE POLICY "Anyone can view representative songs" ON representative_songs
-    FOR SELECT USING (true);
-END $$;
+-- 5. RLSポリシーの作成（既存のポリシーを削除してから作成）
+DROP POLICY IF EXISTS "Anyone can view representative songs" ON representative_songs;
+DROP POLICY IF EXISTS "representative_songs_select_policy" ON representative_songs;
+DROP POLICY IF EXISTS "Authenticated users can read representative songs" ON representative_songs;
+
+CREATE POLICY "Anyone can view representative songs" ON representative_songs
+  FOR SELECT USING (true);
 
 -- 6. 更新日時を自動更新するトリガー（存在しない場合のみ）
 DROP TRIGGER IF EXISTS update_representative_songs_updated_at ON representative_songs;
