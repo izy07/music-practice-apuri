@@ -1,7 +1,7 @@
 import { useRouter, useSegments } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import logger from '@/lib/logger';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 
 export default function NotFoundScreen() {
   const router = useRouter();
