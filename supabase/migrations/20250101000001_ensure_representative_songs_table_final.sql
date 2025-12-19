@@ -5,6 +5,14 @@
 -- 確実に作成し、RLSポリシーとインデックスを設定します
 -- ============================================
 
+-- 0. instrumentsテーブルが存在することを確認（存在しない場合はエラーを回避）
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'instruments') THEN
+    RAISE EXCEPTION 'instrumentsテーブルが存在しません。先にinstrumentsテーブルを作成してください。';
+  END IF;
+END $$;
+
 -- 1. 更新日時を自動更新するトリガー関数を作成（存在しない場合のみ）
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
