@@ -371,6 +371,7 @@ BEGIN
 END$$;
 
 -- 楽器マスターデータと音楽用語は全ユーザーが読み取り可能
+DROP POLICY IF EXISTS "Anyone can read instruments" ON instruments;
 CREATE POLICY "Anyone can read instruments"
   ON instruments
   FOR SELECT

@@ -79,6 +79,7 @@ CREATE INDEX IF NOT EXISTS idx_instruments_name_en ON public.instruments(name_en
 ALTER TABLE public.instruments ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS instruments_select_all ON public.instruments;
+DROP POLICY IF EXISTS instruments_select_all ON public.instruments;
 CREATE POLICY instruments_select_all ON public.instruments FOR SELECT USING (true);
 
 -- 権限の設定

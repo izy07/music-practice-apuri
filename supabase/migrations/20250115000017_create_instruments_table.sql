@@ -15,10 +15,12 @@ CREATE TABLE IF NOT EXISTS instruments (
 -- 楽器テーブルのRLSを有効化
 ALTER TABLE instruments ENABLE ROW LEVEL SECURITY;
 
--- 楽器テーブルのRLSポリシーを作成
+-- 楽器テーブルのRLSポリシーを作成（既存のポリシーを削除してから作成）
+DROP POLICY IF EXISTS "Anyone can view instruments" ON instruments;
 CREATE POLICY "Anyone can view instruments" ON instruments
   FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Service role can manage instruments" ON instruments;
 CREATE POLICY "Service role can manage instruments" ON instruments
   FOR ALL USING (auth.role() = 'service_role');
 
@@ -49,7 +51,8 @@ INSERT INTO instruments (id, name, name_en, color_primary, color_secondary, colo
 CREATE INDEX IF NOT EXISTS idx_instruments_id ON instruments(id);
 CREATE INDEX IF NOT EXISTS idx_instruments_name_en ON instruments(name_en);
 
--- 更新日時を自動更新するトリガー
+-- 更新日時を自動更新するトリガー（既存のトリガーを削除してから作成）
+DROP TRIGGER IF EXISTS update_instruments_updated_at ON instruments;
 CREATE TRIGGER update_instruments_updated_at
   BEFORE UPDATE ON instruments
   FOR EACH ROW
