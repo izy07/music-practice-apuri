@@ -433,11 +433,21 @@ BEGIN
     ALTER TABLE representative_songs ENABLE ROW LEVEL SECURITY;
     
     -- RLSポリシーの作成（全ユーザーが読み取り可能）
+    -- representative_songsテーブルのポリシーは既に他のマイグレーションで作成済み
+    -- ここでは削除のみ（重複を避ける）
     DROP POLICY IF EXISTS "Anyone can view representative songs" ON representative_songs;
     DROP POLICY IF EXISTS "representative_songs_select_policy" ON representative_songs;
     
-    CREATE POLICY "Anyone can view representative songs" ON representative_songs
-      FOR SELECT USING (true);
+    -- ポリシーが存在しない場合のみ作成
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_policies 
+      WHERE schemaname = 'public' 
+      AND tablename = 'representative_songs' 
+      AND policyname = 'Anyone can view representative songs'
+    ) THEN
+      CREATE POLICY "Anyone can view representative songs" ON representative_songs
+        FOR SELECT USING (true);
+    END IF;
     
     -- 更新日時を自動更新するトリガー
     DROP TRIGGER IF EXISTS update_representative_songs_updated_at ON representative_songs;
