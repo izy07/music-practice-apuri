@@ -7,7 +7,7 @@
 
 -- 1. instrumentsテーブルの作成（存在しない場合のみ）
 CREATE TABLE IF NOT EXISTS public.instruments (
-  id UUID PRIMARY KEY,
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   name_en TEXT NOT NULL,
   color_primary TEXT NOT NULL DEFAULT '#8B4513',
