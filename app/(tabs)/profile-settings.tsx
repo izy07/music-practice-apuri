@@ -811,13 +811,25 @@ export default function ProfileSettingsScreen() {
       
       // 楽器ごとのデータを保存（現在選択されている楽器がある場合のみ）
       if (selectedInstrument) {
+        // 既存の楽器ごとのデータを取得して、空の場合は既存の値を保持
+        const existingInstrumentDataResult = await getInstrumentSpecificProfileData(
+          currentUser.id,
+          selectedInstrument
+        );
+        const existingInstrumentData = existingInstrumentDataResult.data || {};
+        
         const instrumentTypesString = instrumentTypes
           .map(item => item.name.trim())
           .filter(name => name !== '')
           .join(',');
         
+        // 音楽開始年齢が空の場合は既存の値を保持、そうでない場合は新しい値を設定
+        const musicStartAgeValue = musicStartAge && musicStartAge.trim() !== '' 
+          ? parseInt(musicStartAge) 
+          : (existingInstrumentData.music_start_age !== undefined ? existingInstrumentData.music_start_age : undefined);
+        
         const instrumentSpecificData = {
-          music_start_age: musicStartAge ? parseInt(musicStartAge) : undefined,
+          music_start_age: musicStartAgeValue,
           music_experience_years: musicExperienceYears || 0,
           custom_instrument_name: instrumentTypesString || undefined,
           career_data: {

@@ -44,9 +44,13 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
   } = props;
   
   const handlePress = useCallback(() => {
+    // イベントがある場合は、日付セルをタップしても編集モーダルを開かない
+    if (dayEvents && dayEvents.length > 0) {
+      return;
+    }
     const selectedDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
     onDatePress(selectedDate);
-  }, [currentDate, day, onDatePress]);
+  }, [currentDate, day, onDatePress, dayEvents]);
 
   const handleEventPress = useCallback(() => {
     if (dayEvents && dayEvents.length > 0) {

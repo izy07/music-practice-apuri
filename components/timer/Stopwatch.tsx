@@ -90,15 +90,18 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
     }
   }, [stopwatchSeconds, isStopwatchRunning, milliseconds]);
 
-  // リセット時にミリ秒もリセット
+  // リセット時にミリ秒もリセット（stopwatchSecondsが0で、かつ前回も0だった場合のみ）
+  const prevStopwatchSecondsRef = useRef(stopwatchSeconds);
   useEffect(() => {
-    if (stopwatchSeconds === 0 && !isStopwatchRunning) {
+    // リセットされた場合のみ（0から0への変化ではなく、非0から0への変化）
+    if (stopwatchSeconds === 0 && !isStopwatchRunning && prevStopwatchSecondsRef.current > 0) {
       setMilliseconds(0);
       pausedTotalMsRef.current = 0;
       startTimeRef.current = null;
       setLaps([]);
       lastLapTimeRef.current = 0;
     }
+    prevStopwatchSecondsRef.current = stopwatchSeconds;
   }, [stopwatchSeconds, isStopwatchRunning]);
 
   const formatTime = (totalSeconds: number, ms: number = 0) => {

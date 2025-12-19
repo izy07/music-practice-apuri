@@ -10,7 +10,7 @@ if (Platform.OS !== 'web') {
     // expo-audioが利用できない場合は無視
   }
 }
-import { X, Save, Mic, Video, Trash2, Calendar, Play, Pause } from 'lucide-react-native';
+import { X, Save, Mic, Video, Trash2, Calendar, Play, Pause, Edit } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import AudioRecorder from './AudioRecorder';
 import { supabase } from '@/lib/supabase';
@@ -140,6 +140,7 @@ interface PracticeRecordModalProps {
   onSave?: (minutes: number, content?: string, audioUrl?: string, videoUrl?: string) => void | Promise<void>;
   onRecordingSaved?: () => void; // 録音保存後のコールバック
   onRefresh?: number; // データ再読み込みのトリガー（数値が変更されると再読み込み）
+  onEventEdit?: (event: {id: string, title: string, description?: string}) => void; // イベント編集のコールバック
 }
 
 const PracticeRecordModal = memo(function PracticeRecordModal({ 
@@ -149,7 +150,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   events = [],
   onSave,
   onRecordingSaved,
-  onRefresh
+  onRefresh,
+  onEventEdit
 }: PracticeRecordModalProps) {
   const router = useRouter();
   const { selectedInstrument, currentTheme } = useInstrumentTheme();
@@ -1600,12 +1602,26 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                       }
                     ]}
                   >
-                    <Text style={[styles.eventTitle, { color: currentTheme.text }]}>{event.title}</Text>
-                    {event.description && (
-                      <Text style={[styles.eventDescription, { color: currentTheme.textSecondary }]}>
-                        {event.description}
-                      </Text>
-                    )}
+                    <View style={styles.eventItemContent}>
+                      <View style={styles.eventItemText}>
+                        <Text style={[styles.eventTitle, { color: currentTheme.text }]}>{event.title}</Text>
+                        {event.description && (
+                          <Text style={[styles.eventDescription, { color: currentTheme.textSecondary }]}>
+                            {event.description}
+                          </Text>
+                        )}
+                      </View>
+                      {onEventEdit && (
+                        <TouchableOpacity
+                          style={[styles.eventEditButton, { backgroundColor: currentTheme.primary + '20' }]}
+                          onPress={() => onEventEdit(event)}
+                          activeOpacity={0.7}
+                        >
+                          <Edit size={14} color={currentTheme.primary} />
+                          <Text style={[styles.eventEditButtonText, { color: currentTheme.primary }]}>編集</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
                 ))}
               </View>
@@ -2966,6 +2982,15 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     marginLeft: 0,
   },
+  eventItemContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  eventItemText: {
+    flex: 1,
+  },
   eventTitle: {
     fontSize: 13,
     fontWeight: '600',
@@ -2977,6 +3002,18 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     marginTop: 1,
     opacity: 0.75,
+  },
+  eventEditButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  eventEditButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 });
 

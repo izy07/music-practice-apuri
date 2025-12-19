@@ -1033,6 +1033,11 @@ export default function CalendarScreen() {
           await refreshPracticeData(true);
         }}
         onRefresh={practiceRecordRefreshKey}
+        onEventEdit={(event) => {
+          // イベント編集モーダルを開く
+          setSelectedEvent(event);
+          setShowEventModal(true);
+        }}
       />
 
       <EventModal
