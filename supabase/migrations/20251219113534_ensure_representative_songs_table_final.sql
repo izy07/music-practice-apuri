@@ -5,12 +5,12 @@
 -- 確実に作成し、RLSポリシーとインデックスを設定します
 -- ============================================
 
--- 0. instrumentsテーブルが存在することを確認（存在しない場合は警告のみ）
+-- 0. instrumentsテーブルが存在することを確認（存在しない場合はエラー）
+-- 注意: このマイグレーションは20251219113532_consolidate_instruments_final.sqlの後に実行される必要があります
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'instruments') THEN
-    RAISE NOTICE 'instrumentsテーブルが存在しません。先にinstrumentsテーブルを作成してください。';
-    -- エラーではなく警告のみ（instrumentsテーブルは後で作成される可能性があるため）
+    RAISE EXCEPTION 'instrumentsテーブルが存在しません。先にinstrumentsテーブルを作成してください。';
   END IF;
 END $$;
 
