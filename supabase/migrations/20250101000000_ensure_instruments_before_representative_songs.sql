@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS public.instruments (
   color_secondary TEXT NOT NULL DEFAULT '#F8F9FA',
   color_accent TEXT NOT NULL DEFAULT '#8B4513',
   starting_note TEXT,
-  tuning_notes TEXT[],
+  tuning_notes JSONB,
   color_background TEXT,
   color_surface TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -53,7 +53,7 @@ INSERT INTO public.instruments (
   '#C0C0C0',
   '#D4AF37',
   'C4',
-  ARRAY['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4']
+  to_jsonb(ARRAY['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4'])
 ) ON CONFLICT (id) DO NOTHING;
 
 -- ギター
@@ -67,7 +67,7 @@ INSERT INTO public.instruments (
   '#DEB887',
   '#8B4513',
   'E2',
-  ARRAY['E2', 'A2', 'D3', 'G3', 'B3', 'E4']
+  to_jsonb(ARRAY['E2', 'A2', 'D3', 'G3', 'B3', 'E4'])
 ) ON CONFLICT (id) DO NOTHING;
 
 -- バイオリン
@@ -81,7 +81,7 @@ INSERT INTO public.instruments (
   '#C9A961',
   '#D4AF37',
   'G3',
-  ARRAY['G3', 'D4', 'A4', 'E5']
+  to_jsonb(ARRAY['G3', 'D4', 'A4', 'E5'])
 ) ON CONFLICT (id) DO NOTHING;
 
 -- フルート
@@ -95,7 +95,7 @@ INSERT INTO public.instruments (
   '#E6E6FA',
   '#A9A9A9',
   'C4',
-  ARRAY['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4']
+  to_jsonb(ARRAY['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4'])
 ) ON CONFLICT (id) DO NOTHING;
 
 -- トランペット
@@ -109,7 +109,7 @@ INSERT INTO public.instruments (
   '#DAA520',
   '#8B4513',
   'C4',
-  ARRAY['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4']
+  to_jsonb(ARRAY['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4'])
 ) ON CONFLICT (id) DO NOTHING;
 
 -- ドラム
@@ -137,6 +137,6 @@ INSERT INTO public.instruments (
   '#FFEB3B',
   '#FFC107',
   'Bb3',
-  ARRAY['Bb3', 'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'Bb4']
+  to_jsonb(ARRAY['Bb3', 'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'Bb4'])
 ) ON CONFLICT (id) DO NOTHING;
 
