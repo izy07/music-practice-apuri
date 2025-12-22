@@ -83,17 +83,18 @@ export const membershipRepository = {
     organization_id: string;
     role: OrganizationRole;
   }): Promise<RepositoryResult<UserGroupMembership>> {
+    // まず既存のメンバーシップを確認（重複チェック）
+    const existing = await this.getByUserAndOrganization(
+      data.user_id,
+      data.organization_id
+    );
+    
+    if (existing.data) {
+      // 既にメンバーシップが存在する場合は、それを返す
+      return { data: existing.data, error: null };
+    }
+    
     return safeExecute(async () => {
-      // まず既存のメンバーシップを確認（重複チェック）
-      const existing = await this.getByUserAndOrganization(
-        data.user_id,
-        data.organization_id
-      );
-      
-      if (existing.data) {
-        // 既にメンバーシップが存在する場合は、それを返す
-        return { data: existing.data, error: null };
-      }
       
       // sub_group_idカラムは削除されているため、user_id, organization_id, roleのみを挿入
       const insertData: {
