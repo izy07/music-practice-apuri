@@ -123,7 +123,8 @@ export const membershipRepository = {
             data.organization_id
           );
           if (existingAfterError.data) {
-            return { data: existingAfterError.data, error: null };
+            const existingData = existingAfterError.data;
+            return existingData;
           }
         }
         
