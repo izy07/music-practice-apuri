@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Calendar, Timer, Target, Zap, Settings, Share2 } from 'lucide-react-native';
+import { Calendar, Timer, Target, Zap, Settings } from 'lucide-react-native';
 import { useLanguage } from '../../components/LanguageContext';
 import { useInstrumentTheme } from '../../components/InstrumentThemeContext';
 import { useSegments } from 'expo-router';
@@ -27,11 +27,6 @@ const TAB_CONFIG = [
     name: 'tuner',
     icon: Zap,
     titleKey: 'tuner',
-  },
-  {
-    name: 'share',
-    icon: Share2,
-    titleKey: 'share',
   },
   {
     name: 'settings',
@@ -69,6 +64,7 @@ const HIDDEN_TABS = [
   'room',
   'support',
   'org-overview',
+  'share', // 音楽団体管理画面を非表示
 ] as const;
 
 export default function TabLayout() {
