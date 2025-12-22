@@ -574,7 +574,7 @@ export default function GoalsScreen() {
       if (!hasVisibleGoal) {
         // 最新の目標（新しく作成したもの）を取得
         const updatedGoalsData = await goalRepository.getGoals(user.id, selectedInstrument);
-        const goalsWithShowOnCalendar = updatedGoalsData.map((g: GoalFromDB) => ({
+        const goalsWithShowOnCalendar = updatedGoalsData.map((g: any) => ({
           ...g,
           show_on_calendar: g.show_on_calendar ?? false,
         }));

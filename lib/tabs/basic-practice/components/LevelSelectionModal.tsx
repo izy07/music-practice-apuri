@@ -39,7 +39,7 @@ export function LevelSelectionModal({
               <TouchableOpacity
                 key={level.id}
                 style={[styles.levelSelectionButton, { borderColor: currentTheme.primary }]}
-                onPress={() => onLevelSelect(level.id)}
+                onPress={() => onLevelSelect(level.value)}
               >
                 <Text style={[styles.levelSelectionLabel, { color: currentTheme.text }]}>
                   {level.label}

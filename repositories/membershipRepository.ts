@@ -94,7 +94,7 @@ export const membershipRepository = {
         // 既にメンバーシップが存在する場合は、それを返す
         const existingData = existing.data;
         if (!existingData) {
-          throw new Error('Existing data is null');
+          return { data: null, error: { message: 'Existing data is null', code: 'NULL_DATA' } };
         }
         return { data: existingData, error: null };
       }
