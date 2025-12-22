@@ -18,7 +18,8 @@ export default function NotFoundScreen() {
     
     // 認証画面へのアクセスを試みている場合は、ログイン画面にリダイレクト
     const isAuthSegment = segments.includes('auth');
-    const isEmptySegment = segments.length === 0;
+    const segmentCount = segments.length;
+    const isEmptySegment = segmentCount === 0;
     if (isAuthSegment || isEmptySegment) {
       logger.debug('NotFoundScreen: 認証画面またはルートパス - ログイン画面にリダイレクト', { segments });
       setTimeout(() => {
