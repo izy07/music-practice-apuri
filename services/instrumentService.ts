@@ -323,7 +323,7 @@ export const getAllInstruments = async (): Promise<ServiceResult<Instrument[]>> 
       
       const result = await instrumentRepository.getAllInstruments();
       
-      if (!result.success || !result.data) {
+      if (result.error || !result.data) {
         // エラーの場合はローカルのdefaultInstrumentsを使用（警告は開発環境のみ、警告レベルを下げる）
         // リロード時にデータベースから読み込まないため、これは正常な動作
         if (__DEV__) {
@@ -367,7 +367,7 @@ export const getInstrumentById = async (
       
       const result = await instrumentRepository.getInstrumentById(instrumentId);
       
-      if (!result.success || !result.data) {
+      if (result.error || !result.data) {
         // エラーの場合はローカルのdefaultInstrumentsから探す
         const localInstrument = defaultInstruments.find(inst => inst.id === instrumentId);
         return localInstrument || null;

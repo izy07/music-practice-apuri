@@ -24,7 +24,8 @@ export type { Instrument } from './instrumentService';
 export type { Instrument as InstrumentType } from './instrumentService';
 
 export { safeServiceExecute, ServiceResult, ServiceError } from './baseService';
-export type { ValidationResult, Validator, ServiceResult as ServiceResultType } from './baseService';
+export type { ValidationResult, Validator } from './baseService';
+export type { ServiceResult as ServiceResultType } from './baseService';
 
 export { UserSettingsService, userSettingsService } from './userSettingsService';
 export { TutorialService, tutorialService } from './tutorialService';

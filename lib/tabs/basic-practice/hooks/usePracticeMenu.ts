@@ -128,7 +128,7 @@ export const usePracticeMenu = (
     }
     
     // フォールバック: 既存のTypeScriptデータを使用
-    const instrumentKey = getInstrumentKey(selectedInstrument) || null;
+    const instrumentKey = getInstrumentKey(selectedInstrument || null);
     if (!instrumentKey) return [];
     
     // 楽器固有のメニューを取得
