@@ -92,11 +92,7 @@ export const membershipRepository = {
       
       if (existing.data) {
         // 既にメンバーシップが存在する場合は、それを返す
-        const existingData = existing.data;
-        if (!existingData) {
-          return { data: null, error: { message: 'Existing data is null', code: 'NULL_DATA' } };
-        }
-        return { data: existingData, error: null };
+        return { data: existing.data, error: null };
       }
       
       // sub_group_idカラムは削除されているため、user_id, organization_id, roleのみを挿入
