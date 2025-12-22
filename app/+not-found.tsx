@@ -17,7 +17,7 @@ export default function NotFoundScreen() {
     hasRedirectedRef.current = true;
     
     // 認証画面へのアクセスを試みている場合は、ログイン画面にリダイレクト
-    if (segments.includes('auth') || segments.length === 0) {
+    if (segments.includes('auth') || (segments.length === 0 && segments.length >= 0)) {
       logger.debug('NotFoundScreen: 認証画面またはルートパス - ログイン画面にリダイレクト', { segments });
       setTimeout(() => {
         try {
