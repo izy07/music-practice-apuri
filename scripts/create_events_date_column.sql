@@ -61,3 +61,4 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.events TO anon, authenticat
 
 
 
+

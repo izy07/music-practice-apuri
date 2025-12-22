@@ -151,7 +151,7 @@ export const useBasicPracticeLevel = (): UseBasicPracticeLevelReturn => {
     });
     
     // データベース更新
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }: { data: { user: any } }) => {
       if (user) {
         const result = await updatePracticeLevel(user.id, newLevel);
         if (result.error) {

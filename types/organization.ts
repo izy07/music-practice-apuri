@@ -241,6 +241,17 @@ export interface JoinOrganizationInput {
   password: string;
 }
 
+/**
+ * 管理者コード設定時の入力データ
+ */
+export interface SetAdminCodeInput {
+  /** 組織のID */
+  organizationId: ID;
+  
+  /** 管理者コード */
+  adminCode: string;
+}
+
 
 /**
  * 型ガード関数

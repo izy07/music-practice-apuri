@@ -23,7 +23,7 @@ const convertPracticeMenuToItem = (menu: PracticeMenu): PracticeItem => {
   return {
     id: menu.id,
     title: menu.title,
-    description: menu.description || undefined,
+    description: menu.description ? String(menu.description) : '',
     points: menu.points || [],
     videoUrl: menu.video_url || undefined,
     difficulty: menu.difficulty,
@@ -129,6 +129,7 @@ export const usePracticeMenu = (
     
     // フォールバック: 既存のTypeScriptデータを使用
     const instrumentKey = getInstrumentKey(selectedInstrument);
+    if (!instrumentKey) return [];
     
     // 楽器固有のメニューを取得
     const instrumentMenus = instrumentKey 

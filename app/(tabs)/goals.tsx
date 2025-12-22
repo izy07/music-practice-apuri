@@ -17,6 +17,7 @@ import { goalRepository } from '@/repositories/goalRepository';
 import { getUserProfile } from '@/repositories/userRepository';
 import { OfflineStorage, isOnline } from '@/lib/offlineStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { ErrorHandler } from '@/lib/errorHandler';
 
 interface Goal {
   id: string;
@@ -134,7 +135,7 @@ export default function GoalsScreen() {
 
       // オンライン時またはキャッシュがない場合はデータベースから取得
       const goalsData = await goalRepository.getGoals(user.id, selectedInstrument);
-      const goalsWithShowOnCalendar = goalsData.map((g: GoalFromDB) => ({
+      const goalsWithShowOnCalendar = goalsData.map((g: any) => ({
         ...g,
         show_on_calendar: g.show_on_calendar ?? false,
       }));
@@ -163,10 +164,15 @@ export default function GoalsScreen() {
         }));
         
         // オフライン目標とオンライン目標を結合（重複を避ける）
-        const allGoals = [...goalsWithShowOnCalendar];
+        const allGoals: Goal[] = [...goalsWithShowOnCalendar];
         offlineGoalsFormatted.forEach(offlineGoal => {
           if (!allGoals.find(g => g.id === offlineGoal.id)) {
-            allGoals.push(offlineGoal);
+            // show_on_calendarを明示的にbooleanに変換
+            const goalWithCalendar: Goal = {
+              ...offlineGoal,
+              show_on_calendar: Boolean(offlineGoal.show_on_calendar ?? false),
+            };
+            allGoals.push(goalWithCalendar);
           }
         });
         
@@ -234,7 +240,7 @@ export default function GoalsScreen() {
       }
 
       const completedGoalsData = await goalRepository.getCompletedGoals(user.id, selectedInstrument);
-      setCompletedGoals(completedGoalsData);
+      setCompletedGoals(completedGoalsData as any);
       
       // キャッシュに保存（オフライン対応）
       try {

@@ -107,7 +107,7 @@ export function OrganizationInfoTab({
               >
                 <Key size={16} color={currentTheme.text} />
                 <Text style={[styles.editButtonText, { color: currentTheme.text }]}>
-                  {organization.admin_code ? '変更' : '設定'}
+                  {(organization as any).admin_code ? '変更' : '設定'}
                 </Text>
               </TouchableOpacity>
             </View>

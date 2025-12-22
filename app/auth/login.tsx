@@ -27,6 +27,7 @@ import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
 import { getBasePath } from '@/lib/navigationUtils';
+import { ErrorHandler } from '@/lib/errorHandler';
 
 const { width: screenWidth } = Dimensions.get('window');
 

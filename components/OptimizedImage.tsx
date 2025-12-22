@@ -86,11 +86,9 @@ export const OptimizedImage: React.FC<OptimizedImageProps> = memo(({
         source={source}
         onLoad={handleLoad}
         onError={handleError}
-        style={imageStyle}
+        style={imageStyle as any}
         // プログレッシブ読み込みを有効化
         progressiveRenderingEnabled={progressive}
-        // キャッシュポリシーを設定
-        cache={cachePolicy === 'disk' ? 'only-if-cached' : cachePolicy === 'memory' ? 'reload' : 'force-cache'}
       />
     </View>
   );

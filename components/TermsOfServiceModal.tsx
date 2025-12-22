@@ -8,6 +8,7 @@ import {
   ScrollView,
   Dimensions,
   Alert,
+  Platform,
 } from 'react-native';
 import { X, ExternalLink, Play, Pause } from 'lucide-react-native';
 import { useInstrumentTheme } from './InstrumentThemeContext';
@@ -275,8 +276,8 @@ const styles = StyleSheet.create({
   iframe: {
     width: '100%',
     height: '100%',
-    border: 'none',
-  },
+    ...(Platform.OS === 'web' ? { border: 'none' as any } : {}),
+  } as any,
   lastUpdated: {
     fontSize: 12,
     textAlign: 'center',

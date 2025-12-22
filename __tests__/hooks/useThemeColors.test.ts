@@ -46,7 +46,7 @@ describe('useThemeColors', () => {
     });
 
     const firstResult = result.current;
-    rerender();
+    rerender({});
     const secondResult = result.current;
 
     // メモ化されているため、同じオブジェクト参照を返す

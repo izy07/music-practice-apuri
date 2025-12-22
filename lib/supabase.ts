@@ -234,7 +234,7 @@ const getSupabaseClient = () => {
           'Accept': 'application/json',
         },
         // カスタムfetch関数を使用（ネットワークエラーを適切に処理）
-        fetch: customFetch,
+        fetch: customFetch as any,
       },
       // すべての高度な機能を無効化
       realtime: {

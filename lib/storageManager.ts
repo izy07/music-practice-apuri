@@ -15,7 +15,7 @@ class StorageManager {
   private memoryCache = new Map<string, StorageValue>();
   private listeners = new Map<string, Set<StorageListener>>();
   private pendingWrites = new Map<string, StorageValue>();
-  private writeTimeout: NodeJS.Timeout | null = null;
+  private writeTimeout: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * 値を取得（メモリキャッシュ優先）
@@ -108,7 +108,7 @@ class StorageManager {
         }
 
         if (pairs.length > 0) {
-          await AsyncStorage.multiSet(pairs);
+          await AsyncStorage.multiSet(pairs as [string, string][]);
         }
         if (removals.length > 0) {
           await AsyncStorage.multiRemove(removals);

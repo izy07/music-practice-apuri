@@ -182,19 +182,31 @@ export default function StatisticsScreen() {
         return;
       }
 
-      const records = result.data || [];
-      console.log('[統計画面] 取得した練習記録数:', records.length);
-      console.log('[統計画面] 取得した練習記録（最初の5件）:', records.slice(0, 5).map(r => ({
+      const sessions = result.data || [];
+      console.log('[統計画面] 取得した練習記録数:', sessions.length);
+      console.log('[統計画面] 取得した練習記録（最初の5件）:', sessions.slice(0, 5).map(r => ({
         date: r.practice_date,
         minutes: r.duration_minutes,
         method: r.input_method
       })));
       
       // duration_minutesがnullやundefinedのレコードを確認
-      const invalidRecords = records.filter(r => r.duration_minutes == null);
+      const invalidRecords = sessions.filter(r => r.duration_minutes == null);
       if (invalidRecords.length > 0) {
         console.warn('[統計画面] duration_minutesがnull/undefinedのレコード:', invalidRecords.length, '件');
       }
+
+      // PracticeSession[]をPracticeRecord[]に変換
+      const records: PracticeRecord[] = sessions
+        .filter(session => session.id && session.created_at) // idとcreated_atが必須
+        .map(session => ({
+          id: session.id!,
+          practice_date: session.practice_date,
+          duration_minutes: session.duration_minutes || 0,
+          content: session.content || undefined,
+          input_method: session.input_method || 'manual',
+          created_at: session.created_at!,
+        }));
 
       // キャッシュに保存（メモリとローカルストレージ）
       practiceDataCache.set(cacheKey, records);
@@ -275,8 +287,9 @@ export default function StatisticsScreen() {
       return;
     }
 
-    const handlePracticeRecordUpdated = (event?: CustomEvent) => {
-      const detail = event?.detail;
+    const handlePracticeRecordUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const detail = customEvent?.detail;
       
       // verifiedフラグがtrueの場合は、データベースへの反映が確認済みなので即座に更新
       // falseの場合は、データベース反映を待つ必要がある
@@ -332,10 +345,10 @@ export default function StatisticsScreen() {
       }, initialDelay);
     };
 
-    window.addEventListener('practiceRecordUpdated', handlePracticeRecordUpdated);
+    window.addEventListener('practiceRecordUpdated', handlePracticeRecordUpdated as EventListener);
 
     return () => {
-      window.removeEventListener('practiceRecordUpdated', handlePracticeRecordUpdated);
+      window.removeEventListener('practiceRecordUpdated', handlePracticeRecordUpdated as EventListener);
     };
   }, [fetchPracticeRecords, user, selectedInstrument]);
 

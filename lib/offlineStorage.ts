@@ -87,12 +87,12 @@ export class OfflineStorage {
   static async getPracticeRecords() {
     try {
       const keys = await AsyncStorage.getAllKeys();
-      const practiceKeys = keys.filter(key => key.startsWith('practice_'));
+      const practiceKeys = keys.filter((key: string) => key.startsWith('practice_'));
       const records = await AsyncStorage.multiGet(practiceKeys);
       return records
-        .map(([key, value]) => value ? JSON.parse(value) : null)
-        .filter(record => record !== null)
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        .map(([key, value]: [string, string | null]) => value ? JSON.parse(value) : null)
+        .filter((record: any) => record !== null)
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     } catch (error) {
       ErrorHandler.handle(error, 'ローカル取得', false);
       return [];
@@ -120,12 +120,12 @@ export class OfflineStorage {
   static async getGoals() {
     try {
       const keys = await AsyncStorage.getAllKeys();
-      const goalKeys = keys.filter(key => key.startsWith('goal_'));
+      const goalKeys = keys.filter((key: string) => key.startsWith('goal_'));
       const records = await AsyncStorage.multiGet(goalKeys);
       return records
-        .map(([key, value]) => value ? JSON.parse(value) : null)
-        .filter(record => record !== null)
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        .map(([key, value]: [string, string | null]) => value ? JSON.parse(value) : null)
+        .filter((record: any) => record !== null)
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     } catch (error) {
       ErrorHandler.handle(error, 'ローカル目標取得', false);
       return [];
@@ -153,12 +153,12 @@ export class OfflineStorage {
   static async getRecordings() {
     try {
       const keys = await AsyncStorage.getAllKeys();
-      const recordingKeys = keys.filter(key => key.startsWith('recording_'));
+      const recordingKeys = keys.filter((key: string) => key.startsWith('recording_'));
       const records = await AsyncStorage.multiGet(recordingKeys);
       return records
-        .map(([key, value]) => value ? JSON.parse(value) : null)
-        .filter(record => record !== null)
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        .map(([key, value]: [string, string | null]) => value ? JSON.parse(value) : null)
+        .filter((record: any) => record !== null)
+        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     } catch (error) {
       ErrorHandler.handle(error, 'ローカル録音取得', false);
       return [];
@@ -206,7 +206,7 @@ export class OfflineStorage {
   static async markAsSynced(id: string) {
     try {
       const keys = await AsyncStorage.getAllKeys();
-      const targetKey = keys.find(key => key === id);
+      const targetKey = keys.find((key: string) => key === id);
       if (targetKey) {
         const record = await AsyncStorage.getItem(targetKey);
         if (record) {
@@ -225,7 +225,7 @@ export class OfflineStorage {
   static async clearLocalData() {
     try {
       const keys = await AsyncStorage.getAllKeys();
-      const dataKeys = keys.filter(key => 
+      const dataKeys = keys.filter((key: string) => 
         key.startsWith('practice_') || 
         key.startsWith('goal_') || 
         key.startsWith('recording_')

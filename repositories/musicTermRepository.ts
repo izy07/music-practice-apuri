@@ -76,7 +76,7 @@ export const getMusicTerms = async (
     let filteredData = data;
     if (query?.searchQuery && filteredData) {
       const searchLower = query.searchQuery.toLowerCase();
-      filteredData = filteredData.filter(term => 
+      filteredData = filteredData.filter((term: any) => 
         term.term_ja.toLowerCase().includes(searchLower) ||
         (term.term_en && term.term_en.toLowerCase().includes(searchLower)) ||
         (term.description_ja && term.description_ja.toLowerCase().includes(searchLower))
@@ -137,7 +137,7 @@ export const getMusicTermCategories = async (): Promise<{ data: string[] | null;
     }
     
     // 重複を除去して返す
-    const categories = Array.from(new Set(data.map(term => term.category).filter(Boolean))) as string[];
+    const categories = Array.from(new Set(data.map((term: any) => term.category).filter(Boolean))) as string[];
     return { data: categories.sort(), error: null };
   } catch (error) {
     logger.error(`[${REPOSITORY_CONTEXT}] getMusicTermCategories:exception`, { error });

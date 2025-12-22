@@ -50,7 +50,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     logger.debug('認証状態の監視開始');
     
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+      async (event: any, session: any) => {
         logger.debug('認証状態変更:', event, session?.user?.email || 'none');
         
         setAuthState({

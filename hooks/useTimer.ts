@@ -42,7 +42,7 @@ export function useTimer(onTimerComplete?: () => void) {
       // タイマー完了の検出
       const isTimerComplete = prevIsTimerRunning && !newIsTimerRunning && newTimerSeconds === 0 && onTimerCompleteRef.current;
       
-      if (isTimerComplete) {
+      if (isTimerComplete && onTimerCompleteRef.current) {
         logger.debug('useTimer: タイマー完了検出');
         onTimerCompleteRef.current();
       }

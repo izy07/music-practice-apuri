@@ -114,7 +114,7 @@ export default function CalendarScreen() {
   const hasInitialLoadRef = useRef(false);
   
   // データ取得のデバウンス用ref
-  const loadAllDataTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const loadAllDataTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastDataFetchTimeRef = useRef<number>(0);
   const lastMonthRef = useRef<{ year: number; month: number } | null>(null);
   const lastInstrumentRef = useRef<string | null>(null);
@@ -453,13 +453,14 @@ export default function CalendarScreen() {
       return;
     }
 
-    const handleCalendarGoalUpdated = (event?: CustomEvent) => {
-      logger.debug('📅 カレンダー目標更新イベントを受信、目標を再読み込みします', event?.detail);
+    const handleCalendarGoalUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      logger.debug('📅 カレンダー目標更新イベントを受信、目標を再読み込みします', customEvent?.detail);
       // ボタン押下時は即座に反映（ラグを解消）
       refreshGoalDisplay(true);
     };
 
-    window.addEventListener('calendarGoalUpdated', handleCalendarGoalUpdated);
+    window.addEventListener('calendarGoalUpdated', handleCalendarGoalUpdated as EventListener);
 
     return () => {
       window.removeEventListener('calendarGoalUpdated', handleCalendarGoalUpdated);
@@ -472,8 +473,9 @@ export default function CalendarScreen() {
       return;
     }
 
-    const handlePracticeRecordUpdated = (event?: CustomEvent) => {
-      const detail = event?.detail;
+    const handlePracticeRecordUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      const detail = customEvent?.detail;
       logger.debug('📅 練習記録更新イベントを受信、データを再読み込みします', detail);
       
       // verifiedフラグがtrueの場合は、データベースへの反映が確認済みなので即座に更新
@@ -506,7 +508,7 @@ export default function CalendarScreen() {
       }, initialDelay);
     };
 
-    window.addEventListener('practiceRecordUpdated', handlePracticeRecordUpdated);
+    window.addEventListener('practiceRecordUpdated', handlePracticeRecordUpdated as EventListener);
 
     return () => {
       window.removeEventListener('practiceRecordUpdated', handlePracticeRecordUpdated);
@@ -519,8 +521,9 @@ export default function CalendarScreen() {
       return;
     }
 
-    const handleEventCreated = (event?: CustomEvent) => {
-      logger.debug('📅 イベント作成イベントを受信、イベントを再読み込みします', event?.detail);
+    const handleEventCreated = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      logger.debug('📅 イベント作成イベントを受信、イベントを再読み込みします', customEvent?.detail);
       
       // イベントを再読み込み
       setTimeout(async () => {
@@ -533,7 +536,7 @@ export default function CalendarScreen() {
       }, 500);
     };
 
-    window.addEventListener('eventCreated', handleEventCreated);
+    window.addEventListener('eventCreated', handleEventCreated as EventListener);
 
     return () => {
       window.removeEventListener('eventCreated', handleEventCreated);

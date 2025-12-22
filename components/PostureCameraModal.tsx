@@ -102,7 +102,7 @@ export default function PostureCameraModal({ visible, onClose, instrumentName }:
   }
 
   const toggleCameraFacing = () => {
-    setFacing(current => (current === 'back' ? 'front' : 'back'));
+    setFacing((current: 'back' | 'front') => (current === 'back' ? 'front' : 'back'));
   };
 
   const takePicture = async () => {

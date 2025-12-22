@@ -13,7 +13,7 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
 import PostureCameraModal from '@/components/PostureCameraModal';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
-import type { PracticeItem } from '@/lib/tabs/basic-practice/types';
+import type { PracticeItem } from '@/lib/tabs/basic-practice/types/practice.types';
 import { usePracticeLevel } from '@/lib/tabs/basic-practice/hooks/usePracticeLevel';
 import { usePracticeMenu } from '@/lib/tabs/basic-practice/hooks/usePracticeMenu';
 import { LevelSelector } from '@/lib/tabs/basic-practice/components/LevelSelector';

@@ -22,7 +22,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
   const [milliseconds, setMilliseconds] = useState<number>(0);
   const startTimeRef = useRef<number | null>(null);
   const pausedTotalMsRef = useRef<number>(0);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // ラップタイム管理
   const [laps, setLaps] = useState<LapTime[]>([]);

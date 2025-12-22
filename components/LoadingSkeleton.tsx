@@ -74,9 +74,9 @@ export default function LoadingSkeleton({
           width,
           height,
           borderRadius,
-          backgroundColor: currentTheme.surfaceSecondary || 'transparent',
+          backgroundColor: (currentTheme as any).surfaceSecondary || currentTheme.surface || 'transparent',
           opacity,
-        },
+        } as any,
       ]}
     />
   );

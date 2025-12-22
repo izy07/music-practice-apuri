@@ -6,12 +6,12 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, Modal } from 'react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
-import type { Level } from '../types/practice.types';
+import type { LevelData } from '../types/practice.types';
 import { styles } from '../styles';
 
 export interface LevelSelectionModalProps {
   visible: boolean;
-  levels: Level[];
+  levels: LevelData[];
   onLevelSelect: (level: 'beginner' | 'intermediate' | 'advanced') => void;
 }
 

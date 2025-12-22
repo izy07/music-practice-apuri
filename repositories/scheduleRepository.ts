@@ -123,9 +123,9 @@ export const scheduleRepository = {
       // notesとdescriptionの両方をサポート（notesを優先）
       if (schedule.notes) {
         insertData.notes = schedule.notes;
-        insertData.description = schedule.notes; // 後方互換性のため
-      } else if (schedule.description) {
-        insertData.description = schedule.description;
+        (insertData as any).description = schedule.notes; // 後方互換性のため
+      } else if ((schedule as any).description) {
+        (insertData as any).description = (schedule as any).description;
       }
 
       const { data: result, error } = await supabase
@@ -163,9 +163,9 @@ export const scheduleRepository = {
       // notesが指定されている場合、notesとdescriptionの両方を更新
       if (data.notes !== undefined) {
         updateData.notes = data.notes;
-        updateData.description = data.notes; // 後方互換性のため
-      } else if (data.description !== undefined) {
-        updateData.description = data.description;
+        (updateData as any).description = data.notes; // 後方互換性のため
+      } else if ((data as any).description !== undefined) {
+        (updateData as any).description = (data as any).description;
       }
 
       const { data: result, error } = await supabase

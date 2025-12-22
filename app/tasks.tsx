@@ -174,19 +174,19 @@ export default function TasksScreen() {
                     <Text style={[styles.taskTitle, { color: currentTheme.text }]}>
                       {task.title}
                     </Text>
-                    {task.dueDate && (
+                    {task.due_date && (
                       <View style={[
                         styles.dueDateContainer,
                         { 
-                          backgroundColor: isOverdue(task.dueDate) ? '#F44336' : currentTheme.primary + '20'
+                          backgroundColor: isOverdue(task.due_date) ? '#F44336' : currentTheme.primary + '20'
                         }
                       ]}>
-                        <Calendar size={12} color={isOverdue(task.dueDate) ? '#FFFFFF' : currentTheme.primary} />
+                        <Calendar size={12} color={isOverdue(task.due_date) ? '#FFFFFF' : currentTheme.primary} />
                         <Text style={[
                           styles.dueDateText,
-                          { color: isOverdue(task.dueDate) ? '#FFFFFF' : currentTheme.primary }
+                          { color: isOverdue(task.due_date) ? '#FFFFFF' : currentTheme.primary }
                         ]}>
-                          {new Date(task.dueDate).toLocaleDateString('ja-JP', { 
+                          {new Date(task.due_date).toLocaleDateString('ja-JP', { 
                             month: 'short', 
                             day: 'numeric' 
                           })}

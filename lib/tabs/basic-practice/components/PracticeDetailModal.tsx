@@ -237,7 +237,7 @@ export function PracticeDetailModal({
               {selectedMenu.howToPractice && selectedMenu.howToPractice.length > 0 && (
                 <View style={styles.detailSection}>
                   <Text style={[styles.detailSectionTitle, { color: currentTheme.text }]}>練習の仕方</Text>
-                  {selectedMenu.howToPractice.map((step, index) => (
+                  {selectedMenu.howToPractice.map((step: string, index: number) => (
                     <View key={index} style={styles.stepItem}>
                       <Text style={[styles.stepText, { color: currentTheme.textSecondary }]}>{step}</Text>
                     </View>
@@ -269,7 +269,7 @@ export function PracticeDetailModal({
               {selectedMenu.points && selectedMenu.points.length > 0 && (
                 <View style={styles.detailSection}>
                   <Text style={[styles.detailSectionTitle, { color: currentTheme.text }]}>練習ポイント</Text>
-                  {selectedMenu.points.map((point, index) => (
+                  {selectedMenu.points.map((point: string, index: number) => (
                     <View key={index} style={styles.detailPointItem}>
                       <View style={[styles.detailPointBullet, { backgroundColor: currentTheme.primary }]} />
                       <Text style={[styles.detailPointText, { color: currentTheme.textSecondary }]}>{point}</Text>
@@ -282,7 +282,7 @@ export function PracticeDetailModal({
               {selectedMenu.tips && selectedMenu.tips.length > 0 && (
                 <View style={styles.detailSection}>
                   <Text style={[styles.detailSectionTitle, { color: currentTheme.text }]}>💡 追加のヒント</Text>
-                  {selectedMenu.tips.map((tip, index) => (
+                  {selectedMenu.tips.map((tip: string, index: number) => (
                     <View key={index} style={styles.tipItem}>
                       <Text style={[styles.tipText, { color: currentTheme.textSecondary }]}>• {tip}</Text>
                     </View>

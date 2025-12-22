@@ -609,8 +609,7 @@ export const saveRecording = async (record: {
       if (error.message?.includes('recording_type') || error.code === '42703' || error.message?.includes('column "recording_type" does not exist')) {
         logger.warn('recording_typeカラムが存在しません。recording_typeなしで保存を試行します。', error);
         // recording_typeを削除して再試行
-        const payloadWithoutType = { ...payload };
-        delete payloadWithoutType.recording_type;
+        const { recording_type, ...payloadWithoutType } = payload;
         
         const { data: fallbackData, error: fallbackError } = await supabase
           .from('recordings')

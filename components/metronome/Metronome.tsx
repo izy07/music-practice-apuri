@@ -123,9 +123,7 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
       // アクティブなオシレーターを停止
       activeOscillatorsRef.current.forEach(osc => {
         try {
-          if (osc.state !== 'finished' && osc.state !== 'stopped') {
-            osc.stop();
-          }
+          osc.stop();
           osc.disconnect();
         } catch (error) {
           logger.warn('Failed to stop oscillator during cleanup:', error);
@@ -219,10 +217,10 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
             oscillator.type = 'square'; // より明確な音色
             
             // 短く鋭いアタック（典型的なメトロノームの「チック」音）
-            // スマホでも聞こえるように音量を上げる
+            // スマホでも聞こえるように音量を上げる（修正）
             gainNode.gain.setValueAtTime(0, currentTime);
-            gainNode.gain.linearRampToValueAtTime(metronomeVolume * 1.0, currentTime + 0.005);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.05);
+            gainNode.gain.linearRampToValueAtTime(metronomeVolume * 1.2, currentTime + 0.003);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.06);
             
             oscillator.start(currentTime);
             oscillator.stop(currentTime + 0.05);
@@ -247,10 +245,10 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
             oscillator.type = 'square'; // 強拍と同じ音色で統一感を出す
             
             // やや柔らかいアタック（典型的なメトロノームの「トック」音）
-            // スマホでも聞こえるように音量を上げる
+            // スマホでも聞こえるように音量を上げる（修正）
             gainNode.gain.setValueAtTime(0, currentTime);
-            gainNode.gain.linearRampToValueAtTime(metronomeVolume * 0.85, currentTime + 0.005);
-            gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.08);
+            gainNode.gain.linearRampToValueAtTime(metronomeVolume * 1.0, currentTime + 0.003);
+            gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.09);
             
             oscillator.start(currentTime);
             oscillator.stop(currentTime + 0.08);

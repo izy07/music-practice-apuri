@@ -78,56 +78,8 @@ export default function OrgOverviewScreen() {
     }
   }, [currentTheme]);
 
-  // 出席登録（ワンタップ）
-  const handleRegisterAttendance = useCallback(async (schedule: UnifiedSchedule) => {
-    if (registeringAttendance.has(schedule.id)) {
-      return; // 既に登録中
-    }
-
-    setRegisteringAttendance(prev => new Set(prev).add(schedule.id));
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        Alert.alert('エラー', 'ログインが必要です');
-        return;
-      }
-
-      const result = await attendanceRepository.upsert({
-        schedule_id: schedule.id,
-        user_id: user.id,
-        status: 'attending', // 出席として登録
-      });
-
-      if (result.error) {
-        ErrorHandler.handle(result.error, '出席登録', false);
-        Alert.alert('エラー', '出席登録に失敗しました');
-        return;
-      }
-
-      // 成功時のトースト通知
-      showToast('出席登録が完了しました！');
-
-      // 出席登録可能リストから削除（楽観的更新）
-      setAttendanceNow(prev => prev.filter(s => s.id !== schedule.id));
-
-      // データを再読み込み（バックグラウンド）
-      setTimeout(() => {
-        fetchOrgData(true);
-      }, 500);
-    } catch (error) {
-      logger.error('出席登録エラー:', error);
-      Alert.alert('エラー', '出席登録に失敗しました');
-    } finally {
-      setRegisteringAttendance(prev => {
-        const next = new Set(prev);
-        next.delete(schedule.id);
-        return next;
-      });
-    }
-  }, [registeringAttendance, showToast, fetchOrgData]);
-
   // データ取得関数をuseCallbackでメモ化（重複ロジックを統合）
+  // handleRegisterAttendanceより先に定義する必要がある
   const fetchOrgData = useCallback(async (skipNotifications = false) => {
     setLoading(true);
     try {
@@ -263,6 +215,55 @@ export default function OrgOverviewScreen() {
       setLoading(false);
     }
   }, []);
+
+  // 出席登録（ワンタップ）
+  const handleRegisterAttendance = useCallback(async (schedule: UnifiedSchedule) => {
+    if (registeringAttendance.has(schedule.id)) {
+      return; // 既に登録中
+    }
+
+    setRegisteringAttendance(prev => new Set(prev).add(schedule.id));
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('エラー', 'ログインが必要です');
+        return;
+      }
+
+      const result = await attendanceRepository.upsert({
+        schedule_id: schedule.id,
+        user_id: user.id,
+        status: 'present', // 出席として登録
+      });
+
+      if (result.error) {
+        ErrorHandler.handle(result.error, '出席登録', false);
+        Alert.alert('エラー', '出席登録に失敗しました');
+        return;
+      }
+
+      // 成功時のトースト通知
+      showToast('出席登録が完了しました！');
+
+      // 出席登録可能リストから削除（楽観的更新）
+      setAttendanceNow(prev => prev.filter(s => s.id !== schedule.id));
+
+      // データを再読み込み（バックグラウンド）
+      setTimeout(() => {
+        fetchOrgData(true);
+      }, 500);
+    } catch (error) {
+      logger.error('出席登録エラー:', error);
+      Alert.alert('エラー', '出席登録に失敗しました');
+    } finally {
+      setRegisteringAttendance(prev => {
+        const next = new Set(prev);
+        next.delete(schedule.id);
+        return next;
+      });
+    }
+  }, [registeringAttendance, showToast, fetchOrgData]);
 
   // 初回データ読み込み（全楽器対象の組織を取得）
   useEffect(() => {

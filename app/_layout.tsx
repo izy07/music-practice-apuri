@@ -628,7 +628,7 @@ function RootLayoutContent() {
     if (!isAuthenticated) {
       // 認証画面にいる場合は何もしない（ログイン画面を表示）
       // ただし、+not-found画面にいる場合はログイン画面にリダイレクト
-      if (isInAuthGroup && firstSegment !== '+not-found') {
+      if (isInAuthGroup && firstSegment && firstSegment !== '+not-found' && firstSegment !== 'auth') {
         logger.debug('未認証ユーザー・認証画面 - 画面を維持', { isAtRoot, isInAuthGroup, firstSegment });
         return;
       }

@@ -365,7 +365,7 @@ export async function signUpNew(
 
     // エラーチェック
     if (error) {
-      logger.error('[signUpNew] 新規登録エラー:', { error: error.message, code: error.status });
+      logger.error('[signUpNew] 新規登録エラー:', { error: (error as any).message, code: (error as any).status });
       return {
         success: false,
         error: translateError(error),

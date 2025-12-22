@@ -432,8 +432,8 @@ export const savePracticeSessionWithIntegration = async (
     
     if (existingRecords && existingRecords.length > 0) {
       // 基礎練（preset）と時間を加算する記録（manual, voice, timer）を分離
-      const basicPracticeRecords = existingRecords.filter(record => record.input_method === 'preset');
-      const timeRecords = existingRecords.filter(record => record.input_method !== 'preset');
+      const basicPracticeRecords = existingRecords.filter((record: any) => record.input_method === 'preset');
+      const timeRecords = existingRecords.filter((record: any) => record.input_method !== 'preset');
       
       // 基礎練の記録は保持し、時間を加算する記録のみを統合
       if (timeRecords.length > 0) {
@@ -450,7 +450,7 @@ export const savePracticeSessionWithIntegration = async (
         }
         
         // 時間を加算する記録の時間のみを合計（基礎練は除外）
-        const existingTotalMinutes = timeRecords.reduce((sum, record) => {
+        const existingTotalMinutes = timeRecords.reduce((sum: number, record: any) => {
           const minutes = record?.duration_minutes;
           return sum + (typeof minutes === 'number' && minutes >= 0 ? minutes : 0);
         }, 0);
@@ -459,10 +459,10 @@ export const savePracticeSessionWithIntegration = async (
         // 既存の記録を更新（すべての時間記録のcontentを結合）
         // すべての時間記録のcontentを結合（基礎練は除外）
         const allContents = timeRecords
-          .map(record => record?.content ? cleanContentFromTimeDetails(record.content) : null)
-          .filter((content): content is string => Boolean(content && typeof content === 'string' && content.trim() !== ''))
+          .map((record: any) => record?.content ? cleanContentFromTimeDetails(record.content) : null)
+          .filter((content: any): content is string => Boolean(content && typeof content === 'string' && content.trim() !== ''))
           .concat([existingContentPrefix])
-          .filter((content, index, arr) => arr.indexOf(content) === index); // 重複を除去
+          .filter((content: string, index: number, arr: string[]) => arr.indexOf(content) === index); // 重複を除去
         
         const updateContent = allContents.length > 0 
           ? allContents.join(', ')
@@ -502,8 +502,8 @@ export const savePracticeSessionWithIntegration = async (
           // 型安全な配列操作: null/undefinedを除外し、型ガードを使用
           const otherRecordIds = timeRecords
             .slice(1)
-            .map(record => record?.id)
-            .filter((id): id is string => typeof id === 'string' && id.length > 0);
+            .map((record: any) => record?.id)
+            .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
         if (otherRecordIds.length > 0) {
           logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:deleting-duplicate-records`, {
             count: otherRecordIds.length,

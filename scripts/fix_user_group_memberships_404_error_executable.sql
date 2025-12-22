@@ -80,3 +80,4 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.user_group_memberships TO a
 
 
 
+

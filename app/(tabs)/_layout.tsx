@@ -4,45 +4,39 @@ import { useLanguage } from '../../components/LanguageContext';
 import { useInstrumentTheme } from '../../components/InstrumentThemeContext';
 import { useSegments } from 'expo-router';
 import { useAuthAdvanced } from '../../hooks/useAuthAdvanced';
-import { View, ActivityIndicator, Platform } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 
-// タブのアイコンとタイトルを定義（順序: 目標、タイマー、カレンダー、チューナー、音楽団体、その他）
+// タブのアイコンとタイトルを定義
 const TAB_CONFIG = [
   {
-    name: 'goals',
-    icon: Target,
-    titleKey: 'goals',
-    label: '目標',
+    name: 'index',
+    icon: Calendar,
+    titleKey: 'calendar',
   },
   {
     name: 'timer',
     icon: Timer,
     titleKey: 'timer',
-    label: 'タイマー',
   },
   {
-    name: 'index',
-    icon: Calendar,
-    titleKey: 'calendar',
-    label: 'カレンダー',
+    name: 'goals',
+    icon: Target,
+    titleKey: 'goals',
   },
   {
     name: 'tuner',
     icon: Zap,
     titleKey: 'tuner',
-    label: 'チューナー',
   },
   {
     name: 'share',
     icon: Share2,
     titleKey: 'share',
-    label: '音楽団体',
   },
   {
     name: 'settings',
     icon: Settings,
     titleKey: 'settings',
-    label: 'その他',
   },
 ] as const;
 
@@ -112,9 +106,9 @@ export default function TabLayout() {
             backgroundColor: currentTheme.surface,
             borderTopWidth: 1,
             borderTopColor: currentTheme.secondary,
-            height: Platform.OS === 'web' ? 70 : 80, // スマホでは高さを増やす
-            paddingTop: Platform.OS === 'web' ? 10 : 8,
-            paddingBottom: Platform.OS === 'web' ? 10 : 8,
+            height: 70,
+            paddingTop: 10,
+            paddingBottom: 10,
             paddingHorizontal: 0,
             paddingLeft: 0,
             paddingRight: 0,
@@ -163,13 +157,11 @@ export default function TabLayout() {
           
           // ラベルのスタイル
           tabBarLabelStyle: {
-            fontSize: Platform.OS === 'web' ? 12 : 10, // スマホでは少し小さく
+            fontSize: 12,
             fontWeight: '500',
-            marginTop: Platform.OS === 'web' ? 4 : 2,
+            marginTop: 4,
             marginBottom: 0,
             textAlign: 'center',
-            minHeight: 14, // 最小高さを確保
-            lineHeight: 14, // 行の高さを設定
           },
           
           // アイコンのスタイル
@@ -200,7 +192,7 @@ export default function TabLayout() {
             key={tab.name}
             name={tab.name}
             options={{
-              title: tab.label || t(tab.titleKey), // 日本語ラベルを優先使用
+              title: t(tab.titleKey),
               tabBarIcon: ({ size, color }) => (
                 <View style={{ alignItems: 'center', justifyContent: 'center' }}>
                   <IconComponent size={size ? size * 1.3 : 32} color={color} />

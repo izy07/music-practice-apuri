@@ -40,8 +40,10 @@ class StatisticsCache {
   set<T>(key: string, data: T): void {
     // キャッシュサイズ制限
     if (this.cache.size >= this.config.maxSize) {
-      const firstKey = this.cache.keys().next().value;
-      this.cache.delete(firstKey);
+      const firstKey = this.cache.keys().next().value as string;
+      if (firstKey) {
+        this.cache.delete(firstKey);
+      }
     }
     
     this.cache.set(key, {
@@ -171,7 +173,8 @@ export const useOptimizedStatistics = (
   const [isScrolling, setIsScrolling] = useState(false);
   
   // デバウンス用のタイマー
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // データ取得関数（キャッシュ付き）
   const fetchStatisticsData = useCallback(async (forceRefresh = false) => {
@@ -218,7 +221,7 @@ export const useOptimizedStatistics = (
       const practiceRecords = result.data || [];
       
       // 統計データの計算
-      const statisticsData = calculateStatisticsData(practiceRecords || []);
+      const statisticsData = calculateStatisticsData(practiceRecords as any || []);
       
       // キャッシュに保存
       statisticsCache.set(cacheKey, statisticsData);
@@ -417,8 +420,6 @@ export const useOptimizedStatistics = (
     }, 300); // 300msデバウンス
   }, []); // fetchStatisticsDataを依存配列から削除
 
-  // スクロール用のsetTimeoutをクリーンアップするためのref
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // 仮想化用のスクロールハンドラー
   const handleScroll = useCallback((event: any) => {

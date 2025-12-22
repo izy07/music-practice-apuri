@@ -27,7 +27,7 @@ export const PerformanceMonitor: React.FC<{
   });
   
   // setTimeoutのIDを保持するためのref
-  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const measurePerformance = () => {
     // 既存のタイマーをクリア

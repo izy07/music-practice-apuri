@@ -84,9 +84,9 @@ export const OrganizationManager = {
 
     return {
       success: true,
-      organization: result.data.organization,
-      password: result.data.password,
-      inviteCode: result.data.inviteCode,
+      organization: result.data?.organization,
+      password: result.data?.password,
+      inviteCode: result.data?.inviteCode,
     };
   },
 

@@ -41,7 +41,7 @@ export default function TuningSoundPlayer({ instrumentId }: TuningSoundPlayerPro
   // 音声停止用のref
   const currentOscillatorRef = useRef<OscillatorNode | null>(null);
   const currentGainNodeRef = useRef<GainNode | null>(null);
-  const stopTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const stopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 楽器別のチューニング音データ
   const tuningNotes: { [key: string]: TuningNote[] } = {

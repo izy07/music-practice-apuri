@@ -2,7 +2,7 @@
  * 目標（goals）関連のリポジトリ
  */
 import { supabase } from '@/lib/supabase';
-import { Goal } from '@/app/(tabs)/goals/types';
+import type { Goal } from '@/app/(tabs)/goals/types';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 
@@ -30,8 +30,8 @@ export const checkShowOnCalendarSupport = async (forceCheck: boolean = false): P
   
   // 既にチェック済みの場合は即座に返す（強制チェックの場合は除く）
   const isFirstCheck = supportsShowOnCalendar === null;
-  if (!isFirstCheck && !forceCheck) {
-    return supportsShowOnCalendar;
+    if (!isFirstCheck && !forceCheck) {
+    return supportsShowOnCalendar ?? true;
   }
   
   // 初期化中の場合、初期化の完了を待つ

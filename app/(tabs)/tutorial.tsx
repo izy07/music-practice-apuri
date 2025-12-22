@@ -396,7 +396,7 @@ export default function TutorialScreen() {
           styles.gradientOverlay,
           Platform.OS === 'web' ? {
             background: `linear-gradient(135deg, ${currentStepData.gradientColors[0]} 0%, ${currentStepData.gradientColors[1]} 100%)`,
-          } : {}
+          } as any : {}
         ]} />
       </View>
 

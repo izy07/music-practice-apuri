@@ -25,7 +25,7 @@ interface UsePracticeLevelReturn {
   checkUserLevel: () => Promise<void>;
   handleLevelSelection: (level: PracticeLevel) => Promise<void>;
   handleLevelChange: (newLevel: PracticeLevel) => void;
-  levels: typeof levels;
+  levels: import('../types/practice.types').LevelData[];
 }
 
 /**
@@ -341,7 +341,7 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
     });
     
     // データベース更新（楽器ごとと全体の両方）
-    supabase.auth.getUser().then(async ({ data: { user } }) => {
+    supabase.auth.getUser().then(async ({ data: { user } }: { data: { user: any } }) => {
       if (user && instrumentId) {
         // user_instrument_profilesテーブルに楽器ごとのレベルを保存
         try {

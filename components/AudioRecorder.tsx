@@ -37,9 +37,10 @@ interface AudioRecorderProps {
   onRecordingSaved?: () => void; // 録音保存後のコールバック
   onBack?: () => void; // 戻るボタンのカスタム動作
   selectedDate?: Date | null; // 保存日（未指定なら現在時刻）
+  initialRecordingType?: 'performance' | 'lesson'; // 初期録音種類
 }
 
-export default function AudioRecorder({ visible, onSave, onClose, onRecordingSaved, onBack, selectedDate }: AudioRecorderProps) {
+export default function AudioRecorder({ visible, onSave, onClose, onRecordingSaved, onBack, selectedDate, initialRecordingType }: AudioRecorderProps) {
   const { currentTheme } = useInstrumentTheme();
   const router = useRouter();
   const OWNER_NAME = 'AudioRecorder';

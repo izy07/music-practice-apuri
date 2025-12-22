@@ -6,11 +6,11 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
-import type { Level } from '../types/practice.types';
+import type { Level, LevelData } from '../types/practice.types';
 import { styles } from '../styles';
 
 export interface LevelSelectorProps {
-  levels: Level[];
+  levels: LevelData[];
   selectedLevel: 'beginner' | 'intermediate' | 'advanced';
   userLevel: string | null;
   onLevelChange: (level: 'beginner' | 'intermediate' | 'advanced') => void;
@@ -35,7 +35,7 @@ export function LevelSelector({
             onPress={onOpenModal}
           >
             <Text style={[styles.levelTabText, { color: currentTheme.surface }]}>
-              {levels.find(l => l.id === selectedLevel)?.label}
+              {levels.find(l => l.value === selectedLevel)?.label}
             </Text>
           </TouchableOpacity>
         ) : (
@@ -44,14 +44,14 @@ export function LevelSelector({
               key={level.id}
               style={[
                 styles.levelTab,
-                selectedLevel === level.id && { backgroundColor: currentTheme.primary }
+                selectedLevel === level.value && { backgroundColor: currentTheme.primary }
               ]}
-              onPress={() => onLevelChange(level.id)}
+              onPress={() => onLevelChange(level.value)}
             >
               <Text
                 style={[
                   styles.levelTabText,
-                  { color: selectedLevel === level.id ? currentTheme.surface : currentTheme.text }
+                  { color: selectedLevel === level.value ? currentTheme.surface : currentTheme.text }
                 ]}
               >
                 {level.label}
