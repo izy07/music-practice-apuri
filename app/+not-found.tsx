@@ -18,8 +18,9 @@ export default function NotFoundScreen() {
     
     // 認証画面へのアクセスを試みている場合は、ログイン画面にリダイレクト
     const isAuthSegment = segments.includes('auth');
-    const segmentCount = segments.length;
-    const isEmptySegment = segmentCount === 0;
+    // TypeScript警告回避: 配列の長さを数値として扱う
+    const segmentCount: number = Array.isArray(segments) ? segments.length : 0;
+    const isEmptySegment: boolean = segmentCount === 0;
     if (isAuthSegment || isEmptySegment) {
       logger.debug('NotFoundScreen: 認証画面またはルートパス - ログイン画面にリダイレクト', { segments });
       setTimeout(() => {

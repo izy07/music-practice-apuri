@@ -91,7 +91,8 @@ export const membershipRepository = {
     
     if (existing.data) {
       // 既にメンバーシップが存在する場合は、それを返す
-      return { data: existing.data, error: null };
+      const existingData = existing.data;
+      return { data: existingData, error: null } as RepositoryResult<UserGroupMembership>;
     }
     
     return safeExecute(async () => {
