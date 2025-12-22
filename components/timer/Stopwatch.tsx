@@ -64,10 +64,16 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
         // stopwatchSecondsとmillisecondsを合わせて正確な経過時間を計算
         const currentTotalMs = stopwatchSeconds * 1000 + milliseconds;
         pausedTotalMsRef.current = currentTotalMs;
-        // 一時停止時のミリ秒を保持
-        setMilliseconds(currentTotalMs % 1000);
+        // 一時停止時のミリ秒を保持（pausedTotalMsRefから直接計算）
+        const pausedMs = pausedTotalMsRef.current % 1000;
+        setMilliseconds(pausedMs);
         // 再開時に正しく計算できるようにstartTimeRefをリセット
         startTimeRef.current = null;
+      } else if (pausedTotalMsRef.current > 0) {
+        // 停止中で、startTimeRefがnullの場合（既に停止済み）
+        // pausedTotalMsRefから直接ミリ秒を計算して表示を保持
+        const pausedMs = pausedTotalMsRef.current % 1000;
+        setMilliseconds(pausedMs);
       }
     }
 
@@ -76,19 +82,17 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isStopwatchRunning]);
+  }, [isStopwatchRunning, stopwatchSeconds, milliseconds]);
   
   // stopwatchSecondsが更新された時に、停止中なら経過時間を更新
   useEffect(() => {
-    if (!isStopwatchRunning && stopwatchSeconds > 0) {
+    if (!isStopwatchRunning && stopwatchSeconds > 0 && pausedTotalMsRef.current > 0) {
       // 停止中にstopwatchSecondsが更新された場合（外部からの更新など）、
-      // 経過時間を再計算（ただし、startTimeRefがnullの場合のみ）
-      if (startTimeRef.current === null) {
-        const currentTotalMs = stopwatchSeconds * 1000 + milliseconds;
-        pausedTotalMsRef.current = currentTotalMs;
-      }
+      // pausedTotalMsRefから直接ミリ秒を計算して表示を保持
+      const pausedMs = pausedTotalMsRef.current % 1000;
+      setMilliseconds(pausedMs);
     }
-  }, [stopwatchSeconds, isStopwatchRunning, milliseconds]);
+  }, [stopwatchSeconds, isStopwatchRunning]);
 
   // リセット時にミリ秒もリセット（stopwatchSecondsが0で、かつ前回も0だった場合のみ）
   const prevStopwatchSecondsRef = useRef(stopwatchSeconds);
