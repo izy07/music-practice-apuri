@@ -35,25 +35,29 @@ else
   fi
 fi
 
-# 既存のSupabase環境のクリーンアップ
-echo "🧹 既存のSupabase環境をクリーンアップ中..."
-supabase stop || true
-
-# Dockerボリュームのクリーンアップ（古いデータを完全に削除）
-echo "🧹 Dockerボリュームをクリーンアップ中..."
-docker volume ls | grep supabase | awk '{print $2}' | xargs -r docker volume rm 2>/dev/null || true
-
-# Supabaseローカル環境の起動
-echo "🔧 Supabaseローカル環境を起動中..."
-supabase start
-
-# データベース状態の確認
-echo "📊 データベース状態:"
-supabase status
-
-# マイグレーションの実行
-echo "🔄 データベースマイグレーションを実行中..."
-supabase db reset
+# 完全なクリーンアップとリセット（根本的な対策）
+echo "🧹 Supabase環境を完全にクリーンアップ中..."
+if [ -f "scripts/supabase-clean-reset.sh" ]; then
+  # クリーンリセットスクリプトを使用（推奨）
+  bash scripts/supabase-clean-reset.sh
+else
+  # フォールバック: 手動でクリーンアップ
+  echo "⚠️  supabase-clean-reset.shが見つかりません。手動でクリーンアップします..."
+  supabase stop || true
+  docker ps -a | grep supabase | awk '{print $1}' | xargs -r docker rm -f 2>/dev/null || true
+  docker volume ls | grep supabase | awk '{print $2}' | xargs -r docker volume rm 2>/dev/null || true
+  rm -rf .supabase 2>/dev/null || true
+  
+  # マイグレーションファイルの整合性を再確認
+  find supabase/migrations -name "*.sql" -type f ! -name "20251219000000_initial_schema.sql" -delete 2>/dev/null || true
+  find supabase/migrations -name "*.skip" -delete 2>/dev/null || true
+  
+  # Supabaseを起動
+  supabase start
+  
+  # マイグレーションを実行
+  supabase db reset
+fi
 
 # instrumentsテーブルの確認
 echo "🎹 instrumentsテーブルの確認:"
