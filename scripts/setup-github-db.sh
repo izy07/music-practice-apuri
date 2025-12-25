@@ -17,15 +17,22 @@ if ! command -v supabase &> /dev/null; then
   echo "✅ Supabase CLIのインストールが完了しました"
 fi
 
-# マイグレーションファイルの整合性チェック
-echo "🔍 マイグレーションファイルの整合性をチェック中..."
-if [ -f "scripts/validate-migrations.sh" ]; then
-  bash scripts/validate-migrations.sh || {
-    echo "❌ マイグレーションファイルの整合性チェックに失敗しました"
+# マイグレーションファイルの整合性を強制（根本的な対策）
+echo "🔍 マイグレーションファイルの整合性を強制中..."
+if [ -f "scripts/enforce-migration-consistency.sh" ]; then
+  bash scripts/enforce-migration-consistency.sh || {
+    echo "❌ マイグレーションファイルの整合性確保に失敗しました"
     exit 1
   }
 else
-  echo "⚠️  警告: validate-migrations.sh が見つかりません。スキップします"
+  echo "⚠️  警告: enforce-migration-consistency.sh が見つかりません"
+  echo "🔍 基本的な整合性チェックを実行中..."
+  if [ -f "scripts/validate-migrations.sh" ]; then
+    bash scripts/validate-migrations.sh || {
+      echo "❌ マイグレーションファイルの整合性チェックに失敗しました"
+      exit 1
+    }
+  fi
 fi
 
 # 既存のSupabase環境のクリーンアップ

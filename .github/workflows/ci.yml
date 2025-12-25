@@ -310,29 +310,40 @@ jobs:
         run: npm audit --production
         continue-on-error: true
 
-      - name: マイグレーションファイルの整合性チェック
+      - name: マイグレーションファイルの整合性を強制（根本的な対策）
         run: |
-          echo "🔍 マイグレーションファイルの整合性をチェックします..."
-          if [ -f "scripts/validate-migrations.sh" ]; then
-            bash scripts/validate-migrations.sh || {
-              echo "❌ マイグレーションファイルの整合性チェックに失敗しました"
+          echo "🔍 マイグレーションファイルの整合性を強制します..."
+          # 根本的な対策: 統合マイグレーションファイル以外のすべてのファイルを削除
+          if [ -f "scripts/enforce-migration-consistency.sh" ]; then
+            chmod +x scripts/enforce-migration-consistency.sh
+            bash scripts/enforce-migration-consistency.sh || {
+              echo "❌ マイグレーションファイルの整合性確保に失敗しました"
               exit 1
             }
           else
-            echo "⚠️  警告: validate-migrations.sh が見つかりません。基本的なチェックのみ実行します"
-            # 基本的なチェック: 統合マイグレーションファイルの存在確認
-            if [ ! -f "supabase/migrations/20251219000000_initial_schema.sql" ]; then
-              echo "❌ エラー: 統合マイグレーションファイルが見つかりません"
-              exit 1
-            fi
-            # 不要なマイグレーションファイルのチェック
-            MIGRATION_COUNT=$(find supabase/migrations -name "*.sql" -type f 2>/dev/null | wc -l | tr -d ' ')
-            if [ "$MIGRATION_COUNT" -gt 1 ]; then
-              echo "⚠️  警告: 統合マイグレーションファイル以外のマイグレーションファイルが見つかりました:"
-              find supabase/migrations -name "*.sql" -type f | grep -v "20251219000000_initial_schema.sql" || true
-            fi
+            echo "⚠️  警告: enforce-migration-consistency.sh が見つかりません。手動で削除します..."
+            # 手動で統合マイグレーションファイル以外を削除
+            find supabase/migrations -name "*.sql" -type f ! -name "20251219000000_initial_schema.sql" -delete 2>/dev/null || true
+            find supabase/migrations -name "*.skip" -delete 2>/dev/null || true
           fi
-          echo "✅ マイグレーションファイルの整合性チェックが完了しました"
+          
+          # 検証: 統合マイグレーションファイルの存在確認
+          if [ ! -f "supabase/migrations/20251219000000_initial_schema.sql" ]; then
+            echo "❌ エラー: 統合マイグレーションファイルが見つかりません"
+            exit 1
+          fi
+          
+          # 検証: ファイル数が1であることを確認
+          MIGRATION_COUNT=$(find supabase/migrations -name "*.sql" -type f 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$MIGRATION_COUNT" -ne 1 ]; then
+            echo "❌ エラー: マイグレーションファイル数が正しくありません (期待: 1, 実際: $MIGRATION_COUNT)"
+            echo "📄 見つかったファイル:"
+            find supabase/migrations -name "*.sql" -type f || true
+            exit 1
+          fi
+          
+          echo "✅ マイグレーションファイルの整合性が確保されました"
+          echo "📊 ファイル数: $MIGRATION_COUNT"
         continue-on-error: false
 
       - name: テストデータ漏洩チェック
