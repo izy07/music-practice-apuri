@@ -3,7 +3,7 @@
 -- ============================================
 -- 日付: 2025-12-19
 -- 目的: すべてのマイグレーションファイルを1つに統合し、依存関係を正しく整理
--- 依存関係順: instruments → user_profiles, recordings, goals, practice_sessions → organizations → user_group_memberships, practice_schedules, tasks → attendance_records, events
+-- 依存関係順: instruments → user_profiles, recordings, goals, practice_sessions → organizations → user_group_memberships, practice_schedules, tasks → attendance_records, events → RPC関数
 -- ============================================
 
 -- ============================================
@@ -752,7 +752,39 @@ CREATE TRIGGER update_representative_songs_updated_at
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
--- 17. instruments テーブルの初期データ
+-- 17. get_total_practice_time RPC関数（パフォーマンス最適化用）
+-- ============================================
+CREATE OR REPLACE FUNCTION public.get_total_practice_time(
+  p_user_id uuid,
+  p_instrument_id uuid DEFAULT NULL
+)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  total_minutes integer;
+BEGIN
+  SELECT COALESCE(SUM(duration_minutes), 0)::integer
+  INTO total_minutes
+  FROM public.practice_sessions
+  WHERE user_id = p_user_id
+    AND (p_instrument_id IS NULL OR instrument_id = p_instrument_id)
+    AND input_method != 'preset'; -- 基礎練を除外
+  
+  RETURN COALESCE(total_minutes, 0);
+END;
+$$;
+
+-- 関数へのアクセス権限を付与
+GRANT EXECUTE ON FUNCTION public.get_total_practice_time(uuid, uuid) TO anon, authenticated;
+
+-- 関数のコメント
+COMMENT ON FUNCTION public.get_total_practice_time(uuid, uuid) IS 'ユーザーの総練習時間を取得するRPC関数（分単位）。パフォーマンス最適化のためデータベース側で集計。';
+
+-- ============================================
+-- 18. instruments テーブルの初期データ
 -- ============================================
 INSERT INTO public.instruments (
   id, name, name_en, color_primary, color_secondary, color_accent, 

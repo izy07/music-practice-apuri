@@ -227,7 +227,7 @@ export default function InstrumentSelectionScreen() {
           };
           
           // その他楽器の場合は楽器名も保存（カラムが存在する場合のみ）
-          // custom_instrument_nameカラムはマイグレーション（20250123000001_add_custom_instrument_name.sql）で追加される必要があります
+          // 注意: custom_instrument_nameカラムは現在のスキーマに含まれていません
           // カラムが存在しない場合のエラーを避けるため、一旦コメントアウト
           // if (selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016') {
           //   updateData.custom_instrument_name = customInstrumentName.trim();

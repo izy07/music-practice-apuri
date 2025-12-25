@@ -153,9 +153,9 @@ export async function checkAttendanceRecordsTableExists(): Promise<boolean> {
           if (rpcException.message?.includes('function') && rpcException.message?.includes('does not exist')) {
             logger.warn('ensure_attendance_records_table関数が存在しません。');
             logger.warn('解決方法: Supabaseダッシュボードで以下のマイグレーションを実行してください:');
-            logger.warn('  1. 20251209000000_create_practice_schedules_and_tasks.sql（推奨：最初からテーブルを作成）');
-            logger.warn('  または');
-            logger.warn('  2. 20251209000002_ensure_attendance_records_table_final.sql（既存環境用）');
+            logger.warn('  統合マイグレーションファイル: 20251219000000_initial_schema.sql');
+            logger.warn('  （すべてのテーブルが含まれています）');
+            logger.warn('  または、ローカル環境で: supabase db reset');
             return false;
           }
           logger.error('attendance_recordsテーブルの自動作成中にエラーが発生しました:', rpcException);

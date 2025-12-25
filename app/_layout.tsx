@@ -162,12 +162,12 @@ function RootLayoutContent() {
             console.error('attendance_recordsテーブルが存在しません');
             console.error('解決方法: Supabaseダッシュボードでマイグレーションを実行してください');
             console.error('');
-            console.error('【推奨】最初からテーブルを作成する場合:');
-            console.error('  マイグレーションファイル: 20251209000000_create_practice_schedules_and_tasks.sql');
-            console.error('  （practice_schedules、tasks、attendance_recordsを一緒に作成）');
+            console.error('【推奨】統合マイグレーションファイルを使用:');
+            console.error('  マイグレーションファイル: 20251219000000_initial_schema.sql');
+            console.error('  （すべてのテーブルが含まれています）');
             console.error('');
-            console.error('【既存環境用】attendance_recordsのみ作成する場合:');
-            console.error('  マイグレーションファイル: 20251209000002_ensure_attendance_records_table_final.sql');
+            console.error('  または、ローカル環境で以下を実行:');
+            console.error('  supabase db reset');
             console.error('========================================');
           }
           

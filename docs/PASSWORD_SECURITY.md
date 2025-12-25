@@ -140,9 +140,9 @@ export async function hashPassword(password: string): Promise<string> {
 - 現在はSupabase認証では使用されていない
 - 将来的に組織パスワードなどで使用する可能性
 
-### 3. 組織パスワード（非推奨）
+### 3. 組織パスワード（非推奨・統合済み）
 
-**ファイル:** `supabase/migrations/20250121000012_add_organization_password.sql`
+**注意:** このマイグレーションファイルは既に削除され、統合マイグレーションファイル（`20251219000000_initial_schema.sql`）に含まれています。
 
 ```sql
 -- ⚠️ 注意: SHA-256はパスワードハッシュ化には不適切
