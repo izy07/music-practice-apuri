@@ -1,7 +1,7 @@
 import { useRouter, useSegments } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import logger from '@/lib/logger';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 
 export default function NotFoundScreen() {
   const router = useRouter();
@@ -72,32 +72,3 @@ export default function NotFoundScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  text: {
-    fontSize: 20,
-    fontWeight: 600,
-  },
-  link: {
-    marginTop: 15,
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    backgroundColor: '#007AFF',
-    borderRadius: 8,
-  },
-  linkText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  subText: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 8,
-  },
-});
