@@ -7,8 +7,8 @@ class TimerService {
   private _stopwatchSeconds: number = 0;
   private _isTimerRunning: boolean = false;
   private _isStopwatchRunning: boolean = false;
-  private _timerInterval: number | null = null;
-  private _stopwatchInterval: number | null = null;
+  private _timerInterval: ReturnType<typeof setInterval> | null = null;
+  private _stopwatchInterval: ReturnType<typeof setInterval> | null = null;
   private _listeners: ((timerSeconds: number, stopwatchSeconds: number, isTimerRunning: boolean, isStopwatchRunning: boolean) => void)[] = [];
   
   // Timer preset values
@@ -44,9 +44,20 @@ class TimerService {
   }
 
   startTimer() {
+    // 既存のインターバルをクリア（念のため）
+    if (this._timerInterval) {
+      clearInterval(this._timerInterval);
+      this._timerInterval = null;
+    }
+    
     if (!this._isTimerRunning && this._timerSeconds > 0) {
       this._isTimerRunning = true;
       this._timerInterval = setInterval(() => {
+        // 停止中でないことを確認（二重チェック）
+        if (!this._isTimerRunning) {
+          return;
+        }
+        
         this._timerSeconds--;
         this._notifyListeners();
         
@@ -61,11 +72,15 @@ class TimerService {
   }
 
   pauseTimer() {
+    // まず実行フラグをfalseに設定（インターバルコールバック内のチェックを有効にする）
     this._isTimerRunning = false;
+    
+    // その後、インターバルをクリア
     if (this._timerInterval) {
       clearInterval(this._timerInterval);
       this._timerInterval = null;
     }
+    
     this._notifyListeners();
   }
 
@@ -84,9 +99,20 @@ class TimerService {
 
   // Stopwatch methods
   startStopwatch() {
+    // 既存のインターバルをクリア（念のため）
+    if (this._stopwatchInterval) {
+      clearInterval(this._stopwatchInterval);
+      this._stopwatchInterval = null;
+    }
+    
     if (!this._isStopwatchRunning) {
       this._isStopwatchRunning = true;
       this._stopwatchInterval = setInterval(() => {
+        // 停止中でないことを確認（二重チェック）
+        if (!this._isStopwatchRunning) {
+          return;
+        }
+        
         this._stopwatchSeconds++;
         this._notifyListeners();
       }, 1000);
@@ -95,11 +121,15 @@ class TimerService {
   }
 
   pauseStopwatch() {
+    // まず実行フラグをfalseに設定（インターバルコールバック内のチェックを有効にする）
     this._isStopwatchRunning = false;
+    
+    // その後、インターバルをクリア
     if (this._stopwatchInterval) {
       clearInterval(this._stopwatchInterval);
       this._stopwatchInterval = null;
     }
+    
     this._notifyListeners();
   }
 
