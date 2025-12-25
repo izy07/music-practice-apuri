@@ -89,6 +89,9 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_user_profiles_user_id ON public.user_profiles(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_profiles_selected_instrument_id ON public.user_profiles(selected_instrument_id);
 
+-- instrument_specific_dataカラムのコメント
+COMMENT ON COLUMN public.user_profiles.instrument_specific_data IS '楽器ごとのプロフィールデータ（JSONB形式）';
+
 -- ============================================
 -- 3. recordings テーブル（instrumentsに依存）
 -- ============================================
