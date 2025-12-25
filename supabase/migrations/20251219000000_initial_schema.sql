@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS public.user_profiles (
   tutorial_completed_at timestamptz,
   onboarding_completed boolean DEFAULT false,
   onboarding_completed_at timestamptz,
+  instrument_specific_data jsonb DEFAULT '{}'::jsonb,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
   UNIQUE(user_id)
