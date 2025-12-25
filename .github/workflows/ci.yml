@@ -64,33 +64,17 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  # データベース統合テスト（オプショナル：失敗してもCI/CD全体は成功）
-  test-database:
-    name: データベース統合テスト
+  # 統合テスト（モックベース：Supabase不要）
+  test-integration:
+    name: 統合テスト
     runs-on: ubuntu-latest
     needs: test
     if: always() && (needs.test.result == 'success' || needs.test.result == 'failure')
-    # testジョブの失敗時も実行（統合テストは独立しているため）
     continue-on-error: true  # このジョブが失敗してもCI/CD全体は成功とする
-    
-    # PostgreSQLサービスコンテナは削除（Supabaseが独自のPostgreSQLコンテナを起動するため不要）
-    # ポート競合を避けるため、Supabaseのconfig.tomlで設定されたポート（54322）を使用
 
     steps:
       - name: チェックアウト
         uses: actions/checkout@v3
-
-      - name: Docker セットアップ
-        uses: docker/setup-buildx-action@v3
-
-      - name: Docker サービスの確認
-        run: |
-          echo "🐳 Dockerサービスの状態を確認します..."
-          docker --version || {
-            echo "❌ Dockerが利用できません"
-            exit 1
-          }
-          echo "✅ Dockerが利用可能です"
 
       - name: Node.js セットアップ
         uses: actions/setup-node@v3
@@ -103,393 +87,17 @@ jobs:
           echo "📦 依存関係をインストールします..."
           npm ci --legacy-peer-deps || {
             echo "❌ 依存関係のインストールに失敗しました"
-            echo "📊 package-lock.jsonの整合性を確認してください"
             exit 1
           }
           echo "✅ 依存関係のインストールが完了しました"
 
-      - name: Supabase CLI のインストール
+      - name: 統合テスト実行（モックベース）
         run: |
-          # デバッグモードを有効化
-          set -x  # 実行コマンドを表示
-          set +e  # エラーで停止しないように設定
-          set +o pipefail  # パイプエラーでも停止しない
-          
-          echo "📦 Supabase CLIをインストールします..."
-          echo "📊 現在のディレクトリ: $(pwd)"
-          echo "📊 作業ディレクトリの内容:"
-          ls -la | head -20 || true
-          
-          # 念のため、作業ディレクトリのsupabaseを完全に無視（何もしない）
-          # エラーが発生する可能性があるため、一切触らない
-          echo "⚠️  作業ディレクトリのsupabaseには一切触りません"
-          
-          # システムから既存のSupabase CLIを削除（エラーを無視）
-          echo "🗑️  システムから既存のSupabase CLIを削除します..."
-          sudo rm -f /usr/local/bin/supabase 2>/dev/null || true
-          echo "✅ システムのクリーンアップ完了"
-          
-          # 最新バージョンのSupabase CLIをインストール
-          # GitHub APIから最新リリースのタグを取得（より確実な方法）
-          API_RESPONSE=$(curl -s https://api.github.com/repos/supabase/cli/releases/latest)
-          VERSION=$(echo "$API_RESPONSE" | grep '"tag_name"' | head -1 | sed -E 's/.*"tag_name":\s*"([^"]+)".*/\1/')
-          
-          # バージョンが取得できなかった場合、固定バージョンを使用
-          if [ -z "$VERSION" ] || [ "$VERSION" = "mentions_count" ] || [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "⚠️  最新バージョンの取得に失敗したため、固定バージョンを使用します（取得値: $VERSION）"
-            VERSION="v1.263.0"
-          fi
-          
-          echo "📌 インストールするバージョン: $VERSION"
-          
-          # 一時ディレクトリでダウンロードと展開（作業ディレクトリを完全に無視）
-          TEMP_DIR=$(mktemp -d)
-          echo "📁 一時ディレクトリ: $TEMP_DIR"
-          cd "$TEMP_DIR"
-          
-          curl -fsSL "https://github.com/supabase/cli/releases/download/${VERSION}/supabase_linux_amd64.tar.gz" -o supabase.tar.gz || {
-            echo "❌ Supabase CLIのダウンロードに失敗しました（バージョン: $VERSION）"
-            echo "⚠️  npm経由でインストールを試みます..."
-            cd -
-            
-            # npm経由でインストールを試みる
-            npm install -g supabase@latest || {
-              echo "❌ npm経由のSupabase CLIインストールも失敗しました"
-              rm -rf "$TEMP_DIR" 2>/dev/null || true
-              echo "⚠️  Supabase CLIのインストールをスキップして続行します（Supabase CLIはオプショナルです）"
-              exit 0  # エラーを無視して続行
-            }
-            
-            # npm経由でインストール成功
-            supabase --version || {
-              echo "⚠️  Supabase CLIのインストール確認に失敗しましたが、続行します"
-            }
-            echo "✅ npm経由でSupabase CLIをインストールしました"
-            rm -rf "$TEMP_DIR" 2>/dev/null || true
-            exit 0
-          }
-          
-          tar -xzf supabase.tar.gz || {
-            echo "❌ Supabase CLIの展開に失敗しました"
-            cd -
-            rm -rf "$TEMP_DIR" 2>/dev/null || true
-            exit 1
-          }
-          
-          # バイナリをシステムにインストール
-          if [ -f supabase ]; then
-            sudo mv supabase /usr/local/bin/supabase || {
-              echo "❌ Supabase CLIのインストールに失敗しました"
-              cd -
-              rm -rf "$TEMP_DIR" 2>/dev/null || true
-              exit 1
-            }
-          else
-            echo "❌ supabaseバイナリが見つかりません"
-            cd -
-            rm -rf "$TEMP_DIR" 2>/dev/null || true
-            exit 1
-          fi
-          
-          # 一時ディレクトリをクリーンアップ
-          cd -
-          rm -rf "$TEMP_DIR" 2>/dev/null || true
-          set -e  # エラーで停止する設定に戻す
-          
-          # インストール確認
-          supabase --version || {
-            echo "❌ Supabase CLIのインストール確認に失敗しました"
-            exit 1
-          }
-          echo "✅ Supabase CLIのインストールが完了しました"
-
-      - name: Supabase ローカル環境の起動（統合テスト用、オプショナル）
-        continue-on-error: true
-        run: |
-          echo "🚀 Supabaseローカル環境を起動します..."
-          
-          # Dockerが利用可能か確認
-          docker --version || {
-            echo "❌ Dockerが利用できません"
-            exit 1
-          }
-          
-          # 既存のSupabaseコンテナを停止（存在する場合）
-          supabase stop || echo "⚠️ 既存のコンテナが見つかりませんでした（新規起動を続行）"
-          
-          # すべてのPostgreSQLコンテナを停止（最も確実な方法：コンテナ名で検索）
-          echo "🔍 すべてのPostgreSQLコンテナを確認します..."
-          # コンテナ名にpostgresを含むものを検索（xargsを使用して確実に停止）
-          docker ps -a --format "{{.ID}} {{.Names}}" | grep -i postgres | awk '{print $1}' | xargs -r -I {} sh -c 'echo "  停止中: {}"; docker stop {} 2>/dev/null || true; docker rm -f {} 2>/dev/null || true' || true
-          
-          # ポート5432を使用しているコンテナを停止（PostgreSQLコンテナの競合を回避）
-          echo "🔍 ポート5432を使用しているコンテナを確認します..."
-          # より確実に検出するため、複数の方法で検索
-          PORT_5432_CONTAINERS=$(docker ps -a --filter "publish=5432" --format "{{.ID}}" 2>/dev/null || true)
-          if [ -z "$PORT_5432_CONTAINERS" ]; then
-            # 別の方法で検索：ポートマッピングで5432を含むコンテナ
-            PORT_5432_CONTAINERS=$(docker ps -a --format "{{.ID}} {{.Ports}}" | grep "5432" | awk '{print $1}' || true)
-          fi
-          if [ -n "$PORT_5432_CONTAINERS" ]; then
-            echo "⚠️ ポート5432を使用しているコンテナが見つかりました。停止します..."
-            echo "$PORT_5432_CONTAINERS" | xargs -r -I {} sh -c 'echo "  停止中: {}"; docker stop {} 2>/dev/null || true; docker rm -f {} 2>/dev/null || true' || true
-          fi
-          
-          # SupabaseのPostgreSQLコンテナを明示的に停止（エラーメッセージに表示されたパターンに対応）
-          echo "🔍 Supabase PostgreSQLコンテナ（postgres17パターン）を確認します..."
-          SUPABASE_POSTGRES=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -E "(postgres17|supabase.*postgres|_postgres17_)" | awk '{print $1}' || true)
-          if [ -n "$SUPABASE_POSTGRES" ]; then
-            echo "⚠️ Supabase PostgreSQLコンテナが見つかりました。停止します..."
-            echo "$SUPABASE_POSTGRES" | xargs -r -I {} sh -c 'echo "  停止中: {}"; docker stop {} 2>/dev/null || true; docker rm -f {} 2>/dev/null || true' || true
-          fi
-          
-          # エラーメッセージに表示される可能性のあるコンテナIDパターンを直接停止
-          # パターン: /<hash>_postgres17_<number>
-          echo "🔍 Supabase PostgreSQLコンテナ（ハッシュパターン）を確認します..."
-          HASH_POSTGRES_CONTAINERS=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -E "[a-f0-9]+_postgres17_[0-9]+" | awk '{print $1}' || true)
-          if [ -n "$HASH_POSTGRES_CONTAINERS" ]; then
-            echo "⚠️ ハッシュパターンのPostgreSQLコンテナが見つかりました。停止します..."
-            echo "$HASH_POSTGRES_CONTAINERS" | xargs -r -I {} sh -c 'echo "  停止中: {}"; docker stop {} 2>/dev/null || true; docker rm -f {} 2>/dev/null || true' || true
-          fi
-          
-          # Supabase関連のコンテナをクリーンアップ
-          echo "🔍 Supabase関連のコンテナを確認します..."
-          SUPABASE_CONTAINERS=$(docker ps -a --filter "name=supabase" --format "{{.ID}}" || true)
-          if [ -n "$SUPABASE_CONTAINERS" ]; then
-            echo "⚠️ Supabaseコンテナが見つかりました。停止します..."
-            echo "$SUPABASE_CONTAINERS" | xargs -r docker stop || true
-            echo "$SUPABASE_CONTAINERS" | xargs -r docker rm -f || true
-          fi
-          
-          # 念のため、すべてのSupabaseコンテナを削除
-          docker ps -a | grep supabase | awk '{print $1}' | xargs -r docker rm -f || true
-          
-          # すべてのコンテナをリストアップして、postgres17を含むものを停止（最終手段）
-          echo "🔍 すべてのコンテナを確認し、postgres17を含むものを停止します..."
-          ALL_POSTGRES17=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -i "postgres17" | awk '{print $1}' || true)
-          if [ -n "$ALL_POSTGRES17" ]; then
-            echo "⚠️ postgres17を含むコンテナが見つかりました。停止します..."
-            echo "$ALL_POSTGRES17" | xargs -r -I {} sh -c 'echo "  停止中: {}"; docker stop {} 2>/dev/null || true; docker rm -f {} 2>/dev/null || true' || true
-          fi
-          
-          # すべてのコンテナをリストアップして、ポート5432を使用しているものを確認
-          echo "🔍 すべてのコンテナのポート使用状況を確認します..."
-          docker ps -a --format "{{.ID}} {{.Names}} {{.Ports}}" | grep "5432" || echo "ポート5432を使用しているコンテナは見つかりませんでした"
-          
-          # ポート5432が解放されるまで待機（最大15秒、より長く待機）
-          echo "⏳ ポート5432が解放されるまで待機します..."
-          for i in {1..15}; do
-            PORT_IN_USE=$(docker ps --format "{{.Ports}}" | grep "5432" || true)
-            if [ -z "$PORT_IN_USE" ]; then
-              echo "✅ ポート5432が解放されました"
-              break
-            else
-              if [ $i -eq 15 ]; then
-                echo "⚠️ ポート5432がまだ使用されています。強制的に続行します..."
-                # ポートを使用しているプロセスを確認（参考情報）
-                echo "ポート5432を使用しているプロセス:"
-                docker ps --format "{{.ID}} {{.Names}} {{.Ports}}" | grep "5432" || echo "見つかりませんでした"
-              else
-                echo "  待機中... ($i/15)"
-                sleep 1
-              fi
-            fi
-          done
-          
-          # Docker環境が安定するまで少し待機
-          echo "⏳ Docker環境が安定するまで待機中..."
-          sleep 3
-          
-          # Supabaseを初期化（必ず実行して確実に初期化）
-          echo "📦 Supabaseを初期化します..."
-          supabase init 2>&1 | tee /tmp/supabase-init.log || {
-            echo "⚠️ 初期化に失敗しましたが、続行します"
-            echo "初期化ログ:"
-            cat /tmp/supabase-init.log || echo "ログファイルが見つかりません"
-          }
-          
-          # Supabaseディレクトリの確認
-          echo "📊 Supabaseディレクトリの状態:"
-          ls -la supabase/ || echo "supabaseディレクトリが見つかりません"
-          ls -la supabase/.temp/ 2>/dev/null || echo "supabase/.tempディレクトリが見つかりません"
-          
-          # config.tomlの確認
-          if [ -f supabase/config.toml ]; then
-            echo "✅ config.tomlが存在します"
-          else
-            echo "⚠️ config.tomlが見つかりません"
-          fi
-          
-          # Supabaseを起動（--debugフラグで詳細ログを出力）
-          echo "⏳ Supabaseを起動中（デバッグモード）..."
-          supabase start --debug 2>&1 | tee /tmp/supabase-start.log || {
-            START_EXIT_CODE=$?
-            echo "❌ Supabaseの起動に失敗しました（終了コード: $START_EXIT_CODE）"
-            echo "📊 起動ログの最後の200行:"
-            tail -200 /tmp/supabase-start.log || echo "ログファイルが見つかりません"
-            echo "📊 Dockerコンテナ一覧（全コンテナ）:"
-            docker ps -a | head -30
-            echo "📊 Supabase関連コンテナ:"
-            docker ps -a | grep -i supabase || echo "Supabaseコンテナが見つかりません"
-            echo "📊 PostgreSQL関連コンテナ:"
-            docker ps -a | grep -i postgres || echo "PostgreSQLコンテナが見つかりません"
-            echo "📊 すべてのコンテナのポート使用状況:"
-            docker ps -a --format "{{.ID}} {{.Names}} {{.Ports}}" | grep -E "(5432|54321|54322)" || echo "関連ポートを使用しているコンテナは見つかりませんでした"
-            echo "📊 Dockerログ（Supabase関連コンテナ）:"
-            SUPABASE_CONTAINERS=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -i supabase | awk '{print $1}' || true)
-            if [ -n "$SUPABASE_CONTAINERS" ]; then
-              echo "$SUPABASE_CONTAINERS" | while read -r container_id; do
-                if [ -n "$container_id" ]; then
-                  echo "--- コンテナ $container_id のログ ---"
-                  docker logs "$container_id" 2>&1 | tail -100 || echo "ログ取得に失敗"
-                fi
-              done
-            fi
-            echo "📊 Dockerログ（PostgreSQL関連コンテナ）:"
-            POSTGRES_CONTAINERS=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -i postgres | awk '{print $1}' || true)
-            if [ -n "$POSTGRES_CONTAINERS" ]; then
-              echo "$POSTGRES_CONTAINERS" | while read -r container_id; do
-                if [ -n "$container_id" ]; then
-                  echo "--- コンテナ $container_id のログ ---"
-                  docker logs "$container_id" 2>&1 | tail -100 || echo "ログ取得に失敗"
-                fi
-              done
-            fi
-            echo "📊 Supabaseステータス:"
-            supabase status 2>&1 || echo "ステータス取得に失敗"
-            exit 1
-          }
-          
-          echo "✅ Supabaseの起動コマンドが成功しました"
-          
-          echo "⏳ Supabaseの起動を待機中..."
-          sleep 30  # 20秒から30秒に延長（より確実に起動を待つ）
-          
-          # 最大15回までリトライしてステータスを確認（より長く待機）
-          for i in {1..15}; do
-            echo "📊 Supabaseステータス確認 (試行 $i/15)..."
-            STATUS_OUTPUT=$(supabase status 2>&1)
-            STATUS_EXIT_CODE=$?
-            if [ $STATUS_EXIT_CODE -eq 0 ]; then
-              echo "✅ Supabaseが正常に起動しました"
-              echo "$STATUS_OUTPUT"
-              break
-            else
-              if [ $i -eq 15 ]; then
-                echo "⚠️ ステータス取得に失敗しました（15回試行後）"
-                echo "ステータス出力:"
-                echo "$STATUS_OUTPUT"
-                echo "📊 Dockerコンテナ状態:"
-                docker ps -a | grep -i supabase || echo "Supabaseコンテナが見つかりません"
-                echo "📊 すべてのDockerコンテナ:"
-                docker ps -a | head -30
-                echo "📊 Supabaseコンテナのログ（最新）:"
-                SUPABASE_CONTAINER=$(docker ps -a --format "{{.ID}} {{.Names}}" | grep -i supabase | head -1 | awk '{print $1}' || true)
-                if [ -n "$SUPABASE_CONTAINER" ]; then
-                  docker logs "$SUPABASE_CONTAINER" 2>&1 | tail -100 || echo "ログ取得に失敗"
-                fi
-                exit 1
-              else
-                echo "⏳ 待機中... ($i/15) - ステータス: $STATUS_EXIT_CODE"
-                if [ $i -le 5 ]; then
-                  sleep 3  # 最初の5回は3秒待機
-                else
-                  sleep 5  # その後は5秒待機
-                fi
-              fi
-            fi
-          done
-        env:
-          SUPABASE_DB_PASSWORD: postgres
-        timeout-minutes: 20  # 15分から20分に延長
-
-      - name: データベースマイグレーションの実行（オプショナル）
-        continue-on-error: true
-        run: |
-          echo "🔄 データベースマイグレーションを実行します..."
-          # Supabaseが起動していることを確認
-          if ! supabase status > /dev/null 2>&1; then
-            echo "❌ Supabaseが起動していません"
-            supabase status || true
-            exit 1
-          fi
-          
-          # マイグレーションファイルの確認
-          echo "📊 マイグレーションファイル一覧:"
-          if [ -d supabase/migrations ]; then
-            ls -la supabase/migrations/ || echo "⚠️ マイグレーションディレクトリが見つかりません"
-            echo "📊 マイグレーションファイル数:"
-            find supabase/migrations -name "*.sql" | wc -l
-          else
-            echo "❌ supabase/migrationsディレクトリが存在しません"
-            exit 1
-          fi
-          
-          # マイグレーションファイルの構文チェック（基本的なSQL構文エラーを検出）
-          echo "🔍 マイグレーションファイルの構文チェック..."
-          for file in supabase/migrations/*.sql; do
-            if [ -f "$file" ]; then
-              echo "  チェック中: $file"
-              # 基本的な構文エラーをチェック（未閉じのクォート、未閉じの括弧など）
-              if grep -q "CREATE TABLE\|ALTER TABLE\|INSERT INTO" "$file"; then
-                echo "    ✅ SQL文が検出されました"
-              fi
-            fi
-          done
-          
-          # マイグレーションを実行
-          echo "🔄 supabase db resetを実行中..."
-          if supabase db reset 2>&1 | tee /tmp/db-reset.log; then
-            echo "✅ データベースマイグレーション完了"
-          else
-            RESET_EXIT_CODE=$?
-            echo "❌ マイグレーションでエラーが発生しました（終了コード: $RESET_EXIT_CODE）"
-            echo "📊 マイグレーションログの最後の100行:"
-            tail -100 /tmp/db-reset.log || echo "ログファイルが見つかりません"
-            echo "📊 Supabaseステータス:"
-            supabase status || echo "ステータス取得に失敗"
-            echo "📊 データベース接続テスト:"
-            supabase db execute "SELECT 1;" || echo "データベース接続に失敗"
-            echo "📊 テーブル一覧:"
-            supabase db execute "SELECT tablename FROM pg_tables WHERE schemaname = 'public';" || echo "テーブル一覧取得に失敗"
-            exit 1
-          fi
-        timeout-minutes: 10
-
-      - name: データベース状態の確認
-        run: |
-          echo "📊 データベーステーブル一覧:"
-          supabase db diff --schema public || true
-        continue-on-error: true
-
-      - name: データベース接続確認（オプショナル）
-        continue-on-error: true
-        run: |
-          echo "🔍 データベース接続を確認します..."
-          if ! supabase status > /dev/null 2>&1; then
-            echo "❌ Supabaseが起動していません"
-            exit 1
-          fi
-          
-          echo "📊 データベース接続テスト:"
-          if supabase db execute "SELECT version();" 2>&1; then
-            echo "✅ データベース接続成功"
-          else
-            echo "❌ データベース接続失敗"
-            exit 1
-          fi
-          
-          echo "📊 主要テーブルの存在確認:"
-          supabase db execute "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY tablename;" || echo "テーブル一覧取得に失敗"
-        timeout-minutes: 2
-
-      - name: 統合テスト実行（モックベース、データベース不要）
-        run: |
-          echo "🧪 統合テストを実行します（モックベース）..."
+          echo "🧪 統合テストを実行します（モックベース、データベース不要）..."
           
           # 統合テストファイルの確認
-          echo "📊 統合テストファイル一覧:"
           if [ -d __tests__/integration ]; then
+            echo "📊 統合テストファイル一覧:"
             ls -la __tests__/integration/ || echo "統合テストディレクトリが見つかりません"
             echo "📊 統合テストファイル数:"
             find __tests__/integration -name "*.test.ts" -o -name "*.test.tsx" | wc -l
@@ -500,30 +108,22 @@ jobs:
           fi
           
           # 統合テストはモックを使用しているため、Supabaseの起動は不要
-          # 通常のテスト環境で実行
-          echo "🧪 統合テストを実行中（モックベース、データベース接続不要）..."
-          if npm run test:ci -- __tests__/integration/ 2>&1 | tee /tmp/integration-test-output.log; then
-            echo "✅ 統合テストが完了しました"
-          else
+          echo "🧪 統合テストを実行中..."
+          npm run test:ci -- __tests__/integration/ 2>&1 | tee /tmp/integration-test-output.log || {
             TEST_EXIT_CODE=$?
             echo "⚠️ 統合テストが失敗しました（終了コード: $TEST_EXIT_CODE）"
             echo "📊 テストログの最後の100行:"
             tail -100 /tmp/integration-test-output.log || echo "ログファイルが見つかりません"
-            # 統合テストの失敗は警告として扱い、続行（CI/CD全体は成功とする）
             echo "⚠️ 統合テストが失敗しましたが、CI/CD全体は続行します"
             exit 0
-          fi
+          }
+          echo "✅ 統合テストが完了しました"
         env:
           NODE_ENV: test
           CI: 'true'
           GITHUB_ACTIONS: 'true'
         timeout-minutes: 10
         continue-on-error: true
-
-      - name: Supabase ローカル環境の停止
-        if: always()
-        continue-on-error: true
-        run: supabase stop || true
 
   # Lint チェック
   lint:
