@@ -310,6 +310,31 @@ jobs:
         run: npm audit --production
         continue-on-error: true
 
+      - name: マイグレーションファイルの整合性チェック
+        run: |
+          echo "🔍 マイグレーションファイルの整合性をチェックします..."
+          if [ -f "scripts/validate-migrations.sh" ]; then
+            bash scripts/validate-migrations.sh || {
+              echo "❌ マイグレーションファイルの整合性チェックに失敗しました"
+              exit 1
+            }
+          else
+            echo "⚠️  警告: validate-migrations.sh が見つかりません。基本的なチェックのみ実行します"
+            # 基本的なチェック: 統合マイグレーションファイルの存在確認
+            if [ ! -f "supabase/migrations/20251219000000_initial_schema.sql" ]; then
+              echo "❌ エラー: 統合マイグレーションファイルが見つかりません"
+              exit 1
+            fi
+            # 不要なマイグレーションファイルのチェック
+            MIGRATION_COUNT=$(find supabase/migrations -name "*.sql" -type f 2>/dev/null | wc -l | tr -d ' ')
+            if [ "$MIGRATION_COUNT" -gt 1 ]; then
+              echo "⚠️  警告: 統合マイグレーションファイル以外のマイグレーションファイルが見つかりました:"
+              find supabase/migrations -name "*.sql" -type f | grep -v "20251219000000_initial_schema.sql" || true
+            fi
+          fi
+          echo "✅ マイグレーションファイルの整合性チェックが完了しました"
+        continue-on-error: false
+
       - name: テストデータ漏洩チェック
         run: |
           echo "🔍 テストデータの漏洩をチェックします..."

@@ -1,0 +1,33 @@
+name: マイグレーションファイル検証
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'scripts/validate-migrations.sh'
+      - '.github/workflows/migration-validation.yml'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'supabase/migrations/**'
+
+jobs:
+  validate-migrations:
+    name: マイグレーションファイルの整合性チェック
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v3
+
+      - name: マイグレーションファイルの整合性チェック
+        run: |
+          echo "🔍 マイグレーションファイルの整合性をチェックします..."
+          if [ -f "scripts/validate-migrations.sh" ]; then
+            chmod +x scripts/validate-migrations.sh
+            bash scripts/validate-migrations.sh
+          else
+            echo "❌ エラー: validate-migrations.sh が見つかりません"
+            exit 1
+          fi
+

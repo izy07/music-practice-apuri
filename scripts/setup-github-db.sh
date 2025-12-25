@@ -17,6 +17,25 @@ if ! command -v supabase &> /dev/null; then
   echo "✅ Supabase CLIのインストールが完了しました"
 fi
 
+# マイグレーションファイルの整合性チェック
+echo "🔍 マイグレーションファイルの整合性をチェック中..."
+if [ -f "scripts/validate-migrations.sh" ]; then
+  bash scripts/validate-migrations.sh || {
+    echo "❌ マイグレーションファイルの整合性チェックに失敗しました"
+    exit 1
+  }
+else
+  echo "⚠️  警告: validate-migrations.sh が見つかりません。スキップします"
+fi
+
+# 既存のSupabase環境のクリーンアップ
+echo "🧹 既存のSupabase環境をクリーンアップ中..."
+supabase stop || true
+
+# Dockerボリュームのクリーンアップ（古いデータを完全に削除）
+echo "🧹 Dockerボリュームをクリーンアップ中..."
+docker volume ls | grep supabase | awk '{print $2}' | xargs -r docker volume rm 2>/dev/null || true
+
 # Supabaseローカル環境の起動
 echo "🔧 Supabaseローカル環境を起動中..."
 supabase start
