@@ -3,7 +3,7 @@
 -- ============================================
 -- 日付: 2025-12-19
 -- 目的: すべてのマイグレーションファイルを1つに統合し、依存関係を正しく整理
--- 依存関係順: instruments → user_profiles, recordings, goals, practice_sessions → organizations → user_group_memberships, practice_schedules, tasks → attendance_records
+-- 依存関係順: instruments → user_profiles, recordings, goals, practice_sessions → organizations → user_group_memberships, practice_schedules, tasks → attendance_records, events
 -- ============================================
 
 -- ============================================
@@ -204,55 +204,7 @@ CREATE INDEX IF NOT EXISTS idx_goals_instrument_id ON public.goals(instrument_id
 CREATE INDEX IF NOT EXISTS idx_goals_show_on_calendar ON public.goals(show_on_calendar) WHERE show_on_calendar = true;
 
 -- ============================================
--- 5. events テーブル
--- ============================================
-CREATE TABLE IF NOT EXISTS public.events (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  title text NOT NULL,
-  date date NOT NULL,
-  description text,
-  is_completed boolean DEFAULT false,
-  completed_at timestamptz,
-  created_at timestamptz DEFAULT now(),
-  updated_at timestamptz DEFAULT now()
-);
-
--- RLSの有効化
-ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
-
--- RLSポリシー
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'events' AND policyname = 'Users can read own events') THEN
-    CREATE POLICY "Users can read own events" ON public.events
-      FOR SELECT USING (auth.uid() = user_id);
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'events' AND policyname = 'Users can insert own events') THEN
-    CREATE POLICY "Users can insert own events" ON public.events
-      FOR INSERT WITH CHECK (auth.uid() = user_id);
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'events' AND policyname = 'Users can update own events') THEN
-    CREATE POLICY "Users can update own events" ON public.events
-      FOR UPDATE USING (auth.uid() = user_id);
-  END IF;
-
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'events' AND policyname = 'Users can delete own events') THEN
-    CREATE POLICY "Users can delete own events" ON public.events
-      FOR DELETE USING (auth.uid() = user_id);
-  END IF;
-END $$;
-
--- インデックス
-CREATE INDEX IF NOT EXISTS idx_events_user_id ON public.events(user_id);
-CREATE INDEX IF NOT EXISTS idx_events_date ON public.events(date);
-CREATE INDEX IF NOT EXISTS idx_events_is_completed ON public.events(is_completed);
-CREATE INDEX IF NOT EXISTS idx_events_completed_at ON public.events(completed_at);
-
--- ============================================
--- 6. practice_sessions テーブル（instrumentsに依存）
+-- 5. practice_sessions テーブル（instrumentsに依存）
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.practice_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -573,7 +525,57 @@ CREATE INDEX IF NOT EXISTS idx_attendance_records_user_id ON public.attendance_r
 CREATE INDEX IF NOT EXISTS idx_attendance_records_registered_at ON public.attendance_records(registered_at);
 
 -- ============================================
--- 12. music_terms テーブル
+-- 12. events テーブル（practice_schedulesに依存）
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  title text NOT NULL,
+  date date NOT NULL,
+  description text,
+  practice_schedule_id uuid REFERENCES public.practice_schedules(id) ON DELETE SET NULL,
+  is_completed boolean DEFAULT false,
+  completed_at timestamptz,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- RLSの有効化
+ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
+
+-- RLSポリシー
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'events' AND policyname = 'Users can read own events') THEN
+    CREATE POLICY "Users can read own events" ON public.events
+      FOR SELECT USING (auth.uid() = user_id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'events' AND policyname = 'Users can insert own events') THEN
+    CREATE POLICY "Users can insert own events" ON public.events
+      FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'events' AND policyname = 'Users can update own events') THEN
+    CREATE POLICY "Users can update own events" ON public.events
+      FOR UPDATE USING (auth.uid() = user_id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'events' AND policyname = 'Users can delete own events') THEN
+    CREATE POLICY "Users can delete own events" ON public.events
+      FOR DELETE USING (auth.uid() = user_id);
+  END IF;
+END $$;
+
+-- インデックス
+CREATE INDEX IF NOT EXISTS idx_events_user_id ON public.events(user_id);
+CREATE INDEX IF NOT EXISTS idx_events_date ON public.events(date);
+CREATE INDEX IF NOT EXISTS idx_events_is_completed ON public.events(is_completed);
+CREATE INDEX IF NOT EXISTS idx_events_completed_at ON public.events(completed_at);
+CREATE INDEX IF NOT EXISTS idx_events_practice_schedule_id ON public.events(practice_schedule_id);
+
+-- ============================================
+-- 13. music_terms テーブル
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.music_terms (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -599,7 +601,7 @@ CREATE POLICY "Anyone can read music terms" ON public.music_terms
 CREATE INDEX IF NOT EXISTS idx_music_terms_category ON public.music_terms(category);
 
 -- ============================================
--- 13. ai_chat_history テーブル
+-- 14. ai_chat_history テーブル
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.ai_chat_history (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -641,7 +643,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_chat_history_user_id ON public.ai_chat_history
 CREATE INDEX IF NOT EXISTS idx_ai_chat_history_created_at ON public.ai_chat_history(created_at);
 
 -- ============================================
--- 14. representative_songs テーブル（instrumentsに依存）
+-- 15. representative_songs テーブル（instrumentsに依存）
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.representative_songs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -678,7 +680,7 @@ CREATE INDEX IF NOT EXISTS idx_representative_songs_display_order ON public.repr
 CREATE INDEX IF NOT EXISTS idx_representative_songs_is_popular ON public.representative_songs(is_popular);
 
 -- ============================================
--- 15. 更新日時を自動更新するトリガー関数
+-- 16. 更新日時を自動更新するトリガー関数
 -- ============================================
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -737,6 +739,12 @@ CREATE TRIGGER update_attendance_records_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_events_updated_at ON public.events;
+CREATE TRIGGER update_events_updated_at
+  BEFORE UPDATE ON public.events
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
 DROP TRIGGER IF EXISTS update_representative_songs_updated_at ON public.representative_songs;
 CREATE TRIGGER update_representative_songs_updated_at
   BEFORE UPDATE ON public.representative_songs
@@ -744,7 +752,7 @@ CREATE TRIGGER update_representative_songs_updated_at
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
--- 16. instruments テーブルの初期データ
+-- 17. instruments テーブルの初期データ
 -- ============================================
 INSERT INTO public.instruments (
   id, name, name_en, color_primary, color_secondary, color_accent, 
