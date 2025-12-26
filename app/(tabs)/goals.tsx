@@ -262,7 +262,21 @@ export default function GoalsScreen() {
       }
 
       const completedGoalsData = await goalRepository.getCompletedGoals(user.id, instrumentId);
-      setCompletedGoals(completedGoalsData as any);
+      
+      // 楽器IDでフィルタリング（クライアント側でも追加のフィルタリング）
+      // データベース側でフィルタリングされているが、念のためクライアント側でも確認
+      const filteredCompletedGoals = completedGoalsData.filter((g: any) => {
+        const goalInstrumentId = g.instrument_id;
+        if (instrumentId) {
+          // 楽器が選択されている場合: その楽器の目標のみ表示（instrument_idがnullの目標は除外）
+          return goalInstrumentId === instrumentId;
+        } else {
+          // 楽器が選択されていない場合: instrument_idがnullの目標のみ表示
+          return !goalInstrumentId || goalInstrumentId === null;
+        }
+      });
+      
+      setCompletedGoals(filteredCompletedGoals as any);
       
       // キャッシュに保存（オフライン対応）
       try {
