@@ -44,9 +44,7 @@ export default function EventModal({
   event,
   onEventSaved,
 }: EventModalProps) {
-  const { selectedInstrument } = useInstrumentTheme();
-  const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
-  const { currentTheme } = useInstrumentTheme();
+  const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
   const [description, setDescription] = useState('');
