@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { Clock, Pencil, RotateCcw } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
@@ -159,17 +159,19 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
     pauseStopwatch();
   };
 
-  const handleLap = (e?: any) => {
-    // イベントの伝播を防ぐ
-    if (e) {
-      e.stopPropagation?.();
-      e.preventDefault?.();
+  const handleLapProcessing = useRef(false); // ラップ処理中フラグ
+  const lapHandler = useCallback(() => {
+    // 既に処理中の場合は何もしない（重複実行を防ぐ）
+    if (handleLapProcessing.current) {
+      return;
     }
     
     // ストップウォッチが実行中でない、または開始時刻が設定されていない場合は何もしない
     if (!isStopwatchRunning || startTimeRef.current === null) {
       return;
     }
+    
+    handleLapProcessing.current = true;
     
     // 現在の経過時間を正確に計算（ミリ秒単位）
     const elapsed = Date.now() - startTimeRef.current;
@@ -183,7 +185,12 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
     
     setLaps(prev => [newLap, ...prev]);
     lastLapTimeRef.current = elapsed;
-  };
+    
+    // 少し遅延してフラグをリセット（重複実行を防ぐ）
+    setTimeout(() => {
+      handleLapProcessing.current = false;
+    }, 300);
+  }, [isStopwatchRunning]);
 
   const handleClear = () => {
     // ストップウォッチの時間をリセット
@@ -198,12 +205,14 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
     lastLapTimeRef.current = 0;
   };
 
-  const handleStart = (e?: any) => {
-    // イベントの伝播を防ぐ
-    if (e) {
-      e.stopPropagation?.();
-      e.preventDefault?.();
+  const handleStart = useRef(false); // 開始処理中フラグ
+  const startHandler = () => {
+    // 既に処理中の場合は何もしない（重複実行を防ぐ）
+    if (handleStart.current) {
+      return;
     }
+    
+    handleStart.current = true;
     
     if (!isStopwatchRunning) {
       // 新規開始時（時間が0）はラップ時点をリセット
@@ -214,6 +223,11 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
       // 再開時は、useEffectでstartTimeRefが設定される
       startStopwatch();
     }
+    
+    // 少し遅延してフラグをリセット（重複実行を防ぐ）
+    setTimeout(() => {
+      handleStart.current = false;
+    }, 300);
   };
 
   const handleReset = () => {
@@ -246,15 +260,15 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
               borderColor: currentTheme.secondary,
             }
           ]}
-          onPress={(e) => {
-            e?.stopPropagation?.();
+          onPress={() => {
             if (isStopwatchRunning) {
               handleStop();
             } else {
-              handleStart(e);
+              startHandler();
             }
           }}
           activeOpacity={0.7}
+          hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
         >
           <Clock size={16} color={isStopwatchRunning ? currentTheme.surface : currentTheme.text} />
           <Text 
@@ -277,12 +291,10 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
               borderColor: currentTheme.primary,
             }
           ]}
-          onPress={(e) => {
-            e?.stopPropagation?.();
-            handleLap(e);
-          }}
+          onPress={lapHandler}
           disabled={!isStopwatchRunning}
           activeOpacity={0.7}
+          hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
         >
           <Pencil size={16} color={isStopwatchRunning ? currentTheme.surface : currentTheme.textSecondary} />
           <Text 
@@ -374,7 +386,7 @@ const styles = StyleSheet.create({
     width: '100%',
     paddingHorizontal: 12,
     marginBottom: 24,
-    gap: 8,
+    gap: 12, // ボタン間の間隔を増やす
   },
   stopwatchControlButton: {
     flex: 1,
