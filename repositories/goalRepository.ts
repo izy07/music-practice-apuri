@@ -320,6 +320,25 @@ export const goalRepository = {
     query = query.order('created_at', { ascending: false }).limit(50);
 
     const { data: goals, error } = await query;
+    
+    // デバッグログ
+    if (goals && goals.length > 0) {
+      logger.debug('[goalRepository.getGoals] 取得した目標:', {
+        count: goals.length,
+        instrumentId,
+        supportsInstrumentId,
+        goals: goals.map((g: any) => ({
+          id: g.id,
+          title: g.title,
+          instrument_id: g.instrument_id,
+        })),
+      });
+    } else if (goals && goals.length === 0) {
+      logger.debug('[goalRepository.getGoals] 目標が見つかりませんでした:', {
+        instrumentId,
+        supportsInstrumentId,
+      });
+    }
 
     if (error) {
       const isColumnError = error.code === '42703' || 
