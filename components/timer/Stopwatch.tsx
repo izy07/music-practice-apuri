@@ -112,6 +112,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
     // ただし、ストップ時（pausedTotalMsRef > 0）はリセットしない
     if (stopwatchSeconds === 0 && !isStopwatchRunning && prevStopwatchSecondsRef.current > 0) {
       // pausedTotalMsRefが0の場合のみリセット（クリアボタンが押された場合）
+      // または、isResettingRefがtrueの場合のみリセット
       if (pausedTotalMsRef.current === 0 || isResettingRef.current) {
         setMilliseconds(0);
         setDisplayTimeMs(0);
@@ -120,6 +121,9 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
         setLaps([]);
         lastLapTimeRef.current = 0;
         isResettingRef.current = false;
+      } else {
+        // ストップ時（pausedTotalMsRef > 0）は、displayTimeMsを保持
+        setDisplayTimeMs(pausedTotalMsRef.current);
       }
     }
     prevStopwatchSecondsRef.current = stopwatchSeconds;
@@ -156,7 +160,19 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
       // startTimeRefがnullの場合でも、pausedTotalMsRefから表示を更新
       setDisplayTimeMs(pausedTotalMsRef.current);
     }
+    
+    // pauseStopwatch()を呼ぶ前に、isResettingRefをfalseに設定してリセット処理を防ぐ
+    isResettingRef.current = false;
+    
     pauseStopwatch();
+    
+    // pauseStopwatch()の後にも、displayTimeMsを確実に保持
+    // 少し遅延してから再度設定（useEffectの実行を待つ）
+    setTimeout(() => {
+      if (pausedTotalMsRef.current > 0) {
+        setDisplayTimeMs(pausedTotalMsRef.current);
+      }
+    }, 50);
   };
 
   const handleLapProcessing = useRef(false); // ラップ処理中フラグ
