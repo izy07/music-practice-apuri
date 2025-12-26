@@ -106,14 +106,21 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
 
   // リセット時にミリ秒もリセット（stopwatchSecondsが0で、かつ前回も0だった場合のみ）
   const prevStopwatchSecondsRef = useRef(stopwatchSeconds);
+  const isResettingRef = useRef(false); // リセット中かどうかを追跡
   useEffect(() => {
     // リセットされた場合のみ（0から0への変化ではなく、非0から0への変化）
+    // ただし、ストップ時（pausedTotalMsRef > 0）はリセットしない
     if (stopwatchSeconds === 0 && !isStopwatchRunning && prevStopwatchSecondsRef.current > 0) {
-      setMilliseconds(0);
-      pausedTotalMsRef.current = 0;
-      startTimeRef.current = null;
-      setLaps([]);
-      lastLapTimeRef.current = 0;
+      // pausedTotalMsRefが0の場合のみリセット（クリアボタンが押された場合）
+      if (pausedTotalMsRef.current === 0 || isResettingRef.current) {
+        setMilliseconds(0);
+        setDisplayTimeMs(0);
+        pausedTotalMsRef.current = 0;
+        startTimeRef.current = null;
+        setLaps([]);
+        lastLapTimeRef.current = 0;
+        isResettingRef.current = false;
+      }
     }
     prevStopwatchSecondsRef.current = stopwatchSeconds;
   }, [stopwatchSeconds, isStopwatchRunning]);
@@ -171,6 +178,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
 
   const handleClear = () => {
     // ストップウォッチの時間をリセット
+    isResettingRef.current = true; // リセット中フラグを設定
     resetStopwatch();
     setMilliseconds(0);
     setDisplayTimeMs(0);
