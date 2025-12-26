@@ -113,10 +113,13 @@ export default function GoalsScreen() {
         return;
       }
 
+      // 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
+      const instrumentId = getInstrumentId(selectedInstrument);
+
       // オフライン時はキャッシュから読み込み
       if (!isOnline()) {
         try {
-          const cacheKey = `goals_cache_${user.id}_${selectedInstrument || 'all'}`;
+          const cacheKey = `goals_cache_${user.id}_${instrumentId || 'all'}`;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
@@ -135,7 +138,6 @@ export default function GoalsScreen() {
       }
 
       // オンライン時またはキャッシュがない場合はデータベースから取得
-      const instrumentId = getInstrumentId(selectedInstrument);
       const goalsData = await goalRepository.getGoals(user.id, instrumentId);
       const goalsWithShowOnCalendar = goalsData.map((g: any) => ({
         ...g,
