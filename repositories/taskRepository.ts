@@ -87,14 +87,22 @@ export const taskRepository = {
     priority: 'low' | 'medium' | 'high';
     due_date?: string;
     status?: TaskStatus;
+    instrument_id?: string | null;
   }): Promise<RepositoryResult<Task>> {
     return safeExecute(async () => {
+      const insertData: any = {
+        ...data,
+        status: data.status || 'pending',
+      };
+      
+      // 楽器IDを設定（存在する場合のみ）
+      if (data.instrument_id !== undefined) {
+        insertData.instrument_id = data.instrument_id;
+      }
+      
       const { data: result, error } = await supabase
         .from('tasks')
-        .insert({
-          ...data,
-          status: data.status || 'pending',
-        })
+        .insert(insertData)
         .select()
         .single();
 
