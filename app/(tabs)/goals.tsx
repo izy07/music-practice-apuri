@@ -138,6 +138,13 @@ export default function GoalsScreen() {
       }
 
       // オンライン時またはキャッシュがない場合はデータベースから取得
+      // デバッグ: instrumentIdが正しく取得されているか確認
+      logger.debug('[goals.tsx] loadGoals開始:', {
+        userId: user.id,
+        selectedInstrument,
+        instrumentId,
+      });
+      
       const goalsData = await goalRepository.getGoals(user.id, instrumentId);
       
       logger.debug('目標データ取得結果:', {

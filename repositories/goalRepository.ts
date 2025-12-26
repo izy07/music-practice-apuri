@@ -224,25 +224,42 @@ export const initializeGoalRepository = async (forceRecheck: boolean = false): P
         }
       }
       
-      // instrument_idカラムの存在確認（必要に応じて）
-      if (supportsInstrumentId) {
+      // instrument_idカラムの存在確認（強制再チェックの場合はlocalStorageのフラグを無視）
+      if (forceRecheck && typeof window !== 'undefined') {
         try {
-          const { error } = await supabase
-            .from('goals')
-            .select('instrument_id')
-            .limit(1);
-          
-          if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('instrument_id'))) {
-            supportsInstrumentId = false;
-            if (typeof window !== 'undefined') {
-              try {
-                window.localStorage.setItem('disable_instrument_id', '1');
-              } catch {}
-            }
+          window.localStorage.removeItem('disable_instrument_id');
+          supportsInstrumentId = true; // 強制再チェック時はリセット
+        } catch {}
+      }
+      
+      // instrument_idカラムの存在確認
+      try {
+        const { error } = await supabase
+          .from('goals')
+          .select('instrument_id')
+          .limit(1);
+        
+        if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('instrument_id'))) {
+          supportsInstrumentId = false;
+          if (typeof window !== 'undefined') {
+            try {
+              window.localStorage.setItem('disable_instrument_id', '1');
+            } catch {}
           }
-        } catch {
-          // エラーは無視（デフォルトはtrue）
+          logger.debug('[goalRepository] instrument_idカラムが存在しません');
+        } else if (!error) {
+          // エラーがない場合はカラムが存在する
+          supportsInstrumentId = true;
+          if (typeof window !== 'undefined') {
+            try {
+              window.localStorage.removeItem('disable_instrument_id');
+            } catch {}
+          }
+          logger.debug('[goalRepository] instrument_idカラムが存在します');
         }
+      } catch (error) {
+        // エラーは無視（デフォルトはtrue）
+        logger.debug('[goalRepository] instrument_idカラムの確認中にエラー:', error);
       }
       
       // is_completedカラムの存在確認（必要に応じて）
