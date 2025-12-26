@@ -24,7 +24,7 @@ interface UnifiedTask extends Task {
 
 export default function TasksAllOrgsScreen() {
   const router = useRouter();
-  const { currentTheme } = useInstrumentTheme();
+  const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const { t } = useLanguage();
   const { organizations, loadOrganizations, loading: orgLoading } = useOrganization();
   
@@ -39,18 +39,21 @@ export default function TasksAllOrgsScreen() {
     if (organizations.length > 0) {
       loadAllTasks();
     }
-  }, [organizations]);
+  }, [organizations, selectedInstrument]);
 
   const loadAllTasks = async () => {
     setLoading(true);
     try {
       const allTasks: UnifiedTask[] = [];
       
+      const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
+      const instrumentId = getInstrumentId(selectedInstrument);
+      
       for (const org of organizations) {
         try {
           // 組織のサブグループを取得
-          // 組織のタスクを取得
-          const tasksResult = await taskService.getByOrganizationId(org.id);
+          // 組織のタスクを取得（楽器ごとにフィルタリング）
+          const tasksResult = await taskService.getByOrganizationId(org.id, instrumentId);
           if (tasksResult.success && tasksResult.data) {
             for (const task of tasksResult.data) {
               allTasks.push({
