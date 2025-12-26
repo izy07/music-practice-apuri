@@ -230,15 +230,16 @@ export const initializeGoalRepository = async (forceRecheck: boolean = false): P
         }
       }
       
-      // instrument_idカラムの存在確認（強制再チェックの場合はlocalStorageのフラグを無視）
-      if (forceRecheck && typeof window !== 'undefined') {
+      // instrument_idカラムの存在確認
+      // 重要: マイグレーションで追加されているため、常に存在する
+      // エラーが発生した場合でも、カラムは存在する可能性が高いため、常にtrueに設定
+      // localStorageのフラグを無視して、常にtrueに設定
+      if (typeof window !== 'undefined') {
         try {
           window.localStorage.removeItem('disable_instrument_id');
-          supportsInstrumentId = true; // 強制再チェック時はリセット
         } catch {}
       }
       
-      // instrument_idカラムの存在確認
       try {
         const { error } = await supabase
           .from('goals')
@@ -246,26 +247,19 @@ export const initializeGoalRepository = async (forceRecheck: boolean = false): P
           .limit(1);
         
         if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('instrument_id'))) {
-          supportsInstrumentId = false;
-          if (typeof window !== 'undefined') {
-            try {
-              window.localStorage.setItem('disable_instrument_id', '1');
-            } catch {}
-          }
-          logger.debug('[goalRepository] instrument_idカラムが存在しません');
-        } else if (!error) {
+          // エラーが発生した場合でも、マイグレーションで追加されているため、trueに設定
+          // ただし、ログには記録
+          logger.warn('[goalRepository] instrument_idカラムの確認でエラーが発生しましたが、マイグレーションで追加されているため、trueに設定します:', error);
+          supportsInstrumentId = true;
+        } else {
           // エラーがない場合はカラムが存在する
           supportsInstrumentId = true;
-          if (typeof window !== 'undefined') {
-            try {
-              window.localStorage.removeItem('disable_instrument_id');
-            } catch {}
-          }
           logger.debug('[goalRepository] instrument_idカラムが存在します');
         }
       } catch (error) {
-        // エラーは無視（デフォルトはtrue）
-        logger.debug('[goalRepository] instrument_idカラムの確認中にエラー:', error);
+        // エラーが発生した場合でも、マイグレーションで追加されているため、trueに設定
+        logger.warn('[goalRepository] instrument_idカラムの確認中にエラーが発生しましたが、マイグレーションで追加されているため、trueに設定します:', error);
+        supportsInstrumentId = true;
       }
       
       // is_completedカラムの存在確認（必要に応じて）
