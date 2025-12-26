@@ -145,7 +145,11 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
       pausedTotalMsRef.current = elapsed;
       const ms = elapsed % 1000;
       setMilliseconds(ms);
+      setDisplayTimeMs(elapsed); // 表示用の経過時間を更新（重要：これがないとゼロになる）
       startTimeRef.current = null;
+    } else {
+      // startTimeRefがnullの場合でも、pausedTotalMsRefから表示を更新
+      setDisplayTimeMs(pausedTotalMsRef.current);
     }
     pauseStopwatch();
   };
