@@ -645,10 +645,14 @@ export function useCalendarData(currentDate: Date) {
         return;
       }
 
+      // 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
+      const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
+      const currentInstrumentId = getInstrumentId(selectedInstrument);
+
       // オフライン時はキャッシュから読み込み
       if (!isOnline()) {
         try {
-          const cacheKey = `short_term_goals_cache_${user.id}`;
+          const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'all'}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -670,26 +674,35 @@ export function useCalendarData(currentDate: Date) {
       const { checkShowOnCalendarSupport } = await import('@/repositories/goalRepository');
       const supportsShowOnCalendar = await checkShowOnCalendarSupport();
 
-      // クエリに含めるカラムを決定
+      // クエリに含めるカラムを決定（instrument_idも含める）
       const selectColumns = supportsShowOnCalendar
-        ? 'title, target_date, show_on_calendar, is_completed, progress_percentage, goal_type'
-        : 'title, target_date, is_completed, progress_percentage, goal_type';
+        ? 'title, target_date, show_on_calendar, is_completed, progress_percentage, goal_type, instrument_id'
+        : 'title, target_date, is_completed, progress_percentage, goal_type, instrument_id';
 
       // show_on_calendarがtrueの目標をすべて取得（短期目標と長期目標の両方を含む）
       // 目標はカレンダーに1つだけ表示できるため、短期目標と長期目標の両方を読み込む
-      const { data: goals, error } = await supabase
+      // 楽器ごとにフィルタリング
+      let query = supabase
         .from('goals')
         .select(selectColumns)
         .eq('user_id', user.id)
-        .in('goal_type', ['personal_short', 'personal_long'])
-        .order('created_at', { ascending: false });
+        .in('goal_type', ['personal_short', 'personal_long']);
+      
+      // 楽器IDでフィルタリング
+      if (currentInstrumentId) {
+        query = query.eq('instrument_id', currentInstrumentId);
+      } else {
+        query = query.is('instrument_id', null);
+      }
+      
+      const { data: goals, error } = await query.order('created_at', { ascending: false });
 
       if (error) {
         if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
           logger.info('goalsテーブルが存在しません。マイグレーションを実行してください。');
           // エラー時もキャッシュから読み込みを試行
           try {
-            const cacheKey = `short_term_goals_cache_${user.id}`;
+            const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'all'}`;
             const AsyncStorage = require('@react-native-async-storage/async-storage').default;
             const cachedData = await AsyncStorage.getItem(cacheKey);
             if (cachedData) {
@@ -709,7 +722,7 @@ export function useCalendarData(currentDate: Date) {
         logger.error('目標の読み込みエラー:', error);
         // エラー時もキャッシュから読み込みを試行
         try {
-          const cacheKey = `short_term_goals_cache_${user.id}`;
+          const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'all'}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -752,7 +765,7 @@ export function useCalendarData(currentDate: Date) {
           
           // キャッシュに保存（オフライン対応）
           try {
-            const cacheKey = `short_term_goals_cache_${user.id}`;
+            const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'all'}`;
             const AsyncStorage = require('@react-native-async-storage/async-storage').default;
             await AsyncStorage.setItem(cacheKey, JSON.stringify({
               shortTermGoal: goalsList[0],
@@ -778,7 +791,9 @@ export function useCalendarData(currentDate: Date) {
       try {
         const user = userParam ?? (await supabase.auth.getUser()).data.user;
         if (user) {
-          const cacheKey = `short_term_goals_cache_${user.id}`;
+          const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
+          const errorInstrumentId = getInstrumentId(selectedInstrument);
+          const cacheKey = `short_term_goals_cache_${user.id}_${errorInstrumentId || 'all'}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -795,7 +810,7 @@ export function useCalendarData(currentDate: Date) {
       setShortTermGoal(null);
       setShortTermGoals([]);
     }
-  }, []);
+  }, [selectedInstrument]);
 
   const loadAllData = useCallback(async (userParam?: { id: string }) => {
     if (isFetchingRef.current) return;
