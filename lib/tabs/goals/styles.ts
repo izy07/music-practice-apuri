@@ -11,7 +11,7 @@ export const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 4,
-    paddingTop: 4,
+    paddingTop: 0,
     paddingBottom: 40,
     alignItems: 'center',
   },
@@ -197,7 +197,10 @@ export const styles = StyleSheet.create({
   // 新しいセクション用のスタイル
   section: {
     marginBottom: 8,
-    padding: 12,
+    marginTop: 0,
+    paddingTop: 8,
+    paddingBottom: 12,
+    paddingHorizontal: 12,
     borderRadius: 12,
     elevation: 3,
     width: '96%',
@@ -207,7 +210,7 @@ export const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
     gap: 12,
   },
   sectionTitle: {
@@ -217,6 +220,7 @@ export const styles = StyleSheet.create({
   goalTypes: {
     gap: 10,
     marginBottom: 14,
+    marginTop: 0,
     alignItems: 'center',
   },
   goalTypeCard: {
