@@ -15,6 +15,7 @@ import { X, Calendar, Edit, Trash2 } from 'lucide-react-native';
 import { useInstrumentTheme } from './InstrumentThemeContext';
 import { formatLocalDate } from '@/lib/dateUtils';
 import { supabase } from '@/lib/supabase';
+import { getInstrumentId } from '@/lib/instrumentUtils';
 import EventCalendar from './EventCalendar';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
