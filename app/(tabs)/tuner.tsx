@@ -186,6 +186,12 @@ const INSTRUMENT_TUNINGS = {
   }
 };
 
+// 弦楽器かどうかを判定する関数
+const isStringInstrument = (instrument: string): boolean => {
+  const stringInstruments = ['guitar', 'bass', 'violin', 'viola', 'cello', 'double_bass'];
+  return stringInstruments.includes(instrument);
+};
+
 // 音名表示形式を変換する関数（E4形式を日本語に変換）
 const convertNoteName = (noteString: string, mode: 'en' | 'ja'): string => {
   if (mode === 'en') {
@@ -947,10 +953,10 @@ export default function TunerScreen() {
                   </View>
                 </View>
 
-                {/* 開放弦の音を聞く */}
+                {/* 開放弦の音を聞く / 基本の音を聞く */}
                 <View style={styles.openStringContent}>
                   <Text style={[styles.openStringTitle, { color: currentTheme.text }]}>
-                    開放弦の音を聞く
+                    {isStringInstrument(selectedInstrument) ? '開放弦の音を聞く' : '基本の音を聞く'}
                   </Text>
                   
                   {/* 停止ボタン（固定表示） */}
