@@ -190,7 +190,9 @@ export default function GoalsScreen() {
       // キャッシュに保存（オフライン対応）
       try {
         const cacheKey = `goals_cache_${user.id}_${instrumentId || 'all'}`;
-        await AsyncStorage.setItem(cacheKey, JSON.stringify(goalsData));
+        // allGoalsが存在する場合はそれを使用、そうでなければgoalsWithShowOnCalendarを使用
+        const goalsToCache = allGoals.length > 0 ? allGoals : goalsWithShowOnCalendar;
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(goalsToCache));
         logger.debug('目標データをキャッシュに保存しました');
       } catch (saveError) {
         logger.debug('キャッシュ保存エラー（無視）:', saveError);
