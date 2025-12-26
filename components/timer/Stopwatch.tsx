@@ -286,7 +286,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
           style={[
             styles.stopwatchControlButton,
             { 
-              backgroundColor: isStopwatchRunning ? currentTheme.primary : currentTheme.secondary,
+              backgroundColor: currentTheme.secondary,
               borderWidth: 1,
               borderColor: currentTheme.primary,
             }
