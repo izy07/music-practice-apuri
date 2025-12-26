@@ -296,11 +296,11 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
           activeOpacity={0.7}
           hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
         >
-          <Pencil size={16} color={isStopwatchRunning ? currentTheme.surface : currentTheme.textSecondary} />
+          <Pencil size={16} color={currentTheme.textSecondary} />
           <Text 
             style={[
               styles.stopwatchControlButtonText,
-              { color: isStopwatchRunning ? currentTheme.surface : currentTheme.textSecondary }
+              { color: currentTheme.textSecondary }
             ]}
             numberOfLines={1}
           >
