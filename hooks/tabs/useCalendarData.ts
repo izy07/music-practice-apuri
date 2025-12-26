@@ -37,7 +37,6 @@ interface ShortTermGoal {
 
 export function useCalendarData(currentDate: Date) {
   const { selectedInstrument } = useInstrumentTheme();
-  const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
   const [practiceData, setPracticeData] = useState<PracticeData>({});
   const [recordingsData, setRecordingsData] = useState<RecordingsData>({});
   const [events, setEvents] = useState<EventData>({});
@@ -46,11 +45,6 @@ export function useCalendarData(currentDate: Date) {
   const [shortTermGoal, setShortTermGoal] = useState<ShortTermGoal | null>(null);
   const [shortTermGoals, setShortTermGoals] = useState<ShortTermGoal[]>([]);
   const isFetchingRef = useRef(false);
-  
-  // コンテキストから楽器IDを取得（DBアクセス不要）
-  const { selectedInstrument } = useInstrumentTheme();
-  
-  // 楽器ID取得は共通関数を使用（getInstrumentId）
 
   const loadPracticeData = useCallback(async (userParam?: { id: string }) => {
     try {

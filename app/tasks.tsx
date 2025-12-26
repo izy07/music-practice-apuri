@@ -12,7 +12,7 @@ import type { Task, TaskStatus } from '@/types/organization';
 export default function TasksScreen() {
   const router = useRouter();
   const { orgId } = useLocalSearchParams();
-  const { currentTheme } = useInstrumentTheme();
+  const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const { t } = useLanguage();
   
   // 状態管理
@@ -29,14 +29,16 @@ export default function TasksScreen() {
     if (orgId) {
       loadTasks();
     }
-  }, [orgId]);
+  }, [orgId, selectedInstrument]);
 
   const loadTasks = async () => {
     if (!orgId) return;
     
     setLoading(true);
     try {
-      const result = await TaskManager.getOrganizationTasks(orgId as string);
+      const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
+      const instrumentId = getInstrumentId(selectedInstrument);
+      const result = await TaskManager.getOrganizationTasks(orgId as string, instrumentId);
       if (result.success && result.tasks) {
         setTasks(result.tasks);
       }
@@ -55,13 +57,16 @@ export default function TasksScreen() {
 
     setLoading(true);
     try {
+      const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
+      const instrumentId = getInstrumentId(selectedInstrument);
       const result = await TaskManager.createTask(
         orgId as string,
         createForm.title.trim(),
         createForm.description.trim() || undefined,
         undefined, // assignedTo
         'medium', // priority
-        createForm.dueDate || undefined // dueDate
+        createForm.dueDate || undefined, // dueDate
+        instrumentId // instrumentId
       );
 
       if (result.success) {

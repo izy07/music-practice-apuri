@@ -18,6 +18,7 @@ import { getUserProfile } from '@/repositories/userRepository';
 import { OfflineStorage, isOnline } from '@/lib/offlineStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { getInstrumentId } from '@/lib/instrumentUtils';
 
 interface Goal {
   id: string;
@@ -134,7 +135,8 @@ export default function GoalsScreen() {
       }
 
       // オンライン時またはキャッシュがない場合はデータベースから取得
-      const goalsData = await goalRepository.getGoals(user.id, selectedInstrument);
+      const instrumentId = getInstrumentId(selectedInstrument);
+      const goalsData = await goalRepository.getGoals(user.id, instrumentId);
       const goalsWithShowOnCalendar = goalsData.map((g: any) => ({
         ...g,
         show_on_calendar: g.show_on_calendar ?? false,
@@ -145,10 +147,11 @@ export default function GoalsScreen() {
         const offlineGoals = await OfflineStorage.getGoals();
         const unsyncedGoals = offlineGoals.filter((g: any) => !g.is_synced && g.user_id === user.id);
         const filteredOfflineGoals = unsyncedGoals.filter((g: any) => {
-          if (selectedInstrument) {
-            return g.instrument_id === selectedInstrument;
+          const goalInstrumentId = g.instrument_id;
+          if (instrumentId) {
+            return goalInstrumentId === instrumentId;
           }
-          return !g.instrument_id || g.instrument_id === null;
+          return !goalInstrumentId || goalInstrumentId === null;
         });
         
         const offlineGoalsFormatted: Goal[] = filteredOfflineGoals.map((g: any) => ({
@@ -239,7 +242,8 @@ export default function GoalsScreen() {
         }
       }
 
-      const completedGoalsData = await goalRepository.getCompletedGoals(user.id, selectedInstrument);
+      const instrumentId = getInstrumentId(selectedInstrument);
+      const completedGoalsData = await goalRepository.getCompletedGoals(user.id, instrumentId);
       setCompletedGoals(completedGoalsData as any);
       
       // キャッシュに保存（オフライン対応）
@@ -516,12 +520,13 @@ export default function GoalsScreen() {
         return;
       }
 
+      const instrumentId = getInstrumentId(selectedInstrument);
       const goalData = {
         title: newGoal.title.trim(),
         description: newGoal.description.trim() || undefined,
         target_date: newGoal.target_date || undefined,
         goal_type: newGoal.goal_type,
-        instrument_id: selectedInstrument || null,
+        instrument_id: instrumentId || null,
       };
 
       // オフライン時はAsyncStorageに保存

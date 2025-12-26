@@ -11,9 +11,6 @@ import { ErrorHandler } from '@/lib/errorHandler';
 // アイドルタイムアウト時間（1時間 = 3600秒 = 3600000ミリ秒）
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1時間
 
-// Web環境での最後のアクティビティ時刻を保存するキー
-const LAST_ACTIVITY_KEY = 'music-practice-last-activity';
-
 interface UseIdleTimeoutOptions {
   /** 認証済みかどうか */
   isAuthenticated: boolean;
@@ -39,7 +36,7 @@ export const useIdleTimeout = ({
   timeoutMs = IDLE_TIMEOUT_MS,
   enabled = true,
 }: UseIdleTimeoutOptions) => {
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastActivityRef = useRef<number>(Date.now());
   const appStateRef = useRef<string>(AppState.currentState);
   const isPausedRef = useRef<boolean>(false);
@@ -65,30 +62,7 @@ export const useIdleTimeout = ({
     }
 
     // 最後のアクティビティ時刻を更新
-    const now = Date.now();
-    lastActivityRef.current = now;
-
-    // Web環境では最後のアクティビティ時刻をlocalStorageに保存
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-      try {
-        window.localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
-      } catch (error) {
-        // localStorageへの保存エラーは無視
-        logger.debug('最後のアクティビティ時刻の保存に失敗（無視）:', error);
-      }
-    } else if (Platform.OS !== 'web') {
-      // React Native環境ではAsyncStorageに保存
-      try {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        AsyncStorage.setItem(LAST_ACTIVITY_KEY, now.toString()).catch((error: any) => {
-          // AsyncStorageへの保存エラーは無視
-          logger.debug('最後のアクティビティ時刻の保存に失敗（無視）:', error);
-        });
-      } catch (error) {
-        // AsyncStorageが利用できない場合は無視
-        logger.debug('AsyncStorageが利用できません（無視）:', error);
-      }
-    }
+    lastActivityRef.current = Date.now();
 
     // 新しいタイマーを設定
     timeoutRef.current = setTimeout(async () => {
@@ -229,64 +203,12 @@ export const useIdleTimeout = ({
    */
   useEffect(() => {
     if (isAuthenticated && enabled) {
-      // 最後のアクティビティ時刻を読み込む
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-        // Web環境: localStorageから読み込む
-        try {
-          const savedLastActivity = window.localStorage.getItem(LAST_ACTIVITY_KEY);
-          if (savedLastActivity) {
-            const savedTime = parseInt(savedLastActivity, 10);
-            if (!isNaN(savedTime)) {
-              lastActivityRef.current = savedTime;
-            }
-          }
-        } catch (error) {
-          // localStorageからの読み込みエラーは無視
-          logger.debug('最後のアクティビティ時刻の読み込みに失敗（無視）:', error);
-        }
-      } else if (Platform.OS !== 'web') {
-        // React Native環境: AsyncStorageから読み込む
-        try {
-          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-          AsyncStorage.getItem(LAST_ACTIVITY_KEY).then((savedLastActivity: string | null) => {
-            if (savedLastActivity) {
-              const savedTime = parseInt(savedLastActivity, 10);
-              if (!isNaN(savedTime)) {
-                lastActivityRef.current = savedTime;
-              }
-            }
-          }).catch((error: any) => {
-            // AsyncStorageからの読み込みエラーは無視
-            logger.debug('最後のアクティビティ時刻の読み込みに失敗（無視）:', error);
-          });
-        } catch (error) {
-          // AsyncStorageが利用できない場合は無視
-          logger.debug('AsyncStorageが利用できません（無視）:', error);
-        }
-      }
       resetTimer();
     } else {
       // ログアウトした場合はタイマーをクリア
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
-      }
-      // 最後のアクティビティ時刻を削除
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-        try {
-          window.localStorage.removeItem(LAST_ACTIVITY_KEY);
-        } catch (error) {
-          // localStorageからの削除エラーは無視
-        }
-      } else if (Platform.OS !== 'web') {
-        try {
-          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-          AsyncStorage.removeItem(LAST_ACTIVITY_KEY).catch((error: any) => {
-            // AsyncStorageからの削除エラーは無視
-          });
-        } catch (error) {
-          // AsyncStorageが利用できない場合は無視
-        }
       }
     }
   }, [isAuthenticated, enabled, resetTimer]);

@@ -20,13 +20,23 @@ export const taskRepository = {
   /**
    * 組織のタスク一覧を取得
    */
-  async getByOrganizationId(organizationId: string): Promise<RepositoryResult<Task[]>> {
+  async getByOrganizationId(organizationId: string, instrumentId?: string | null): Promise<RepositoryResult<Task[]>> {
     return safeExecute(async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('tasks')
         .select('*')
-        .eq('organization_id', organizationId)
-        .order('created_at', { ascending: false });
+        .eq('organization_id', organizationId);
+      
+      // 楽器ごとにフィルタリング
+      if (instrumentId !== undefined) {
+        if (instrumentId) {
+          query = query.eq('instrument_id', instrumentId);
+        } else {
+          query = query.is('instrument_id', null);
+        }
+      }
+      
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       // 404エラー（テーブル不存在）の場合は空配列を返す
       if (error) {

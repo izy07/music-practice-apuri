@@ -304,8 +304,8 @@ export const TaskManager = {
   /**
    * 組織のタスク一覧を取得
    */
-  async getOrganizationTasks(organizationId: string) {
-    const result = await taskService.getByOrganizationId(organizationId);
+  async getOrganizationTasks(organizationId: string, instrumentId?: string | null) {
+    const result = await taskService.getByOrganizationId(organizationId, instrumentId);
     if (!result.success) {
       return { success: false, error: result.error };
     }
@@ -321,7 +321,8 @@ export const TaskManager = {
     description?: string,
     assignedTo?: string,
     priority: 'low' | 'medium' | 'high' = 'medium',
-    dueDate?: string
+    dueDate?: string,
+    instrumentId?: string | null
   ) {
     const result = await taskService.createTask({
       organizationId,
@@ -330,6 +331,7 @@ export const TaskManager = {
       assignedTo,
       priority,
       dueDate,
+      instrumentId,
     });
     if (!result.success) {
       return { success: false, error: result.error };

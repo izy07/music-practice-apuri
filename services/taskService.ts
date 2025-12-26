@@ -25,12 +25,12 @@ export class TaskService {
   /**
    * 組織のタスク一覧を取得
    */
-  async getByOrganizationId(organizationId: string): Promise<ServiceResult<Task[]>> {
+  async getByOrganizationId(organizationId: string, instrumentId?: string | null): Promise<ServiceResult<Task[]>> {
     return safeServiceExecute(
       async () => {
-        logger.debug(`[${SERVICE_CONTEXT}] getByOrganizationId:start`, { organizationId });
+        logger.debug(`[${SERVICE_CONTEXT}] getByOrganizationId:start`, { organizationId, instrumentId });
 
-        const result = await taskRepository.getByOrganizationId(organizationId);
+        const result = await taskRepository.getByOrganizationId(organizationId, instrumentId);
         if (result.error) {
           throw result.error;
         }
@@ -80,6 +80,7 @@ export class TaskService {
     assignedTo?: string;
     priority?: 'low' | 'medium' | 'high';
     dueDate?: string;
+    instrumentId?: string | null;
   }): Promise<ServiceResult<Task>> {
     return safeServiceExecute(
       async () => {
@@ -97,6 +98,7 @@ export class TaskService {
           priority: data.priority || 'medium',
           due_date: data.dueDate,
           status: 'pending',
+          instrument_id: data.instrumentId,
         });
 
         if (result.error) {
