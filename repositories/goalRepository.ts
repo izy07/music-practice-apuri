@@ -413,6 +413,11 @@ export const goalRepository = {
             .select(fallbackSelect)
             .eq('user_id', userId);
           
+          // instrument_idカラムが存在しない場合でも、楽器IDでフィルタリングできないため
+          // すべての目標を返す（後方互換性のため）
+          // ただし、instrument_idカラムが存在する場合はフィルタリングを試みる
+          // 注意: この時点でsupportsInstrumentIdはfalseになっているため、フィルタリングは行わない
+          
           const { data: fallbackGoals, error: fbErr } = await fallbackQuery
             .order('created_at', { ascending: false })
             .limit(50);
@@ -430,6 +435,7 @@ export const goalRepository = {
             }));
             
             // DBから取得した値をそのまま使用
+            // 注意: instrument_idカラムが存在しない場合は、すべての目標を返す
             return goalsWithDefaults.filter((g: any) => !g.is_completed);
           }
         }

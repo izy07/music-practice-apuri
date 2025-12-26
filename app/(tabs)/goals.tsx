@@ -139,7 +139,21 @@ export default function GoalsScreen() {
 
       // オンライン時またはキャッシュがない場合はデータベースから取得
       const goalsData = await goalRepository.getGoals(user.id, instrumentId);
-      const goalsWithShowOnCalendar = goalsData.map((g: any) => ({
+      
+      // 楽器IDでフィルタリング（クライアント側でも追加のフィルタリング）
+      // データベース側でフィルタリングされているが、念のためクライアント側でも確認
+      const filteredGoalsData = goalsData.filter((g: any) => {
+        const goalInstrumentId = g.instrument_id;
+        if (instrumentId) {
+          // 楽器が選択されている場合: その楽器の目標のみ表示（instrument_idがnullの目標は除外）
+          return goalInstrumentId === instrumentId;
+        } else {
+          // 楽器が選択されていない場合: instrument_idがnullの目標のみ表示
+          return !goalInstrumentId || goalInstrumentId === null;
+        }
+      });
+      
+      const goalsWithShowOnCalendar = filteredGoalsData.map((g: any) => ({
         ...g,
         show_on_calendar: g.show_on_calendar ?? false,
       }));
