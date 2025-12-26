@@ -399,14 +399,28 @@ export function useCalendarData(currentDate: Date) {
         .gte('date', formatLocalDate(startOfMonth))
         .lte('date', formatLocalDate(endOfMonth));
       
-      // 楽器ごとにフィルタリング
+      // 楽器ごとにフィルタリング（instrument_idカラムが存在する場合のみ）
+      // まずinstrument_idカラムを含めてクエリを試行
+      let queryWithInstrument = query.select('id, title, description, date, instrument_id');
       if (currentInstrumentId) {
-        query = query.eq('instrument_id', currentInstrumentId);
+        queryWithInstrument = queryWithInstrument.eq('instrument_id', currentInstrumentId);
       } else {
-        query = query.is('instrument_id', null);
+        queryWithInstrument = queryWithInstrument.is('instrument_id', null);
       }
       
-      const { data: eventsData, error } = await query.order('date', { ascending: true });
+      let { data: eventsData, error } = await queryWithInstrument.order('date', { ascending: true });
+
+      // instrument_idカラムが存在しない場合は、フィルタリングなしで再試行
+      if (error && (error.code === '42703' || error.message?.includes('instrument_id') || error.message?.includes('does not exist'))) {
+        logger.debug('instrument_idカラムが存在しないため、フィルタリングなしで再試行します');
+        const { data: retryData, error: retryError } = await query.order('date', { ascending: true });
+        if (retryError) {
+          error = retryError;
+        } else {
+          eventsData = retryData;
+          error = null;
+        }
+      }
 
       if (error) {
         if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
@@ -688,14 +702,34 @@ export function useCalendarData(currentDate: Date) {
         .eq('user_id', user.id)
         .in('goal_type', ['personal_short', 'personal_long']);
       
-      // 楽器IDでフィルタリング
+      // 楽器IDでフィルタリング（instrument_idカラムが存在する場合のみ）
       if (currentInstrumentId) {
         query = query.eq('instrument_id', currentInstrumentId);
       } else {
         query = query.is('instrument_id', null);
       }
       
-      const { data: goals, error } = await query.order('created_at', { ascending: false });
+      let { data: goals, error } = await query.order('created_at', { ascending: false });
+
+      // instrument_idカラムが存在しない場合は、フィルタリングなしで再試行
+      if (error && (error.code === '42703' || error.message?.includes('instrument_id') || error.message?.includes('does not exist'))) {
+        logger.debug('instrument_idカラムが存在しないため、フィルタリングなしで再試行します');
+        const selectColumnsWithoutInstrument = supportsShowOnCalendar
+          ? 'title, target_date, show_on_calendar, is_completed, progress_percentage, goal_type'
+          : 'title, target_date, is_completed, progress_percentage, goal_type';
+        const { data: retryGoals, error: retryError } = await supabase
+          .from('goals')
+          .select(selectColumnsWithoutInstrument)
+          .eq('user_id', user.id)
+          .in('goal_type', ['personal_short', 'personal_long'])
+          .order('created_at', { ascending: false });
+        if (retryError) {
+          error = retryError;
+        } else {
+          goals = retryGoals;
+          error = null;
+        }
+      }
 
       if (error) {
         if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
