@@ -154,17 +154,33 @@ export const GoalCard: React.FC<GoalCardProps> = ({
               {/* 達成済みの場合は何も表示しない */}
             </View>
           ) : (
-            <View style={styles.calendarToggleRow}>
-              <View style={styles.calendarToggleButtons}>
+            <View style={[styles.calendarToggleRow, { gap: 0 }]}>
+              <View style={[styles.calendarToggleButtons, { gap: 0 }]}>
                 <TouchableOpacity
-                  style={[styles.calendarToggleBtn, { borderColor: currentTheme.secondary, backgroundColor: goal.show_on_calendar ? currentTheme.primary : 'transparent' }]}
+                  style={[styles.calendarToggleBtn, { 
+                    borderColor: currentTheme.secondary, 
+                    backgroundColor: goal.show_on_calendar ? currentTheme.primary : 'transparent',
+                    borderRightWidth: 0,
+                    borderTopLeftRadius: 8,
+                    borderBottomLeftRadius: 8,
+                    borderTopRightRadius: 0,
+                    borderBottomRightRadius: 0,
+                  }]}
                   onPress={() => onSetGoalShowOnCalendar(goal.id, true)}
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.calendarToggleText, { color: goal.show_on_calendar ? '#FFFFFF' : currentTheme.text }]}>カレンダーに表示</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.calendarToggleBtn, { borderColor: currentTheme.secondary, backgroundColor: !goal.show_on_calendar ? currentTheme.primary : 'transparent' }]}
+                  style={[styles.calendarToggleBtn, { 
+                    borderColor: currentTheme.secondary, 
+                    backgroundColor: !goal.show_on_calendar ? currentTheme.primary : 'transparent',
+                    borderLeftWidth: 0,
+                    borderTopLeftRadius: 0,
+                    borderBottomLeftRadius: 0,
+                    borderTopRightRadius: 8,
+                    borderBottomRightRadius: 8,
+                  }]}
                   onPress={() => onSetGoalShowOnCalendar(goal.id, false)}
                   activeOpacity={0.7}
                 >
@@ -172,7 +188,12 @@ export const GoalCard: React.FC<GoalCardProps> = ({
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
-                style={[styles.completeButton, { backgroundColor: currentTheme.primary }]}
+                style={[styles.completeButton, { 
+                  backgroundColor: currentTheme.primary,
+                  marginLeft: 0,
+                  borderTopLeftRadius: 0,
+                  borderBottomLeftRadius: 0,
+                }]}
                 onPress={() => onCompleteGoal(goal.id)}
               >
                 <CheckCircle size={16} color="#FFFFFF" />
