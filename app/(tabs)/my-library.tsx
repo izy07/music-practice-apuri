@@ -29,7 +29,7 @@ interface Song {
 
 export default function MyLibraryScreen() {
   const router = useRouter();
-  const { currentTheme } = useInstrumentTheme();
+  const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const { t } = useLanguage();
   
   // サブスクリプション状態を取得
@@ -53,10 +53,10 @@ export default function MyLibraryScreen() {
     notes: ''
   });
 
-  // 初期ロード + 権限変化時に再評価
+  // 初期ロード + 権限変化時・楽器変更時に再評価
   useEffect(() => {
     loadSongs();
-  }, [entitlement.isEntitled]);
+  }, [entitlement.isEntitled, selectedInstrument]);
 
   // モーダルの開閉に応じてフォーカス管理（aria-hidden警告を根本的に解決）
   useEffect(() => {
@@ -96,12 +96,20 @@ export default function MyLibraryScreen() {
       }
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        logger.debug('楽曲読み込み開始:', { userId: user.id, filterStatus });
-        const { data, error } = await supabase
+        logger.debug('楽曲読み込み開始:', { userId: user.id, filterStatus, selectedInstrument });
+        let query = supabase
           .from('my_songs')
           .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
+          .eq('user_id', user.id);
+        
+        // 楽器ごとにフィルタリング
+        if (selectedInstrument) {
+          query = query.eq('instrument_id', selectedInstrument);
+        } else {
+          query = query.is('instrument_id', null);
+        }
+        
+        const { data, error } = await query.order('created_at', { ascending: false });
 
         if (error) {
           logger.error('楽曲読み込みエラー:', error);
@@ -197,7 +205,7 @@ export default function MyLibraryScreen() {
         // artistが空の場合は空文字列を設定（NOT NULL制約のため）
         // genreが空文字列の場合はnullに変換
         const genreValue = formData.genre && formData.genre.trim() ? formData.genre.trim() : null;
-        const updateData = {
+        const updateData: any = {
           title: formData.title.trim(),
           artist: formData.artist.trim() || '', // NOT NULL制約のため空文字列をデフォルトに
           genre: genreValue,
@@ -205,6 +213,11 @@ export default function MyLibraryScreen() {
           status: statusValue,
           notes: formData.notes || null
         };
+        
+        // 楽器IDを更新（楽器が選択されている場合）
+        if (selectedInstrument) {
+          updateData.instrument_id = selectedInstrument;
+        }
         logger.debug('曲を更新:', editingSong.id, updateData);
         const { error } = await supabase
           .from('my_songs')
@@ -249,7 +262,7 @@ export default function MyLibraryScreen() {
         // artistが空の場合は空文字列を設定（NOT NULL制約のため）
         // genreが空文字列の場合はnullに変換
         const genreValue = formData.genre && formData.genre.trim() ? formData.genre.trim() : null;
-        const songData = {
+        const songData: any = {
           user_id: user.id,
           title: formData.title.trim(),
           artist: formData.artist.trim() || '', // NOT NULL制約のため空文字列をデフォルトに
@@ -258,6 +271,11 @@ export default function MyLibraryScreen() {
           status: statusValue,
           notes: formData.notes || null
         };
+        
+        // 楽器IDを設定
+        if (selectedInstrument) {
+          songData.instrument_id = selectedInstrument;
+        }
         logger.debug('新規追加 - 送信データ:', {
           ...songData,
           statusValue: statusValue,
