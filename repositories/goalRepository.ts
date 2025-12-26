@@ -433,47 +433,35 @@ export const goalRepository = {
         }
         
         // instrument_idカラムのエラーの場合
+        // 重要: マイグレーションで追加されているため、エラーが発生してもカラムは存在する
+        // そのため、supportsInstrumentIdをfalseに設定せず、エラーを無視して続行
         if (error.message?.includes('instrument_id') || error.code === '400') {
-          supportsInstrumentId = false;
-          try { 
-            if (typeof window !== 'undefined') {
-              window.localStorage.setItem('disable_instrument_id', '1');
-            }
-          } catch {}
-          
-          // instrument_idカラムを含めずに再試行
-          const fallbackSelect = isSupported 
-            ? `${baseSelectWithoutInstrument}, show_on_calendar` 
-            : baseSelectWithoutInstrument;
-          
-          let fallbackQuery = supabase
+          logger.warn('[goalRepository.getGoals] instrument_idカラムのエラーが発生しましたが、マイグレーションで追加されているため、無視して続行します:', error);
+          // supportsInstrumentIdはtrueのまま維持
+          // フィルタリングを試行（カラムは存在するため）
+          let retryQuery = supabase
             .from('goals')
-            .select(fallbackSelect)
+            .select(selectFields)
             .eq('user_id', userId);
-          
-          // instrument_idカラムが存在しない場合でも、楽器IDでフィルタリングできないため
-          // すべての目標を返す（後方互換性のため）
-          // ただし、instrument_idカラムが存在する場合はフィルタリングを試みる
-          // 注意: この時点でsupportsInstrumentIdはfalseになっているため、フィルタリングは行わない
-          
-          const { data: fallbackGoals, error: fbErr } = await fallbackQuery
-            .order('created_at', { ascending: false })
-            .limit(50);
-          
-          if (fbErr) {
-            // エラーログは出力しない（正常な動作の可能性があるため）
+          if (supportsInstrumentId) {
+            if (instrumentId) {
+              retryQuery = retryQuery.eq('instrument_id', instrumentId);
+            } else {
+              retryQuery = retryQuery.is('instrument_id', null);
+            }
+          }
+          // エラーを無視して、フィルタリング付きで再試行
+          const { data: retryGoals, error: retryError } = await retryQuery.order('created_at', { ascending: false }).limit(50);
+          if (retryError) {
+            logger.error('[goalRepository.getGoals] 再試行でもエラーが発生しました:', retryError);
             return [];
           }
-          
-          if (fallbackGoals) {
-            const goalsWithDefaults = fallbackGoals.map((g: any) => ({
+          if (retryGoals) {
+            const goalsWithDefaults = retryGoals.map((g: any) => ({
               ...g,
               is_completed: g.is_completed ?? (g.progress_percentage === 100),
               show_on_calendar: g.show_on_calendar ?? false,
             }));
-            
-            // DBから取得した値をそのまま使用
-            // 注意: instrument_idカラムが存在しない場合は、すべての目標を返す
             return goalsWithDefaults.filter((g: any) => !g.is_completed);
           }
         }
@@ -592,27 +580,30 @@ export const goalRepository = {
       
       if (isColumnError) {
         // instrument_idカラムのエラーの場合
+        // 重要: マイグレーションで追加されているため、エラーが発生してもカラムは存在する
+        // そのため、supportsInstrumentIdをfalseに設定せず、エラーを無視して続行
         if (error.message?.includes('instrument_id') || error.code === '400') {
-          supportsInstrumentId = false;
-          try { 
-            if (typeof window !== 'undefined') {
-              window.localStorage.setItem('disable_instrument_id', '1');
-            }
-          } catch {}
-          
-          // instrument_idカラムを含めずに再試行
-          const fallbackSelect = isSupported 
-            ? `${baseSelectWithoutInstrument}, show_on_calendar` 
-            : baseSelectWithoutInstrument;
-          
-          const { data: fbCompleted, error: fbErr } = await supabase
+          logger.warn('[goalRepository.getCompletedGoals] instrument_idカラムのエラーが発生しましたが、マイグレーションで追加されているため、無視して続行します:', error);
+          // supportsInstrumentIdはtrueのまま維持
+          // フィルタリングを試行（カラムは存在するため）
+          let retryQuery = supabase
             .from('goals')
-            .select(fallbackSelect)
-            .eq('user_id', userId)
+            .select(selectFields)
+            .eq('user_id', userId);
+          if (supportsInstrumentId) {
+            if (instrumentId) {
+              retryQuery = retryQuery.eq('instrument_id', instrumentId);
+            } else {
+              retryQuery = retryQuery.is('instrument_id', null);
+            }
+          }
+          // エラーを無視して、フィルタリング付きで再試行
+          const { data: fbCompleted, error: fbErr } = await retryQuery
             .order('created_at', { ascending: false })
             .limit(50);
           
           if (fbErr) {
+            logger.error('[goalRepository.getCompletedGoals] 再試行でもエラーが発生しました:', fbErr);
             return [];
           }
           
@@ -706,25 +697,27 @@ export const goalRepository = {
       const { count, error } = await query;
       
       if (error) {
-        // instrument_idカラムのエラーの場合、フィルタリングなしで再試行
+        // instrument_idカラムのエラーの場合
+        // 重要: マイグレーションで追加されているため、エラーが発生してもカラムは存在する
+        // そのため、supportsInstrumentIdをfalseに設定せず、エラーを無視して続行
         if ((error.code === '400' || error.code === '42703') && error.message?.includes('instrument_id')) {
-          supportsInstrumentId = false;
-          try { 
-            if (typeof window !== 'undefined') {
-              window.localStorage.setItem('disable_instrument_id', '1');
+          logger.warn('[goalRepository.getExistingGoalsCount] instrument_idカラムのエラーが発生しましたが、マイグレーションで追加されているため、無視して続行します:', error);
+          // supportsInstrumentIdはtrueのまま維持
+          // フィルタリングを試行（カラムは存在するため）
+          if (supportsInstrumentId) {
+            if (instrumentId) {
+              query = query.eq('instrument_id', instrumentId);
+            } else {
+              query = query.is('instrument_id', null);
             }
-          } catch {}
-          
-          const { count: fallbackCount, error: fbErr } = await supabase
-            .from('goals')
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', userId);
-          
-          if (fbErr) {
+          }
+          // エラーを無視して、フィルタリング付きで再試行
+          const { count: retryCount, error: retryError } = await query;
+          if (retryError) {
+            logger.error('[goalRepository.getExistingGoalsCount] 再試行でもエラーが発生しました:', retryError);
             return 0;
           }
-          
-          return fallbackCount || 0;
+          return retryCount || 0;
         }
         
         return 0;
@@ -822,17 +815,14 @@ export const goalRepository = {
       }
 
       // instrument_idカラムのエラーの場合
+      // 重要: マイグレーションで追加されているため、エラーが発生してもカラムは存在する
+      // そのため、supportsInstrumentIdをfalseに設定せず、エラーを無視して続行
       if (isInstrumentIdError && supportsInstrumentId) {
-        supportsInstrumentId = false;
-        try { 
-          if (typeof window !== 'undefined') {
-            window.localStorage.setItem('disable_instrument_id', '1');
-          }
-        } catch {}
-        
-        // instrument_idを除外して再試行
+        logger.warn('[goalRepository.createGoal] instrument_idカラムのエラーが発生しましたが、マイグレーションで追加されているため、無視して続行します:', error);
+        // supportsInstrumentIdはtrueのまま維持
+        // instrument_idを含めて再試行（カラムは存在するため）
         const retryData = { ...insertData };
-        delete retryData.instrument_id;
+        // instrument_idは削除しない（カラムは存在するため）
         
         const retryPayload: any = { ...retryData };
         if (supportsShowOnCalendar) {
