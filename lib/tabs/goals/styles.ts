@@ -198,7 +198,7 @@ export const styles = StyleSheet.create({
   section: {
     marginBottom: 8,
     marginTop: 0,
-    paddingTop: 8,
+    paddingTop: 4,
     paddingBottom: 12,
     paddingHorizontal: 12,
     borderRadius: 12,
@@ -210,7 +210,7 @@ export const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
     gap: 12,
   },
   sectionTitle: {
@@ -221,6 +221,7 @@ export const styles = StyleSheet.create({
     gap: 10,
     marginBottom: 14,
     marginTop: 0,
+    paddingTop: 0,
     alignItems: 'center',
   },
   goalTypeCard: {
