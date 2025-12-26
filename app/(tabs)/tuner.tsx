@@ -122,7 +122,7 @@ const INSTRUMENT_TUNINGS = {
     description: '88鍵のピアノ。全音域の音程を正確に合わせます。',
     tuning: ['A4: 440Hz基準', 'オクターブ調整', '全音域チェック'],
     openStrings: [
-      { note: 'A4', frequency: 440.00, string: '基準音' },
+      { note: 'A4', frequency: 440.00, string: '基準音A' },
       { note: 'C4', frequency: 261.63, string: '中央C' },
       { note: 'E4', frequency: 329.63, string: 'E音' },
       { note: 'G4', frequency: 392.00, string: 'G音' }
@@ -136,10 +136,10 @@ const INSTRUMENT_TUNINGS = {
     description: 'スライドポジションで音程を調整する金管楽器。唇の振動とスライドで音程を制御します。',
     tuning: ['B♭1: 58.27Hz基準', 'スライドポジション調整', '唇の振動制御'],
     openStrings: [
-      { note: 'B♭1', frequency: 58.27, string: '基準音' },
-      { note: 'F2', frequency: 87.31, string: 'F音' },
+      { note: 'B♭1', frequency: 58.27, string: '基準音B♭' },
+      { note: 'E2', frequency: 82.41, string: 'E音' },
       { note: 'B♭2', frequency: 116.54, string: 'B♭音' },
-      { note: 'D3', frequency: 146.83, string: 'D音' }
+      { note: 'E3', frequency: 164.81, string: 'E音' }
     ]
   },
   trumpet: {
@@ -150,7 +150,7 @@ const INSTRUMENT_TUNINGS = {
     description: 'バルブ操作で音程を調整する金管楽器。唇の振動とバルブで音程を制御します。',
     tuning: ['B♭2: 116.54Hz基準', 'バルブ調整', '唇の振動制御'],
     openStrings: [
-      { note: 'B♭2', frequency: 116.54, string: '基準音' },
+      { note: 'B♭2', frequency: 116.54, string: '基準音B♭' },
       { note: 'C3', frequency: 130.81, string: 'C音' },
       { note: 'E♭3', frequency: 155.56, string: 'E♭音' },
       { note: 'F3', frequency: 174.61, string: 'F音' }
@@ -164,10 +164,10 @@ const INSTRUMENT_TUNINGS = {
     description: 'バルブ操作で音程を調整する金管楽器。手をベルに入れて音色を調整します。',
     tuning: ['F2: 87.31Hz基準', 'バルブ調整', '手の位置調整'],
     openStrings: [
-      { note: 'F2', frequency: 87.31, string: '基準音' },
-      { note: 'B♭2', frequency: 116.54, string: 'B♭音' },
+      { note: 'F2', frequency: 87.31, string: '基準音F' },
       { note: 'C3', frequency: 130.81, string: 'C音' },
-      { note: 'E♭3', frequency: 155.56, string: 'E♭音' }
+      { note: 'F3', frequency: 174.61, string: 'F音' },
+      { note: 'C4', frequency: 261.63, string: 'C音' }
     ]
   },
   tuba: {
@@ -178,10 +178,52 @@ const INSTRUMENT_TUNINGS = {
     description: '金管楽器の中で最も低い音域を持つ楽器。バルブ操作で音程を調整します。',
     tuning: ['B♭0: 29.14Hz基準', 'バルブ調整', '唇の振動制御'],
     openStrings: [
-      { note: 'B♭0', frequency: 29.14, string: '基準音' },
+      { note: 'B♭0', frequency: 29.14, string: '基準音B♭' },
       { note: 'E♭1', frequency: 38.89, string: 'E♭音' },
       { note: 'F1', frequency: 43.65, string: 'F音' },
       { note: 'B♭1', frequency: 58.27, string: 'B♭音' }
+    ]
+  },
+  flute: {
+    name: 'フルート',
+    strings: ['A4'],
+    frequencies: [440.00],
+    tolerance: TUNING_PRECISION.EXCELLENT,
+    description: '木管楽器。息の使い方と指の位置で音程を調整します。',
+    tuning: ['A4: 440Hz基準', '頭部管調整', '息のコントロール'],
+    openStrings: [
+      { note: 'A4', frequency: 440.00, string: '基準音A' },
+      { note: 'C5', frequency: 523.25, string: 'C音' },
+      { note: 'D5', frequency: 587.33, string: 'D音' },
+      { note: 'E5', frequency: 659.25, string: 'E音' }
+    ]
+  },
+  clarinet: {
+    name: 'クラリネット',
+    strings: ['B♭3'],
+    frequencies: [233.08],
+    tolerance: TUNING_PRECISION.EXCELLENT,
+    description: 'B♭管のクラリネット。リードの調整と指の位置で音程を調整します。',
+    tuning: ['B♭3: 233.08Hz基準', 'リード調整', '指の位置'],
+    openStrings: [
+      { note: 'B♭3', frequency: 233.08, string: '基準音B♭' },
+      { note: 'C4', frequency: 261.63, string: 'C音' },
+      { note: 'E4', frequency: 329.63, string: 'E音' },
+      { note: 'G4', frequency: 392.00, string: 'G音' }
+    ]
+  },
+  saxophone: {
+    name: 'サックス',
+    strings: ['B♭3'],
+    frequencies: [233.08],
+    tolerance: TUNING_PRECISION.EXCELLENT,
+    description: 'B♭管のサックス。マウスピースの位置と指の位置で音程を調整します。',
+    tuning: ['B♭3: 233.08Hz基準', 'マウスピース調整', '指の位置'],
+    openStrings: [
+      { note: 'B♭3', frequency: 233.08, string: '基準音B♭' },
+      { note: 'C4', frequency: 261.63, string: 'C音' },
+      { note: 'D4', frequency: 293.66, string: 'D音' },
+      { note: 'E4', frequency: 329.63, string: 'E音' }
     ]
   }
 };
