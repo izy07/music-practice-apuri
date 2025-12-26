@@ -88,52 +88,8 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
     };
   }, [isStopwatchRunning]);
   
-  // stopwatchSecondsが更新された時に、停止中なら経過時間を同期
-  // ただし、ストップ時にはdisplayTimeMsを保持する（リセットしない）
-  // 実行中はdisplayTimeMsを上書きしない（1秒戻る問題を防ぐ）
-  useEffect(() => {
-    // 実行中は何もしない（displayTimeMsは独立して管理）
-    if (isStopwatchRunning) {
-      return;
-    }
-    
-    // 停止中：stopwatchSecondsとpausedTotalMsRefを同期
-    // ただし、ストップ時（stopwatchSecondsが0でもpausedTotalMsRef > 0）は表示を保持
-    if (stopwatchSeconds > 0) {
-      // stopwatchSecondsからミリ秒部分を保持したまま、秒数を更新
-      const currentMs = pausedTotalMsRef.current % 1000;
-      pausedTotalMsRef.current = stopwatchSeconds * 1000 + currentMs;
-      setMilliseconds(currentMs);
-      setDisplayTimeMs(pausedTotalMsRef.current); // 表示用の経過時間を更新
-    }
-    // stopwatchSeconds === 0 の場合は、リセット時のみ処理（別のuseEffectで処理）
-    // ストップ時はdisplayTimeMsを保持するため、ここでは何もしない
-  }, [stopwatchSeconds, isStopwatchRunning]);
-
-  // リセット時にミリ秒もリセット（stopwatchSecondsが0で、かつ前回も0だった場合のみ）
-  const prevStopwatchSecondsRef = useRef(stopwatchSeconds);
-  const isResettingRef = useRef(false); // リセット中かどうかを追跡
-  useEffect(() => {
-    // リセットされた場合のみ（0から0への変化ではなく、非0から0への変化）
-    // ただし、ストップ時（pausedTotalMsRef > 0）はリセットしない
-    if (stopwatchSeconds === 0 && !isStopwatchRunning && prevStopwatchSecondsRef.current > 0) {
-      // pausedTotalMsRefが0の場合のみリセット（クリアボタンが押された場合）
-      // または、isResettingRefがtrueの場合のみリセット
-      if (pausedTotalMsRef.current === 0 || isResettingRef.current) {
-        setMilliseconds(0);
-        setDisplayTimeMs(0);
-        pausedTotalMsRef.current = 0;
-        startTimeRef.current = null;
-        setLaps([]);
-        lastLapTimeRef.current = 0;
-        isResettingRef.current = false;
-      } else {
-        // ストップ時（pausedTotalMsRef > 0）は、displayTimeMsを保持
-        setDisplayTimeMs(pausedTotalMsRef.current);
-      }
-    }
-    prevStopwatchSecondsRef.current = stopwatchSeconds;
-  }, [stopwatchSeconds, isStopwatchRunning]);
+  // stopwatchSecondsは完全に無視し、displayTimeMsを完全に独立して管理
+  // これにより、開始時に1秒戻る問題を根本的に解決
 
   const formatTime = (totalSeconds: number, ms: number = 0) => {
     const hours = Math.floor(totalSeconds / 3600);
@@ -167,18 +123,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
       setDisplayTimeMs(pausedTotalMsRef.current);
     }
     
-    // pauseStopwatch()を呼ぶ前に、isResettingRefをfalseに設定してリセット処理を防ぐ
-    isResettingRef.current = false;
-    
     pauseStopwatch();
-    
-    // pauseStopwatch()の後にも、displayTimeMsを確実に保持
-    // 少し遅延してから再度設定（useEffectの実行を待つ）
-    setTimeout(() => {
-      if (pausedTotalMsRef.current > 0) {
-        setDisplayTimeMs(pausedTotalMsRef.current);
-      }
-    }, 50);
   };
 
   const handleLapProcessing = useRef(false); // ラップ処理中フラグ
@@ -216,7 +161,6 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
 
   const handleClear = () => {
     // ストップウォッチの時間をリセット
-    isResettingRef.current = true; // リセット中フラグを設定
     resetStopwatch();
     setMilliseconds(0);
     setDisplayTimeMs(0);
