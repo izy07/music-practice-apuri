@@ -44,6 +44,8 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
       if (startTimeRef.current === null) {
         // 停止時に保存した経過時間（ミリ秒）を基準に開始時刻を計算
         startTimeRef.current = Date.now() - pausedTotalMsRef.current;
+        // 開始直後にdisplayTimeMsを更新（1秒戻る問題を防ぐ）
+        setDisplayTimeMs(pausedTotalMsRef.current);
       }
       
       intervalRef.current = setInterval(() => {
@@ -235,8 +237,12 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
       if (pausedTotalMsRef.current === 0) {
         lastLapTimeRef.current = 0;
         startTimeRef.current = Date.now();
+        setDisplayTimeMs(0); // 新規開始時は0に設定
+      } else {
+        // 再開時：停止前の経過時間を保持して、すぐに表示を更新
+        // useEffectでstartTimeRefが設定される前に、displayTimeMsを保持
+        setDisplayTimeMs(pausedTotalMsRef.current);
       }
-      // 再開時は、useEffectでstartTimeRefが設定される
       startStopwatch();
     }
     
