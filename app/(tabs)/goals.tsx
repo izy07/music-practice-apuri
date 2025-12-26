@@ -602,6 +602,7 @@ export default function GoalsScreen() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
+          const errorInstrumentId = getInstrumentId(selectedInstrument);
           const tempId = `temp_goal_${Date.now()}`;
           const offlineGoal = {
             id: tempId,
@@ -610,7 +611,7 @@ export default function GoalsScreen() {
             description: newGoal.description.trim() || undefined,
             target_date: newGoal.target_date || undefined,
             goal_type: newGoal.goal_type,
-            instrument_id: selectedInstrument || null,
+            instrument_id: errorInstrumentId || null,
             progress_percentage: 0,
             is_active: true,
             is_completed: false,
