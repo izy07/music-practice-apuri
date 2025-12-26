@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: チェックアウト
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 完全な履歴を取得（shallow cloneを回避し、Git履歴の問題を防ぐ）
 
       - name: 環境変数の確認
         run: |
@@ -43,6 +45,22 @@ jobs:
           node --version
           echo "📌 npmバージョン:"
           npm --version
+
+      - name: マイグレーションファイルの整合性を強制（ビルド前の予防策）
+        run: |
+          echo "🔍 マイグレーションファイルの整合性を強制します（ビルド前の予防策）..."
+          if [ -f "scripts/enforce-migration-consistency.sh" ]; then
+            chmod +x scripts/enforce-migration-consistency.sh
+            bash scripts/enforce-migration-consistency.sh || {
+              echo "⚠️  マイグレーションファイルの整合性確保に失敗しましたが、ビルドは続行します"
+            }
+          else
+            echo "⚠️  enforce-migration-consistency.sh が見つかりません。手動で削除します..."
+            find supabase/migrations -name "*.sql" -type f ! -name "20251219000000_initial_schema.sql" -exec rm -f {} \; 2>/dev/null || true
+            find supabase/migrations -name "*.skip" -exec rm -f {} \; 2>/dev/null || true
+          fi
+          echo "✅ マイグレーションファイルの整合性チェックが完了しました"
+        continue-on-error: true  # ビルドには直接影響しないため、エラーでも続行
 
       - name: 依存関係のインストール
         run: |

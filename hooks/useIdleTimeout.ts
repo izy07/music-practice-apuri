@@ -5,11 +5,15 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { AppState, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 
 // アイドルタイムアウト時間（1時間 = 3600秒 = 3600000ミリ秒）
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1時間
+
+// 最後のアクティビティ時刻を保存するキー
+const LAST_ACTIVITY_KEY = 'music-practice-last-activity';
 
 interface UseIdleTimeoutOptions {
   /** 認証済みかどうか */
@@ -62,7 +66,18 @@ export const useIdleTimeout = ({
     }
 
     // 最後のアクティビティ時刻を更新
-    lastActivityRef.current = Date.now();
+    const now = Date.now();
+    lastActivityRef.current = now;
+
+    // Web環境では最後のアクティビティ時刻をlocalStorageに保存
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.setItem(LAST_ACTIVITY_KEY, now.toString());
+      } catch (error) {
+        // localStorageへの保存エラーは無視
+        logger.debug('最後のアクティビティ時刻の保存に失敗（無視）:', error);
+      }
+    }
 
     // 新しいタイマーを設定
     timeoutRef.current = setTimeout(async () => {
@@ -203,12 +218,35 @@ export const useIdleTimeout = ({
    */
   useEffect(() => {
     if (isAuthenticated && enabled) {
+      // Web環境では、localStorageから最後のアクティビティ時刻を読み込む
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+        try {
+          const savedLastActivity = window.localStorage.getItem(LAST_ACTIVITY_KEY);
+          if (savedLastActivity) {
+            const savedTime = parseInt(savedLastActivity, 10);
+            if (!isNaN(savedTime)) {
+              lastActivityRef.current = savedTime;
+            }
+          }
+        } catch (error) {
+          // localStorageからの読み込みエラーは無視
+          logger.debug('最後のアクティビティ時刻の読み込みに失敗（無視）:', error);
+        }
+      }
       resetTimer();
     } else {
       // ログアウトした場合はタイマーをクリア
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
+      }
+      // Web環境では最後のアクティビティ時刻を削除
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+        try {
+          window.localStorage.removeItem(LAST_ACTIVITY_KEY);
+        } catch (error) {
+          // localStorageからの削除エラーは無視
+        }
       }
     }
   }, [isAuthenticated, enabled, resetTimer]);

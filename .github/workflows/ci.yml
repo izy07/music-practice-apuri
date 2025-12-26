@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: チェックアウト
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 完全な履歴を取得（shallow cloneを回避し、Git履歴の問題を防ぐ）
 
       - name: Node.js セットアップ
         uses: actions/setup-node@v3
@@ -75,6 +77,8 @@ jobs:
     steps:
       - name: チェックアウト
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 完全な履歴を取得（shallow cloneを回避し、Git履歴の問題を防ぐ）
 
       - name: Node.js セットアップ
         uses: actions/setup-node@v3
@@ -133,6 +137,8 @@ jobs:
     steps:
       - name: チェックアウト
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 完全な履歴を取得（shallow cloneを回避し、Git履歴の問題を防ぐ）
 
       - name: Node.js セットアップ
         uses: actions/setup-node@v3
@@ -173,6 +179,8 @@ jobs:
     steps:
       - name: チェックアウト
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 完全な履歴を取得（shallow cloneを回避し、Git履歴の問題を防ぐ）
 
       - name: Node.js セットアップ
         uses: actions/setup-node@v3
@@ -289,6 +297,8 @@ jobs:
     steps:
       - name: チェックアウト
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 完全な履歴を取得（shallow cloneを回避し、Git履歴の問題を防ぐ）
 
       - name: Node.js セットアップ
         uses: actions/setup-node@v3
@@ -310,40 +320,16 @@ jobs:
         run: npm audit --production
         continue-on-error: true
 
-      - name: マイグレーションファイルの整合性を強制（根本的な対策）
+      - name: マイグレーションファイルの整合性を強制
         run: |
           echo "🔍 マイグレーションファイルの整合性を強制します..."
-          # 根本的な対策: 統合マイグレーションファイル以外のすべてのファイルを削除
           if [ -f "scripts/enforce-migration-consistency.sh" ]; then
             chmod +x scripts/enforce-migration-consistency.sh
-            bash scripts/enforce-migration-consistency.sh || {
-              echo "❌ マイグレーションファイルの整合性確保に失敗しました"
-              exit 1
-            }
+            bash scripts/enforce-migration-consistency.sh
           else
-            echo "⚠️  警告: enforce-migration-consistency.sh が見つかりません。手動で削除します..."
-            # 手動で統合マイグレーションファイル以外を削除
-            find supabase/migrations -name "*.sql" -type f ! -name "20251219000000_initial_schema.sql" -delete 2>/dev/null || true
-            find supabase/migrations -name "*.skip" -delete 2>/dev/null || true
-          fi
-          
-          # 検証: 統合マイグレーションファイルの存在確認
-          if [ ! -f "supabase/migrations/20251219000000_initial_schema.sql" ]; then
-            echo "❌ エラー: 統合マイグレーションファイルが見つかりません"
+            echo "❌ エラー: enforce-migration-consistency.sh が見つかりません"
             exit 1
           fi
-          
-          # 検証: ファイル数が1であることを確認
-          MIGRATION_COUNT=$(find supabase/migrations -name "*.sql" -type f 2>/dev/null | wc -l | tr -d ' ')
-          if [ "$MIGRATION_COUNT" -ne 1 ]; then
-            echo "❌ エラー: マイグレーションファイル数が正しくありません (期待: 1, 実際: $MIGRATION_COUNT)"
-            echo "📄 見つかったファイル:"
-            find supabase/migrations -name "*.sql" -type f || true
-            exit 1
-          fi
-          
-          echo "✅ マイグレーションファイルの整合性が確保されました"
-          echo "📊 ファイル数: $MIGRATION_COUNT"
         continue-on-error: false
 
       - name: テストデータ漏洩チェック

@@ -1,0 +1,28 @@
+name: マイグレーションファイル検証（Supabase実行前）
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  verify-migrations:
+    name: マイグレーションファイルの事前検証
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # 完全な履歴を取得（shallow cloneを回避）
+
+      - name: マイグレーションファイルの整合性を強制
+        run: |
+          echo "🔍 マイグレーションファイルの整合性を強制します..."
+          if [ -f "scripts/enforce-migration-consistency.sh" ]; then
+            chmod +x scripts/enforce-migration-consistency.sh
+            bash scripts/enforce-migration-consistency.sh
+          else
+            echo "❌ エラー: enforce-migration-consistency.sh が見つかりません"
+            exit 1
+          fi
+

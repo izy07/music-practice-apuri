@@ -1,0 +1,126 @@
+name: データベース統合テスト
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'supabase/migrations/**'
+      - 'repositories/**'
+      - 'services/**'
+      - '.github/workflows/database-test.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'supabase/migrations/**'
+      - 'repositories/**'
+      - 'services/**'
+  workflow_dispatch:
+
+jobs:
+  database-test:
+    name: データベース統合テスト
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+    
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Docker セットアップ
+        uses: docker/setup-buildx-action@v3
+
+      - name: Supabase CLIをインストール
+        run: |
+          if [ -f "scripts/install-supabase-cli.sh" ]; then
+            chmod +x scripts/install-supabase-cli.sh
+            bash scripts/install-supabase-cli.sh
+          else
+            echo "❌ install-supabase-cli.shが見つかりません"
+            exit 1
+          fi
+
+      - name: マイグレーションファイルの整合性を強制（根本的な対策）
+        run: |
+          echo "🔍 マイグレーションファイルの整合性を強制します（Supabase起動前の最重要ステップ）..."
+          echo "📄 チェックアウト後のマイグレーションファイル:"
+          ls -la supabase/migrations/ || echo "ディレクトリが見つかりません"
+          
+          # 統合マイグレーションファイル以外を強制削除
+          echo "🧹 統合マイグレーションファイル以外を強制削除中..."
+          find supabase/migrations -name "*.sql" -type f ! -name "20251219000000_initial_schema.sql" -exec rm -f {} \; 2>/dev/null || true
+          find supabase/migrations -name "*.skip" -exec rm -f {} \; 2>/dev/null || true
+          find supabase/migrations -name ".*" -type f -exec rm -f {} \; 2>/dev/null || true
+          
+          # スクリプトを実行（二重チェック）
+          if [ -f "scripts/enforce-migration-consistency.sh" ]; then
+            chmod +x scripts/enforce-migration-consistency.sh
+            bash scripts/enforce-migration-consistency.sh || {
+              echo "❌ enforce-migration-consistency.shが失敗しました"
+              exit 1
+            }
+          else
+            echo "❌ enforce-migration-consistency.shが見つかりません"
+            exit 1
+          fi
+          
+          # 最終確認
+          MIGRATION_COUNT=$(find supabase/migrations -name "*.sql" -type f 2>/dev/null | wc -l | tr -d ' ')
+          if [ "$MIGRATION_COUNT" -ne 1 ]; then
+            echo "❌ エラー: マイグレーションファイル数が正しくありません (期待: 1, 実際: $MIGRATION_COUNT)"
+            echo "📄 見つかったファイル:"
+            find supabase/migrations -name "*.sql" -type f || true
+            exit 1
+          fi
+          
+          echo "✅ マイグレーションファイルの整合性が確保されました（ファイル数: $MIGRATION_COUNT）"
+
+      - name: Supabase環境のセットアップ（根本的な対策）
+        run: |
+          echo "🧹 Supabase環境を完全にクリーンアップし、セットアップします..."
+          if [ -f "scripts/supabase-clean-reset.sh" ]; then
+            chmod +x scripts/supabase-clean-reset.sh
+            bash scripts/supabase-clean-reset.sh
+          else
+            echo "❌ supabase-clean-reset.shが見つかりません"
+            exit 1
+          fi
+
+      - name: データベースの検証
+        run: |
+          echo "🔍 データベースの状態を確認中..."
+          supabase db execute "
+            SELECT 
+              table_name,
+              (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'public') as total_tables
+            FROM information_schema.tables
+            WHERE table_schema = 'public'
+            ORDER BY table_name;
+          " || echo "⚠️  クエリの実行に失敗しました"
+          
+          # instrumentsテーブルの確認
+          echo "🎹 instrumentsテーブルの確認:"
+          supabase db execute "SELECT COUNT(*) as count FROM instruments;" || echo "⚠️  instrumentsテーブルが存在しない可能性があります"
+          
+        continue-on-error: true
+
+      - name: Supabaseの停止
+        if: always()
+        run: |
+          supabase stop || true
+

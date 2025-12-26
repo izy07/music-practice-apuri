@@ -1,72 +1,61 @@
 #!/bin/bash
 # GitHub Actions用データベースセットアップスクリプト
+# Supabase CLIのインストールとマイグレーションの実行
 
 set -e
 
-echo "🚀 GitHub Actions用データベースセットアップを開始します..."
+# スクリプトのディレクトリを取得（music-practiceディレクトリに移動）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$PROJECT_ROOT"
 
-# Supabase CLIのインストール確認
+echo "🚀 GitHub Actions用データベースセットアップを開始します..."
+echo "📁 作業ディレクトリ: $(pwd)"
+
+# 1. Supabase CLIのインストール確認
 if ! command -v supabase &> /dev/null; then
   echo "📦 Supabase CLIをインストール中..."
-  curl -fsSL https://github.com/supabase/cli/releases/latest/download/supabase_linux_amd64.tar.gz | tar -xz
-  sudo mv supabase /usr/local/bin/
-  supabase --version || {
-    echo "❌ Supabase CLIのインストールに失敗しました"
+  if [ -f "scripts/install-supabase-cli.sh" ]; then
+    chmod +x scripts/install-supabase-cli.sh
+    bash scripts/install-supabase-cli.sh
+  else
+    echo "❌ install-supabase-cli.shが見つかりません"
     exit 1
-  }
-  echo "✅ Supabase CLIのインストールが完了しました"
+  fi
+else
+  echo "✅ Supabase CLIは既にインストールされています"
+  supabase --version
 fi
 
-# マイグレーションファイルの整合性を強制（根本的な対策）
+# 2. マイグレーションファイルの整合性を強制（Supabase起動前に必須）
 echo "🔍 マイグレーションファイルの整合性を強制中..."
 if [ -f "scripts/enforce-migration-consistency.sh" ]; then
+  chmod +x scripts/enforce-migration-consistency.sh
   bash scripts/enforce-migration-consistency.sh || {
     echo "❌ マイグレーションファイルの整合性確保に失敗しました"
     exit 1
   }
 else
-  echo "⚠️  警告: enforce-migration-consistency.sh が見つかりません"
-  echo "🔍 基本的な整合性チェックを実行中..."
-  if [ -f "scripts/validate-migrations.sh" ]; then
-    bash scripts/validate-migrations.sh || {
-      echo "❌ マイグレーションファイルの整合性チェックに失敗しました"
-      exit 1
-    }
-  fi
+  echo "❌ enforce-migration-consistency.shが見つかりません"
+  exit 1
 fi
 
-# 完全なクリーンアップとリセット（根本的な対策）
+# 3. Supabase環境の完全クリーンアップとリセット
 echo "🧹 Supabase環境を完全にクリーンアップ中..."
 if [ -f "scripts/supabase-clean-reset.sh" ]; then
-  # クリーンリセットスクリプトを使用（推奨）
+  chmod +x scripts/supabase-clean-reset.sh
   bash scripts/supabase-clean-reset.sh
 else
-  # フォールバック: 手動でクリーンアップ
-  echo "⚠️  supabase-clean-reset.shが見つかりません。手動でクリーンアップします..."
-  supabase stop || true
-  docker ps -a | grep supabase | awk '{print $1}' | xargs -r docker rm -f 2>/dev/null || true
-  docker volume ls | grep supabase | awk '{print $2}' | xargs -r docker volume rm 2>/dev/null || true
-  rm -rf .supabase 2>/dev/null || true
-  
-  # マイグレーションファイルの整合性を再確認
-  find supabase/migrations -name "*.sql" -type f ! -name "20251219000000_initial_schema.sql" -delete 2>/dev/null || true
-  find supabase/migrations -name "*.skip" -delete 2>/dev/null || true
-  
-  # Supabaseを起動
-  supabase start
-  
-  # マイグレーションを実行
-  supabase db reset
+  echo "❌ supabase-clean-reset.shが見つかりません"
+  exit 1
 fi
 
-# instrumentsテーブルの確認
-echo "🎹 instrumentsテーブルの確認:"
-supabase db execute "
-  SELECT 
-    COUNT(*) as total_instruments,
-    COUNT(CASE WHEN id = '550e8400-e29b-41d4-a716-446655440016' THEN 1 END) as other_instrument_exists
-  FROM instruments;
-" || echo "⚠️  instrumentsテーブルが存在しない可能性があります"
+# 4. データベースの確認
+echo "🎹 データベースの確認中..."
+if supabase db execute "SELECT COUNT(*) as count FROM instruments;" >/dev/null 2>&1; then
+  echo "✅ データベースが正常にセットアップされました"
+else
+  echo "⚠️  データベースの確認に失敗しましたが、続行します"
+fi
 
 echo "✅ データベースセットアップが完了しました！"
-
