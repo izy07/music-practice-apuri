@@ -36,6 +36,8 @@ interface ShortTermGoal {
 }
 
 export function useCalendarData(currentDate: Date) {
+  const { selectedInstrument } = useInstrumentTheme();
+  const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
   const [practiceData, setPracticeData] = useState<PracticeData>({});
   const [recordingsData, setRecordingsData] = useState<RecordingsData>({});
   const [events, setEvents] = useState<EventData>({});
@@ -391,14 +393,26 @@ export function useCalendarData(currentDate: Date) {
         }
       }
       
-      const { data: eventsData, error } = await supabase
+      // 楽器IDを取得
+      const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
+      const currentInstrumentId = getInstrumentId(selectedInstrument);
+      
+      let query = supabase
         .from('events')
         .select('id, title, description, date')
         .eq('user_id', user.id)
         .eq('is_completed', false)
         .gte('date', formatLocalDate(startOfMonth))
-        .lte('date', formatLocalDate(endOfMonth))
-        .order('date', { ascending: true });
+        .lte('date', formatLocalDate(endOfMonth));
+      
+      // 楽器ごとにフィルタリング
+      if (currentInstrumentId) {
+        query = query.eq('instrument_id', currentInstrumentId);
+      } else {
+        query = query.is('instrument_id', null);
+      }
+      
+      const { data: eventsData, error } = await query.order('date', { ascending: true });
 
       if (error) {
         if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {

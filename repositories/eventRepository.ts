@@ -15,6 +15,7 @@ export interface Event {
   date: string; // YYYY-MM-DD形式
   description?: string | null;
   practice_schedule_id?: string | null; // 練習日程との連携用
+  instrument_id?: string | null; // 楽器ID（楽器ごとにイベントを分けて管理）
   created_at?: string;
   updated_at?: string;
 }
@@ -140,14 +141,23 @@ export const getEventsByUserId = async (
     startDate?: string;
     endDate?: string;
     isCompleted?: boolean;
+    instrumentId?: string | null;
   } = {}
 ): Promise<{ data: Event[] | null; error: any }> => {
   try {
     let query = supabase
       .from('events')
       .select('*')
-      .eq('user_id', userId)
-      .order('date', { ascending: true });
+      .eq('user_id', userId);
+    
+    // 楽器ごとにフィルタリング
+    if (options.instrumentId !== undefined) {
+      if (options.instrumentId) {
+        query = query.eq('instrument_id', options.instrumentId);
+      } else {
+        query = query.is('instrument_id', null);
+      }
+    }
     
     if (options.startDate) {
       query = query.gte('date', options.startDate);
@@ -161,7 +171,7 @@ export const getEventsByUserId = async (
       query = query.eq('is_completed', options.isCompleted);
     }
     
-    const { data, error } = await query;
+    const { data, error } = await query.order('date', { ascending: true });
     
     if (error) {
       logger.error(`[${REPOSITORY_CONTEXT}] getEventsByUserId:error`, { error });

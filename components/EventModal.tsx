@@ -43,6 +43,8 @@ export default function EventModal({
   event,
   onEventSaved,
 }: EventModalProps) {
+  const { selectedInstrument } = useInstrumentTheme();
+  const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
   const { currentTheme } = useInstrumentTheme();
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
@@ -120,18 +122,23 @@ export default function EventModal({
       if (event) {
         // 既存イベントの更新
         // dateとevent_dateの両方を設定（テーブルスキーマの互換性のため）
-        const updateData: {
-          title: string;
-          date: string;
-          event_date?: string;
-          description: string | null;
-          updated_at: string;
-        } = {
+        const updateData: any = {
           title: title.trim(),
           date,
           description: description.trim() || null,
           updated_at: new Date().toISOString(),
         };
+        
+        // event_dateカラムが存在する場合は、dateと同じ値を設定
+        if (date) {
+          updateData.event_date = date;
+        }
+        
+        // 楽器IDを設定（selectedInstrumentがある場合）
+        const instrumentId = getInstrumentId(selectedInstrument);
+        if (instrumentId) {
+          updateData.instrument_id = instrumentId;
+        }
         
         // event_dateカラムが存在する場合は、dateと同じ値を設定
         if (date) {
@@ -148,13 +155,7 @@ export default function EventModal({
       } else {
         // 新規イベントの作成
         // dateとevent_dateの両方を設定（テーブルスキーマの互換性のため）
-        const insertData: {
-          user_id: string;
-          title: string;
-          date: string;
-          event_date?: string;
-          description: string | null;
-        } = {
+        const insertData: any = {
           user_id: user.id,
           title: title.trim(),
           date,
@@ -164,6 +165,12 @@ export default function EventModal({
         // event_dateカラムが存在する場合は、dateと同じ値を設定
         if (date) {
           insertData.event_date = date;
+        }
+        
+        // 楽器IDを設定（selectedInstrumentがある場合）
+        const instrumentId = getInstrumentId(selectedInstrument);
+        if (instrumentId) {
+          insertData.instrument_id = instrumentId;
         }
         
         const { error } = await supabase
