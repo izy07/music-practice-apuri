@@ -175,7 +175,7 @@ export const GoalCard: React.FC<GoalCardProps> = ({
                 style={[styles.completeButton, { backgroundColor: currentTheme.primary }]}
                 onPress={() => onCompleteGoal(goal.id)}
               >
-                <CheckCircle size={20} color="#FFFFFF" />
+                <CheckCircle size={16} color="#FFFFFF" />
                 <Text style={styles.completeButtonText}>達成！</Text>
               </TouchableOpacity>
             </View>
@@ -236,7 +236,7 @@ export const GoalCard: React.FC<GoalCardProps> = ({
                 }]}
                 onPress={() => onCompleteGoal(goal.id)}
               >
-                <CheckCircle size={20} color="#FFFFFF" />
+                <CheckCircle size={16} color="#FFFFFF" />
                 <Text style={styles.completeButtonText}>達成！</Text>
               </TouchableOpacity>
             </View>
