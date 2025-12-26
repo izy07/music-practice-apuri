@@ -189,7 +189,7 @@ export default function GoalsScreen() {
       
       // キャッシュに保存（オフライン対応）
       try {
-        const cacheKey = `goals_cache_${user.id}_${selectedInstrument || 'all'}`;
+        const cacheKey = `goals_cache_${user.id}_${instrumentId || 'all'}`;
         await AsyncStorage.setItem(cacheKey, JSON.stringify(goalsData));
         logger.debug('目標データをキャッシュに保存しました');
       } catch (saveError) {
@@ -201,7 +201,8 @@ export default function GoalsScreen() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const cacheKey = `goals_cache_${user.id}_${selectedInstrument || 'all'}`;
+          const errorInstrumentId = getInstrumentId(selectedInstrument);
+          const cacheKey = `goals_cache_${user.id}_${errorInstrumentId || 'all'}`;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
@@ -228,10 +229,13 @@ export default function GoalsScreen() {
         return;
       }
 
+      // 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
+      const instrumentId = getInstrumentId(selectedInstrument);
+
       // オフライン時はキャッシュから読み込み
       if (!isOnline()) {
         try {
-          const cacheKey = `completed_goals_cache_${user.id}_${selectedInstrument || 'all'}`;
+          const cacheKey = `completed_goals_cache_${user.id}_${instrumentId || 'all'}`;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
@@ -244,13 +248,12 @@ export default function GoalsScreen() {
         }
       }
 
-      const instrumentId = getInstrumentId(selectedInstrument);
       const completedGoalsData = await goalRepository.getCompletedGoals(user.id, instrumentId);
       setCompletedGoals(completedGoalsData as any);
       
       // キャッシュに保存（オフライン対応）
       try {
-        const cacheKey = `completed_goals_cache_${user.id}_${selectedInstrument || 'all'}`;
+        const cacheKey = `completed_goals_cache_${user.id}_${instrumentId || 'all'}`;
         await AsyncStorage.setItem(cacheKey, JSON.stringify(completedGoalsData));
         logger.debug('達成済み目標データをキャッシュに保存しました');
       } catch (saveError) {
@@ -262,7 +265,8 @@ export default function GoalsScreen() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const cacheKey = `completed_goals_cache_${user.id}_${selectedInstrument || 'all'}`;
+          const errorInstrumentId = getInstrumentId(selectedInstrument);
+          const cacheKey = `completed_goals_cache_${user.id}_${errorInstrumentId || 'all'}`;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
