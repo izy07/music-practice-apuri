@@ -145,6 +145,7 @@ export default function GoalsScreen() {
       }));
       
       // オフラインで保存された目標も追加
+      let allGoals: Goal[] = [...goalsWithShowOnCalendar];
       try {
         const offlineGoals = await OfflineStorage.getGoals();
         const unsyncedGoals = offlineGoals.filter((g: any) => !g.is_synced && g.user_id === user.id);
@@ -169,7 +170,6 @@ export default function GoalsScreen() {
         }));
         
         // オフライン目標とオンライン目標を結合（重複を避ける）
-        const allGoals: Goal[] = [...goalsWithShowOnCalendar];
         offlineGoalsFormatted.forEach(offlineGoal => {
           if (!allGoals.find(g => g.id === offlineGoal.id)) {
             // show_on_calendarを明示的にbooleanに変換
@@ -180,19 +180,16 @@ export default function GoalsScreen() {
             allGoals.push(goalWithCalendar);
           }
         });
-        
-        setGoals(allGoals);
       } catch (offlineError) {
         logger.debug('オフライン目標読み込みエラー（無視）:', offlineError);
-        setGoals(goalsWithShowOnCalendar);
       }
+      
+      setGoals(allGoals);
       
       // キャッシュに保存（オフライン対応）
       try {
         const cacheKey = `goals_cache_${user.id}_${instrumentId || 'all'}`;
-        // allGoalsが存在する場合はそれを使用、そうでなければgoalsWithShowOnCalendarを使用
-        const goalsToCache = allGoals.length > 0 ? allGoals : goalsWithShowOnCalendar;
-        await AsyncStorage.setItem(cacheKey, JSON.stringify(goalsToCache));
+        await AsyncStorage.setItem(cacheKey, JSON.stringify(allGoals));
         logger.debug('目標データをキャッシュに保存しました');
       } catch (saveError) {
         logger.debug('キャッシュ保存エラー（無視）:', saveError);
