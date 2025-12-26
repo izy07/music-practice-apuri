@@ -90,20 +90,24 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
   
   // stopwatchSecondsが更新された時に、停止中なら経過時間を同期
   // ただし、ストップ時にはdisplayTimeMsを保持する（リセットしない）
+  // 実行中はdisplayTimeMsを上書きしない（1秒戻る問題を防ぐ）
   useEffect(() => {
-    if (!isStopwatchRunning) {
-      // 停止中：stopwatchSecondsとpausedTotalMsRefを同期
-      // ただし、ストップ時（stopwatchSecondsが0でもpausedTotalMsRef > 0）は表示を保持
-      if (stopwatchSeconds > 0) {
-        // stopwatchSecondsからミリ秒部分を保持したまま、秒数を更新
-        const currentMs = pausedTotalMsRef.current % 1000;
-        pausedTotalMsRef.current = stopwatchSeconds * 1000 + currentMs;
-        setMilliseconds(currentMs);
-        setDisplayTimeMs(pausedTotalMsRef.current); // 表示用の経過時間を更新
-      }
-      // stopwatchSeconds === 0 の場合は、リセット時のみ処理（別のuseEffectで処理）
-      // ストップ時はdisplayTimeMsを保持するため、ここでは何もしない
+    // 実行中は何もしない（displayTimeMsは独立して管理）
+    if (isStopwatchRunning) {
+      return;
     }
+    
+    // 停止中：stopwatchSecondsとpausedTotalMsRefを同期
+    // ただし、ストップ時（stopwatchSecondsが0でもpausedTotalMsRef > 0）は表示を保持
+    if (stopwatchSeconds > 0) {
+      // stopwatchSecondsからミリ秒部分を保持したまま、秒数を更新
+      const currentMs = pausedTotalMsRef.current % 1000;
+      pausedTotalMsRef.current = stopwatchSeconds * 1000 + currentMs;
+      setMilliseconds(currentMs);
+      setDisplayTimeMs(pausedTotalMsRef.current); // 表示用の経過時間を更新
+    }
+    // stopwatchSeconds === 0 の場合は、リセット時のみ処理（別のuseEffectで処理）
+    // ストップ時はdisplayTimeMsを保持するため、ここでは何もしない
   }, [stopwatchSeconds, isStopwatchRunning]);
 
   // リセット時にミリ秒もリセット（stopwatchSecondsが0で、かつ前回も0だった場合のみ）
