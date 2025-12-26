@@ -20,6 +20,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
   
   // ミリ秒追跡用
   const [milliseconds, setMilliseconds] = useState<number>(0);
+  const [displayTimeMs, setDisplayTimeMs] = useState<number>(0); // 表示用の経過時間（ミリ秒）
   const startTimeRef = useRef<number | null>(null);
   const pausedTotalMsRef = useRef<number>(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -36,13 +37,12 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
     resetStopwatch,
   } = useTimer(onComplete);
 
-  // ミリ秒の更新処理
+  // ミリ秒の更新処理（完全に独立した計算）
   useEffect(() => {
     if (isStopwatchRunning) {
       // 再開時：停止前の経過時間を考慮してstartTimeRefを設定
       if (startTimeRef.current === null) {
         // 停止時に保存した経過時間（ミリ秒）を基準に開始時刻を計算
-        // pausedTotalMsRef.currentには停止時の全体の経過時間が保存されている
         startTimeRef.current = Date.now() - pausedTotalMsRef.current;
       }
       
@@ -50,7 +50,9 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
         if (startTimeRef.current !== null) {
           const elapsed = Date.now() - startTimeRef.current;
           pausedTotalMsRef.current = elapsed;
-          setMilliseconds(elapsed % 1000);
+          const ms = elapsed % 1000;
+          setMilliseconds(ms);
+          setDisplayTimeMs(elapsed); // 表示用の経過時間を更新
         }
       }, 10); // 10msごとに更新（滑らかな表示）
     } else {
@@ -61,12 +63,11 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
       // 一時停止時：現在の経過時間を保存してstartTimeRefをリセット
       if (startTimeRef.current !== null) {
         // 停止時の全体の経過時間（ミリ秒）を保存
-        // stopwatchSecondsとmillisecondsを合わせて正確な経過時間を計算
-        const currentTotalMs = stopwatchSeconds * 1000 + milliseconds;
-        pausedTotalMsRef.current = currentTotalMs;
-        // 一時停止時のミリ秒を保持（pausedTotalMsRefから直接計算）
-        const pausedMs = pausedTotalMsRef.current % 1000;
-        setMilliseconds(pausedMs);
+        const elapsed = Date.now() - startTimeRef.current;
+        pausedTotalMsRef.current = elapsed;
+        const ms = elapsed % 1000;
+        setMilliseconds(ms);
+        setDisplayTimeMs(elapsed); // 表示用の経過時間を更新
         // 再開時に正しく計算できるようにstartTimeRefをリセット
         startTimeRef.current = null;
       } else if (pausedTotalMsRef.current > 0) {
@@ -74,6 +75,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
         // pausedTotalMsRefから直接ミリ秒を計算して表示を保持
         const pausedMs = pausedTotalMsRef.current % 1000;
         setMilliseconds(pausedMs);
+        setDisplayTimeMs(pausedTotalMsRef.current); // 表示用の経過時間を更新
       }
     }
 
@@ -82,15 +84,25 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
         clearInterval(intervalRef.current);
       }
     };
-  }, [isStopwatchRunning, stopwatchSeconds, milliseconds]);
+  }, [isStopwatchRunning]);
   
-  // stopwatchSecondsが更新された時に、停止中なら経過時間を更新
+  // stopwatchSecondsが更新された時に、停止中なら経過時間を同期
   useEffect(() => {
-    if (!isStopwatchRunning && stopwatchSeconds > 0 && pausedTotalMsRef.current > 0) {
-      // 停止中にstopwatchSecondsが更新された場合（外部からの更新など）、
-      // pausedTotalMsRefから直接ミリ秒を計算して表示を保持
-      const pausedMs = pausedTotalMsRef.current % 1000;
-      setMilliseconds(pausedMs);
+    if (!isStopwatchRunning) {
+      // 停止中：stopwatchSecondsとpausedTotalMsRefを同期
+      // stopwatchSecondsが更新された場合、pausedTotalMsRefも更新
+      if (stopwatchSeconds > 0) {
+        // stopwatchSecondsからミリ秒部分を保持したまま、秒数を更新
+        const currentMs = pausedTotalMsRef.current % 1000;
+        pausedTotalMsRef.current = stopwatchSeconds * 1000 + currentMs;
+        setMilliseconds(currentMs);
+        setDisplayTimeMs(pausedTotalMsRef.current); // 表示用の経過時間を更新
+      } else if (stopwatchSeconds === 0 && pausedTotalMsRef.current > 0) {
+        // リセットされた場合
+        pausedTotalMsRef.current = 0;
+        setMilliseconds(0);
+        setDisplayTimeMs(0); // 表示用の経過時間をリセット
+      }
     }
   }, [stopwatchSeconds, isStopwatchRunning]);
 
@@ -127,32 +139,39 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
   };
 
   const handleStop = () => {
-    // 停止時に現在の経過時間（秒 + ミリ秒）を正確に保存
-    const currentTotalMs = stopwatchSeconds * 1000 + milliseconds;
-    pausedTotalMsRef.current = currentTotalMs;
+    // 停止時に現在の経過時間（ミリ秒）を正確に保存
+    if (startTimeRef.current !== null) {
+      const elapsed = Date.now() - startTimeRef.current;
+      pausedTotalMsRef.current = elapsed;
+      const ms = elapsed % 1000;
+      setMilliseconds(ms);
+      startTimeRef.current = null;
+    }
     pauseStopwatch();
   };
 
   const handleLap = () => {
-    if (!isStopwatchRunning) return;
+    if (!isStopwatchRunning || startTimeRef.current === null) return;
     
-    const currentTotalMs = stopwatchSeconds * 1000 + milliseconds;
-    const lapTime = currentTotalMs - lastLapTimeRef.current;
+    // 現在の経過時間を正確に計算（ミリ秒単位）
+    const elapsed = Date.now() - startTimeRef.current;
+    const lapTime = elapsed - lastLapTimeRef.current;
     
     const newLap: LapTime = {
       id: Date.now().toString(),
       lapTime: lapTime,
-      totalTime: currentTotalMs,
+      totalTime: elapsed,
     };
     
     setLaps(prev => [newLap, ...prev]);
-    lastLapTimeRef.current = currentTotalMs;
+    lastLapTimeRef.current = elapsed;
   };
 
   const handleClear = () => {
     // ストップウォッチの時間をリセット
     resetStopwatch();
     setMilliseconds(0);
+    setDisplayTimeMs(0);
     pausedTotalMsRef.current = 0;
     startTimeRef.current = null;
     // ラップタイムもクリア
@@ -163,14 +182,11 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
   const handleStart = () => {
     if (!isStopwatchRunning) {
       // 新規開始時（時間が0）はラップ時点をリセット
-      if (stopwatchSeconds === 0 && milliseconds === 0) {
+      if (pausedTotalMsRef.current === 0) {
         lastLapTimeRef.current = 0;
-        pausedTotalMsRef.current = 0;
-      } else {
-        // 再開時：停止前の経過時間を正確に保存（念のため）
-        const currentTotalMs = stopwatchSeconds * 1000 + milliseconds;
-        pausedTotalMsRef.current = currentTotalMs;
+        startTimeRef.current = Date.now();
       }
+      // 再開時は、useEffectでstartTimeRefが設定される
       startStopwatch();
     }
   };
@@ -178,6 +194,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
   const handleReset = () => {
     resetStopwatch();
     setMilliseconds(0);
+    setDisplayTimeMs(0);
     pausedTotalMsRef.current = 0;
     startTimeRef.current = null;
     setLaps([]);
@@ -189,7 +206,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
       {/* 時間表示 */}
       <View style={[styles.stopwatchTimeContainer, { backgroundColor: currentTheme.surface }]}>
         <Text style={[styles.stopwatchTime, { color: currentTheme.primary }]}>
-          {formatTime(stopwatchSeconds, milliseconds)}
+          {formatTimeFromMs(displayTimeMs)}
         </Text>
       </View>
 
