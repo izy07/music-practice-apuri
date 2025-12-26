@@ -126,14 +126,20 @@ export const checkShowOnCalendarSupport = async (forceCheck: boolean = false): P
 };
 
 // 初期化時にlocalStorageのフラグを確認（非同期チェックの前に使用）
+// 重要: instrument_idカラムは必ず存在するため、localStorageのフラグを無視
 try {
   if (typeof window !== 'undefined') {
     const flag = window.localStorage.getItem('disable_show_on_calendar');
     if (flag === '1') {
       supportsShowOnCalendar = false;
     }
-    const instrumentIdFlag = window.localStorage.getItem('disable_instrument_id');
-    if (instrumentIdFlag === '1') supportsInstrumentId = false;
+    // instrument_idカラムは必ず存在するため、localStorageのフラグを無視して常にtrueに設定
+    // マイグレーションで追加されているため、常に存在する
+    supportsInstrumentId = true;
+    // localStorageのフラグを削除（誤った設定をクリア）
+    try {
+      window.localStorage.removeItem('disable_instrument_id');
+    } catch {}
     const isCompletedFlag = window.localStorage.getItem('disable_is_completed');
     if (isCompletedFlag === '1') supportsIsCompleted = false;
   }
