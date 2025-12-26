@@ -225,12 +225,96 @@ const INSTRUMENT_TUNINGS = {
       { note: 'D4', frequency: 293.66, string: 'D音' },
       { note: 'E4', frequency: 329.63, string: 'E音' }
     ]
+  },
+  oboe: {
+    name: 'オーボエ',
+    strings: ['A4'],
+    frequencies: [440.00],
+    tolerance: TUNING_PRECISION.EXCELLENT,
+    description: '木管楽器。リードの調整と指の位置で音程を調整します。',
+    tuning: ['A4: 440Hz基準', 'リード調整', '指の位置'],
+    openStrings: [
+      { note: 'A4', frequency: 440.00, string: '基準音A' },
+      { note: 'C4', frequency: 261.63, string: 'C音' },
+      { note: 'D4', frequency: 293.66, string: 'D音' },
+      { note: 'E4', frequency: 329.63, string: 'E音' }
+    ]
+  },
+  bassoon: {
+    name: 'ファゴット',
+    strings: ['B1'],
+    frequencies: [61.74],
+    tolerance: TUNING_PRECISION.EXCELLENT,
+    description: '低音域の木管楽器。リードの調整と指の位置で音程を調整します。',
+    tuning: ['B1: 61.74Hz基準', 'リード調整', '指の位置'],
+    openStrings: [
+      { note: 'B1', frequency: 61.74, string: '基準音B' },
+      { note: 'C2', frequency: 65.41, string: 'C音' },
+      { note: 'E2', frequency: 82.41, string: 'E音' },
+      { note: 'G2', frequency: 98.00, string: 'G音' }
+    ]
+  },
+  harp: {
+    name: 'ハープ',
+    strings: ['C2'],
+    frequencies: [65.41],
+    tolerance: TUNING_PRECISION.EXCELLENT,
+    description: '弦楽器。各弦の音程を正確に合わせることが重要です。',
+    tuning: ['C2: 65.41Hz基準', 'ペダル調整', '全音域チェック'],
+    openStrings: [
+      { note: 'C2', frequency: 65.41, string: 'C弦' },
+      { note: 'D2', frequency: 73.42, string: 'D弦' },
+      { note: 'E2', frequency: 82.41, string: 'E弦' },
+      { note: 'G2', frequency: 98.00, string: 'G弦' }
+    ]
+  },
+  double_bass: {
+    name: 'コントラバス',
+    strings: ['E1', 'A1', 'D2', 'G2'],
+    frequencies: [41.20, 55.00, 73.42, 98.00],
+    tolerance: TUNING_PRECISION.EXCELLENT,
+    description: '最低音域の弦楽器。各弦の音程を正確に合わせることが重要です。',
+    tuning: ['E弦: E (ミ)', 'A弦: A (ラ)', 'D弦: D (レ)', 'G弦: G (ソ)'],
+    openStrings: [
+      { note: 'E1', frequency: 41.20, string: 'E弦' },
+      { note: 'A1', frequency: 55.00, string: 'A弦' },
+      { note: 'D2', frequency: 73.42, string: 'D弦' },
+      { note: 'G2', frequency: 98.00, string: 'G弦' }
+    ]
+  },
+  contrabass: {
+    name: 'コントラバス',
+    strings: ['E1', 'A1', 'D2', 'G2'],
+    frequencies: [41.20, 55.00, 73.42, 98.00],
+    tolerance: TUNING_PRECISION.EXCELLENT,
+    description: '最低音域の弦楽器。各弦の音程を正確に合わせることが重要です。',
+    tuning: ['E弦: E (ミ)', 'A弦: A (ラ)', 'D弦: D (レ)', 'G弦: G (ソ)'],
+    openStrings: [
+      { note: 'E1', frequency: 41.20, string: 'E弦' },
+      { note: 'A1', frequency: 55.00, string: 'A弦' },
+      { note: 'D2', frequency: 73.42, string: 'D弦' },
+      { note: 'G2', frequency: 98.00, string: 'G弦' }
+    ]
+  },
+  drums: {
+    name: 'ドラム',
+    strings: ['A4'],
+    frequencies: [440.00],
+    tolerance: TUNING_PRECISION.GOOD,
+    description: '打楽器。各ドラムの音程を調整します。',
+    tuning: ['A4: 440Hz基準', 'スネア調整', 'バスドラム調整'],
+    openStrings: [
+      { note: 'A4', frequency: 440.00, string: '基準音A' },
+      { note: 'C4', frequency: 261.63, string: 'C音' },
+      { note: 'E4', frequency: 329.63, string: 'E音' },
+      { note: 'G4', frequency: 392.00, string: 'G音' }
+    ]
   }
 };
 
 // 弦楽器かどうかを判定する関数
 const isStringInstrument = (instrument: string): boolean => {
-  const stringInstruments = ['guitar', 'bass', 'violin', 'viola', 'cello', 'double_bass'];
+  const stringInstruments = ['guitar', 'bass', 'violin', 'viola', 'cello', 'double_bass', 'contrabass', 'harp'];
   return stringInstruments.includes(instrument);
 };
 
