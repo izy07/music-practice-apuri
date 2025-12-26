@@ -159,8 +159,17 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
     pauseStopwatch();
   };
 
-  const handleLap = () => {
-    if (!isStopwatchRunning || startTimeRef.current === null) return;
+  const handleLap = (e?: any) => {
+    // イベントの伝播を防ぐ
+    if (e) {
+      e.stopPropagation?.();
+      e.preventDefault?.();
+    }
+    
+    // ストップウォッチが実行中でない、または開始時刻が設定されていない場合は何もしない
+    if (!isStopwatchRunning || startTimeRef.current === null) {
+      return;
+    }
     
     // 現在の経過時間を正確に計算（ミリ秒単位）
     const elapsed = Date.now() - startTimeRef.current;
@@ -189,7 +198,13 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
     lastLapTimeRef.current = 0;
   };
 
-  const handleStart = () => {
+  const handleStart = (e?: any) => {
+    // イベントの伝播を防ぐ
+    if (e) {
+      e.stopPropagation?.();
+      e.preventDefault?.();
+    }
+    
     if (!isStopwatchRunning) {
       // 新規開始時（時間が0）はラップ時点をリセット
       if (pausedTotalMsRef.current === 0) {
@@ -231,7 +246,14 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
               borderColor: currentTheme.secondary,
             }
           ]}
-          onPress={isStopwatchRunning ? handleStop : handleStart}
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            if (isStopwatchRunning) {
+              handleStop();
+            } else {
+              handleStart(e);
+            }
+          }}
           activeOpacity={0.7}
         >
           <Clock size={16} color={isStopwatchRunning ? currentTheme.surface : currentTheme.text} />
@@ -255,7 +277,10 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
               borderColor: currentTheme.primary,
             }
           ]}
-          onPress={handleLap}
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            handleLap(e);
+          }}
           disabled={!isStopwatchRunning}
           activeOpacity={0.7}
         >
@@ -361,6 +386,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 4,
     maxWidth: '33%',
+    overflow: 'hidden', // タッチ領域の重複を防ぐ
   },
   stopwatchControlButtonText: {
     fontSize: 14,
