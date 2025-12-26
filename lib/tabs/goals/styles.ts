@@ -216,7 +216,7 @@ export const styles = StyleSheet.create({
   },
   goalTypes: {
     gap: 10,
-    marginBottom: 8,
+    marginBottom: 4,
     alignItems: 'center',
   },
   goalTypeCard: {
