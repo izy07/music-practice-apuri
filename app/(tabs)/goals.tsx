@@ -618,6 +618,13 @@ export default function GoalsScreen() {
       const hasVisibleGoal = goals.some(g => g.show_on_calendar === true);
       
       // 目標リストを再読み込み（新しく作成した目標のIDを取得するため）
+      // キャッシュをクリアしてから再読み込み
+      try {
+        const cacheKey = `goals_cache_${user.id}_${instrumentId || 'all'}`;
+        await AsyncStorage.removeItem(cacheKey);
+      } catch (cacheError) {
+        logger.debug('キャッシュクリアエラー（無視）:', cacheError);
+      }
       await loadGoals();
       
       // カレンダーに表示されている目標がない場合、新しく作成した目標を自動的に表示

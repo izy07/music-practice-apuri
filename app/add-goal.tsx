@@ -57,12 +57,15 @@ export default function AddGoalScreen() {
 
       logger.debug('目標作成開始:', { title: newGoal.title, goal_type: newGoal.goal_type });
 
+      const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
+      const instrumentId = getInstrumentId(selectedInstrument);
+      
       const result = await goalService.createGoal(user.id, {
         title: newGoal.title.trim(),
         description: newGoal.description || undefined,
         target_date: newGoal.target_date || undefined,
         goal_type: newGoal.goal_type,
-        instrument_id: selectedInstrument || null,
+        instrument_id: instrumentId || null,
       });
 
       if (!result.success) {
