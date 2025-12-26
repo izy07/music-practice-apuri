@@ -542,10 +542,13 @@ export const goalRepository = {
       .eq('user_id', userId);
     
     // 楽器IDでフィルタリング（カラムが存在する場合のみ）
+    // 重要: instrument_idがnullの既存データとの互換性のため、OR条件を使用
     if (supportsInstrumentId) {
       if (instrumentId) {
-        query = query.eq('instrument_id', instrumentId);
+        // その楽器の目標、またはinstrument_idがnullの目標（既存データとの互換性）を取得
+        query = query.or(`instrument_id.eq.${instrumentId},instrument_id.is.null`);
       } else {
+        // 楽器が選択されていない場合: instrument_idがnullの目標のみ取得
         query = query.is('instrument_id', null);
       }
     }
