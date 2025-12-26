@@ -55,6 +55,7 @@ find "$MIGRATIONS_DIR" -name ".*" -type f -exec rm -f {} \; 2>/dev/null || true
 find "$MIGRATIONS_DIR" -name "*.bak" -o -name "*.backup" -o -name "*.old" -exec rm -f {} \; 2>/dev/null || true
 
 # 特定の古いマイグレーションファイルを明示的に削除（根本的な対策）
+# 注意: これらのファイルは既に20251219000000_initial_schema.sqlに統合されているため不要
 echo "🧹 特定の古いマイグレーションファイルを明示的に削除中..."
 rm -f "$MIGRATIONS_DIR/20250120000000_add_instrument_specific_data.sql" 2>/dev/null || true
 rm -f "$MIGRATIONS_DIR/20250101000000_ensure_representative_songs_table_final.sql" 2>/dev/null || true
