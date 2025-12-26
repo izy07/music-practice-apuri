@@ -1011,8 +1011,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   timeFilterContainer: {
-    marginBottom: 12,
-    padding: 12,
+    marginBottom: 6,
+    padding: 8,
     borderRadius: 16,
     elevation: 2,
     ...createShadowStyle({
@@ -1024,25 +1024,25 @@ const styles = StyleSheet.create({
     }),
   },
   timeFilterTitle: {
-    fontSize: 16,
+    fontSize: 13,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   timeFilterButtons: {
     flexDirection: 'row',
-    gap: 8,
-    paddingRight: 16,
+    gap: 4,
+    paddingRight: 8,
   },
   timeFilterButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    minWidth: 80,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
+    minWidth: 60,
     alignItems: 'center',
     justifyContent: 'center',
   },
   timeFilterButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
   },
   recordingsContainer: {
