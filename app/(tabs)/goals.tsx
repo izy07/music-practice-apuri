@@ -150,25 +150,9 @@ export default function GoalsScreen() {
         })),
       });
       
-      // 楽器IDでフィルタリング（クライアント側でも追加のフィルタリング）
-      // データベース側でフィルタリングされているが、念のためクライアント側でも確認
-      const filteredGoalsData = goalsData.filter((g: any) => {
-        const goalInstrumentId = g.instrument_id;
-        const matches = instrumentId
-          ? goalInstrumentId === instrumentId
-          : (!goalInstrumentId || goalInstrumentId === null);
-        
-        if (!matches) {
-          logger.debug('目標がフィルタリングで除外されました:', {
-            goalId: g.id,
-            goalTitle: g.title,
-            goalInstrumentId,
-            currentInstrumentId: instrumentId,
-          });
-        }
-        
-        return matches;
-      });
+      // データベース側でフィルタリングされているため、クライアント側の追加フィルタリングは不要
+      // データベース側で既にinstrument_idがnullの既存データも含めて取得されている
+      const filteredGoalsData = goalsData;
       
       logger.debug('フィルタリング後の目標数:', {
         before: goalsData.length,
