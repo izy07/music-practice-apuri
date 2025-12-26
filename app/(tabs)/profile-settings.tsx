@@ -191,6 +191,17 @@ export default function ProfileSettingsScreen() {
                     ? careerData.performancesUi 
                     : [{ id: undefined, title: '' }]);
                 }
+                // 休止期間も楽器ごとのデータから読み込む
+                if (careerData.breakPeriodsUi && Array.isArray(careerData.breakPeriodsUi)) {
+                  setBreakPeriods(careerData.breakPeriodsUi.length > 0 
+                    ? careerData.breakPeriodsUi.map((bp: any) => ({
+                      id: bp.id || Date.now().toString(),
+                      startDate: bp.startDate || '',
+                      endDate: bp.endDate || '',
+                      reason: bp.reason || ''
+                    }))
+                    : []);
+                }
               }
             } else {
               // 楽器ごとのデータが存在しない場合は、既存のデータを読み込む（後方互換性）
@@ -213,6 +224,7 @@ export default function ProfileSettingsScreen() {
                 pastOrganizationsUi?: Array<{ id?: string; name: string; startYm: string; endYm: string }>;
                 awardsUi?: Array<{ id?: string; title: string; dateYm: string; result: string }>;
                 performancesUi?: Array<{ id?: string; title: string }>;
+                breakPeriodsUi?: Array<{ id?: string; startDate: string; endDate: string; reason: string }>;
               } };
               
               if (profileWithCareer?.career_data) {
@@ -231,6 +243,17 @@ export default function ProfileSettingsScreen() {
                   setPerformancesEdit(careerData.performancesUi.length > 0 
                     ? careerData.performancesUi 
                     : [{ id: undefined, title: '' }]);
+                }
+                // 休止期間も楽器ごとのデータから読み込む
+                if (careerData.breakPeriodsUi && Array.isArray(careerData.breakPeriodsUi)) {
+                  setBreakPeriods(careerData.breakPeriodsUi.length > 0 
+                    ? careerData.breakPeriodsUi.map((bp: any) => ({
+                      id: bp.id || Date.now().toString(),
+                      startDate: bp.startDate || '',
+                      endDate: bp.endDate || '',
+                      reason: bp.reason || ''
+                    }))
+                    : []);
                 }
               }
             }
@@ -255,6 +278,7 @@ export default function ProfileSettingsScreen() {
               pastOrganizationsUi?: Array<{ id?: string; name: string; startYm: string; endYm: string }>;
               awardsUi?: Array<{ id?: string; title: string; dateYm: string; result: string }>;
               performancesUi?: Array<{ id?: string; title: string }>;
+              breakPeriodsUi?: Array<{ id?: string; startDate: string; endDate: string; reason: string }>;
             } };
             
             if (profileWithCareer?.career_data) {
@@ -273,6 +297,17 @@ export default function ProfileSettingsScreen() {
                 setPerformancesEdit(careerData.performancesUi.length > 0 
                   ? careerData.performancesUi 
                   : [{ id: undefined, title: '' }]);
+              }
+              // 休止期間も楽器ごとのデータから読み込む
+              if (careerData.breakPeriodsUi && Array.isArray(careerData.breakPeriodsUi)) {
+                setBreakPeriods(careerData.breakPeriodsUi.length > 0 
+                  ? careerData.breakPeriodsUi.map((bp: any) => ({
+                    id: bp.id || Date.now().toString(),
+                    startDate: bp.startDate || '',
+                    endDate: bp.endDate || '',
+                    reason: bp.reason || ''
+                  }))
+                  : []);
               }
             }
           }
@@ -388,41 +423,11 @@ export default function ProfileSettingsScreen() {
     return true;
   };
 
-  // 経歴データ読み込み
+  // 経歴データ読み込み（非推奨：楽器ごとのデータから読み込むため、この関数は使用しない）
+  // 楽器ごとのデータはloadCurrentUser内で読み込まれる
   const loadCareerData = async () => {
-    if (!currentUser) return;
-    
-    try {
-      // ブランク期間
-      const { data: breakData } = await supabase
-        .from('user_break_periods')
-        .select('*')
-        .eq('user_id', currentUser.id);
-      if (breakData) setBreakPeriods(breakData);
-
-      // 過去の所属団体
-      const { data: orgData } = await supabase
-        .from('user_past_organizations')
-        .select('*')
-        .eq('user_id', currentUser.id);
-      if (orgData) setPastOrganizations(orgData);
-
-      // 受賞履歴
-      const { data: awardData } = await supabase
-        .from('user_awards')
-        .select('*')
-        .eq('user_id', currentUser.id);
-      if (awardData) setAwards(awardData);
-
-      // 演奏経験
-      const { data: performanceData } = await supabase
-        .from('user_performances')
-        .select('*')
-        .eq('user_id', currentUser.id);
-      if (performanceData) setPerformances(performanceData);
-            } catch (error) {
-          // Career data load error
-        }
+    // この関数は後方互換性のために残しているが、実際には使用されない
+    // 楽器ごとのデータはloadCurrentUser内でinstrument_specific_dataから読み込まれる
   };
 
   // 画像アップロード機能
@@ -616,15 +621,54 @@ export default function ProfileSettingsScreen() {
 
   // 削除関数
   const handleDeleteBreakPeriod = async (id: string) => {
+    if (!currentUser || !selectedInstrument) {
+      Alert.alert('エラー', '楽器が選択されていません');
+      return;
+    }
+    
     try {
-      const result = await deleteBreakPeriod(id);
-      if (result.error) {
-        ErrorHandler.handle(result.error, '休止期間の削除', false);
-        return;
+      // 楽器ごとのデータから削除
+      const updatedBreakPeriods = breakPeriods.filter(item => item.id !== id);
+      setBreakPeriods(updatedBreakPeriods);
+      
+      // 既存の楽器ごとのデータを取得
+      const existingInstrumentDataResult = await getInstrumentSpecificProfileData(
+        currentUser.id,
+        selectedInstrument
+      );
+      const existingData = existingInstrumentDataResult.data || {};
+      
+      // 楽器ごとのデータを更新
+      const updatedInstrumentData = {
+        ...existingData,
+        career_data: {
+          ...(existingData.career_data || {}),
+          breakPeriodsUi: updatedBreakPeriods.map(bp => ({
+            id: bp.id,
+            startDate: bp.startDate,
+            endDate: bp.endDate,
+            reason: bp.reason
+          })),
+        },
+      };
+      
+      const saveResult = await saveInstrumentSpecificProfileData(
+        currentUser.id,
+        selectedInstrument,
+        updatedInstrumentData
+      );
+      
+      if (saveResult.error) {
+        // エラーが発生した場合は元に戻す
+        setBreakPeriods(breakPeriods);
+        ErrorHandler.handle(saveResult.error, '休止期間の削除', false);
+        Alert.alert('エラー', '休止期間の削除に失敗しました');
       }
-      setBreakPeriods(prev => prev.filter(item => item.id !== id));
     } catch (error) {
+      // エラーが発生した場合は元に戻す
+      setBreakPeriods(breakPeriods);
       ErrorHandler.handle(error, '休止期間の削除', false);
+      Alert.alert('エラー', '休止期間の削除に失敗しました');
     }
   };
 
@@ -836,6 +880,12 @@ export default function ProfileSettingsScreen() {
             pastOrganizationsUi: pastOrgs,
             awardsUi: awardsEdit,
             performancesUi: performancesEdit,
+            breakPeriodsUi: breakPeriods.map(bp => ({
+              id: bp.id,
+              startDate: bp.startDate,
+              endDate: bp.endDate,
+              reason: bp.reason
+            })),
           },
         };
         
@@ -1539,6 +1589,12 @@ export default function ProfileSettingsScreen() {
                     pastOrganizationsUi: pastOrgs,
                     awardsUi: awardsEdit,
                     performancesUi: performancesEdit,
+                    breakPeriodsUi: breakPeriods.map(bp => ({
+                      id: bp.id,
+                      startDate: bp.startDate,
+                      endDate: bp.endDate,
+                      reason: bp.reason
+                    })),
                   },
                 };
                 
