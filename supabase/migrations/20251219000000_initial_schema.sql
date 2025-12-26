@@ -534,6 +534,7 @@ CREATE TABLE IF NOT EXISTS public.events (
   date date NOT NULL,
   description text,
   practice_schedule_id uuid REFERENCES public.practice_schedules(id) ON DELETE SET NULL,
+  instrument_id uuid REFERENCES public.instruments(id) ON DELETE SET NULL,
   is_completed boolean DEFAULT false,
   completed_at timestamptz,
   created_at timestamptz DEFAULT now(),
@@ -573,6 +574,7 @@ CREATE INDEX IF NOT EXISTS idx_events_date ON public.events(date);
 CREATE INDEX IF NOT EXISTS idx_events_is_completed ON public.events(is_completed);
 CREATE INDEX IF NOT EXISTS idx_events_completed_at ON public.events(completed_at);
 CREATE INDEX IF NOT EXISTS idx_events_practice_schedule_id ON public.events(practice_schedule_id);
+CREATE INDEX IF NOT EXISTS idx_events_instrument_id ON public.events(instrument_id);
 
 -- ============================================
 -- 13. music_terms テーブル
