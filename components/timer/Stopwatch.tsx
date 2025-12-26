@@ -87,22 +87,20 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
   }, [isStopwatchRunning]);
   
   // stopwatchSecondsが更新された時に、停止中なら経過時間を同期
+  // ただし、ストップ時にはdisplayTimeMsを保持する（リセットしない）
   useEffect(() => {
     if (!isStopwatchRunning) {
       // 停止中：stopwatchSecondsとpausedTotalMsRefを同期
-      // stopwatchSecondsが更新された場合、pausedTotalMsRefも更新
+      // ただし、ストップ時（stopwatchSecondsが0でもpausedTotalMsRef > 0）は表示を保持
       if (stopwatchSeconds > 0) {
         // stopwatchSecondsからミリ秒部分を保持したまま、秒数を更新
         const currentMs = pausedTotalMsRef.current % 1000;
         pausedTotalMsRef.current = stopwatchSeconds * 1000 + currentMs;
         setMilliseconds(currentMs);
         setDisplayTimeMs(pausedTotalMsRef.current); // 表示用の経過時間を更新
-      } else if (stopwatchSeconds === 0 && pausedTotalMsRef.current > 0) {
-        // リセットされた場合
-        pausedTotalMsRef.current = 0;
-        setMilliseconds(0);
-        setDisplayTimeMs(0); // 表示用の経過時間をリセット
       }
+      // stopwatchSeconds === 0 の場合は、リセット時のみ処理（別のuseEffectで処理）
+      // ストップ時はdisplayTimeMsを保持するため、ここでは何もしない
     }
   }, [stopwatchSeconds, isStopwatchRunning]);
 
@@ -330,10 +328,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   stopwatchTime: {
-    fontSize: 64,
+    fontSize: 48,
     fontWeight: '700',
     fontFamily: 'monospace',
-    letterSpacing: 2,
+    letterSpacing: 1.5,
     textAlign: 'center',
   },
   stopwatchControls: {
