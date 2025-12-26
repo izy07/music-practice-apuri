@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSegments } from 'expo-router';
+import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { createRateLimiter } from '@/lib/authSecurity';
 import { Alert } from 'react-native';
@@ -18,6 +19,9 @@ import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { TIMEOUT } from '@/lib/constants';
 import { getBasePath } from '@/lib/navigationUtils';
+
+// Web環境での最後のアクティビティ時刻を保存するキー（useIdleTimeoutと同じキー）
+const LAST_ACTIVITY_KEY = 'music-practice-last-activity';
 
 // 認証ユーザーの型定義
 export interface AuthUser {
@@ -252,6 +256,97 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           
           // 期限切れセッションをクリア
           await supabase.auth.signOut();
+          
+          // Web環境では最後のアクティビティ時刻も削除
+          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+            try {
+              window.localStorage.removeItem(LAST_ACTIVITY_KEY);
+            } catch (error) {
+              // エラーは無視
+            }
+          }
+          
+          // 未認証状態として処理
+          updateAuthState({
+            isAuthenticated: false,
+            isLoading: false,
+            isInitialized: true,
+            error: null,
+          });
+          return;
+        }
+        
+        // 最後のアクティビティ時刻をチェック（1時間以上経過している場合は自動ログアウト）
+        const IDLE_TIMEOUT_MS = TIMEOUT.IDLE_MS; // 1時間
+        let shouldLogoutDueToIdle = false;
+        
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+          // Web環境: localStorageから読み込む
+          try {
+            const savedLastActivity = window.localStorage.getItem(LAST_ACTIVITY_KEY);
+            if (savedLastActivity) {
+              const savedTime = parseInt(savedLastActivity, 10);
+              if (!isNaN(savedTime)) {
+                const timeSinceLastActivity = Date.now() - savedTime;
+                
+                if (timeSinceLastActivity >= IDLE_TIMEOUT_MS) {
+                  shouldLogoutDueToIdle = true;
+                  logger.info('[useAuthAdvanced] 最後のアクティビティから1時間以上経過 - 自動ログアウト', {
+                    timeSinceLastActivity,
+                    savedTime,
+                    now: Date.now(),
+                  });
+                }
+              }
+            }
+          } catch (error) {
+            // localStorageの読み込みエラーは無視（セッションは有効なので続行）
+            logger.debug('[useAuthAdvanced] 最後のアクティビティ時刻のチェックに失敗（続行）:', error);
+          }
+        } else if (Platform.OS !== 'web') {
+          // React Native環境: AsyncStorageから読み込む
+          try {
+            const savedLastActivity = await AsyncStorage.getItem(LAST_ACTIVITY_KEY);
+            if (savedLastActivity) {
+              const savedTime = parseInt(savedLastActivity, 10);
+              if (!isNaN(savedTime)) {
+                const timeSinceLastActivity = Date.now() - savedTime;
+                
+                if (timeSinceLastActivity >= IDLE_TIMEOUT_MS) {
+                  shouldLogoutDueToIdle = true;
+                  logger.info('[useAuthAdvanced] 最後のアクティビティから1時間以上経過 - 自動ログアウト', {
+                    timeSinceLastActivity,
+                    savedTime,
+                    now: Date.now(),
+                  });
+                }
+              }
+            }
+          } catch (error) {
+            // AsyncStorageの読み込みエラーは無視（セッションは有効なので続行）
+            logger.debug('[useAuthAdvanced] 最後のアクティビティ時刻のチェックに失敗（続行）:', error);
+          }
+        }
+        
+        // アイドルタイムアウトの場合は自動ログアウト
+        if (shouldLogoutDueToIdle) {
+          // セッションをクリア
+          await supabase.auth.signOut();
+          
+          // 最後のアクティビティ時刻を削除
+          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+            try {
+              window.localStorage.removeItem(LAST_ACTIVITY_KEY);
+            } catch (error) {
+              // エラーは無視
+            }
+          } else if (Platform.OS !== 'web') {
+            try {
+              await AsyncStorage.removeItem(LAST_ACTIVITY_KEY);
+            } catch (error) {
+              // エラーは無視
+            }
+          }
           
           // 未認証状態として処理
           updateAuthState({
