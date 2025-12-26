@@ -1312,7 +1312,7 @@ export default function GoalsScreen() {
         </View>
 
         {/* 設定した目標セクション */}
-        <View style={[styles.section, { backgroundColor: 'transparent', marginTop: 4 }]}>
+        <View style={[styles.section, { backgroundColor: 'transparent', marginTop: 0 }]}>
           {goals.length > 0 && (
             <View style={styles.goalsList}>
               {goals.map((goal) => (
