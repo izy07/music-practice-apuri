@@ -590,8 +590,20 @@ export default function GoalsScreen() {
           is_active: true,
           is_completed: false,
           show_on_calendar: false,
+          instrument_id: instrumentId || null, // 楽器IDを追加
         };
-        setGoals([...goals, localGoal]);
+        // 楽器IDでフィルタリングしてから追加
+        if (instrumentId) {
+          // 楽器が選択されている場合: その楽器の目標のみ追加
+          if (localGoal.instrument_id === instrumentId) {
+            setGoals([...goals, localGoal]);
+          }
+        } else {
+          // 楽器が選択されていない場合: instrument_idがnullの目標のみ追加
+          if (!localGoal.instrument_id || localGoal.instrument_id === null) {
+            setGoals([...goals, localGoal]);
+          }
+        }
         
         Alert.alert('保存しました', 'オフラインで保存しました。オンライン時に自動的に同期されます。');
         setNewGoal({ title: '', description: '', target_date: '', goal_type: 'personal_short' });
@@ -611,7 +623,7 @@ export default function GoalsScreen() {
       // カレンダーに表示されている目標がない場合、新しく作成した目標を自動的に表示
       if (!hasVisibleGoal) {
         // 最新の目標（新しく作成したもの）を取得
-        const updatedGoalsData = await goalRepository.getGoals(user.id, selectedInstrument);
+        const updatedGoalsData = await goalRepository.getGoals(user.id, instrumentId);
         const goalsWithShowOnCalendar = updatedGoalsData.map((g: any) => ({
           ...g,
           show_on_calendar: g.show_on_calendar ?? false,
