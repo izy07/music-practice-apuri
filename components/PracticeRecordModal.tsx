@@ -423,10 +423,23 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             blobUrl = URL.createObjectURL(blob);
             logger.debug('Blob URLを作成しました:', blobUrl);
             
+            // blobUrlの検証
+            if (!blobUrl || blobUrl.trim() === '') {
+              throw new Error('Blob URLの作成に失敗しました');
+            }
+            
             // Audio要素を作成
-            const audio = new Audio(blobUrl);
+            const audio = new Audio();
+            // blobUrlが確実に設定されていることを確認してからsrcに設定
             audio.src = blobUrl;
             audio.preload = 'auto';
+            
+            // src属性が正しく設定されたことを確認
+            if (!audio.src || audio.src === '' || audio.src === 'about:blank') {
+              throw new Error('Audio要素のsrc属性の設定に失敗しました');
+            }
+            
+            logger.debug('Audio要素のsrc属性を設定しました:', audio.src);
             
             // エラーハンドリングを設定（Blob URL解放を含む）
             const cleanup = () => {
