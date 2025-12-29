@@ -985,49 +985,52 @@ export default function TimerScreen() {
     const gain = ctx.createGain();
     osc.type = 'square';
     osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.setValueAtTime(0, ctx.currentTime);
     // スマホでも聞こえるように音量を上げる
-    gain.gain.exponentialRampToValueAtTime(Math.max(0.1, VOLUME * 1.0), ctx.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+    gain.gain.linearRampToValueAtTime(Math.max(0.15, VOLUME * 1.1), ctx.currentTime + 0.02);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
     osc.connect(gain);
     gain.connect(ctx.destination);
     osc.start();
-    osc.stop(ctx.currentTime + 0.35);
+    osc.stop(ctx.currentTime + 0.3);
   };
 
   const synthChime = (ctx: AudioContext) => {
-    const makeTone = (freq: number, start: number, dur: number) => {
+    const makeTone = (freq: number, start: number, dur: number, vol: number) => {
       const o = ctx.createOscillator();
       const g = ctx.createGain();
       o.type = 'sine';
       o.frequency.value = freq;
-      g.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+      g.gain.setValueAtTime(0, ctx.currentTime + start);
       // スマホでも聞こえるように音量を上げる
-      g.gain.exponentialRampToValueAtTime(Math.max(0.08, VOLUME * 1.0), ctx.currentTime + start + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
+      g.gain.linearRampToValueAtTime(Math.max(0.1, VOLUME * vol), ctx.currentTime + start + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
       o.connect(g); g.connect(ctx.destination);
       o.start(ctx.currentTime + start);
       o.stop(ctx.currentTime + start + dur);
     };
-    // 上行2音チャイム
-    makeTone(660, 0, 0.35);
-    makeTone(880, 0.2, 0.5);
+    // 上昇する音階（メジャーコード）
+    makeTone(523.25, 0, 0.6, 0.9); // C
+    makeTone(659.25, 0.1, 0.7, 0.85); // E
+    makeTone(783.99, 0.2, 0.8, 0.8); // G
+    makeTone(987.77, 0.3, 0.9, 0.75); // B
   };
 
   const synthBell = (ctx: AudioContext) => {
-    // 基音+倍音の減衰でベル風
-    const partials = [660, 990, 1320];
+    // 基音+倍音の減衰でベル風（より自然な音色）
+    const partials = [440, 880, 1320, 1760];
+    const volumes = [1.0, 0.6, 0.4, 0.25];
     partials.forEach((freq, idx) => {
       const o = ctx.createOscillator();
       const g = ctx.createGain();
       o.type = 'sine';
       o.frequency.value = freq;
       const start = 0;
-      const dur = 0.8 - idx * 0.15;
-      g.gain.setValueAtTime(0.0001, ctx.currentTime + start);
+      const dur = 1.2 - idx * 0.2;
+      g.gain.setValueAtTime(0, ctx.currentTime + start);
       // スマホでも聞こえるように音量を上げる
-      g.gain.exponentialRampToValueAtTime(Math.max(0.06, VOLUME * (1.2 - idx * 0.2)), ctx.currentTime + start + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + start + dur);
+      g.gain.linearRampToValueAtTime(Math.max(0.08, VOLUME * volumes[idx]), ctx.currentTime + start + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
       o.connect(g); g.connect(ctx.destination);
       o.start(ctx.currentTime + start);
       o.stop(ctx.currentTime + start + dur);
@@ -1153,50 +1156,53 @@ export default function TimerScreen() {
       
       switch (settings.soundType) {
         case 'beep':
-          // ビープ音：3回連続（より目立つように）
-          [0, 0.4, 0.8].forEach((delay) => {
+          // ビープ音：3回連続（より目立つように、明確な音色）
+          [0, 0.3, 0.6].forEach((delay) => {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'square';
+            // より明確な周波数（880Hz）
             osc.frequency.setValueAtTime(880, currentTime + delay);
             gain.gain.setValueAtTime(0, currentTime + delay);
-            gain.gain.linearRampToValueAtTime(volume, currentTime + delay + 0.05);
-            gain.gain.linearRampToValueAtTime(0, currentTime + delay + 0.25);
+            gain.gain.linearRampToValueAtTime(volume * 1.1, currentTime + delay + 0.02);
+            gain.gain.linearRampToValueAtTime(0, currentTime + delay + 0.2);
             osc.connect(gain);
             gain.connect(ctx.destination);
             osc.start(currentTime + delay);
-            osc.stop(currentTime + delay + 0.25);
+            osc.stop(currentTime + delay + 0.2);
           });
           break;
           
         case 'chime':
-          // チム音：上昇する音階
-          [660, 784, 880, 1047].forEach((freq, index) => {
+          // チャイム音：上昇する音階（より美しい音色）
+          const chimeFreqs = [523.25, 659.25, 783.99, 987.77, 1174.66]; // C, E, G, B, D（メジャーコード）
+          chimeFreqs.forEach((freq, index) => {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(freq, currentTime + index * 0.15);
-            gain.gain.setValueAtTime(0, currentTime + index * 0.15);
-            gain.gain.linearRampToValueAtTime(volume * 0.9, currentTime + index * 0.15 + 0.05);
-            gain.gain.exponentialRampToValueAtTime(0.001, currentTime + index * 0.15 + 0.6);
+            osc.frequency.setValueAtTime(freq, currentTime + index * 0.12);
+            gain.gain.setValueAtTime(0, currentTime + index * 0.12);
+            gain.gain.linearRampToValueAtTime(volume * 0.85, currentTime + index * 0.12 + 0.03);
+            gain.gain.exponentialRampToValueAtTime(0.001, currentTime + index * 0.12 + 0.8);
             osc.connect(gain);
             gain.connect(ctx.destination);
-            osc.start(currentTime + index * 0.15);
-            osc.stop(currentTime + index * 0.15 + 0.6);
+            osc.start(currentTime + index * 0.12);
+            osc.stop(currentTime + index * 0.12 + 0.8);
           });
           break;
           
         case 'bell':
-          // ベル音：複数の倍音で豊かな音色
-          const bellFreqs = [440, 660, 880, 1320];
+          // ベル音：複数の倍音で豊かな音色（より自然な減衰）
+          const bellFreqs = [440, 880, 1320, 1760, 2200]; // 基本音と倍音
+          const bellVolumes = [1.0, 0.6, 0.4, 0.25, 0.15]; // 倍音ごとの音量
           bellFreqs.forEach((freq, idx) => {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.type = 'sine';
             osc.frequency.setValueAtTime(freq, currentTime);
-            const dur = 1.2 - idx * 0.2;
+            const dur = 1.5 - idx * 0.15;
             gain.gain.setValueAtTime(0, currentTime);
-            gain.gain.linearRampToValueAtTime(volume * (1 - idx * 0.15), currentTime + 0.05);
+            gain.gain.linearRampToValueAtTime(volume * bellVolumes[idx], currentTime + 0.03);
             gain.gain.exponentialRampToValueAtTime(0.001, currentTime + dur);
             osc.connect(gain);
             gain.connect(ctx.destination);

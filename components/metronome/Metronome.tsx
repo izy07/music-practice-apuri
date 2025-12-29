@@ -262,7 +262,7 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
         break;
         
       case 'beep':
-        // ビープ音
+        // ビープ音（明確な音色、強拍と弱拍で周波数を変える）
         {
           const oscillator = ctx.createOscillator();
           const gainNode = ctx.createGain();
@@ -273,19 +273,20 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
           audioResourceManager.registerOscillator(OWNER_NAME, oscillator);
           activeOscillatorsRef.current.push(oscillator);
           
-          oscillator.type = 'sine';
+          oscillator.type = 'square'; // より明確な音色
           if (isStrongBeat) {
-            oscillator.frequency.setValueAtTime(1200, currentTime);
+            oscillator.frequency.setValueAtTime(1200, currentTime); // 強拍：高い音
           } else {
-            oscillator.frequency.setValueAtTime(500, currentTime);
+            oscillator.frequency.setValueAtTime(600, currentTime); // 弱拍：低い音
           }
           
           // スマホでも聞こえるように音量を上げる
-          gainNode.gain.setValueAtTime(metronomeVolume * 0.9, currentTime);
-          gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.15);
+          gainNode.gain.setValueAtTime(0, currentTime);
+          gainNode.gain.linearRampToValueAtTime(metronomeVolume * 1.0, currentTime + 0.005);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.12);
           
           oscillator.start(currentTime);
-          oscillator.stop(currentTime + 0.15);
+          oscillator.stop(currentTime + 0.12);
           
           // 停止後に配列から削除
           oscillator.onended = () => {
@@ -295,14 +296,15 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
         break;
         
       case 'bell':
-        // ベル音（複数のオシレーターで倍音を生成）
+        // ベル音（複数のオシレーターで倍音を生成、より自然な音色）
         {
-          const baseFreq = isStrongBeat ? 1000 : 500;
+          const baseFreq = isStrongBeat ? 880 : 440;
           const oscillators: OscillatorNode[] = [];
           const gainNodes: GainNode[] = [];
+          const volumes = [1.0, 0.5, 0.3, 0.2]; // 倍音ごとの音量
           
-          // 基本音と倍音を生成
-          for (let i = 0; i < 3; i++) {
+          // 基本音と倍音を生成（4つの倍音でより豊かな音色）
+          for (let i = 0; i < 4; i++) {
             const osc = ctx.createOscillator();
             const gain = ctx.createGain();
             osc.connect(gain);
@@ -316,12 +318,14 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
             osc.frequency.setValueAtTime(baseFreq * (i + 1), currentTime);
             
             // スマホでも聞こえるように音量を上げる
-            const volume = metronomeVolume * (isStrongBeat ? 0.7 : 0.5) / (i + 1);
-            gain.gain.setValueAtTime(volume, currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.3);
+            const volume = metronomeVolume * volumes[i] * (isStrongBeat ? 0.8 : 0.6);
+            const duration = isStrongBeat ? 0.25 : 0.2;
+            gain.gain.setValueAtTime(0, currentTime);
+            gain.gain.linearRampToValueAtTime(volume, currentTime + 0.01);
+            gain.gain.exponentialRampToValueAtTime(0.01, currentTime + duration);
             
             osc.start(currentTime);
-            osc.stop(currentTime + 0.3);
+            osc.stop(currentTime + duration);
             
             // 停止後に配列から削除
             osc.onended = () => {
