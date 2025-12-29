@@ -1207,8 +1207,26 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           // ただし、前回の処理がタイムアウトした場合は、新しい処理を開始できるようにする
           const existingPromise = globalProcessingPromises.get(userId);
           if (existingPromise) {
-            logger.debug('onAuthStateChange: 既に処理中のため、スキップします', { userId, email: session.user.email, event });
-            return;
+            // 既存の処理がタイムアウトしている可能性があるため、12秒待機してから再試行
+            logger.debug('onAuthStateChange: 既に処理中のため、タイムアウトチェックを実行します', { userId, email: session.user.email, event });
+            try {
+              const timeoutPromise = new Promise<null>((resolve) => {
+                setTimeout(() => resolve(null), 12000);
+              });
+              const result = await Promise.race([existingPromise, timeoutPromise]);
+              if (result) {
+                // 既存の処理が完了した場合は、その結果を使用
+                logger.debug('onAuthStateChange: 既存の処理が完了しました', { userId });
+                return;
+              }
+              // タイムアウトした場合は、既存のPromiseを削除して新しい処理を開始
+              logger.warn('onAuthStateChange: 既存の処理がタイムアウトしたため、新しい処理を開始します', { userId });
+              globalProcessingPromises.delete(userId);
+            } catch (error) {
+              // 既存のPromiseでエラーが発生した場合は、新しい処理を開始
+              logger.warn('onAuthStateChange: 既存の処理でエラーが発生したため、新しい処理を開始します', { userId, error });
+              globalProcessingPromises.delete(userId);
+            }
           }
           
           // セッションが確立されたときに認証状態を更新
