@@ -723,25 +723,43 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         if (profileError.code === 'TIMEOUT') {
           logger.warn('プロフィール取得がタイムアウトしました。フォールバックユーザーを作成して認証状態を更新します。', { userId });
           
-          // user_instrument_profilesから最新の楽器を確認（非同期で実行、タイムアウトしない）
+          // user_instrument_profilesから最新の楽器を確認（短いタイムアウト付きで同期的に実行）
+          // これにより、チュートリアル画面への誤った遷移を防ぐ
           let fallbackInstrumentId: string | null = null;
-          (async () => {
-            try {
-              const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
-                .from('user_instrument_profiles')
-                .select('instrument_id, updated_at, created_at')
-                .eq('user_id', userId)
-                .order('updated_at', { ascending: false })
-                .limit(1);
-              
-              if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
-                fallbackInstrumentId = instrumentProfiles[0].instrument_id;
-                logger.debug('user_instrument_profilesから最新の楽器を取得しました（タイムアウト時）:', { instrumentId: fallbackInstrumentId });
-              }
-            } catch (instrumentProfileError) {
-              logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+          try {
+            const instrumentQueryPromise = supabase
+              .from('user_instrument_profiles')
+              .select('instrument_id, updated_at, created_at')
+              .eq('user_id', userId)
+              .order('updated_at', { ascending: false })
+              .limit(1);
+            
+            // 3秒でタイムアウト（プロフィール取得より短く設定）
+            const instrumentTimeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
+              setTimeout(() => {
+                resolve({
+                  data: null,
+                  error: {
+                    code: 'TIMEOUT',
+                    message: '楽器取得がタイムアウトしました',
+                  },
+                });
+              }, 3000);
+            });
+            
+            const instrumentResult = await Promise.race([instrumentQueryPromise, instrumentTimeoutPromise]);
+            
+            if (instrumentResult.data && !instrumentResult.error && Array.isArray(instrumentResult.data) && instrumentResult.data.length > 0) {
+              fallbackInstrumentId = instrumentResult.data[0].instrument_id;
+              logger.debug('user_instrument_profilesから最新の楽器を取得しました（タイムアウト時）:', { instrumentId: fallbackInstrumentId });
+            } else if (instrumentResult.error && instrumentResult.error.code === 'TIMEOUT') {
+              logger.debug('楽器取得がタイムアウトしました。selected_instrument_idはnullのまま続行します。');
+            } else {
+              logger.debug('楽器取得でエラーが発生しました（続行）:', instrumentResult.error);
             }
-          })();
+          } catch (instrumentProfileError) {
+            logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+          }
           
           // すぐにフォールバックユーザーを作成して認証状態を更新
           const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
