@@ -108,11 +108,14 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
   }, []);
 
   const instrumentsCacheRef = useRef<Instrument[] | null>(null);
+  const initializeDoneRef = useRef(false); // 初期化が完了したかどうかを追跡
 
   const getKey = useCallback((base: string, userId?: string) => {
+    // currentUserIdを依存配列から削除し、直接参照する（無限ループを防ぐ）
     const uid = userId ?? currentUserId;
     return uid ? `${base}:${uid}` : base;
-  }, [currentUserId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 楽器データ読み込み中のフラグ（無限ループを防ぐ）
   const isLoadingInstrumentsRef = useRef(false);
@@ -194,6 +197,12 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
   // 統一された初期化関数
   // 初期化順序: デフォルト楽器 → AsyncStorage → user.selected_instrument_id → DB
   const initialize = useCallback(async () => {
+    // 既に初期化が完了している場合はスキップ（無限ループを防ぐ）
+    if (initializeDoneRef.current) {
+      logger.debug('初期化は既に完了しています。スキップします。');
+      return;
+    }
+
     let cancelled = false;
 
     try {
@@ -308,19 +317,22 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
 
       if (!cancelled) {
         setIsInitializing(false);
+        initializeDoneRef.current = true; // 初期化完了をマーク
       }
     } catch (error) {
       logger.error('初期化エラー:', error);
       ErrorHandler.handle(error, 'InstrumentThemeContext初期化', false);
       if (!cancelled) {
         setIsInitializing(false);
+        initializeDoneRef.current = true; // エラー時も初期化完了をマーク（無限ループを防ぐ）
       }
     }
-    // loadInstrumentsFromDBとuser?.selected_instrument_idを依存配列から削除
+    // loadInstrumentsFromDB、getKey、user?.selected_instrument_idを依存配列から削除
     // loadInstrumentsFromDBはuseCallbackでメモ化されているため、依存配列に含める必要はない
+    // getKeyはuseCallbackでメモ化されているが、currentUserIdを直接参照するため、依存配列に含めない
     // user?.selected_instrument_idはinitialize内で直接参照するため、依存配列に含める必要はない
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultInstruments, getKey]);
+  }, [defaultInstruments]);
 
   // 認証状態変更時の処理（useAuthAdvancedのuserを監視）
   // onAuthStateChangeのリスナーを削除し、useAuthAdvancedのuserの変更を監視することで重複実行を防ぐ
@@ -379,14 +391,20 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     };
   }, [user, currentUserId, getKey, defaultInstruments]);
 
-  // 初期化実行
+  // 初期化実行（1回だけ実行）
   useEffect(() => {
+    // 既に初期化が完了している場合はスキップ
+    if (initializeDoneRef.current) {
+      return;
+    }
+
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     timeoutId = setTimeout(() => {
       if (isInitializing) {
         logger.warn('InstrumentThemeContext初期化がタイムアウトしました');
         setIsInitializing(false);
+        initializeDoneRef.current = true; // タイムアウト時も初期化完了をマーク
       }
     }, TIMEOUT.INITIALIZATION_MS);
 
@@ -397,7 +415,9 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         clearTimeout(timeoutId);
       }
     };
-  }, [initialize]);
+    // initializeを依存配列から削除（1回だけ実行するため）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 楽器選択の同期処理（唯一のエントリーポイント）
   const setSelectedInstrument = useCallback(async (instrumentId: string) => {
