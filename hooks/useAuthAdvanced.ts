@@ -92,6 +92,22 @@ let globalHandleAuthenticatedUserRef: ((user: any) => Promise<AuthUser | null>) 
 // グローバルな処理中のPromise管理（重複実行を防ぐ）
 const globalProcessingPromises = new Map<string, Promise<AuthUser | null>>();
 
+// 現在の画面がログイン画面または新規登録画面かどうかを確認するヘルパー関数
+const isInLoginOrSignupScreen = (): boolean => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    // Web環境: window.location.pathnameを使用
+    const currentPath = window.location.pathname || '';
+    return currentPath.includes('/auth/login') || 
+           currentPath.includes('/login') ||
+           currentPath.includes('/auth/signup') || 
+           currentPath.includes('/signup');
+  }
+  // React Native環境: segmentsをグローバルに保持する必要があるが、
+  // 現時点ではWeb環境でのみチェックする（React Native環境では常にfalse）
+  // 将来的にsegmentsをグローバルに保持する場合は、ここでチェックする
+  return false;
+};
+
 // 認証状態を更新し、リスナーに通知（状態が実際に変更された場合のみ）
 const updateAuthState = (newState: Partial<AuthState>) => {
   // 状態が実際に変更されたかチェック（不要な再レンダリングを防ぐ）
@@ -100,6 +116,23 @@ const updateAuthState = (newState: Partial<AuthState>) => {
   // 空のオブジェクトが渡された場合はスキップ
   if (!newState || Object.keys(newState).length === 0) {
     return;
+  }
+  
+  // 根本的な修正: ログイン画面または新規登録画面にいる場合は、
+  // isAuthenticated: trueへの更新をブロックする
+  // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を完全に防ぐ
+  if (newState.isAuthenticated === true && isInLoginOrSignupScreen()) {
+    logger.debug('[updateAuthState] ログイン画面または新規登録画面にいるため、isAuthenticated: trueへの更新をブロックします', {
+      currentPath: Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.pathname : 'N/A'
+    });
+    // isAuthenticated: trueへの更新をブロック（他の状態更新は許可）
+    const { isAuthenticated, ...restState } = newState;
+    if (Object.keys(restState).length === 0) {
+      // isAuthenticated以外に更新する状態がない場合は、完全にスキップ
+      return;
+    }
+    // isAuthenticated以外の状態のみ更新
+    newState = restState;
   }
   
   for (const key in newState) {
