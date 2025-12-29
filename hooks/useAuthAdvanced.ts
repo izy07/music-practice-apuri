@@ -424,15 +424,17 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぐ
         if (sessionData.session?.user) {
           // 現在の画面を確認（ログイン画面または新規登録画面の場合はスキップ）
-          const currentPath = router.pathname || '';
-          const isInLoginScreen = currentPath.includes('/auth/login') || currentPath.includes('/login');
-          const isInSignupScreen = currentPath.includes('/auth/signup') || currentPath.includes('/signup');
+          // segmentsを使用してログイン画面かどうかを確認
+          const isInAuthGroup = segments.length > 0 && segments[0] === 'auth';
+          const authChild = segments.length > 1 ? segments[1] : undefined;
+          const isInLoginScreen = isInAuthGroup && authChild === 'login';
+          const isInSignupScreen = isInAuthGroup && authChild === 'signup';
           
           if (isInLoginScreen || isInSignupScreen) {
             // ログイン画面または新規登録画面にいる場合は、handleAuthenticatedUserを呼ばない
             // ユーザーがログインボタンを押した時に、SIGNED_INイベントで処理される
             logger.debug('[useAuthAdvanced] ログイン画面または新規登録画面にいるため、handleAuthenticatedUserをスキップします', {
-              currentPath,
+              segments,
               isInLoginScreen,
               isInSignupScreen
             });
