@@ -149,36 +149,9 @@ function RootLayoutContent() {
   }, [segments]);
 
   // データベーススキーマの整合性をチェック（認証完了後、一度だけ実行）
+  // 初期スキーマに含まれているテーブル/カラムは毎回チェックする必要がないため、チェック処理は削除
   React.useEffect(() => {
     if (isAuthenticated && isInitialized && !isLoading) {
-      checkDatabaseSchema().then((result) => {
-        if (result.errors.length > 0) {
-          logger.error('データベーススキーマに問題があります:', result.errors);
-          
-          // attendance_recordsテーブルが存在しない場合は特別なメッセージを表示
-          if (!result.attendanceRecordsTableExists) {
-            logger.error('❌ attendance_recordsテーブルが存在しません。');
-            console.error('========================================');
-            console.error('attendance_recordsテーブルが存在しません');
-            console.error('解決方法: Supabaseダッシュボードでマイグレーションを実行してください');
-            console.error('');
-            console.error('【推奨】統合マイグレーションファイルを使用:');
-            console.error('  マイグレーションファイル: 20251219000000_initial_schema.sql');
-            console.error('  （すべてのテーブルが含まれています）');
-            console.error('');
-            console.error('  または、ローカル環境で以下を実行:');
-            console.error('  supabase db reset');
-            console.error('========================================');
-          }
-          
-          // エラーハンドラーでユーザーに通知（既にnotificationServiceで処理される）
-        } else {
-          logger.debug('データベーススキーマのチェックが完了しました。すべてのテーブルとカラムが存在します。');
-        }
-      }).catch((error: unknown) => {
-        logger.error('データベーススキーマのチェック中にエラーが発生しました:', error);
-      });
-      
       // 目標リポジトリのカラム存在確認を初期化（一度だけ実行）
       // 強制再チェックを有効にして、localStorageのフラグを無視してDBクエリを実行
       initializeGoalRepository(true).catch((error: unknown) => {
@@ -555,8 +528,12 @@ function RootLayoutContent() {
     
     // Web環境: 認証状態の初期化中でも、URLから画面を判断して表示（Optimistic UI）
     if (Platform.OS === 'web' && (isLoading || !isInitialized)) {
-      // 認証画面にいる場合はそのまま待機（ログイン処理中など）
-      if (isInAuthGroup) {
+      // 認証画面にいる場合でも、認証済みの場合は画面遷移を実行
+      if (isInAuthGroup && isAuthenticated) {
+        logger.debug('認証初期化中・認証画面・認証済み - 画面遷移を実行', { isLoading, isInitialized, isAuthenticated });
+        // 認証済みの場合は、初期化完了を待たずに画面遷移を実行（チュートリアル画面など）
+        // 下記の認証済みユーザーの処理に進む
+      } else if (isInAuthGroup) {
         logger.debug('認証初期化中・認証画面 - 画面遷移を待機中', { isLoading, isInitialized });
         return;
       }
@@ -648,6 +625,13 @@ function RootLayoutContent() {
     }
 
     // 認証済みユーザー
+    // ログイン画面または新規登録画面にいる場合は、画面遷移をスキップ
+    // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぐ
+    if (isInAuthGroup) {
+      logger.debug('認証済み・認証画面 - 画面遷移をスキップ（ログイン処理中）', { segments: currentSegments });
+      return;
+    }
+    
     // 楽器未選択の場合の処理
     if (!hasInstrumentSelected()) {
       // チュートリアル画面または楽器選択画面にいる場合は許可（遷移をブロックしない）
@@ -668,6 +652,13 @@ function RootLayoutContent() {
     }
 
     // 認証済み + 楽器選択済み
+    // チュートリアル画面にいる場合はカレンダー画面に遷移
+    if (currentTab === 'tutorial') {
+      logger.debug('楽器選択済みのため、チュートリアル画面からカレンダー画面にリダイレクト');
+      router.replace('/(tabs)/index');
+      return;
+    }
+    
     // Web環境: 既に適切な画面にいる場合は維持（リロード時も現在の画面を保持）
     if (Platform.OS === 'web' && (isInTabsGroup || isInOrgGroup)) {
       return;

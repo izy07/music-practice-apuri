@@ -1341,6 +1341,37 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         // SIGNED_INイベントのみを処理（INITIAL_SESSIONはinitializeAuthで処理）
         // これにより、ログイン時の処理と初期化時の処理を分離できる
         if (event === 'SIGNED_IN' && session?.user) {
+          // ログイン画面または新規登録画面にいる場合は、handleAuthenticatedUserをスキップ
+          // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぐ
+          // Web環境ではwindow.location.pathnameを使用、React Native環境ではsegmentsを使用
+          let isInLoginScreen = false;
+          let isInSignupScreen = false;
+          
+          if (Platform.OS === 'web' && typeof window !== 'undefined') {
+            // Web環境: window.location.pathnameを使用
+            const currentPath = window.location.pathname || '';
+            isInLoginScreen = currentPath.includes('/auth/login') || currentPath.includes('/login');
+            isInSignupScreen = currentPath.includes('/auth/signup') || currentPath.includes('/signup');
+          } else {
+            // React Native環境: segmentsを使用（グローバルに保持されているsegmentsを参照）
+            // 注意: segmentsはuseSegments()で取得されるため、ここでは直接参照できない
+            // そのため、Web環境でのみチェックし、React Native環境では常にfalseとする
+            // または、segmentsをグローバルに保持する必要がある
+            // 現時点では、Web環境でのみチェックする
+            isInLoginScreen = false;
+            isInSignupScreen = false;
+          }
+          
+          if (isInLoginScreen || isInSignupScreen) {
+            logger.debug('[useAuthAdvanced] onAuthStateChange: ログイン画面または新規登録画面にいるため、handleAuthenticatedUserをスキップします', {
+              event,
+              isInLoginScreen,
+              isInSignupScreen,
+              userId: session.user.id
+            });
+            return;
+          }
+          
           const userId = session.user.id;
           
           // 重複実行を防ぐ：既に処理中の場合はスキップ
