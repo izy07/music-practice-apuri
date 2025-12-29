@@ -1164,6 +1164,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
   }, []);
 
   // handleAuthenticatedUserの参照を更新（グローバルとローカルの両方）
+  // セッション再処理のフラグ（1回だけ実行するため）
+  const sessionCheckDoneRef = useRef(false);
+  
   useEffect(() => {
     handleAuthenticatedUserRef.current = handleAuthenticatedUser;
     globalHandleAuthenticatedUserRef = handleAuthenticatedUser;
@@ -1171,21 +1174,31 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     // handleAuthenticatedUserが初期化されたら、セッションが有効な場合は再度呼び出す
     // これにより、initializeAuthでhandleAuthenticatedUserがまだ初期化されていなかった場合でも、
     // 後で処理される
-    const checkAndProcessSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user && !globalAuthState.isAuthenticated) {
-          // セッションが有効で、まだ認証状態が更新されていない場合は、handleAuthenticatedUserを呼ぶ
-          logger.debug('handleAuthenticatedUser初期化後、セッションを再処理します', { userId: session.user.id });
-          await handleAuthenticatedUser(session.user);
+    // ただし、1回だけ実行する（複数回実行を防ぐ）
+    if (!sessionCheckDoneRef.current) {
+      sessionCheckDoneRef.current = true;
+      const checkAndProcessSession = async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user && !globalAuthState.isAuthenticated) {
+            // セッションが有効で、まだ認証状態が更新されていない場合は、handleAuthenticatedUserを呼ぶ
+            // ただし、既に処理中の場合はスキップ
+            const userId = session.user.id;
+            if (!globalProcessingPromises.has(userId)) {
+              logger.debug('handleAuthenticatedUser初期化後、セッションを再処理します', { userId });
+              await handleAuthenticatedUser(session.user);
+            } else {
+              logger.debug('handleAuthenticatedUser初期化後、セッション再処理をスキップ（既に処理中）', { userId });
+            }
+          }
+        } catch (error) {
+          // エラーは無視（セッション取得に失敗した場合は、後でonAuthStateChangeで処理される）
+          logger.debug('セッション再処理エラー（無視）:', error);
         }
-      } catch (error) {
-        // エラーは無視（セッション取得に失敗した場合は、後でonAuthStateChangeで処理される）
-        logger.debug('セッション再処理エラー（無視）:', error);
-      }
-    };
-    
-    checkAndProcessSession();
+      };
+      
+      checkAndProcessSession();
+    }
   }, [handleAuthenticatedUser]);
 
   // 認証状態変更の監視（onAuthStateChangeを使用）
