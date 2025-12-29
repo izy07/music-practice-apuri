@@ -420,11 +420,30 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         }
         
         // セッションが有効な場合、handleAuthenticatedUserを呼び出して認証状態を更新
-        // onAuthStateChangeのINITIAL_SESSIONイベントでは処理しない（SIGNED_INのみ処理）
-        // 注意: handleAuthenticatedUserはuseCallbackで定義されているため、依存配列に含める必要がある
-        // ただし、initializeAuthが実行される時点では、handleAuthenticatedUserがまだ定義されていない可能性がある
-        // その場合は、認証状態のみ更新して、後でonAuthStateChangeのSIGNED_INイベントで処理されることを期待する
+        // ただし、ログイン画面にいる場合は、ユーザーがログインボタンを押すまで待機する
+        // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぐ
         if (sessionData.session?.user) {
+          // 現在の画面を確認（ログイン画面または新規登録画面の場合はスキップ）
+          const currentPath = router.pathname || '';
+          const isInLoginScreen = currentPath.includes('/auth/login') || currentPath.includes('/login');
+          const isInSignupScreen = currentPath.includes('/auth/signup') || currentPath.includes('/signup');
+          
+          if (isInLoginScreen || isInSignupScreen) {
+            // ログイン画面または新規登録画面にいる場合は、handleAuthenticatedUserを呼ばない
+            // ユーザーがログインボタンを押した時に、SIGNED_INイベントで処理される
+            logger.debug('[useAuthAdvanced] ログイン画面または新規登録画面にいるため、handleAuthenticatedUserをスキップします', {
+              currentPath,
+              isInLoginScreen,
+              isInSignupScreen
+            });
+            updateAuthState({
+              isLoading: false,
+              isInitialized: true,
+              error: null,
+            });
+            return;
+          }
+          
           // handleAuthenticatedUserRef.currentを使用（useEffectで設定される）
           // まだ設定されていない場合は、認証状態のみ更新
           const handleAuth = handleAuthenticatedUserRef.current;
