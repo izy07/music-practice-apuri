@@ -419,14 +419,37 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           return;
         }
         
-        // セッションが有効な場合、onAuthStateChangeのINITIAL_SESSIONイベントで処理されるため、
-        // ここでは認証状態のみ更新（handleAuthenticatedUserは呼び出さない）
-        // これにより、初期化時のタイムアウトを防ぎ、onAuthStateChangeで統一して処理できる
-        updateAuthState({
-          isLoading: false,
-          isInitialized: true,
-          error: null,
-        });
+        // セッションが有効な場合、handleAuthenticatedUserを呼び出して認証状態を更新
+        // onAuthStateChangeのINITIAL_SESSIONイベントでは処理しない（SIGNED_INのみ処理）
+        // 注意: handleAuthenticatedUserはuseCallbackで定義されているため、依存配列に含める必要がある
+        // ただし、initializeAuthが実行される時点では、handleAuthenticatedUserがまだ定義されていない可能性がある
+        // その場合は、認証状態のみ更新して、後でonAuthStateChangeのSIGNED_INイベントで処理されることを期待する
+        if (sessionData.session?.user) {
+          // handleAuthenticatedUserRef.currentを使用（useEffectで設定される）
+          // まだ設定されていない場合は、認証状態のみ更新
+          const handleAuth = handleAuthenticatedUserRef.current;
+          if (handleAuth) {
+            await handleAuth(sessionData.session.user);
+          } else {
+            // handleAuthenticatedUserがまだ初期化されていない場合は、認証状態のみ更新
+            // 後でonAuthStateChangeのSIGNED_INイベントで処理されることを期待する
+            // ただし、INITIAL_SESSIONでは処理しないため、セッションが有効な場合は認証状態を更新する
+            updateAuthState({
+              isLoading: false,
+              isInitialized: true,
+              error: null,
+            });
+            // handleAuthenticatedUserが初期化されたら、再度呼び出す
+            // これはuseEffectで処理される
+          }
+        } else {
+          // セッションがない場合は未認証状態として処理
+          updateAuthState({
+            isLoading: false,
+            isInitialized: true,
+            error: null,
+          });
+        }
         return;
       }
       
@@ -1144,6 +1167,25 @@ export const useAuthAdvanced = (): AuthHookReturn => {
   useEffect(() => {
     handleAuthenticatedUserRef.current = handleAuthenticatedUser;
     globalHandleAuthenticatedUserRef = handleAuthenticatedUser;
+    
+    // handleAuthenticatedUserが初期化されたら、セッションが有効な場合は再度呼び出す
+    // これにより、initializeAuthでhandleAuthenticatedUserがまだ初期化されていなかった場合でも、
+    // 後で処理される
+    const checkAndProcessSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user && !globalAuthState.isAuthenticated) {
+          // セッションが有効で、まだ認証状態が更新されていない場合は、handleAuthenticatedUserを呼ぶ
+          logger.debug('handleAuthenticatedUser初期化後、セッションを再処理します', { userId: session.user.id });
+          await handleAuthenticatedUser(session.user);
+        }
+      } catch (error) {
+        // エラーは無視（セッション取得に失敗した場合は、後でonAuthStateChangeで処理される）
+        logger.debug('セッション再処理エラー（無視）:', error);
+      }
+    };
+    
+    checkAndProcessSession();
   }, [handleAuthenticatedUser]);
 
   // 認証状態変更の監視（onAuthStateChangeを使用）
@@ -1156,12 +1198,13 @@ export const useAuthAdvanced = (): AuthHookReturn => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        // INITIAL_SESSIONイベントとSIGNED_INイベントの両方を処理
-        // これにより、初期化時とログイン時の処理が統一される
-        if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+        // SIGNED_INイベントのみを処理（INITIAL_SESSIONはinitializeAuthで処理）
+        // これにより、ログイン時の処理と初期化時の処理を分離できる
+        if (event === 'SIGNED_IN' && session?.user) {
           const userId = session.user.id;
           
           // 重複実行を防ぐ：既に処理中の場合はスキップ
+          // ただし、前回の処理がタイムアウトした場合は、新しい処理を開始できるようにする
           const existingPromise = globalProcessingPromises.get(userId);
           if (existingPromise) {
             logger.debug('onAuthStateChange: 既に処理中のため、スキップします', { userId, email: session.user.email, event });
@@ -1175,6 +1218,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           }
         } else if (event === 'SIGNED_OUT') {
           // ログアウト時に認証状態をクリア
+          // 処理中のPromiseもクリア
+          globalProcessingPromises.clear();
           updateAuthState({
             isAuthenticated: false,
             user: null,
@@ -1184,6 +1229,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           });
         }
         // INITIAL_SESSION, TOKEN_REFRESHEDなどの他のイベントはスキップ
+        // INITIAL_SESSIONはinitializeAuthで処理されるため、ここでは処理しない
       }
     );
 
