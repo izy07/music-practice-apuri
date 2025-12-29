@@ -1713,13 +1713,18 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       }
       
       if (data.user) {
-        logger.debug('ログイン成功:', { email: data.user.email, userId: data.user.id });
+        // ログイン成功時は、必ずtrueを返す（エラーが発生してもログイン自体は成功している）
+        try {
+          logger.debug('ログイン成功:', { email: data.user.email, userId: data.user.id });
+        } catch (logError) {
+          // ログ出力でエラーが発生しても無視
+        }
         
         // ログイン成功時はレート制限をリセット
         try {
           rateLimiter.reset(emailKey);
         } catch (resetError) {
-          logger.warn('レート制限リセットでエラーが発生しましたが、ログインは成功しています:', resetError);
+          // エラーを無視（ログインは成功している）
         }
         
         // 根本的な解決: signIn関数内ではhandleAuthenticatedUserを呼び出さない
@@ -1728,7 +1733,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         try {
           updateAuthState({ isLoading: false, error: null });
         } catch (updateError) {
-          logger.warn('認証状態更新でエラーが発生しましたが、ログインは成功しています:', updateError);
+          // エラーを無視（ログインは成功している）
         }
         
         // ログイン成功時、onAuthStateChangeで認証状態が更新されるまでフラグを保持
@@ -1736,13 +1741,24 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         try {
           setTimeout(() => {
             isLoginInProgress = false;
-            logger.debug('[signIn] ログイン処理フラグをリセットしました（タイムアウト）');
+            try {
+              logger.debug('[signIn] ログイン処理フラグをリセットしました（タイムアウト）');
+            } catch (logError) {
+              // ログ出力でエラーが発生しても無視
+            }
           }, 10000); // 10秒後にフラグをリセット
         } catch (timeoutError) {
-          logger.warn('タイムアウト設定でエラーが発生しましたが、ログインは成功しています:', timeoutError);
+          // エラーを無視（ログインは成功している）
         }
         
-        logger.debug('ログイン処理完了 - onAuthStateChangeで認証状態が更新されます');
+        // ログイン処理完了のログ（エラーが発生しても無視）
+        try {
+          logger.debug('ログイン処理完了 - onAuthStateChangeで認証状態が更新されます');
+        } catch (logError) {
+          // ログ出力でエラーが発生しても無視
+        }
+        
+        // 必ずtrueを返す（ログインは成功している）
         return true;
       }
       
