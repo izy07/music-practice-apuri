@@ -1286,10 +1286,26 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     // これにより、initializeAuthでhandleAuthenticatedUserがまだ初期化されていなかった場合でも、
     // 後で処理される
     // ただし、1回だけ実行する（複数回実行を防ぐ）
+    // また、ログイン画面にいる場合はスキップ（ユーザーがログインボタンを押すまで待機）
     if (!sessionCheckDoneRef.current) {
       sessionCheckDoneRef.current = true;
       const checkAndProcessSession = async () => {
         try {
+          // 現在の画面を確認（ログイン画面または新規登録画面の場合はスキップ）
+          const isInAuthGroup = segments.length > 0 && segments[0] === 'auth';
+          const authChild = segments.length > 1 ? segments[1] : undefined;
+          const isInLoginScreen = isInAuthGroup && authChild === 'login';
+          const isInSignupScreen = isInAuthGroup && authChild === 'signup';
+          
+          if (isInLoginScreen || isInSignupScreen) {
+            logger.debug('handleAuthenticatedUser初期化後、ログイン画面または新規登録画面にいるため、セッション再処理をスキップします', {
+              segments,
+              isInLoginScreen,
+              isInSignupScreen
+            });
+            return;
+          }
+          
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user && !globalAuthState.isAuthenticated) {
             // セッションが有効で、まだ認証状態が更新されていない場合は、handleAuthenticatedUserを呼ぶ
@@ -1310,6 +1326,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       
       checkAndProcessSession();
     }
+  }, [handleAuthenticatedUser, segments]);
   }, [handleAuthenticatedUser]);
 
   // 認証状態変更の監視（onAuthStateChangeを使用）
