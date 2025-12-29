@@ -92,6 +92,9 @@ let globalHandleAuthenticatedUserRef: ((user: any) => Promise<AuthUser | null>) 
 // グローバルな処理中のPromise管理（重複実行を防ぐ）
 const globalProcessingPromises = new Map<string, Promise<AuthUser | null>>();
 
+// ログイン処理中のフラグ（ログインボタンを押した時は、updateAuthStateのブロックを無効化する）
+let isLoginInProgress = false;
+
 // 現在の画面がログイン画面または新規登録画面かどうかを確認するヘルパー関数
 const isInLoginOrSignupScreen = (): boolean => {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -120,10 +123,13 @@ const updateAuthState = (newState: Partial<AuthState>) => {
   
   // 根本的な修正: ログイン画面または新規登録画面にいる場合は、
   // isAuthenticated: trueへの更新をブロックする
-  // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を完全に防ぐ
-  if (newState.isAuthenticated === true && isInLoginOrSignupScreen()) {
+  // ただし、ログインボタンを押した時（isLoginInProgress === true）は、ブロックを無効化する
+  // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぎつつ、
+  // ログインボタンを押した時は正常に認証状態を更新できる
+  if (newState.isAuthenticated === true && isInLoginOrSignupScreen() && !isLoginInProgress) {
     logger.debug('[updateAuthState] ログイン画面または新規登録画面にいるため、isAuthenticated: trueへの更新をブロックします', {
-      currentPath: Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.pathname : 'N/A'
+      currentPath: Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.pathname : 'N/A',
+      isLoginInProgress
     });
     // isAuthenticated: trueへの更新をブロック（他の状態更新は許可）
     const { isAuthenticated, ...restState } = newState;
@@ -1437,6 +1443,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           // globalHandleAuthenticatedUserRefを使用して、常に最新の関数を呼び出す
           if (globalHandleAuthenticatedUserRef) {
             await globalHandleAuthenticatedUserRef(session.user);
+            // ログイン処理が完了したので、フラグをリセット
+            isLoginInProgress = false;
+            logger.debug('[onAuthStateChange] ログイン処理フラグをリセットしました');
           }
         } else if (event === 'SIGNED_OUT') {
           // ログアウト時に認証状態をクリア
@@ -1581,6 +1590,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     try {
       logger.debug('ログイン処理開始:', formData.email);
       
+      // ログイン処理開始: updateAuthStateのブロックを一時的に無効化
+      isLoginInProgress = true;
+      
       // レート制限チェック
       const emailKey = `login:${formData.email.trim().toLowerCase()}`;
       if (rateLimiter.isBlocked(emailKey)) {
@@ -1590,6 +1602,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           isLoading: false, 
           error: `ログイン試行回数が上限に達しました。${minutes}分後に再試行してください。` 
         });
+        isLoginInProgress = false; // エラー時もフラグをリセット
         return false;
       }
       
@@ -1663,6 +1676,11 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           logger.warn('ネットワークエラーが発生しました。onAuthStateChangeで認証状態が更新されることを期待します。');
           // ネットワークエラーの場合も、onAuthStateChangeで処理されることを期待
           updateAuthState({ isLoading: false, error: null });
+          // ネットワークエラーの場合、onAuthStateChangeで認証状態が更新されるまでフラグを保持
+          // ただし、タイムアウトを設定して、一定時間後にフラグをリセット
+          setTimeout(() => {
+            isLoginInProgress = false;
+          }, 5000); // 5秒後にフラグをリセット
           return true; // ネットワークエラーでもtrueを返して、onAuthStateChangeに任せる
         }
         
@@ -1676,6 +1694,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           isLoading: false, 
           error: getAuthErrorMessage(error) 
         });
+        isLoginInProgress = false; // エラー時もフラグをリセット
         return false;
       }
       
@@ -1690,12 +1709,20 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         // ここではisLoadingのみ更新して、onAuthStateChangeで認証状態が更新されるまで待つ
         updateAuthState({ isLoading: false, error: null });
         
+        // ログイン成功時、onAuthStateChangeで認証状態が更新されるまでフラグを保持
+        // ただし、タイムアウトを設定して、一定時間後にフラグをリセット（安全装置）
+        setTimeout(() => {
+          isLoginInProgress = false;
+          logger.debug('[signIn] ログイン処理フラグをリセットしました（タイムアウト）');
+        }, 10000); // 10秒後にフラグをリセット
+        
         logger.debug('ログイン処理完了 - onAuthStateChangeで認証状態が更新されます');
         return true;
       }
       
       logger.warn('ログイン成功したがユーザー情報が取得できませんでした');
       updateAuthState({ isLoading: false, error: 'ログインに失敗しました' });
+      isLoginInProgress = false; // エラー時もフラグをリセット
       return false;
       
     } catch (error) {
@@ -1704,6 +1731,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         isLoading: false, 
         error: error instanceof Error ? error.message : 'ログインに失敗しました' 
       });
+      isLoginInProgress = false; // エラー時もフラグをリセット
       return false;
     }
   }, [handleAuthenticatedUser]);
