@@ -1365,7 +1365,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       
       checkAndProcessSession();
     }
-  }, [handleAuthenticatedUser, segments]);
+    // segmentsを依存配列から削除: sessionCheckDoneRefで1回だけ実行するため、segmentsの変更を監視する必要はない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handleAuthenticatedUser]);
 
   // 認証状態変更の監視（onAuthStateChangeを使用）
   // グローバルに1つだけリスナーを登録（複数のコンポーネントでuseAuthAdvancedが使用されても1つだけ）

@@ -114,14 +114,26 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     return uid ? `${base}:${uid}` : base;
   }, [currentUserId]);
 
+  // 楽器データ読み込み中のフラグ（無限ループを防ぐ）
+  const isLoadingInstrumentsRef = useRef(false);
+
   // 楽器データをDBから取得（計画に従って独立した関数として実装）
   // キャッシュ戦略を改善：ContextレベルとRepositoryレベルの両方でキャッシュを使用
   const loadInstrumentsFromDB = useCallback(async (): Promise<void> => {
+    // 既に読み込み中の場合はスキップ（無限ループを防ぐ）
+    if (isLoadingInstrumentsRef.current) {
+      logger.debug('楽器データの読み込みは既に実行中です。スキップします。');
+      return;
+    }
+
     try {
+      isLoadingInstrumentsRef.current = true;
+
       // 1. Contextレベルのキャッシュを確認（最優先）
       if (instrumentsCacheRef.current) {
         setDbInstruments(instrumentsCacheRef.current);
         logger.debug('Contextキャッシュから楽器データを即座に読み込み');
+        isLoadingInstrumentsRef.current = false;
         return;
       }
 
@@ -135,6 +147,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       // 認証されていない場合はデフォルト楽器のみを使用
       if (authError || !currentUser) {
         logger.debug('認証されていないため、デフォルト楽器のみを使用します');
+        isLoadingInstrumentsRef.current = false;
         return;
       }
 
@@ -172,6 +185,9 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       // エラー時のフォールバック処理を統一
       const safeDefaultInstruments = defaultInstruments.length > 0 ? defaultInstruments : [defaultTheme];
       setDbInstruments(safeDefaultInstruments);
+    } finally {
+      // 読み込み完了時にフラグをリセット
+      isLoadingInstrumentsRef.current = false;
     }
   }, [defaultInstruments]);
 
@@ -300,7 +316,11 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         setIsInitializing(false);
       }
     }
-  }, [defaultInstruments, getKey, user?.selected_instrument_id, loadInstrumentsFromDB]);
+    // loadInstrumentsFromDBとuser?.selected_instrument_idを依存配列から削除
+    // loadInstrumentsFromDBはuseCallbackでメモ化されているため、依存配列に含める必要はない
+    // user?.selected_instrument_idはinitialize内で直接参照するため、依存配列に含める必要はない
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [defaultInstruments, getKey]);
 
   // 認証状態変更時の処理（useAuthAdvancedのuserを監視）
   // onAuthStateChangeのリスナーを削除し、useAuthAdvancedのuserの変更を監視することで重複実行を防ぐ
