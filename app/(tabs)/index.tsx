@@ -234,7 +234,7 @@ export default function CalendarScreen() {
         lastInstrumentRef.current = selectedInstrument || null;
       });
     }
-  }, [isLoading, isInitialized, isAuthenticated, isInstrumentInitializing, selectedInstrument, loadAllData]);
+  }, [isLoading, isInitialized, isAuthenticated, isInstrumentInitializing, selectedInstrument]); // loadAllDataを依存配列から削除（安定した参照を保持）
   
   // クリーンアップ: タイマーをクリア
   useEffect(() => {
@@ -388,28 +388,86 @@ export default function CalendarScreen() {
 
   // 練習記録保存後のデータ更新関数（直接呼び出し用）
   const refreshPracticeData = useCallback(async (includeRecordings: boolean = false) => {
+    logger.debug('[refreshPracticeData] ========== refreshPracticeData開始 ==========');
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        logger.debug('refreshPracticeData開始', { includeRecordings, userId: user.id });
-        if (includeRecordings) {
-          await Promise.all([
-            loadPracticeData(user),
-            loadTotalPracticeTime(user),
-            loadRecordingsData(user)
-          ]);
-        } else {
-          await Promise.all([
-            loadPracticeData(user),
-            loadTotalPracticeTime(user)
-          ]);
-        }
-        logger.debug('refreshPracticeData完了');
+      if (!user) {
+        logger.debug('[refreshPracticeData] ❌ ユーザーが存在しません');
+        return;
       }
+      
+      logger.debug('[refreshPracticeData] パラメータ:', { 
+        includeRecordings, 
+        userId: user.id,
+        loadPracticeDataExists: typeof loadPracticeData === 'function',
+        loadTotalPracticeTimeExists: typeof loadTotalPracticeTime === 'function',
+        loadRecordingsDataExists: typeof loadRecordingsData === 'function'
+      });
+      
+      if (includeRecordings) {
+        logger.debug('[refreshPracticeData] 録音データを含めてデータを読み込みます');
+        await Promise.all([
+          (async () => {
+            logger.debug('[refreshPracticeData] loadPracticeData呼び出し開始');
+            try {
+              await loadPracticeData(user);
+              logger.debug('[refreshPracticeData] loadPracticeData完了');
+            } catch (error) {
+              logger.error('[refreshPracticeData] loadPracticeDataエラー:', error);
+              throw error;
+            }
+          })(),
+          (async () => {
+            logger.debug('[refreshPracticeData] loadTotalPracticeTime呼び出し開始');
+            try {
+              await loadTotalPracticeTime(user);
+              logger.debug('[refreshPracticeData] loadTotalPracticeTime完了');
+            } catch (error) {
+              logger.error('[refreshPracticeData] loadTotalPracticeTimeエラー:', error);
+              throw error;
+            }
+          })(),
+          (async () => {
+            logger.debug('[refreshPracticeData] loadRecordingsData呼び出し開始');
+            try {
+              await loadRecordingsData(user);
+              logger.debug('[refreshPracticeData] loadRecordingsData完了');
+            } catch (error) {
+              logger.error('[refreshPracticeData] loadRecordingsDataエラー:', error);
+              throw error;
+            }
+          })()
+        ]);
+      } else {
+        logger.debug('[refreshPracticeData] 練習データと合計練習時間を読み込みます');
+        await Promise.all([
+          (async () => {
+            logger.debug('[refreshPracticeData] loadPracticeData呼び出し開始');
+            try {
+              await loadPracticeData(user);
+              logger.debug('[refreshPracticeData] loadPracticeData完了');
+            } catch (error) {
+              logger.error('[refreshPracticeData] loadPracticeDataエラー:', error);
+              throw error;
+            }
+          })(),
+          (async () => {
+            logger.debug('[refreshPracticeData] loadTotalPracticeTime呼び出し開始');
+            try {
+              await loadTotalPracticeTime(user);
+              logger.debug('[refreshPracticeData] loadTotalPracticeTime完了');
+            } catch (error) {
+              logger.error('[refreshPracticeData] loadTotalPracticeTimeエラー:', error);
+              throw error;
+            }
+          })()
+        ]);
+      }
+      logger.debug('[refreshPracticeData] ========== refreshPracticeData完了 ==========');
     } catch (error) {
       // エラーは無視（データ読み込み失敗は致命的ではない）
+      logger.error('[refreshPracticeData] ❌ カレンダーデータ読み込みエラー:', error);
       console.error('カレンダーデータ読み込みエラー:', error);
-      logger.error('カレンダーデータ読み込みエラー:', error);
     }
   }, [loadPracticeData, loadTotalPracticeTime, loadRecordingsData]);
 
@@ -420,22 +478,23 @@ export default function CalendarScreen() {
         // 即時更新の場合は少し待ってから読み込み（データベース反映を待つ）
         setTimeout(async () => {
           try {
-            await loadShortTermGoal();
-            logger.debug('目標表示を即時再読み込みしました');
+            // 強制リフレッシュでキャッシュを無視してデータベースから読み込む
+            await loadShortTermGoal(undefined, true);
+            logger.debug('目標表示を即時再読み込みしました（強制リフレッシュ）');
           } catch (error) {
             logger.error('目標表示即時再読み込みエラー:', error);
           }
         }, 300); // データベース反映を待つため300ms待機
       } else {
         // データベースの反映を待つため、少し遅延させてから読み込み
-        // 初回読み込み
-        await loadShortTermGoal();
+        // 初回読み込み（強制リフレッシュでキャッシュを無視）
+        await loadShortTermGoal(undefined, true);
         
         // データベースの反映が遅い場合に備えて、少し待ってから再読み込み
         setTimeout(async () => {
           try {
-            await loadShortTermGoal();
-            logger.debug('目標表示を再読み込みしました');
+            await loadShortTermGoal(undefined, true);
+            logger.debug('目標表示を再読み込みしました（強制リフレッシュ）');
           } catch (error) {
             logger.error('目標表示再読み込みエラー:', error);
           }
@@ -555,9 +614,10 @@ export default function CalendarScreen() {
         return;
       }
 
+      // ユーザーを取得（既存の認証状態を使用）
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        Alert.alert('認証エラー', 'ユーザー情報が取得できませんでした');
+        Alert.alert('認証エラー', 'ユーザー情報が取得できませんでした。再度ログインしてください。');
         return;
       }
 
@@ -601,6 +661,19 @@ export default function CalendarScreen() {
       if (isOnline()) {
         try {
           // savePracticeSessionWithIntegrationを使用して保存
+          logger.debug(`[savePracticeRecord] 練習記録保存開始`, {
+            userId: user.id,
+            minutes,
+            currentInstrumentId,
+            practiceDate: practiceRecord.practice_date,
+            options: {
+              instrumentId: currentInstrumentId || null,
+              content: content || undefined,
+              inputMethod: 'manual',
+              practiceDate: practiceRecord.practice_date
+            }
+          });
+          
           const result = await savePracticeSessionWithIntegration(
             user.id,
             minutes,
@@ -611,6 +684,14 @@ export default function CalendarScreen() {
               practiceDate: practiceRecord.practice_date, // 選択された日付を指定
             }
           );
+          
+          logger.debug(`[savePracticeRecord] 練習記録保存結果`, {
+            success: result.success,
+            error: result.error ? {
+              code: result.error.code,
+              message: result.error.message
+            } : null
+          });
           
           // 保存結果を確認
           if (!result.success) {
@@ -650,25 +731,78 @@ export default function CalendarScreen() {
             }
           }
           
-          logger.debug('練習記録を保存しました', {
+          logger.debug(`[savePracticeRecord] ========== 練習記録保存成功 ==========`, {
             minutes,
             practiceDate: practiceRecord.practice_date,
             instrumentId: currentInstrumentId,
             practiceRecord
           });
           
-          // 保存完了後に直接データを更新（データベースの反映を待つため少し遅延）
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // データ更新を確実に実行（refreshPracticeDataのみで十分）
+          // キャッシュをクリアしてからデータを更新（確実に最新データを取得）
+          // 楽器切り替え後のデータ表示を考慮して、すべての楽器のキャッシュをクリア
+          logger.debug(`[savePracticeRecord] Step 1: キャッシュクリア開始`);
           try {
-            logger.debug('データ更新を開始...');
-            await refreshPracticeData(false);
-            logger.debug('データ更新完了');
-          } catch (refreshError) {
-            console.error('データ更新エラー:', refreshError);
-            // エラーが発生しても続行
+            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+            const currentYear = new Date().getFullYear();
+            const currentMonth = new Date().getMonth();
+            
+            // 現在の楽器IDのキャッシュをクリア
+            const currentInstrumentId = getInstrumentId(selectedInstrument);
+            const currentCacheKey = `practice_data_cache_${user.id}_${currentInstrumentId || 'all'}_${currentYear}_${currentMonth}`;
+            
+            logger.debug(`[savePracticeRecord] キャッシュキー確認:`, {
+              currentInstrumentId,
+              currentCacheKey,
+              practiceDate: practiceRecord.practice_date
+            });
+            
+            // すべてのキャッシュキーを検索して削除（より確実に）
+            const cacheKeyPattern = `practice_data_cache_${user.id}_`;
+            const allKeys = await AsyncStorage.getAllKeys();
+            const practiceCacheKeys = allKeys.filter(key => key.startsWith(cacheKeyPattern));
+            logger.debug(`[savePracticeRecord] 検出されたキャッシュキー:`, {
+              allKeysCount: allKeys.length,
+              practiceCacheKeysCount: practiceCacheKeys.length,
+              practiceCacheKeys
+            });
+            
+            if (practiceCacheKeys.length > 0) {
+              await AsyncStorage.multiRemove(practiceCacheKeys);
+              logger.debug(`[savePracticeRecord] ✅ 練習データのキャッシュをクリアしました（すべての楽器）`, {
+                currentInstrumentId,
+                clearedKeys: practiceCacheKeys.length,
+                clearedKeysList: practiceCacheKeys
+              });
+            } else {
+              logger.debug(`[savePracticeRecord] クリアするキャッシュキーが見つかりませんでした`);
+            }
+          } catch (cacheError) {
+            // キャッシュクリアのエラーは無視
+            logger.error(`[savePracticeRecord] ❌ キャッシュクリアエラー:`, cacheError);
           }
+          
+          // 保存完了後に直接データを更新（データベースの反映を待つため少し遅延）
+          logger.debug(`[savePracticeRecord] Step 2: データベース反映待機中（500ms）`);
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // データ更新を確実に実行
+          // 注意: イベントハンドラー（loadAllData）が既に実行されるため、
+          // ここではrefreshPracticeDataを呼ばず、イベントの発火のみに任せる
+          // ただし、イベントが発火されない場合に備えて、短い遅延後にrefreshPracticeDataを呼ぶ
+          logger.debug(`[savePracticeRecord] Step 3: イベントによるデータ更新を待機中（イベントが発火されるため、refreshPracticeDataは呼び出さない）`);
+          
+          // イベントが発火されない場合に備えて、フォールバックとしてrefreshPracticeDataを呼ぶ
+          setTimeout(async () => {
+            try {
+              logger.debug(`[savePracticeRecord] フォールバック: refreshPracticeDataを呼び出し`);
+              await refreshPracticeData(false);
+              logger.debug(`[savePracticeRecord] ✅ フォールバックデータ更新完了`);
+            } catch (refreshError) {
+              logger.error(`[savePracticeRecord] ❌ フォールバックデータ更新エラー:`, refreshError);
+            }
+          }, 1500); // イベントハンドラーが実行された後に実行されるように長めの遅延
+          
+          logger.debug(`[savePracticeRecord] ========== 処理完了 ==========`);
           
           return;
         } catch (error) {

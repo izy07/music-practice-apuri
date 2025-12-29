@@ -76,6 +76,26 @@ export default function AddGoalScreen() {
       }
 
       logger.debug('目標作成成功');
+      
+      // カレンダー画面の目標キャッシュをクリア（新しく追加した目標をカレンダーに表示するため）
+      try {
+        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+        const cacheKeyPattern = `short_term_goals_cache_${user.id}_`;
+        const allKeys = await AsyncStorage.getAllKeys();
+        const goalCacheKeys = allKeys.filter(key => key.startsWith(cacheKeyPattern));
+        if (goalCacheKeys.length > 0) {
+          await AsyncStorage.multiRemove(goalCacheKeys);
+          logger.debug('目標追加後、カレンダー画面の目標キャッシュをクリアしました');
+        }
+        
+        // カレンダー表示更新イベントを発火
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
+        }
+      } catch (cacheError) {
+        logger.debug('キャッシュクリアエラー（無視）:', cacheError);
+      }
+      
       Alert.alert('成功', '目標が保存されました');
       // 保存成功後、前の画面に戻る（安全な戻る処理）
       safeGoBack('/(tabs)/goals');

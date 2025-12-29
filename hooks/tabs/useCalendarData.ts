@@ -779,7 +779,7 @@ export function useCalendarData(currentDate: Date) {
     }
   }, [currentDate, selectedInstrument]);
 
-  const loadShortTermGoal = useCallback(async (userParam?: { id: string }) => {
+  const loadShortTermGoal = useCallback(async (userParam?: { id: string }, forceRefresh: boolean = false) => {
     try {
       const user = userParam ?? (await supabase.auth.getUser()).data.user;
       if (!user) {
@@ -792,8 +792,8 @@ export function useCalendarData(currentDate: Date) {
       const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
       const currentInstrumentId = getInstrumentId(selectedInstrument);
 
-      // 楽器が変わった場合のみ、目標のキャッシュをクリア（楽器切り替え時の目標更新を確実にする）
-      if (previousInstrumentIdForGoalsRef.current !== currentInstrumentId && previousInstrumentIdForGoalsRef.current !== null) {
+      // 強制リフレッシュまたは楽器が変わった場合、目標のキャッシュをクリア
+      if (forceRefresh || (previousInstrumentIdForGoalsRef.current !== currentInstrumentId && previousInstrumentIdForGoalsRef.current !== null)) {
         try {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cacheKeyPattern = `short_term_goals_cache_${user.id}_`;
@@ -802,7 +802,8 @@ export function useCalendarData(currentDate: Date) {
           
           if (goalCacheKeys.length > 0) {
             await AsyncStorage.multiRemove(goalCacheKeys);
-            logger.debug(`[useCalendarData] 楽器変更検出 - 目標キャッシュをクリアしました`, {
+            logger.debug(`[useCalendarData] 目標キャッシュをクリアしました`, {
+              forceRefresh,
               previousInstrumentId: previousInstrumentIdForGoalsRef.current,
               currentInstrumentId,
               clearedCacheKeys: goalCacheKeys.length
@@ -816,8 +817,9 @@ export function useCalendarData(currentDate: Date) {
       // 現在の楽器IDを記録
       previousInstrumentIdForGoalsRef.current = currentInstrumentId || null;
 
+      // 強制リフレッシュの場合はキャッシュを無視してデータベースから読み込む
       // オフライン時はキャッシュから読み込み（現在選択されている楽器の目標のみ）
-      if (!isOnline()) {
+      if (!forceRefresh && !isOnline()) {
         try {
           const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'null'}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;

@@ -82,6 +82,9 @@ export default function GoalsScreen() {
   // 削除処理用のloading state
   const [isDeleting, setIsDeleting] = useState(false);
   
+  // 保存処理用のloading state
+  const [isSaving, setIsSaving] = useState(false);
+  
   // ユーザープロフィール（初期値はuseAuthAdvancedから取得）
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     // 初期状態でuseAuthAdvancedからニックネームを取得
@@ -107,19 +110,23 @@ export default function GoalsScreen() {
     loadingRef.current = true;
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
         loadingRef.current = false;
         return;
       }
 
       // 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
-      const instrumentId = getInstrumentId(selectedInstrument);
+      // selectedInstrumentが空の場合は、user.selected_instrument_idをフォールバックとして使用
+      const effectiveInstrumentId = selectedInstrument && selectedInstrument.trim() !== '' 
+        ? selectedInstrument 
+        : (user?.selected_instrument_id || null);
+      const instrumentId = getInstrumentId(effectiveInstrumentId);
 
       // オフライン時はキャッシュから読み込み
       if (!isOnline()) {
         try {
-          const cacheKey = `goals_cache_${user.id}_${instrumentId || 'all'}`;
+          const cacheKey = `goals_cache_${authUser.id}_${instrumentId || 'all'}`;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
@@ -140,12 +147,14 @@ export default function GoalsScreen() {
       // オンライン時またはキャッシュがない場合はデータベースから取得
       // デバッグ: instrumentIdが正しく取得されているか確認
       logger.debug('[goals.tsx] loadGoals開始:', {
-        userId: user.id,
+        userId: authUser.id,
         selectedInstrument,
+        userSelectedInstrumentId: user?.selected_instrument_id,
+        effectiveInstrumentId,
         instrumentId,
       });
       
-      const goalsData = await goalRepository.getGoals(user.id, instrumentId);
+      const goalsData = await goalRepository.getGoals(authUser.id, instrumentId);
       
       logger.debug('目標データ取得結果:', {
         goalsCount: goalsData.length,
@@ -157,9 +166,22 @@ export default function GoalsScreen() {
         })),
       });
       
-      // データベース側でフィルタリングされているため、クライアント側の追加フィルタリングは不要
-      // データベース側で既にinstrument_idがnullの既存データも含めて取得されている
-      const filteredGoalsData = goalsData;
+      // クライアント側でもフィルタリングを実行（instrument_idカラムが存在しない場合でも対応）
+      // データベース側でフィルタリングされているが、念のためクライアント側でも確認
+      const filteredGoalsData = goalsData.filter((g: any) => {
+        const goalInstrumentId = g.instrument_id;
+        // instrument_idフィールドが存在しない場合（カラムが存在しない場合）はすべて表示
+        if (goalInstrumentId === undefined) {
+          return true;
+        }
+        if (instrumentId) {
+          // 楽器が選択されている場合: その楽器の目標のみ表示（instrument_idがnullの目標は除外）
+          return goalInstrumentId === instrumentId;
+        } else {
+          // 楽器が選択されていない場合: instrument_idがnullの目標のみ表示
+          return !goalInstrumentId || goalInstrumentId === null;
+        }
+      });
       
       logger.debug('フィルタリング後の目標数:', {
         before: goalsData.length,
@@ -175,15 +197,11 @@ export default function GoalsScreen() {
       // オフラインで保存された目標も追加
       let allGoals: Goal[] = [...goalsWithShowOnCalendar];
       try {
-        const offlineGoals = await OfflineStorage.getGoals();
-        const unsyncedGoals = offlineGoals.filter((g: any) => !g.is_synced && g.user_id === user.id);
-        const filteredOfflineGoals = unsyncedGoals.filter((g: any) => {
-          const goalInstrumentId = g.instrument_id;
-          if (instrumentId) {
-            return goalInstrumentId === instrumentId;
-          }
-          return !goalInstrumentId || goalInstrumentId === null;
-        });
+        // 修正: instrumentIdを渡してフィルタリング（OfflineStorage.getGoalsで処理される）
+        const offlineGoals = await OfflineStorage.getGoals(instrumentId);
+        const unsyncedGoals = offlineGoals.filter((g: any) => !g.is_synced && g.user_id === authUser.id);
+        // フィルタリングは既にOfflineStorage.getGoalsで行われているため、ここでのフィルタリングは不要
+        const filteredOfflineGoals = unsyncedGoals;
         
         const offlineGoalsFormatted: Goal[] = filteredOfflineGoals.map((g: any) => ({
           id: g.id,
@@ -216,7 +234,7 @@ export default function GoalsScreen() {
       
       // キャッシュに保存（オフライン対応）
       try {
-        const cacheKey = `goals_cache_${user.id}_${instrumentId || 'all'}`;
+        const cacheKey = `goals_cache_${authUser.id}_${instrumentId || 'all'}`;
         await AsyncStorage.setItem(cacheKey, JSON.stringify(allGoals));
         logger.debug('目標データをキャッシュに保存しました');
       } catch (saveError) {
@@ -226,10 +244,13 @@ export default function GoalsScreen() {
       logger.error('Error loading goals:', error);
       // エラー時もキャッシュから読み込みを試行
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const errorInstrumentId = getInstrumentId(selectedInstrument);
-          const cacheKey = `goals_cache_${user.id}_${errorInstrumentId || 'all'}`;
+        const { data: { user: errorAuthUser } } = await supabase.auth.getUser();
+        if (errorAuthUser) {
+          const errorEffectiveInstrumentId = selectedInstrument && selectedInstrument.trim() !== '' 
+            ? selectedInstrument 
+            : (user?.selected_instrument_id || null);
+          const errorInstrumentId = getInstrumentId(errorEffectiveInstrumentId);
+          const cacheKey = `goals_cache_${errorAuthUser.id}_${errorInstrumentId || 'all'}`;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
@@ -247,22 +268,26 @@ export default function GoalsScreen() {
     } finally {
       loadingRef.current = false;
     }
-  }, [selectedInstrument]);
+  }, [selectedInstrument, user?.selected_instrument_id]);
 
   const loadCompletedGoals = useCallback(async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
         return;
       }
 
       // 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
-      const instrumentId = getInstrumentId(selectedInstrument);
+      // selectedInstrumentが空の場合は、user.selected_instrument_idをフォールバックとして使用
+      const effectiveInstrumentId = selectedInstrument && selectedInstrument.trim() !== '' 
+        ? selectedInstrument 
+        : (user?.selected_instrument_id || null);
+      const instrumentId = getInstrumentId(effectiveInstrumentId);
 
       // オフライン時はキャッシュから読み込み
       if (!isOnline()) {
         try {
-          const cacheKey = `completed_goals_cache_${user.id}_${instrumentId || 'all'}`;
+          const cacheKey = `completed_goals_cache_${authUser.id}_${instrumentId || 'all'}`;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
@@ -275,7 +300,7 @@ export default function GoalsScreen() {
         }
       }
 
-      const completedGoalsData = await goalRepository.getCompletedGoals(user.id, instrumentId);
+      const completedGoalsData = await goalRepository.getCompletedGoals(authUser.id, instrumentId);
       
       // 楽器IDでフィルタリング（クライアント側でも追加のフィルタリング）
       // データベース側でフィルタリングされているが、念のためクライアント側でも確認
@@ -294,7 +319,7 @@ export default function GoalsScreen() {
       
       // キャッシュに保存（オフライン対応）
       try {
-        const cacheKey = `completed_goals_cache_${user.id}_${instrumentId || 'all'}`;
+        const cacheKey = `completed_goals_cache_${authUser.id}_${instrumentId || 'all'}`;
         await AsyncStorage.setItem(cacheKey, JSON.stringify(completedGoalsData));
         logger.debug('達成済み目標データをキャッシュに保存しました');
       } catch (saveError) {
@@ -304,10 +329,13 @@ export default function GoalsScreen() {
       logger.error('Error loading completed goals:', error);
       // エラー時もキャッシュから読み込みを試行
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          const errorInstrumentId = getInstrumentId(selectedInstrument);
-          const cacheKey = `completed_goals_cache_${user.id}_${errorInstrumentId || 'all'}`;
+        const { data: { user: errorAuthUser } } = await supabase.auth.getUser();
+        if (errorAuthUser) {
+          const errorEffectiveInstrumentId = selectedInstrument && selectedInstrument.trim() !== '' 
+            ? selectedInstrument 
+            : (user?.selected_instrument_id || null);
+          const errorInstrumentId = getInstrumentId(errorEffectiveInstrumentId);
+          const cacheKey = `completed_goals_cache_${errorAuthUser.id}_${errorInstrumentId || 'all'}`;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
@@ -319,7 +347,7 @@ export default function GoalsScreen() {
         // キャッシュ読み込みエラーは無視
       }
     }
-  }, [selectedInstrument]);
+  }, [selectedInstrument, user?.selected_instrument_id]);
 
   // 未同期の目標を同期する処理
   const syncOfflineGoals = useCallback(async () => {
@@ -550,10 +578,19 @@ export default function GoalsScreen() {
       return;
     }
 
+    // 二重保存防止
+    if (isSaving) {
+      logger.debug('保存処理中です。重複実行を防止します。');
+      return;
+    }
+
     try {
+      setIsSaving(true);
+      
+      // ユーザーを取得（既存の認証状態を使用、セッション確認は最小限に）
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        Alert.alert('エラー', 'ユーザーが認証されていません');
+        Alert.alert('エラー', 'ユーザーが認証されていません。再度ログインしてください。');
         return;
       }
 
@@ -567,7 +604,11 @@ export default function GoalsScreen() {
         return;
       }
 
-      const instrumentId = getInstrumentId(selectedInstrument);
+      // selectedInstrumentが空の場合は、user.selected_instrument_idをフォールバックとして使用
+      const effectiveInstrumentId = selectedInstrument && selectedInstrument.trim() !== '' 
+        ? selectedInstrument 
+        : (user?.selected_instrument_id || null);
+      const instrumentId = getInstrumentId(effectiveInstrumentId);
       const goalData = {
         title: newGoal.title.trim(),
         description: newGoal.description.trim() || undefined,
@@ -626,38 +667,33 @@ export default function GoalsScreen() {
       }
 
       // オンライン時はデータベースに保存
+      // 1個目の目標はgoalRepository.createGoalで既にshow_on_calendar: trueで作成される
+      // 2個目以降はshow_on_calendar: falseで作成される
       await goalRepository.createGoal(user.id, goalData);
 
-      // 既存の目標でカレンダーに表示されているものがあるかチェック
-      const hasVisibleGoal = goals.some(g => g.show_on_calendar === true);
-      
       // 目標リストを再読み込み（新しく作成した目標のIDを取得するため）
       // キャッシュをクリアしてから再読み込み
       try {
         const cacheKey = `goals_cache_${user.id}_${instrumentId || 'all'}`;
         await AsyncStorage.removeItem(cacheKey);
+        
+        // カレンダー画面の目標キャッシュもクリア（新しく追加した目標をカレンダーに表示するため）
+        const cacheKeyPattern = `short_term_goals_cache_${user.id}_`;
+        const allKeys = await AsyncStorage.getAllKeys();
+        const goalCacheKeys = allKeys.filter(key => key.startsWith(cacheKeyPattern));
+        if (goalCacheKeys.length > 0) {
+          await AsyncStorage.multiRemove(goalCacheKeys);
+          logger.debug('目標追加後、カレンダー画面の目標キャッシュをクリアしました');
+        }
+        
+        // カレンダー表示更新イベントを発火
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
+        }
       } catch (cacheError) {
         logger.debug('キャッシュクリアエラー（無視）:', cacheError);
       }
       await loadGoals();
-      
-      // カレンダーに表示されている目標がない場合、新しく作成した目標を自動的に表示
-      if (!hasVisibleGoal) {
-        // 最新の目標（新しく作成したもの）を取得
-        const updatedGoalsData = await goalRepository.getGoals(user.id, instrumentId);
-        const goalsWithShowOnCalendar = updatedGoalsData.map((g: any) => ({
-          ...g,
-          show_on_calendar: g.show_on_calendar ?? false,
-        }));
-        
-        // 最新の目標（配列の最後）を取得
-        const latestGoal = goalsWithShowOnCalendar[goalsWithShowOnCalendar.length - 1];
-        
-        if (latestGoal) {
-          // 新しく作成した目標をカレンダーに表示
-          await setShowOnCalendar(latestGoal.id, true);
-        }
-      }
 
       Alert.alert('成功', '目標を保存しました');
       setNewGoal({ title: '', description: '', target_date: '', goal_type: 'personal_short' });
@@ -710,6 +746,9 @@ export default function GoalsScreen() {
         logger.error('オフライン保存エラー:', offlineError);
       }
       Alert.alert('エラー', '目標の保存に失敗しました');
+    } finally {
+      // 必ずローディング状態をリセット
+      setIsSaving(false);
     }
   };
 
@@ -717,6 +756,9 @@ export default function GoalsScreen() {
     // エラー時に元に戻すために、現在の状態を保存
     const currentGoal = goals.find(g => g.id === goalId);
     const previousProgress = currentGoal?.progress_percentage || 0;
+    // 100%達成時にカレンダー表示状態と楽器IDを保存（達成後に同じ楽器の次の目標を自動表示するため）
+    const wasShowingOnCalendar = currentGoal?.show_on_calendar === true;
+    const goalInstrumentId = currentGoal?.instrument_id || null;
     
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -760,12 +802,33 @@ export default function GoalsScreen() {
         }
         
         // サーバーから最新データを取得（バックグラウンド）
-        Promise.all([
+        await Promise.all([
           loadGoals(),
           loadCompletedGoals()
         ]).catch(error => {
           logger.error('達成済み目標の読み込みエラー:', error);
         });
+        
+        // サービス層を使用して次の目標を自動表示
+        if (wasShowingOnCalendar) {
+          try {
+            const { goalService } = await import('@/services/goalService');
+            const result = await goalService.autoShowNextGoalAfterComplete(
+              user.id,
+              goalId,
+              goalInstrumentId
+            );
+            if (result.success && result.data) {
+              logger.debug('達成された目標の代わりに、同じ楽器の次の目標をカレンダーに表示しました', {
+                nextGoalId: result.data,
+                instrumentId: goalInstrumentId
+              });
+            }
+          } catch (error) {
+            // エラーは無視（目標の自動表示は補助的な機能のため）
+            logger.warn('達成後の次の目標の自動表示処理でエラーが発生しました（無視）:', error);
+          }
+        }
       } else {
       loadGoals();
       }
@@ -792,6 +855,11 @@ export default function GoalsScreen() {
         return;
       }
 
+      // 達成前にカレンダー表示状態と楽器IDを保存（達成後に同じ楽器の次の目標を自動表示するため）
+      const currentGoal = goals.find(g => g.id === goalId);
+      const wasShowingOnCalendar = currentGoal?.show_on_calendar === true;
+      const goalInstrumentId = currentGoal?.instrument_id || null;
+
       await goalRepository.completeGoal(goalId, user.id);
 
       // サーバーから再読み込みして状態を同期
@@ -799,6 +867,27 @@ export default function GoalsScreen() {
         loadGoals(),
         loadCompletedGoals()
       ]);
+      
+      // サービス層を使用して次の目標を自動表示
+      if (wasShowingOnCalendar) {
+        try {
+          const { goalService } = await import('@/services/goalService');
+          const result = await goalService.autoShowNextGoalAfterComplete(
+            user.id,
+            goalId,
+            goalInstrumentId
+          );
+          if (result.success && result.data) {
+            logger.debug('達成された目標の代わりに、同じ楽器の次の目標をカレンダーに表示しました', {
+              nextGoalId: result.data,
+              instrumentId: goalInstrumentId
+            });
+          }
+        } catch (error) {
+          // エラーは無視（目標の自動表示は補助的な機能のため）
+          logger.warn('達成後の次の目標の自動表示処理でエラーが発生しました（無視）:', error);
+        }
+      }
       
       Alert.alert('おめでとうございます！', '目標を達成しました！');
     } catch (error) {
@@ -866,15 +955,30 @@ export default function GoalsScreen() {
         show_on_calendar: newValue
       } : null;
       
+      // 現在の目標の楽器IDを取得
+      const currentGoalInstrumentId = currentGoal?.instrument_id || null;
+      
       // 楽観的更新: UIを即座に更新（パフォーマンス向上）
       setGoals(prevGoals => {
-        // 目標はカレンダーに1つだけ表示できるため、newValueがtrueの場合は他の目標をfalseにする
+        // 各楽器ごとにカレンダーに1つだけ表示できるため、newValueがtrueの場合は同じ楽器の他の目標をfalseにする
         if (newValue) {
-          return prevGoals.map(goal =>
-            goal.id === goalId 
-              ? { ...goal, show_on_calendar: true }
-              : { ...goal, show_on_calendar: false }
-          );
+          return prevGoals.map(goal => {
+            // 同じ楽器の目標かをチェック
+            const isSameInstrument = 
+              (currentGoalInstrumentId === null && (goal.instrument_id === null || goal.instrument_id === undefined)) ||
+              (currentGoalInstrumentId !== null && goal.instrument_id === currentGoalInstrumentId);
+            
+            if (goal.id === goalId) {
+              // 選択された目標はtrueにする
+              return { ...goal, show_on_calendar: true };
+            } else if (isSameInstrument) {
+              // 同じ楽器の他の目標はfalseにする
+              return { ...goal, show_on_calendar: false };
+            } else {
+              // 異なる楽器の目標は変更しない
+              return goal;
+            }
+          });
         } else {
           // newValueがfalseの場合は、該当の目標のみ更新
           return prevGoals.map(goal =>
@@ -883,24 +987,26 @@ export default function GoalsScreen() {
         }
       });
       
-      // データベース更新は非同期で実行
+      // サービス層を使用（リポジトリ層の機能を活用）
       try {
-        // 目標はカレンダーに1つだけ表示できるため、newValueがtrueの場合は他の目標も更新
-        if (newValue) {
-          // 他の目標のshow_on_calendarをfalseにする
-          const otherGoals = goals.filter(g => g.id !== goalId && g.show_on_calendar === true);
-          for (const otherGoal of otherGoals) {
-            try {
-              await goalRepository.updateShowOnCalendar(otherGoal.id, false, user.id);
-            } catch (error) {
-              // 個別のエラーは無視（主要な更新は続行）
-              logger.warn('他の目標のカレンダー表示解除エラー:', error);
-            }
-          }
-        }
+        const { goalService } = await import('@/services/goalService');
+        const result = await goalService.updateShowOnCalendar(
+          goalId,
+          user.id,
+          newValue,
+          currentGoalInstrumentId
+        );
         
-        // 該当の目標を更新
-        await goalRepository.updateShowOnCalendar(goalId, newValue, user.id);
+        if (!result.success) {
+          // エラー時はUIを元に戻す
+          setGoals(prevGoals =>
+            prevGoals.map(goal =>
+              goal.id === goalId ? { ...goal, show_on_calendar: currentValue } : goal
+            )
+          );
+          Alert.alert('エラー', `カレンダー表示設定の更新に失敗しました: ${result.error || '不明なエラー'}`);
+          return;
+        }
         
         // データベース更新成功後、即座にカレンダーに反映（ラグを解消）
         if (typeof window !== 'undefined') {
@@ -914,30 +1020,13 @@ export default function GoalsScreen() {
           }));
         }
       } catch (error: any) {
-        // show_on_calendarカラムが存在しない場合のエラーは無視
-        const errorMessage = error?.message || '';
-        const errorCode = error?.code || '';
-        
-        const isShowOnCalendarError = 
-          errorCode === 'PGRST204' || 
-          errorCode === '42703' || 
-          (typeof errorMessage === 'string' && (
-            errorMessage.toLowerCase().includes('show_on_calendar') ||
-            errorMessage.toLowerCase().includes('column') ||
-            errorMessage.toLowerCase().includes('does not exist') ||
-            errorMessage.toLowerCase().includes('could not find') ||
-            errorMessage.toLowerCase().includes('schema cache')
-          ));
-
-        if (!isShowOnCalendarError) {
-          // カラムエラー以外のエラーの場合のみ、UIを元に戻す
-          setGoals(prevGoals =>
-            prevGoals.map(goal =>
-              goal.id === goalId ? { ...goal, show_on_calendar: currentValue } : goal
-            )
-          );
-          Alert.alert('エラー', `カレンダー表示設定の更新に失敗しました: ${errorMessage || '不明なエラー'}`);
-        }
+        // エラー時はUIを元に戻す
+        setGoals(prevGoals =>
+          prevGoals.map(goal =>
+            goal.id === goalId ? { ...goal, show_on_calendar: currentValue } : goal
+          )
+        );
+        Alert.alert('エラー', `カレンダー表示設定の更新に失敗しました: ${error?.message || '不明なエラー'}`);
       }
     } catch (error) {
       Alert.alert('エラー', 'カレンダー表示設定の更新に失敗しました');
@@ -975,6 +1064,10 @@ export default function GoalsScreen() {
     // 目標のタイトルを取得（確認メッセージ用）
     const goalToDelete = goals.find(g => g.id === targetGoalId) || completedGoals.find(g => g.id === targetGoalId);
     const goalTitle = goalToDelete?.title || 'この目標';
+    
+    // 削除前にカレンダー表示状態と楽器IDを保存（削除後に同じ楽器の次の目標を自動表示するため）
+    const wasShowingOnCalendar = goalToDelete?.show_on_calendar === true;
+    const deletedGoalInstrumentId = goalToDelete?.instrument_id || null;
     
     // 確認ダイアログを表示（Web環境ではwindow.confirmを使用）
     const confirmDelete = Platform.OS === 'web'
@@ -1046,6 +1139,27 @@ export default function GoalsScreen() {
       logger.debug('リストを再読み込みします');
       await loadGoals();
       await loadCompletedGoals();
+      
+      // サービス層を使用して次の目標を自動表示
+      if (wasShowingOnCalendar) {
+        try {
+          const { goalService } = await import('@/services/goalService');
+          const result = await goalService.autoShowNextGoalAfterDelete(
+            user.id,
+            targetGoalId,
+            deletedGoalInstrumentId
+          );
+          if (result.success && result.data) {
+            logger.debug('削除された目標の代わりに、同じ楽器の次の目標をカレンダーに表示しました', {
+              nextGoalId: result.data,
+              instrumentId: deletedGoalInstrumentId
+            });
+          }
+        } catch (error) {
+          // エラーは無視（目標の自動表示は補助的な機能のため）
+          logger.warn('削除後の次の目標の自動表示処理でエラーが発生しました（無視）:', error);
+        }
+      }
       
       logger.debug('削除が完了しました');
       
@@ -1311,10 +1425,15 @@ export default function GoalsScreen() {
       </View>
 
       <TouchableOpacity 
-        style={[styles.saveButton, { backgroundColor: currentTheme.primary }]} 
+        style={[styles.saveButton, { backgroundColor: currentTheme.primary, opacity: isSaving ? 0.6 : 1 }]} 
         onPress={saveGoal}
+        disabled={isSaving}
       >
-        <Text style={styles.saveButtonText}>目標を保存</Text>
+        {isSaving ? (
+          <Text style={styles.saveButtonText}>保存中...</Text>
+        ) : (
+          <Text style={styles.saveButtonText}>目標を保存</Text>
+        )}
       </TouchableOpacity>
     </View>
   );
