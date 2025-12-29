@@ -7,7 +7,7 @@
  * - ログイン失敗（未登録） → 新規登録画面への誘導
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -46,7 +46,12 @@ const colors = {
 };
 
 export default function LoginScreen() {
-  logger.debug('LoginScreen component initialized');
+  // 初回のみログを出力（再レンダリング時のログ出力を防ぐ）
+  const hasLoggedRef = useRef(false);
+  if (!hasLoggedRef.current) {
+    logger.debug('LoginScreen component initialized');
+    hasLoggedRef.current = true;
+  }
   
   const router = useRouter();
   const {
@@ -115,6 +120,26 @@ export default function LoginScreen() {
       }
     }
   }, [isAuthenticated, isLoading, isLoggingIn, hasInstrumentSelected, needsTutorial, canAccessMainApp, router]);
+  
+  // タイムアウト時のフォールバック: isLoggingInがtrueのままになっている場合の安全装置
+  useEffect(() => {
+    if (isLoggingIn) {
+      const timeoutId = setTimeout(() => {
+        logger.warn('ログイン処理が長時間実行中のため、isLoggingInをリセットします');
+        setIsLoggingIn(false);
+        // エラーメッセージを表示（ただし、認証が成功している可能性もあるため、警告のみ）
+        // プロフィール取得がタイムアウトした場合でも、ログイン自体は成功している可能性がある
+        if (!isAuthenticated) {
+          Alert.alert(
+            'ログインタイムアウト',
+            'ログイン処理がタイムアウトしました。ネットワーク接続を確認して再度お試しください。'
+          );
+        }
+      }, 15000); // 15秒後にフォールバック（プロフィール取得のタイムアウト10秒 + 余裕5秒）
+      
+      return () => clearTimeout(timeoutId);
+    }
+  }, [isLoggingIn, isAuthenticated]);
 
   // アニメーション開始
   useEffect(() => {
@@ -197,15 +222,16 @@ export default function LoginScreen() {
       logger.debug('signIn関数を呼び出し中...', { email: formData.email });
       const success = await signIn(formData);
       
-      // エラー状態を確認（非同期処理の完了を待つ）
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
       logger.debug('ログイン結果確認:', { 
         success, 
         isAuthenticated, 
         isLoading,
         error: error || 'なし' 
       });
+      
+      // ログイン処理が完了したので、isLoggingInをリセット
+      // 成功時も失敗時も、認証状態の更新はuseEffectで処理されるため、ここではリセットする
+      setIsLoggingIn(false);
       
       if (success) {
         logger.debug('ログイン成功 - 認証状態の更新を待機中');
@@ -217,8 +243,8 @@ export default function LoginScreen() {
         // フラグは使用せず、認証状態のみで判定する
         logger.debug('ログイン成功 - 認証状態の更新と画面遷移は自動的に処理されます');
       } else {
-        setIsLoggingIn(false);
         logger.debug('ログイン失敗', { success, isAuthenticated, error });
+        
         const fallbackMsg = error || 'メールアドレスまたはパスワードが正しくありません';
         // Webでも確実に視認できるようフィールドエラーも表示
         setFormErrors(prev => ({
@@ -258,12 +284,16 @@ export default function LoginScreen() {
         }
       }
     } catch (error) {
-      setIsLoggingIn(false);
       logger.error('ログイン処理で例外が発生:', error);
-      // エラーは既にAlertで表示済み
+      // 例外が発生した場合も確実にisLoggingInをリセット
+      setIsLoggingIn(false);
+      
       const errorMessage = error instanceof Error ? error.message : 'ログインに失敗しました。もう一度お試しください。';
       // 例外エラーはuseAuthAdvancedのerrorに設定されないため、Alertで表示
       Alert.alert('エラー', errorMessage);
+    } finally {
+      // 念のため、finallyブロックでもisLoggingInをリセット（上記のsetIsLoggingIn(false)が実行されない場合に備える）
+      setIsLoggingIn(false);
     }
   };
 
@@ -403,7 +433,7 @@ export default function LoginScreen() {
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
-                    editable={!isLoading && !isLoggingIn}
+                    editable={!isLoggingIn}
                     selectionColor={colors.primary}
                     nativeID="login-email-input"
                     accessibilityLabel="メールアドレス"
@@ -430,7 +460,7 @@ export default function LoginScreen() {
                     secureTextEntry={!showPassword}
                     autoCapitalize="none"
                     autoCorrect={false}
-                    editable={!isLoading && !isLoggingIn}
+                    editable={!isLoggingIn}
                     selectionColor={colors.primary}
                     nativeID="login-password-input"
                     accessibilityLabel="パスワード"
@@ -438,7 +468,7 @@ export default function LoginScreen() {
                   <TouchableOpacity
                     style={styles.passwordToggle}
                     onPress={() => setShowPassword(!showPassword)}
-                    disabled={isLoading || isLoggingIn}
+                    disabled={isLoggingIn}
                   >
                   <Text style={styles.passwordToggleText}>
                     {showPassword ? '👀' : '🔒'}
@@ -454,13 +484,13 @@ export default function LoginScreen() {
               <TouchableOpacity
                 style={[
                   styles.loginButton,
-                  (isLoading || isLoggingIn) && styles.loginButtonDisabled,
+                  isLoggingIn && styles.loginButtonDisabled,
                 ]}
                 onPress={handleLogin}
-                disabled={isLoading || isLoggingIn}
+                disabled={isLoggingIn}
               >
                 <Text style={styles.loginButtonText}>
-                  {(isLoading || isLoggingIn) ? 'ログイン中...' : 'ログイン'}
+                  {isLoggingIn ? 'ログイン中...' : 'ログイン'}
                 </Text>
                 <Text style={styles.loginButtonIcon}>→</Text>
               </TouchableOpacity>
@@ -473,7 +503,7 @@ export default function LoginScreen() {
               </View>
 
               {/* パスワード再設定リンク */}
-              <TouchableOpacity onPress={handleResetPassword} disabled={isLoading} style={{ alignSelf: 'center', marginBottom: 12 }}>
+              <TouchableOpacity onPress={handleResetPassword} disabled={isLoggingIn} style={{ alignSelf: 'center', marginBottom: 12 }}>
                 <Text style={{ color: colors.primary }}>パスワードをお忘れですか？</Text>
               </TouchableOpacity>
 
@@ -482,7 +512,7 @@ export default function LoginScreen() {
             {/* 新規登録リンク */}
             <View style={styles.signupContainer}>
               <Text style={styles.signupText}>アカウントをお持ちでない方は</Text>
-              <TouchableOpacity onPress={goToSignup} disabled={isLoading}>
+              <TouchableOpacity onPress={goToSignup} disabled={isLoggingIn}>
                 <Text style={styles.signupLink}>新規登録</Text>
               </TouchableOpacity>
             </View>

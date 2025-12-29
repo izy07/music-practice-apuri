@@ -85,8 +85,66 @@ let globalAuthState: AuthState = {
 // 認証状態更新のリスナー
 const authStateListeners = new Set<(state: AuthState) => void>();
 
-// 認証状態を更新し、リスナーに通知
+// グローバルなonAuthStateChangeリスナー（1つだけ登録）
+let globalAuthStateChangeSubscription: { unsubscribe: () => void } | null = null;
+let globalHandleAuthenticatedUserRef: ((user: any) => Promise<AuthUser | null>) | null = null;
+
+// グローバルな処理中のPromise管理（重複実行を防ぐ）
+const globalProcessingPromises = new Map<string, Promise<AuthUser | null>>();
+
+// 認証状態を更新し、リスナーに通知（状態が実際に変更された場合のみ）
 const updateAuthState = (newState: Partial<AuthState>) => {
+  // 状態が実際に変更されたかチェック（不要な再レンダリングを防ぐ）
+  let hasChanged = false;
+  
+  // 空のオブジェクトが渡された場合はスキップ
+  if (!newState || Object.keys(newState).length === 0) {
+    return;
+  }
+  
+  for (const key in newState) {
+    const typedKey = key as keyof AuthState;
+    const oldValue = globalAuthState[typedKey];
+    const newValue = newState[typedKey];
+    
+    // 同じ参照の場合はスキップ
+    if (oldValue === newValue) continue;
+    
+    // ユーザーオブジェクトの場合は、重要なフィールドのみチェック（パフォーマンス向上）
+    if (typedKey === 'user') {
+      const oldUser = oldValue as AuthUser | null;
+      const newUser = newValue as AuthUser | null;
+      // 両方null/undefinedの場合は変更なし
+      if (!oldUser && !newUser) continue;
+      // 片方がnull/undefinedの場合は変更あり
+      if (!oldUser || !newUser) {
+        hasChanged = true;
+        break;
+      }
+      // 重要なフィールドのみチェック
+      if (
+        oldUser.id !== newUser.id ||
+        oldUser.selected_instrument_id !== newUser.selected_instrument_id ||
+        oldUser.tutorial_completed !== newUser.tutorial_completed ||
+        oldUser.email !== newUser.email
+      ) {
+        hasChanged = true;
+        break;
+      }
+    } else {
+      // プリミティブ値の比較（null/undefinedも含む）
+      if (oldValue !== newValue) {
+        hasChanged = true;
+        break;
+      }
+    }
+  }
+  
+  // 状態が変更されていない場合はスキップ
+  if (!hasChanged) {
+    return;
+  }
+  
   globalAuthState = { ...globalAuthState, ...newState };
   authStateListeners.forEach(listener => listener(globalAuthState));
 };
@@ -328,8 +386,10 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           }
         }
         
-        // アイドルタイムアウトの場合は自動ログアウト
+        // アイドルタイムアウトの場合は自動ログアウト（ログイン画面に遷移）
         if (shouldLogoutDueToIdle) {
+          logger.info('[useAuthAdvanced] アイドルタイムアウト: 1時間以上操作がなかったため自動ログアウトします');
+          
           // セッションをクリア
           await supabase.auth.signOut();
           
@@ -348,9 +408,10 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             }
           }
           
-          // 未認証状態として処理
+          // 未認証状態として処理（_layout.tsxでログイン画面にリダイレクトされる）
           updateAuthState({
             isAuthenticated: false,
+            user: null,
             isLoading: false,
             isInitialized: true,
             error: null,
@@ -358,8 +419,14 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           return;
         }
         
-        // セッションが有効な場合のみ認証状態を更新
-        await handleAuthenticatedUser(session.user);
+        // セッションが有効な場合、onAuthStateChangeのINITIAL_SESSIONイベントで処理されるため、
+        // ここでは認証状態のみ更新（handleAuthenticatedUserは呼び出さない）
+        // これにより、初期化時のタイムアウトを防ぎ、onAuthStateChangeで統一して処理できる
+        updateAuthState({
+          isLoading: false,
+          isInitialized: true,
+          error: null,
+        });
         return;
       }
       
@@ -528,18 +595,88 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     };
   }, [router]);
 
+  // handleAuthenticatedUserの参照を保持（onAuthStateChangeのuseEffectで使用）
+  const handleAuthenticatedUserRef = useRef<((user: any) => Promise<AuthUser | null>) | null>(null);
+  
   // 内部用の認証済みユーザー処理
   const handleAuthenticatedUser = useCallback(async (user: any): Promise<AuthUser | null> => {
-    try {
+    const userId = user.id;
+    
+    // 既に処理中の場合は、そのPromiseを返す（同じユーザーIDに対する処理を共有）
+    // ただし、タイムアウトしている可能性があるため、一定時間（12秒）以内に完了しない場合は新しい処理を開始
+    const existingPromise = globalProcessingPromises.get(userId);
+    if (existingPromise) {
+      logger.debug('handleAuthenticatedUser: 既に処理中のため、既存のPromiseを待機します', { userId, email: user.email });
+      try {
+        // タイムアウトチェック付きで待機（12秒以内に完了しない場合は新しい処理を開始）
+        // プロフィール取得のタイムアウト（10秒）より長く設定して、正常な処理を優先
+        const timeoutPromise = new Promise<null>((resolve) => {
+          setTimeout(() => resolve(null), 12000);
+        });
+        const result = await Promise.race([existingPromise, timeoutPromise]);
+        if (result) {
+          return result;
+        }
+        // タイムアウトした場合は、既存のPromiseを削除して新しい処理を開始
+        logger.warn('既存のhandleAuthenticatedUserがタイムアウトしました。新しい処理を開始します。', { userId });
+        globalProcessingPromises.delete(userId);
+      } catch (error) {
+        // 既存のPromiseでエラーが発生した場合は、新しい処理を開始
+        logger.warn('既存のhandleAuthenticatedUserでエラーが発生しました。新しい処理を開始します。', { userId, error });
+        globalProcessingPromises.delete(userId);
+      }
+    }
+    
+    // 新しいPromiseを作成（IIFEパターンで即座に実行開始）
+    const processPromise = (async () => {
+      try {
+        logger.debug('handleAuthenticatedUser開始:', { userId, email: user.email });
       
-      // ユーザープロフィールを取得（基本カラムのみで取得）
-      const { data: profile, error: profileError } = await supabase
+      // ユーザープロフィールを取得（最小限のカラムのみで取得してパフォーマンスを最適化）
+      // タイムアウトを10秒に短縮して、ログイン処理を高速化
+      // ネットワークが遅い場合でも、タイムアウト後はフォールバック処理でログインを完了できる
+      let profile: any = null;
+      let profileError: any = null;
+      
+      // profilePromiseをtryブロックの外で定義（タイムアウト後のバックグラウンド処理で使用するため）
+      const profilePromise = supabase
         .from('user_profiles')
-        .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
-        .eq('user_id', user.id)
+        .select('id, user_id, display_name, selected_instrument_id')
+        .eq('user_id', userId)
         .maybeSingle();
       
+      try {
+        // Promise.raceを使用してタイムアウトを実装
+        // 注意: SupabaseクエリはAbortControllerを直接サポートしていないため、
+        // タイムアウトが発火してもクエリ自体は継続しますが、少なくともタイムアウトを検出できます
+        const timeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
+          setTimeout(() => {
+            resolve({
+              data: null,
+              error: {
+                code: 'TIMEOUT',
+                message: 'プロフィール取得がタイムアウトしました',
+              },
+            });
+          }, 10000); // 10秒でタイムアウト（ログイン処理を高速化）
+        });
+        
+        const result = await Promise.race([profilePromise, timeoutPromise]);
+        profile = result.data;
+        profileError = result.error;
+      } catch (error: any) {
+        // Promise.raceでエラーが発生した場合（通常は発生しないはず）
+        logger.error('プロフィール取得で予期しないエラーが発生しました:', error);
+        profileError = { 
+          code: error?.code || 'UNKNOWN_ERROR', 
+          message: error?.message || 'プロフィール取得でエラーが発生しました',
+          status: error?.status,
+        };
+      }
+      
       if (profileError) {
+        logger.warn('プロフィール取得エラー:', { error: profileError, code: profileError.code });
+        
         // 認証エラーの場合は認証状態をクリア（_layout.tsxのロジックで自動的にログイン画面にリダイレクト）
         if (profileError.code === '401' || profileError.code === 'PGRST301' || profileError.message?.includes('JWT') || profileError.message?.includes('expired')) {
           logger.warn('ユーザー取得エラー: 認証が無効です。認証状態をクリアします。', { error: profileError });
@@ -554,6 +691,44 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           });
           // ルーティングは_layout.tsxの既存ロジックに任せる（直接リダイレクトしない）
           return null;
+        }
+        
+        // タイムアウトエラーの場合は、セッションをクリアせず、デフォルト値で処理を続行
+        // ネットワークが遅い場合でも、ログインは成功している可能性があるため
+        if (profileError.code === 'TIMEOUT') {
+          logger.warn('プロフィール取得がタイムアウトしました。デフォルト値で処理を続行します。', { userId });
+          // プロフィールが存在しないものとして処理を続行（デフォルト値を使用）
+          // タイムアウト後も、バックグラウンドでプロフィール取得を試みる（非同期）
+          profilePromise.then((result) => {
+            if (result.data && !result.error) {
+              logger.debug('タイムアウト後のプロフィール取得に成功しました。認証状態を更新します。', { userId });
+              // プロフィールが取得できた場合は、認証状態を更新
+              const profileName = result.data.display_name || user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
+              const authUser: AuthUser = {
+                id: userId,
+                email: user.email || '',
+                name: profileName,
+                avatar_url: (result.data as any).avatar_url || user?.user_metadata?.avatar_url,
+                created_at: user.created_at || new Date().toISOString(),
+                last_sign_in_at: user.last_sign_in_at,
+                selected_instrument_id: result.data.selected_instrument_id || null,
+                tutorial_completed: (result.data as any).tutorial_completed ?? false,
+                onboarding_completed: (result.data as any).onboarding_completed ?? false,
+              };
+              updateAuthState({
+                user: authUser,
+                isAuthenticated: true,
+                isLoading: false,
+                isInitialized: true,
+                error: null,
+              });
+            }
+          }).catch((error) => {
+            logger.debug('タイムアウト後のプロフィール取得エラー（無視）:', error);
+          });
+          // プロフィールが存在しないものとして処理を続行（デフォルト値を使用）
+          profile = null;
+          profileError = null;
         }
         // 400エラー（カラムが存在しない）の場合は、カラムが存在しないものとして処理
         if (profileError.status === 400 || profileError.code === 'PGRST116' || profileError.code === 'PGRST205') {
@@ -573,45 +748,63 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                                    ));
         
         if (isProfileNotFound) {
-          logger.debug('プロフィールが存在しないため作成を試みます', { userId: user.id });
-          const displayName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
+          logger.debug('プロフィールが存在しないため作成を試みます', { userId });
+          const displayName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
           
           // upsertを使用して確実に作成（既に存在する場合は更新）
           const { data: newProfile, error: createError } = await supabase
             .from('user_profiles')
             .upsert(
               {
-                user_id: user.id,
+                user_id: userId,
                 display_name: displayName,
               },
               { onConflict: 'user_id' }
             )
-            .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
+            .select('id, user_id, display_name, selected_instrument_id')
             .single();
           
           if (createError) {
             // 既にプロフィールが存在する場合は成功として扱う（競合エラー）
             if (createError.code === '23505' || createError.status === 409 || (createError.message?.includes('duplicate key') || createError.message?.includes('already exists'))) {
-              logger.debug('プロフィールは既に存在します（競合エラー） - 再度取得を試みます', { userId: user.id });
+              logger.debug('プロフィールは既に存在します（競合エラー） - 再度取得を試みます', { userId });
               // 再度取得を試みる
               const { data: retryProfile, error: retryError } = await supabase
                 .from('user_profiles')
-                .select('id, user_id, display_name, selected_instrument_id, practice_level, total_practice_minutes, created_at, updated_at')
-                .eq('user_id', user.id)
+                .select('id, user_id, display_name, selected_instrument_id')
+                .eq('user_id', userId)
                 .maybeSingle();
               
               if (retryError || !retryProfile) {
                 ErrorHandler.handle(retryError || new Error('プロフィールの取得に失敗しました'), 'プロフィール取得', false);
+                // user_instrument_profilesから最新の楽器を確認
+                let fallbackInstrumentId: string | null = null;
+                try {
+                  const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
+                    .from('user_instrument_profiles')
+                    .select('instrument_id, updated_at, created_at')
+                    .eq('user_id', userId)
+                    .order('updated_at', { ascending: false })
+                    .limit(1);
+                  
+                  if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
+                    fallbackInstrumentId = instrumentProfiles[0].instrument_id;
+                    logger.debug('user_instrument_profilesから最新の楽器を取得しました:', { instrumentId: fallbackInstrumentId });
+                  }
+                } catch (instrumentProfileError) {
+                  logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+                }
+                
                 // プロフィール取得に失敗した場合は基本情報のみで処理
-                const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
+                const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
                 const authUser: AuthUser = {
-                  id: user.id,
-                  email: user.email || '',
+                  id: userId,
+                  email: user?.email || '',
                   name: fallbackName,
-                  avatar_url: user.user_metadata?.avatar_url,
-                  created_at: user.created_at,
-                  last_sign_in_at: user.last_sign_in_at,
-                  selected_instrument_id: null,
+                  avatar_url: user?.user_metadata?.avatar_url,
+                  created_at: user?.created_at || new Date().toISOString(),
+                  last_sign_in_at: user?.last_sign_in_at,
+                  selected_instrument_id: fallbackInstrumentId,
                   tutorial_completed: false,
                   onboarding_completed: false,
                 };
@@ -628,12 +821,12 @@ export const useAuthAdvanced = (): AuthHookReturn => {
               
               // 取得したプロフィールを使用
               const authUser: AuthUser = {
-                id: user.id,
-                email: user.email || '',
-                name: retryProfile.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー',
-                avatar_url: (retryProfile as any).avatar_url || user.user_metadata?.avatar_url,
-                created_at: user.created_at,
-                last_sign_in_at: user.last_sign_in_at,
+                id: userId,
+                email: user?.email || '',
+                name: retryProfile.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー',
+                avatar_url: (retryProfile as any).avatar_url || user?.user_metadata?.avatar_url,
+                created_at: user?.created_at || new Date().toISOString(),
+                last_sign_in_at: user?.last_sign_in_at,
                 selected_instrument_id: retryProfile.selected_instrument_id || null,
                 tutorial_completed: (retryProfile as any).tutorial_completed ?? false,
                 onboarding_completed: (retryProfile as any).onboarding_completed ?? false,
@@ -650,16 +843,34 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             }
             
             ErrorHandler.handle(createError, 'プロフィール作成', false);
+            // user_instrument_profilesから最新の楽器を確認
+            let fallbackInstrumentId: string | null = null;
+            try {
+              const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
+                .from('user_instrument_profiles')
+                .select('instrument_id, updated_at, created_at')
+                .eq('user_id', userId)
+                .order('updated_at', { ascending: false })
+                .limit(1);
+              
+              if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
+                fallbackInstrumentId = instrumentProfiles[0].instrument_id;
+                logger.debug('user_instrument_profilesから最新の楽器を取得しました:', { instrumentId: fallbackInstrumentId });
+              }
+            } catch (instrumentProfileError) {
+              logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+            }
+            
             // プロフィール作成に失敗した場合は基本情報のみで処理
-            const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
+            const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
             const authUser: AuthUser = {
-              id: user.id,
-              email: user.email || '',
+              id: userId,
+              email: user?.email || '',
               name: fallbackName,
-              avatar_url: user.user_metadata?.avatar_url,
-              created_at: user.created_at,
-              last_sign_in_at: user.last_sign_in_at,
-              selected_instrument_id: null,
+              avatar_url: user?.user_metadata?.avatar_url,
+              created_at: user?.created_at || new Date().toISOString(),
+              last_sign_in_at: user?.last_sign_in_at,
+              selected_instrument_id: fallbackInstrumentId,
               tutorial_completed: false,
               onboarding_completed: false,
             };
@@ -677,10 +888,10 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           // 新規作成されたプロフィールを使用
           if (newProfile) {
             const authUser: AuthUser = {
-              id: user.id,
+                id: userId,
               email: user.email || '',
-              name: newProfile.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー',
-              avatar_url: (newProfile as any).avatar_url || user.user_metadata?.avatar_url,
+              name: newProfile.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー',
+              avatar_url: (newProfile as any).avatar_url || user?.user_metadata?.avatar_url,
               created_at: user.created_at,
               last_sign_in_at: user.last_sign_in_at,
               selected_instrument_id: newProfile.selected_instrument_id || null,
@@ -698,31 +909,102 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             return authUser;
           }
         } else {
+          // その他のエラーの場合でも、ログインは成功しているのでフォールバックユーザーを返す
           ErrorHandler.handle(profileError, 'プロフィール取得', false);
+          logger.warn('プロフィール取得でエラーが発生しましたが、ログインは成功しているためフォールバックユーザーを使用します', { error: profileError });
+          
+          // user_instrument_profilesから最新の楽器を確認
+          try {
+            const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
+              .from('user_instrument_profiles')
+              .select('instrument_id, updated_at, created_at')
+              .eq('user_id', userId)
+              .order('updated_at', { ascending: false })
+              .limit(1);
+            
+            if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
+              const latestInstrumentId = instrumentProfiles[0].instrument_id;
+              logger.debug('user_instrument_profilesから最新の楽器を取得しました:', { instrumentId: latestInstrumentId });
+              
+              // フォールバックユーザーを作成（最新の楽器を使用）
+              const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
+              const authUser: AuthUser = {
+                id: userId,
+                email: user?.email || '',
+                name: fallbackName,
+                avatar_url: user.user_metadata?.avatar_url,
+                created_at: user.created_at,
+                last_sign_in_at: user.last_sign_in_at,
+                selected_instrument_id: latestInstrumentId,
+                tutorial_completed: false,
+                onboarding_completed: false,
+              };
+              
+              updateAuthState({
+                user: authUser,
+                isAuthenticated: true,
+                isLoading: false,
+                isInitialized: true,
+                error: null,
+              });
+              
+              logger.debug('フォールバックユーザーを作成しました（楽器選択済み）:', { 
+                userId: authUser.id, 
+                email: authUser.email,
+                selected_instrument_id: authUser.selected_instrument_id
+              });
+              return authUser;
+            }
+          } catch (instrumentProfileError) {
+            logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+          }
+          
+          // フォールバックユーザーを作成して処理を続行（下のフォールバック処理に到達）
         }
       }
       
       // プロフィールが存在する場合
       if (profile) {
-      // プロフィール情報をAuthUser形式に変換
-      const profileName = profile.display_name || user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
-      const authUser: AuthUser = {
-        id: user.id,
-        email: user.email || '',
-        name: profileName,
+        // プロフィール情報をAuthUser形式に変換
+        const profileName = profile.display_name || user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
+        let selectedInstrumentId = profile.selected_instrument_id || null;
+        
+        // selected_instrument_idがnullの場合、user_instrument_profilesから最新の楽器を確認
+        if (!selectedInstrumentId) {
+          try {
+            const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
+              .from('user_instrument_profiles')
+              .select('instrument_id, updated_at, created_at')
+              .eq('user_id', userId)
+              .order('updated_at', { ascending: false })
+              .limit(1);
+            
+            if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
+              selectedInstrumentId = instrumentProfiles[0].instrument_id;
+              logger.debug('user_instrument_profilesから最新の楽器を取得しました（プロフィールのselected_instrument_idがnullの場合）:', { instrumentId: selectedInstrumentId });
+            }
+          } catch (instrumentProfileError) {
+            logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+          }
+        }
+        
+        const authUser: AuthUser = {
+                id: userId,
+          email: user.email || '',
+          name: profileName,
           avatar_url: (profile as any).avatar_url,
-        created_at: user.created_at,
-        last_sign_in_at: user.last_sign_in_at,
-        selected_instrument_id: profile.selected_instrument_id || null,
+          created_at: user.created_at,
+          last_sign_in_at: user.last_sign_in_at,
+          selected_instrument_id: selectedInstrumentId,
           tutorial_completed: (profile as any).tutorial_completed ?? false,
           onboarding_completed: (profile as any).onboarding_completed ?? false,
-      };
-      
-      logger.debug('ユーザー情報取得完了:', {
-        email: authUser.email,
-        hasInstrument: !!authUser.selected_instrument_id,
-        tutorialCompleted: authUser.tutorial_completed,
-      });
+        };
+        
+        logger.debug('ユーザー情報取得完了:', {
+          email: authUser.email,
+          hasInstrument: !!authUser.selected_instrument_id,
+          tutorialCompleted: authUser.tutorial_completed,
+        });
         
         updateAuthState({
           user: authUser,
@@ -732,19 +1014,43 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           error: null,
         });
         
+        logger.debug('認証状態更新完了:', {
+          hasInstrument: !!authUser.selected_instrument_id,
+          tutorialCompleted: authUser.tutorial_completed,
+          userId: authUser.id
+        });
+        
         return authUser;
       }
       
       // プロフィールが存在しない場合（エラーでもPGRST116でもない場合）
+      // user_instrument_profilesから最新の楽器を確認
+      let fallbackInstrumentId: string | null = null;
+      try {
+        const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
+          .from('user_instrument_profiles')
+          .select('instrument_id, updated_at, created_at')
+          .eq('user_id', userId)
+          .order('updated_at', { ascending: false })
+          .limit(1);
+        
+        if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
+          fallbackInstrumentId = instrumentProfiles[0].instrument_id;
+          logger.debug('user_instrument_profilesから最新の楽器を取得しました:', { instrumentId: fallbackInstrumentId });
+        }
+      } catch (instrumentProfileError) {
+        logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+      }
+      
       const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
       const authUser: AuthUser = {
-        id: user.id,
+                id: userId,
         email: user.email || '',
         name: fallbackName,
         avatar_url: user.user_metadata?.avatar_url,
         created_at: user.created_at,
         last_sign_in_at: user.last_sign_in_at,
-        selected_instrument_id: null,
+        selected_instrument_id: fallbackInstrumentId,
         tutorial_completed: false,
         onboarding_completed: false,
       };
@@ -757,19 +1063,138 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         error: null,
       });
       
-      return authUser;
-      
-    } catch (error) {
-      ErrorHandler.handle(error, '認証済みユーザー処理', false);
-      updateAuthState({
-        isAuthenticated: false,
-        isLoading: false,
-        isInitialized: true,
-        error: error instanceof Error ? error.message : 'ユーザー情報の取得に失敗しました',
+      logger.debug('フォールバックユーザーを作成しました:', { 
+        userId: authUser.id, 
+        email: authUser.email,
+        selected_instrument_id: authUser.selected_instrument_id
       });
-      return null;
+      
+      return authUser;
+      } catch (error) {
+        logger.error('handleAuthenticatedUserでエラーが発生しました。フォールバックユーザーを作成します:', error);
+        ErrorHandler.handle(error, '認証済みユーザー処理', false);
+        
+        // エラーが発生しても、認証は成功しているのでフォールバックユーザーを作成
+        if (!user || !userId) {
+          logger.error('userオブジェクトが無効です。nullを返します。');
+          return null;
+        }
+        
+        // user_instrument_profilesから最新の楽器を確認
+        let fallbackInstrumentId: string | null = null;
+        try {
+          const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
+            .from('user_instrument_profiles')
+            .select('instrument_id, updated_at, created_at')
+            .eq('user_id', userId)
+            .order('updated_at', { ascending: false })
+            .limit(1);
+          
+          if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
+            fallbackInstrumentId = instrumentProfiles[0].instrument_id;
+            logger.debug('user_instrument_profilesから最新の楽器を取得しました:', { instrumentId: fallbackInstrumentId });
+          }
+        } catch (instrumentProfileError) {
+          logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+        }
+        
+        const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
+        const fallbackUser: AuthUser = {
+          id: userId,
+          email: user?.email || '',
+          name: fallbackName,
+          avatar_url: user?.user_metadata?.avatar_url,
+          created_at: user?.created_at || new Date().toISOString(),
+          last_sign_in_at: user?.last_sign_in_at,
+          selected_instrument_id: fallbackInstrumentId,
+          tutorial_completed: false,
+          onboarding_completed: false,
+        };
+        
+        updateAuthState({
+          user: fallbackUser,
+          isAuthenticated: true,
+          isLoading: false,
+          isInitialized: true,
+          error: null,
+        });
+        
+        logger.debug('フォールバックユーザーを作成しました:', { 
+          userId: fallbackUser.id, 
+          email: fallbackUser.email,
+          selected_instrument_id: fallbackUser.selected_instrument_id
+        });
+        return fallbackUser;
+      }
+    })();
+    
+    // Promiseを保存（処理が完了したら削除される）
+    globalProcessingPromises.set(userId, processPromise);
+    
+    try {
+      const result = await processPromise;
+      return result;
+    } finally {
+      // 処理完了後にPromiseを削除（必ず実行される）
+      globalProcessingPromises.delete(userId);
     }
   }, []);
+
+  // handleAuthenticatedUserの参照を更新（グローバルとローカルの両方）
+  useEffect(() => {
+    handleAuthenticatedUserRef.current = handleAuthenticatedUser;
+    globalHandleAuthenticatedUserRef = handleAuthenticatedUser;
+  }, [handleAuthenticatedUser]);
+
+  // 認証状態変更の監視（onAuthStateChangeを使用）
+  // グローバルに1つだけリスナーを登録（複数のコンポーネントでuseAuthAdvancedが使用されても1つだけ）
+  useEffect(() => {
+    // 既にリスナーが登録されている場合はスキップ
+    if (globalAuthStateChangeSubscription) {
+      return;
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        // INITIAL_SESSIONイベントとSIGNED_INイベントの両方を処理
+        // これにより、初期化時とログイン時の処理が統一される
+        if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+          const userId = session.user.id;
+          
+          // 重複実行を防ぐ：既に処理中の場合はスキップ
+          const existingPromise = globalProcessingPromises.get(userId);
+          if (existingPromise) {
+            logger.debug('onAuthStateChange: 既に処理中のため、スキップします', { userId, email: session.user.email, event });
+            return;
+          }
+          
+          // セッションが確立されたときに認証状態を更新
+          // globalHandleAuthenticatedUserRefを使用して、常に最新の関数を呼び出す
+          if (globalHandleAuthenticatedUserRef) {
+            await globalHandleAuthenticatedUserRef(session.user);
+          }
+        } else if (event === 'SIGNED_OUT') {
+          // ログアウト時に認証状態をクリア
+          updateAuthState({
+            isAuthenticated: false,
+            user: null,
+            isLoading: false,
+            isInitialized: true,
+            error: null,
+          });
+        }
+        // INITIAL_SESSION, TOKEN_REFRESHEDなどの他のイベントはスキップ
+      }
+    );
+
+    globalAuthStateChangeSubscription = subscription;
+
+    // クリーンアップは不要（グローバルリスナーはアプリ終了まで保持）
+    // ただし、開発時にHMRでリロードされる場合はクリーンアップが必要
+    return () => {
+      // クリーンアップはしない（グローバルリスナーを保持）
+    };
+  }, []); // 依存配列を空にして、リスナーの重複登録を防ぐ
 
   // 楽器テーマ関連のローカル保存をクリア（ユーザー切り替え時用）
   const clearInstrumentThemeLocal = useCallback(async () => {
@@ -902,12 +1327,78 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       
       updateAuthState({ isLoading: true, error: null });
       
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: formData.email.trim().toLowerCase(),
-        password: formData.password,
+      logger.debug('supabase.auth.signInWithPassword呼び出し前', { email: formData.email.trim().toLowerCase() });
+      
+      // 根本的な解決: Promise.raceを使わず、タイムアウト後もloginPromiseの完了を待つ
+      // タイムアウトは警告のみとし、実際のログイン処理の完了を待つ
+      const timeoutMs = 30000;
+      let timeoutId: NodeJS.Timeout | null = null;
+      let loginCompleted = false;
+      
+      // タイムアウト警告（ログイン処理は継続）
+      timeoutId = setTimeout(() => {
+        if (!loginCompleted) {
+          logger.warn('ログイン処理が時間がかかっています（タイムアウト時間:', timeoutMs, 'ms）。処理は継続します。');
+        }
+      }, timeoutMs);
+      
+      let data: any;
+      let error: any;
+      
+      try {
+        logger.debug('supabase.auth.signInWithPassword呼び出し開始');
+        const result = await supabase.auth.signInWithPassword({
+          email: formData.email.trim().toLowerCase(),
+          password: formData.password,
+        });
+        
+        loginCompleted = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        
+        data = result.data;
+        error = result.error;
+        
+        logger.debug('supabase.auth.signInWithPassword完了', { 
+          hasData: !!data, 
+          hasError: !!error,
+          errorCode: error?.code
+        });
+      } catch (loginError: any) {
+        loginCompleted = true;
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          timeoutId = null;
+        }
+        
+        error = loginError;
+        logger.error('supabase.auth.signInWithPassword例外:', loginError);
+      }
+      
+      logger.debug('supabase.auth.signInWithPassword完了', { 
+        hasData: !!data, 
+        hasError: !!error, 
+        errorCode: error?.code,
+        errorMessage: error?.message 
       });
       
       if (error) {
+        // ネットワークエラー（503）の場合、onAuthStateChangeに任せる
+        const isNetworkError = 
+          error.status === 503 ||
+          (error as any).name === 'AuthRetryableFetchError' ||
+          (error as any).message?.includes('Failed to fetch');
+        
+        if (isNetworkError) {
+          logger.warn('ネットワークエラーが発生しました。onAuthStateChangeで認証状態が更新されることを期待します。');
+          // ネットワークエラーの場合も、onAuthStateChangeで処理されることを期待
+          updateAuthState({ isLoading: false, error: null });
+          return true; // ネットワークエラーでもtrueを返して、onAuthStateChangeに任せる
+        }
+        
+        // その他のエラー
         ErrorHandler.handle(error, 'ログイン', false);
         
         // ログイン失敗時はレート制限に記録
@@ -922,87 +1413,17 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       
       if (data.user) {
         logger.debug('ログイン成功:', { email: data.user.email, userId: data.user.id });
-        try {
-          const authUser = await handleAuthenticatedUser(data.user);
-          
-          // authUserが取得できた場合は成功として扱う
-          if (authUser) {
-            logger.debug('認証済みユーザー処理完了:', { 
-              authUser: { id: authUser.id, email: authUser.email },
-              isAuthenticated: globalAuthState.isAuthenticated 
-            });
-            
-            // 認証状態が更新されるまで少し待つ（状態更新の反映を待つ）
-            await new Promise(resolve => setTimeout(resolve, 200));
-            
-            // 認証状態が更新されているか確認（authUserが取得できた場合は成功）
-            if (globalAuthState.isAuthenticated && globalAuthState.user?.id === authUser.id) {
-              logger.debug('認証状態が正常に更新されました');
-              return true;
-            } else {
-              // 認証状態が更新されていない場合は、再度更新を試みる
-              logger.debug('認証状態の再更新を試みます', {
-                authUser: !!authUser,
-                currentIsAuthenticated: globalAuthState.isAuthenticated,
-                currentUserId: globalAuthState.user?.id
-              });
-              
-              // 認証状態を手動で更新（確実に認証状態を設定）
-              updateAuthState({
-                user: authUser,
-                isAuthenticated: true,
-                isLoading: false,
-                isInitialized: true,
-                error: null,
-              });
-              
-              // 状態更新の反映を待つ
-              await new Promise(resolve => setTimeout(resolve, 200));
-              
-              logger.debug('認証状態を手動で更新しました', {
-                isAuthenticated: globalAuthState.isAuthenticated,
-                userId: globalAuthState.user?.id
-              });
-              
-              // authUserが取得できた場合は成功として扱う（認証状態の更新は非同期で行われる）
-              return true;
-            }
-          } else {
-            logger.error('認証済みユーザー処理でauthUserが取得できませんでした');
-            updateAuthState({ 
-              isLoading: false, 
-              error: 'ユーザー情報の取得に失敗しました' 
-            });
-            return false;
-          }
-        } catch (handleError) {
-          logger.error('認証済みユーザー処理でエラー:', handleError);
-          ErrorHandler.handle(handleError, '認証済みユーザー処理', false);
-          // エラーが発生しても、ユーザー情報は取得できているので認証状態を更新
-          const fallbackUser: AuthUser = {
-            id: data.user.id,
-            email: data.user.email || '',
-            name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'ユーザー',
-            created_at: data.user.created_at,
-            last_sign_in_at: data.user.last_sign_in_at,
-            selected_instrument_id: null,
-            tutorial_completed: false,
-            onboarding_completed: false,
-          };
-          updateAuthState({
-            user: fallbackUser,
-            isAuthenticated: true,
-            isLoading: false,
-            isInitialized: true,
-            error: null,
-          });
-          
-          // 状態更新の反映を待つ
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          logger.debug('フォールバック認証状態を設定しました');
-          return true;
-        }
+        
+        // ログイン成功時はレート制限をリセット
+        rateLimiter.reset(emailKey);
+        
+        // 根本的な解決: signIn関数内ではhandleAuthenticatedUserを呼び出さない
+        // onAuthStateChangeのSIGNED_INイベントで自動的にhandleAuthenticatedUserが呼ばれるため、
+        // ここではisLoadingのみ更新して、onAuthStateChangeで認証状態が更新されるまで待つ
+        updateAuthState({ isLoading: false, error: null });
+        
+        logger.debug('ログイン処理完了 - onAuthStateChangeで認証状態が更新されます');
+        return true;
       }
       
       logger.warn('ログイン成功したがユーザー情報が取得できませんでした');
@@ -1056,13 +1477,13 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         return false;
       }
 
-      // 新規登録成功時は即座に認証状態を更新
+      // 新規登録成功時はonAuthStateChangeで認証状態を更新
       if (data.user) {
         logger.debug('新規登録成功:', data.user.email);
-        logger.debug('新規登録成功 - 認証状態を更新');
-        // 新規登録成功後は即座に認証状態を更新
+        logger.debug('新規登録成功 - onAuthStateChangeで認証状態が更新されます');
+        // 新規登録成功後はonAuthStateChangeのSIGNED_INイベントでhandleAuthenticatedUserが呼ばれるため、
+        // ここでは直接呼び出さない（重複実行を防ぐ）
         // 外観設定のクリアはログアウト時に行う
-        await handleAuthenticatedUser(data.user);
         
         return true;
       }
@@ -1396,7 +1817,13 @@ const getAuthErrorMessage = (error: unknown): string => {
       return 'リクエストが多すぎます。しばらく時間をおいてから再度お試しください';
     case 500:
       return 'サーバーエラーが発生しました';
+    case 503:
+      return 'サーバーに接続できません。ネットワーク接続を確認してください';
     default:
+      // ネットワークエラーのチェック（メッセージベース）
+      if (errorMessage?.includes('Failed to fetch') || errorMessage?.includes('NetworkError') || (error as any).name === 'AuthRetryableFetchError') {
+        return 'ネットワーク接続エラーが発生しました。インターネット接続を確認してください';
+      }
       return errorMessage || '認証エラーが発生しました';
   }
 };
