@@ -1327,7 +1327,6 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       checkAndProcessSession();
     }
   }, [handleAuthenticatedUser, segments]);
-  }, [handleAuthenticatedUser]);
 
   // 認証状態変更の監視（onAuthStateChangeを使用）
   // グローバルに1つだけリスナーを登録（複数のコンポーネントでuseAuthAdvancedが使用されても1つだけ）
