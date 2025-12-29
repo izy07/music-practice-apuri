@@ -1715,23 +1715,32 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       if (data.user) {
         logger.debug('ログイン成功:', { email: data.user.email, userId: data.user.id });
         
-        // ログイン成功時はレート制限をリセット
-        rateLimiter.reset(emailKey);
-        
-        // 根本的な解決: signIn関数内ではhandleAuthenticatedUserを呼び出さない
-        // onAuthStateChangeのSIGNED_INイベントで自動的にhandleAuthenticatedUserが呼ばれるため、
-        // ここではisLoadingのみ更新して、onAuthStateChangeで認証状態が更新されるまで待つ
-        updateAuthState({ isLoading: false, error: null });
-        
-        // ログイン成功時、onAuthStateChangeで認証状態が更新されるまでフラグを保持
-        // ただし、タイムアウトを設定して、一定時間後にフラグをリセット（安全装置）
-        setTimeout(() => {
-          isLoginInProgress = false;
-          logger.debug('[signIn] ログイン処理フラグをリセットしました（タイムアウト）');
-        }, 10000); // 10秒後にフラグをリセット
-        
-        logger.debug('ログイン処理完了 - onAuthStateChangeで認証状態が更新されます');
-        return true;
+        try {
+          // ログイン成功時はレート制限をリセット
+          rateLimiter.reset(emailKey);
+          
+          // 根本的な解決: signIn関数内ではhandleAuthenticatedUserを呼び出さない
+          // onAuthStateChangeのSIGNED_INイベントで自動的にhandleAuthenticatedUserが呼ばれるため、
+          // ここではisLoadingのみ更新して、onAuthStateChangeで認証状態が更新されるまで待つ
+          updateAuthState({ isLoading: false, error: null });
+          
+          // ログイン成功時、onAuthStateChangeで認証状態が更新されるまでフラグを保持
+          // ただし、タイムアウトを設定して、一定時間後にフラグをリセット（安全装置）
+          setTimeout(() => {
+            isLoginInProgress = false;
+            logger.debug('[signIn] ログイン処理フラグをリセットしました（タイムアウト）');
+          }, 10000); // 10秒後にフラグをリセット
+          
+          logger.debug('ログイン処理完了 - onAuthStateChangeで認証状態が更新されます');
+          return true;
+        } catch (successError) {
+          // ログイン成功後の処理でエラーが発生した場合でも、ログイン自体は成功している
+          // エラーをログに記録するが、ログインは成功として扱う
+          logger.warn('ログイン成功後の処理でエラーが発生しましたが、ログインは成功しています:', successError);
+          ErrorHandler.handle(successError, 'ログイン成功後の処理', false);
+          // ログインは成功しているので、trueを返す
+          return true;
+        }
       }
       
       logger.warn('ログイン成功したがユーザー情報が取得できませんでした');
