@@ -625,11 +625,21 @@ function RootLayoutContent() {
     }
 
     // 認証済みユーザー
-    // ログイン画面または新規登録画面にいる場合は、画面遷移をスキップ
-    // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぐ
+    // ログイン画面または新規登録画面にいる場合は、適切な画面に遷移
+    // ただし、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぐため、
+    // ログイン画面のuseEffectで画面遷移を処理する（ここではスキップ）
     if (isInAuthGroup) {
-      logger.debug('認証済み・認証画面 - 画面遷移をスキップ（ログイン処理中）', { segments: currentSegments });
-      return;
+      // ログイン画面のuseEffectで画面遷移が処理されるため、ここではスキップ
+      // ただし、ログイン画面のuseEffectが動作しない場合に備えて、フォールバック処理を追加
+      const authChild = segments.length > 1 ? segments[1] : undefined;
+      if (authChild === 'login') {
+        // ログイン画面のuseEffectで処理されるため、ここではスキップ
+        logger.debug('認証済み・ログイン画面 - ログイン画面のuseEffectで画面遷移を処理', { segments: currentSegments });
+        return;
+      }
+      // その他の認証画面（新規登録画面など）の場合は、適切な画面に遷移
+      logger.debug('認証済み・認証画面（ログイン画面以外） - 適切な画面に遷移', { segments: currentSegments });
+      // 下記の処理に続く（楽器選択チェックなど）
     }
     
     // 楽器未選択の場合の処理

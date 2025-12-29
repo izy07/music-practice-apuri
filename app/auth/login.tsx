@@ -91,7 +91,8 @@ export default function LoginScreen() {
   // 認証状態に応じた自動遷移（ログイン成功後の画面遷移）
   useEffect(() => {
     // ログイン画面にいる間は、認証状態が更新されたら適切な画面に遷移
-    if (isAuthenticated && !isLoading && isLoggingIn) {
+    // isLoggingInがtrueの時（ログイン処理中）またはfalseの時（ログイン処理完了後）の両方で画面遷移を実行
+    if (isAuthenticated && !isLoading) {
       logger.debug('ログイン成功 - 認証状態検出、画面遷移を実行', {
         isAuthenticated,
         isLoading,
@@ -102,21 +103,23 @@ export default function LoginScreen() {
       });
       
       // ログイン処理完了
-      setIsLoggingIn(false);
+      if (isLoggingIn) {
+        setIsLoggingIn(false);
+      }
       
       // 一般的なアプリと同様に、すぐに画面遷移を実行（遅延なし）
       logger.debug('認証状態更新完了 - 画面遷移を実行');
       
-      // 適切な画面に遷移
+      // 適切な画面に遷移（router.pushを使用して_layout.tsxのスキップを回避）
       if (canAccessMainApp()) {
         logger.debug('カレンダー画面に遷移');
-        router.replace('/(tabs)/index');
+        router.push('/(tabs)/index');
       } else if (needsTutorial()) {
         logger.debug('チュートリアル画面に遷移');
-        router.replace('/(tabs)/tutorial');
+        router.push('/(tabs)/tutorial');
       } else {
         logger.debug('楽器選択画面に遷移');
-        router.replace('/(tabs)/instrument-selection');
+        router.push('/(tabs)/instrument-selection');
       }
     }
   }, [isAuthenticated, isLoading, isLoggingIn, hasInstrumentSelected, needsTutorial, canAccessMainApp, router]);
