@@ -6,6 +6,7 @@ import { logger } from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { getInstrumentId } from '@/lib/instrumentUtils';
+import { applyInstrumentFilter } from '@/repositories/common/instrumentFilter';
 
 interface PracticeData {
   [key: string]: { // キーを日付文字列（YYYY-MM-DD）に変更
@@ -45,13 +46,43 @@ export function useCalendarData(currentDate: Date) {
   const [shortTermGoal, setShortTermGoal] = useState<ShortTermGoal | null>(null);
   const [shortTermGoals, setShortTermGoals] = useState<ShortTermGoal[]>([]);
   const isFetchingRef = useRef(false);
+  const previousInstrumentIdRef = useRef<string | null>(null);
+  const previousInstrumentIdForGoalsRef = useRef<string | null>(null);
 
   const loadPracticeData = useCallback(async (userParam?: { id: string }) => {
     try {
       const user = userParam ?? (await supabase.auth.getUser()).data.user;
-      if (!user) return;
+      if (!user) {
+        return;
+      }
 
+      // selectedInstrumentを最新の値として取得（楽器変更時に確実に最新の値を取得）
       const currentInstrumentId = getInstrumentId(selectedInstrument);
+      
+      // 楽器が変わった場合のみ、キャッシュをクリア（楽器切り替え時のデータ更新を確実にする）
+      const instrumentChanged = previousInstrumentIdRef.current !== currentInstrumentId && previousInstrumentIdRef.current !== null;
+      if (instrumentChanged) {
+        logger.debug('[useCalendarData.loadPracticeData] 楽器が変更されました。キャッシュをクリアします', {
+          previousInstrumentId: previousInstrumentIdRef.current,
+          currentInstrumentId
+        });
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const cacheKeyPattern = `practice_data_cache_${user.id}_`;
+          const allKeys = await AsyncStorage.getAllKeys();
+          const practiceCacheKeys = allKeys.filter(key => key.startsWith(cacheKeyPattern));
+          
+          if (practiceCacheKeys.length > 0) {
+            await AsyncStorage.multiRemove(practiceCacheKeys);
+            logger.debug('[useCalendarData.loadPracticeData] キャッシュをクリアしました', { cacheKeysCount: practiceCacheKeys.length });
+          }
+        } catch (cacheClearError) {
+          logger.error(`[useCalendarData] キャッシュクリアエラー:`, cacheClearError);
+        }
+      }
+      
+      // 現在の楽器IDを記録（データ取得前に更新して、次回の比較を正しく行う）
+      previousInstrumentIdRef.current = currentInstrumentId || null;
       
       // オフライン時はキャッシュから読み込み
       if (!isOnline()) {
@@ -61,17 +92,16 @@ export function useCalendarData(currentDate: Date) {
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
-            // キャッシュが1日以内の場合は使用
             const cacheAge = Date.now() - (parsed.timestamp || 0);
+            
             if (cacheAge < 24 * 60 * 60 * 1000) {
               setPracticeData(parsed.practiceData || {});
               setMonthlyTotal(parsed.monthlyTotal || 0);
-              logger.debug('練習データをキャッシュから読み込みました（オフライン）');
               return;
             }
           }
         } catch (cacheError) {
-          logger.debug('キャッシュ読み込みエラー（無視）:', cacheError);
+          logger.error(`[useCalendarData] キャッシュ読み込みエラー:`, cacheError);
         }
       }
       
@@ -82,17 +112,34 @@ export function useCalendarData(currentDate: Date) {
           
           let query = supabase
             .from('practice_sessions')
-            .select('practice_date, duration_minutes, input_method')
+            .select('practice_date, duration_minutes, input_method, instrument_id')
             .eq('user_id', user.id)
             .gte('practice_date', formatLocalDate(startOfMonth))
             .lte('practice_date', formatLocalDate(endOfMonth));
           
-          if (currentInstrumentId) {
-            query = query.eq('instrument_id', currentInstrumentId);
+          // 楽器IDでフィルタリング（統一関数を使用、テーブル名を指定して自動作成を試みる）
+          // 楽器変更時に確実にフィルタリングを適用するため、currentInstrumentIdを明示的に使用
+          logger.debug('[useCalendarData.loadPracticeData] 楽器フィルタリングを適用します', {
+            currentInstrumentId,
+            previousInstrumentId: previousInstrumentIdRef.current,
+            instrumentChanged
+          });
+          const filteredQuery = await applyInstrumentFilter(query, currentInstrumentId, true, 'practice_sessions');
+          
+          // フィルタリング後のクエリが有効か確認
+          if (filteredQuery && typeof filteredQuery.order === 'function') {
+            query = filteredQuery;
           } else {
-            // 楽器IDがnullの場合、instrument_idがnullのデータのみを取得
-            // PracticeRecordModalと一致させるため
-            query = query.is('instrument_id', null);
+            logger.warn('[useCalendarData.loadPracticeData] フィルタリング後のクエリが無効です。直接フィルタリングを適用します。', {
+              hasOrder: typeof filteredQuery?.order === 'function',
+              filteredQueryType: typeof filteredQuery
+            });
+            // フィルタリング関数が失敗した場合、直接フィルタリングを適用
+            if (currentInstrumentId) {
+              query = query.eq('instrument_id', currentInstrumentId);
+            } else {
+              query = query.is('instrument_id', null);
+            }
           }
           
           const { data: sessions, error } = await query;
@@ -110,6 +157,7 @@ export function useCalendarData(currentDate: Date) {
           }
 
           if (sessions && Array.isArray(sessions)) {
+            
             const newPracticeData: PracticeData = {};
             let total = 0;
             
@@ -174,8 +222,32 @@ export function useCalendarData(currentDate: Date) {
               }
             });
             
+            logger.debug(`[useCalendarData.loadPracticeData] 練習データ処理完了`, {
+              practiceDataDates: Object.keys(newPracticeData),
+              practiceDataCount: Object.keys(newPracticeData).length,
+              monthlyTotal: total,
+              dailyTotals: Object.keys(dailyTotals).length,
+              sampleDates: Object.keys(newPracticeData).slice(0, 5).map(date => ({
+                date,
+                minutes: newPracticeData[date]?.minutes,
+                hasRecord: newPracticeData[date]?.hasRecord,
+                hasBasicPractice: newPracticeData[date]?.hasBasicPractice
+              })),
+              allDatesWithData: Object.keys(newPracticeData).map(date => ({
+                date,
+                minutes: newPracticeData[date]?.minutes,
+                hasRecord: newPracticeData[date]?.hasRecord,
+                hasBasicPractice: newPracticeData[date]?.hasBasicPractice
+              }))
+            });
+            
+            logger.debug(`[useCalendarData.loadPracticeData] setPracticeDataを呼び出し`, {
+              practiceDataCount: Object.keys(newPracticeData).length,
+              monthlyTotal: total
+            });
             setPracticeData(newPracticeData);
             setMonthlyTotal(total);
+            logger.debug(`[useCalendarData.loadPracticeData] setPracticeData完了`);
             
             // キャッシュに保存（オフライン対応）
             try {
@@ -186,11 +258,16 @@ export function useCalendarData(currentDate: Date) {
                 monthlyTotal: total,
                 timestamp: Date.now()
               }));
-              logger.debug('練習データをキャッシュに保存しました');
+              logger.debug(`[useCalendarData.loadPracticeData] ✅ 練習データをキャッシュに保存しました`, {
+                cacheKey,
+                practiceDataCount: Object.keys(newPracticeData).length,
+                monthlyTotal: total
+              });
             } catch (saveError) {
-              logger.debug('キャッシュ保存エラー（無視）:', saveError);
+              logger.error(`[useCalendarData.loadPracticeData] ❌ キャッシュ保存エラー:`, saveError);
             }
             
+            logger.debug(`[useCalendarData.loadPracticeData] ========== 練習データ読み込み完了 ==========`);
             return;
           }
         } catch (error) {
@@ -391,6 +468,7 @@ export function useCalendarData(currentDate: Date) {
       const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
       const currentInstrumentId = getInstrumentId(selectedInstrument);
       
+      // まずinstrument_idカラムを含めずにクエリを構築（安全な方法）
       let query = supabase
         .from('events')
         .select('id, title, description, date')
@@ -399,26 +477,78 @@ export function useCalendarData(currentDate: Date) {
         .gte('date', formatLocalDate(startOfMonth))
         .lte('date', formatLocalDate(endOfMonth));
       
-      // 楽器ごとにフィルタリング（instrument_idカラムが存在する場合のみ）
-      // まずinstrument_idカラムを含めてクエリを試行
-      let queryWithInstrument = query.select('id, title, description, date, instrument_id');
-      if (currentInstrumentId) {
-        queryWithInstrument = queryWithInstrument.eq('instrument_id', currentInstrumentId);
-      } else {
-        queryWithInstrument = queryWithInstrument.is('instrument_id', null);
+      // instrument_idカラムを含めてフィルタリングを試行
+      let queryWithInstrument = supabase
+        .from('events')
+        .select('id, title, description, date, instrument_id')
+        .eq('user_id', user.id)
+        .eq('is_completed', false)
+        .gte('date', formatLocalDate(startOfMonth))
+        .lte('date', formatLocalDate(endOfMonth));
+      
+      // 楽器ごとにフィルタリング（統一関数を使用、テーブル名を指定して自動作成を試みる）
+      try {
+        queryWithInstrument = await applyInstrumentFilter(queryWithInstrument, currentInstrumentId, true, 'events');
+        // フィルタリングが成功した場合は、そのクエリを使用
+        // .order()メソッドが存在することを確認
+        if (queryWithInstrument && typeof queryWithInstrument.order === 'function') {
+          query = queryWithInstrument;
+        } else {
+          logger.warn('[loadEvents] フィルタリング後のクエリが無効です（.order()メソッドが存在しません）。フィルタリングなしで続行します。');
+          // queryはそのまま使用（フィルタリングなし）
+        }
+      } catch (filterError: any) {
+        // エラーが発生した場合は、フィルタリングなしで続行
+        logger.debug('instrument_idフィルタリングでエラーが発生しました。フィルタリングなしで続行します:', filterError);
+        // queryはそのまま使用（フィルタリングなし）
       }
       
-      let { data: eventsData, error } = await queryWithInstrument.order('date', { ascending: true });
+      let { data: eventsData, error } = await query.order('date', { ascending: true });
 
-      // instrument_idカラムが存在しない場合は、フィルタリングなしで再試行
-      if (error && (error.code === '42703' || error.message?.includes('instrument_id') || error.message?.includes('does not exist'))) {
-        logger.debug('instrument_idカラムが存在しないため、フィルタリングなしで再試行します');
-        const { data: retryData, error: retryError } = await query.order('date', { ascending: true });
-        if (retryError) {
-          error = retryError;
+      // instrument_idカラムが存在しない場合は、カラム作成を試みてから再試行
+      if (error && (error.code === '42703' || error.code === '400' || error.message?.includes('instrument_id') || error.message?.includes('does not exist'))) {
+        logger.debug('instrument_idカラムが存在しないため、カラム作成を試みます');
+        
+        // カラム作成を試みる
+        const { ensureInstrumentIdColumn } = await import('@/repositories/common/ensureInstrumentIdColumn');
+        const ensured = await ensureInstrumentIdColumn('events');
+        
+        if (ensured) {
+          // カラムが作成されたので、フィルタリングありで再試行
+          logger.debug('instrument_idカラムを作成しました。フィルタリングありで再試行します');
+          let retryQuery = supabase
+            .from('events')
+            .select('id, title, description, date, instrument_id')
+            .eq('user_id', user.id)
+            .eq('is_completed', false)
+            .gte('date', formatLocalDate(startOfMonth))
+            .lte('date', formatLocalDate(endOfMonth));
+          
+          retryQuery = await applyInstrumentFilter(retryQuery, currentInstrumentId, true, 'events');
+          const { data: retryData, error: retryError } = await retryQuery.order('date', { ascending: true });
+          if (retryError) {
+            error = retryError;
+          } else {
+            eventsData = retryData;
+            error = null;
+          }
         } else {
-          eventsData = retryData;
-          error = null;
+          // カラム作成に失敗した場合は、フィルタリングなしで再試行
+          logger.debug('instrument_idカラムの作成に失敗しました。フィルタリングなしで再試行します');
+          let retryQuery = supabase
+            .from('events')
+            .select('id, title, description, date')
+            .eq('user_id', user.id)
+            .eq('is_completed', false)
+            .gte('date', formatLocalDate(startOfMonth))
+            .lte('date', formatLocalDate(endOfMonth));
+          const { data: retryData, error: retryError } = await retryQuery.order('date', { ascending: true });
+          if (retryError) {
+            error = retryError;
+          } else {
+            eventsData = retryData;
+            error = null;
+          }
         }
       }
 
@@ -499,9 +629,15 @@ export function useCalendarData(currentDate: Date) {
         logger.debug('📅 イベントデータが空です');
         setEvents({});
       }
-    } catch (error) {
+    } catch (error: any) {
+      const errorMessage = error?.message || String(error);
+      const errorCode = error?.code;
       ErrorHandler.handle(error, 'イベントデータの読み込み', false);
-      logger.error('イベントデータの読み込みエラー:', error);
+      logger.error('イベントデータの読み込みエラー:', {
+        message: errorMessage,
+        code: errorCode,
+        error
+      });
       // エラー時もキャッシュから読み込みを試行
       try {
         const user = userParam ?? (await supabase.auth.getUser()).data.user;
@@ -512,7 +648,6 @@ export function useCalendarData(currentDate: Date) {
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
             setEvents(parsed.events || {});
-            logger.debug('エラー時、イベントデータをキャッシュから読み込みました');
           }
         }
       } catch (cacheError) {
@@ -563,8 +698,7 @@ export function useCalendarData(currentDate: Date) {
         targetMonth: currentDate.getMonth() + 1
       });
       
-      // 楽器IDのフィルタリングを柔軟にする
-      // 現在の楽器IDの録音 + 楽器IDがnullの録音の両方を含める
+      // 楽器IDのフィルタリング（統一関数を使用、既存nullデータも含める）
       let query = supabase
         .from('recordings')
         .select('recorded_at, instrument_id')
@@ -573,13 +707,8 @@ export function useCalendarData(currentDate: Date) {
         .lte('recorded_at', extendedEnd.toISOString())
         .not('recorded_at', 'is', null); // recorded_atがnullのレコードを除外
       
-      if (currentInstrumentId) {
-        // 現在の楽器IDの録音 + 楽器IDがnullの録音の両方を含める
-        query = query.or(`instrument_id.eq.${currentInstrumentId},instrument_id.is.null`);
-      } else {
-        // 楽器IDがnullの録音のみを含める
-        query = query.is('instrument_id', null);
-      }
+      // 統一関数を使用してフィルタリング（テーブル名を指定して自動作成を試みる）
+      query = await applyInstrumentFilter(query, currentInstrumentId, true, 'recordings');
       
       const { data: recordings, error } = await query;
 
@@ -663,10 +792,34 @@ export function useCalendarData(currentDate: Date) {
       const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
       const currentInstrumentId = getInstrumentId(selectedInstrument);
 
-      // オフライン時はキャッシュから読み込み
+      // 楽器が変わった場合のみ、目標のキャッシュをクリア（楽器切り替え時の目標更新を確実にする）
+      if (previousInstrumentIdForGoalsRef.current !== currentInstrumentId && previousInstrumentIdForGoalsRef.current !== null) {
+        try {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          const cacheKeyPattern = `short_term_goals_cache_${user.id}_`;
+          const allKeys = await AsyncStorage.getAllKeys();
+          const goalCacheKeys = allKeys.filter(key => key.startsWith(cacheKeyPattern));
+          
+          if (goalCacheKeys.length > 0) {
+            await AsyncStorage.multiRemove(goalCacheKeys);
+            logger.debug(`[useCalendarData] 楽器変更検出 - 目標キャッシュをクリアしました`, {
+              previousInstrumentId: previousInstrumentIdForGoalsRef.current,
+              currentInstrumentId,
+              clearedCacheKeys: goalCacheKeys.length
+            });
+          }
+        } catch (cacheClearError) {
+          logger.error(`[useCalendarData] 目標キャッシュクリアエラー:`, cacheClearError);
+        }
+      }
+      
+      // 現在の楽器IDを記録
+      previousInstrumentIdForGoalsRef.current = currentInstrumentId || null;
+
+      // オフライン時はキャッシュから読み込み（現在選択されている楽器の目標のみ）
       if (!isOnline()) {
         try {
-          const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'all'}`;
+          const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'null'}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -675,7 +828,9 @@ export function useCalendarData(currentDate: Date) {
             if (cacheAge < 24 * 60 * 60 * 1000) {
               setShortTermGoal(parsed.shortTermGoal || null);
               setShortTermGoals(parsed.shortTermGoals || []);
-              logger.debug('短期目標データをキャッシュから読み込みました（オフライン）');
+              logger.debug('短期目標データをキャッシュから読み込みました（オフライン、現在選択されている楽器のみ）', {
+                instrumentId: currentInstrumentId
+              });
               return;
             }
           }
@@ -684,25 +839,16 @@ export function useCalendarData(currentDate: Date) {
         }
       }
 
-      // show_on_calendarカラムの存在を確認（エラーを回避）
-      const { checkShowOnCalendarSupport } = await import('@/repositories/goalRepository');
-      const supportsShowOnCalendar = await checkShowOnCalendarSupport();
-
-      // クエリに含めるカラムを決定（instrument_idも含める）
-      const selectColumns = supportsShowOnCalendar
-        ? 'title, target_date, show_on_calendar, is_completed, progress_percentage, goal_type, instrument_id'
-        : 'title, target_date, is_completed, progress_percentage, goal_type, instrument_id';
-
-      // show_on_calendarがtrueの目標をすべて取得（短期目標と長期目標の両方を含む）
-      // 目標はカレンダーに1つだけ表示できるため、短期目標と長期目標の両方を読み込む
-      // 楽器ごとにフィルタリング
+      // show_on_calendarカラムは初期スキーマに含まれているため、常に存在する前提でクエリを構築
+      // 目標を取得（短期目標と長期目標の両方を含む、現在選択されている楽器の目標のみ）
       let query = supabase
         .from('goals')
-        .select(selectColumns)
+        .select('title, target_date, show_on_calendar, is_completed, progress_percentage, goal_type, instrument_id')
         .eq('user_id', user.id)
-        .in('goal_type', ['personal_short', 'personal_long']);
+        .in('goal_type', ['personal_short', 'personal_long'])
+        .eq('show_on_calendar', true); // show_on_calendarがtrueの目標のみを取得
       
-      // 楽器IDでフィルタリング（instrument_idカラムが存在する場合のみ）
+      // 現在選択されている楽器IDでフィルタリング
       if (currentInstrumentId) {
         query = query.eq('instrument_id', currentInstrumentId);
       } else {
@@ -714,14 +860,12 @@ export function useCalendarData(currentDate: Date) {
       // instrument_idカラムが存在しない場合は、フィルタリングなしで再試行
       if (error && (error.code === '42703' || error.message?.includes('instrument_id') || error.message?.includes('does not exist'))) {
         logger.debug('instrument_idカラムが存在しないため、フィルタリングなしで再試行します');
-        const selectColumnsWithoutInstrument = supportsShowOnCalendar
-          ? 'title, target_date, show_on_calendar, is_completed, progress_percentage, goal_type'
-          : 'title, target_date, is_completed, progress_percentage, goal_type';
         const { data: retryGoals, error: retryError } = await supabase
           .from('goals')
-          .select(selectColumnsWithoutInstrument)
+          .select('title, target_date, show_on_calendar, is_completed, progress_percentage, goal_type')
           .eq('user_id', user.id)
           .in('goal_type', ['personal_short', 'personal_long'])
+          .eq('show_on_calendar', true)
           .order('created_at', { ascending: false });
         if (retryError) {
           error = retryError;
@@ -734,16 +878,18 @@ export function useCalendarData(currentDate: Date) {
       if (error) {
         if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
           logger.info('goalsテーブルが存在しません。マイグレーションを実行してください。');
-          // エラー時もキャッシュから読み込みを試行
+          // エラー時もキャッシュから読み込みを試行（現在選択されている楽器の目標のみ）
           try {
-            const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'all'}`;
+            const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'null'}`;
             const AsyncStorage = require('@react-native-async-storage/async-storage').default;
             const cachedData = await AsyncStorage.getItem(cacheKey);
             if (cachedData) {
               const parsed = JSON.parse(cachedData);
               setShortTermGoal(parsed.shortTermGoal || null);
               setShortTermGoals(parsed.shortTermGoals || []);
-              logger.debug('エラー時、短期目標データをキャッシュから読み込みました');
+              logger.debug('エラー時、短期目標データをキャッシュから読み込みました（現在選択されている楽器のみ）', {
+                instrumentId: currentInstrumentId
+              });
             }
           } catch (cacheError) {
             // キャッシュ読み込みエラーは無視
@@ -754,16 +900,18 @@ export function useCalendarData(currentDate: Date) {
         }
         ErrorHandler.handle(error, '目標の読み込み', false);
         logger.error('目標の読み込みエラー:', error);
-        // エラー時もキャッシュから読み込みを試行
+        // エラー時もキャッシュから読み込みを試行（現在選択されている楽器の目標のみ）
         try {
-          const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'all'}`;
+          const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'null'}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
             setShortTermGoal(parsed.shortTermGoal || null);
             setShortTermGoals(parsed.shortTermGoals || []);
-            logger.debug('エラー時、短期目標データをキャッシュから読み込みました');
+            logger.debug('エラー時、短期目標データをキャッシュから読み込みました（現在選択されている楽器のみ）', {
+              instrumentId: currentInstrumentId
+            });
             return;
           }
         } catch (cacheError) {
@@ -781,32 +929,36 @@ export function useCalendarData(currentDate: Date) {
           return !isCompleted;
         });
 
-        // show_on_calendarがtrueの目標をフィルタリング（カラムが存在する場合のみ）
-        const visibleGoals = supportsShowOnCalendar
-          ? activeGoals.filter((goal: any) => goal.show_on_calendar === true)
-          : []; // カラムが存在しない場合は表示しない
+        // show_on_calendarがtrueの目標のみを表示（クエリで既にフィルタリング済みだが、念のためクライアント側でも確認）
+        const visibleGoals = activeGoals.filter((goal: any) => {
+          return goal.show_on_calendar === true;
+        });
 
-        // 目標はカレンダーに1つだけ表示できるため、最初の1つだけを表示
-        // ただし、複数の目標が表示されている場合は、すべて表示する（後方互換性のため）
+        // 現在選択されている楽器の目標のみを表示（既に楽器IDでフィルタリング済み）
         if (visibleGoals.length > 0) {
+          // 目標リストを作成（既に現在選択されている楽器の目標のみが含まれている）
           const goalsList = visibleGoals.map((goal: any) => ({
             title: goal.title,
             target_date: goal.target_date || undefined
           }));
-          setShortTermGoals(goalsList);
-          // 最初の目標を後方互換性のため設定
-          setShortTermGoal(goalsList[0]);
           
-          // キャッシュに保存（オフライン対応）
+          // 最初の目標を設定（後方互換性のため）
+          setShortTermGoal(goalsList[0] || null);
+          setShortTermGoals(goalsList);
+          
+          // キャッシュに保存（オフライン対応、現在選択されている楽器の目標のみ）
           try {
-            const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'all'}`;
+            const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'null'}`;
             const AsyncStorage = require('@react-native-async-storage/async-storage').default;
             await AsyncStorage.setItem(cacheKey, JSON.stringify({
-              shortTermGoal: goalsList[0],
+              shortTermGoal: goalsList[0] || null,
               shortTermGoals: goalsList,
               timestamp: Date.now()
             }));
-            logger.debug('短期目標データをキャッシュに保存しました');
+            logger.debug('短期目標データをキャッシュに保存しました（現在選択されている楽器のみ）', {
+              instrumentId: currentInstrumentId,
+              goalsCount: goalsList.length
+            });
           } catch (saveError) {
             logger.debug('キャッシュ保存エラー（無視）:', saveError);
           }
@@ -821,20 +973,22 @@ export function useCalendarData(currentDate: Date) {
     } catch (error) {
       ErrorHandler.handle(error, '目標の読み込み', false);
       logger.error('目標の読み込みエラー:', error);
-      // エラー時もキャッシュから読み込みを試行
+      // エラー時もキャッシュから読み込みを試行（現在選択されている楽器の目標のみ）
       try {
         const user = userParam ?? (await supabase.auth.getUser()).data.user;
         if (user) {
           const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
           const errorInstrumentId = getInstrumentId(selectedInstrument);
-          const cacheKey = `short_term_goals_cache_${user.id}_${errorInstrumentId || 'all'}`;
+          const cacheKey = `short_term_goals_cache_${user.id}_${errorInstrumentId || 'null'}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
             setShortTermGoal(parsed.shortTermGoal || null);
             setShortTermGoals(parsed.shortTermGoals || []);
-            logger.debug('エラー時、短期目標データをキャッシュから読み込みました');
+            logger.debug('エラー時、短期目標データをキャッシュから読み込みました（現在選択されている楽器のみ）', {
+              instrumentId: errorInstrumentId
+            });
             return;
           }
         }
@@ -847,26 +1001,41 @@ export function useCalendarData(currentDate: Date) {
   }, [selectedInstrument]);
 
   const loadAllData = useCallback(async (userParam?: { id: string }) => {
-    if (isFetchingRef.current) return;
+    if (isFetchingRef.current) {
+      return;
+    }
     
     let cancelled = false;
     isFetchingRef.current = true;
     
     try {
       const user = userParam ?? (await supabase.auth.getUser()).data.user;
-      if (!user || cancelled) return;
+      if (!user || cancelled) {
+        isFetchingRef.current = false;
+        return;
+      }
 
       await Promise.all([
-        loadPracticeData(user),
-        loadTotalPracticeTime(user),
-        loadEvents(user),
-        loadRecordingsData(user),
-        loadShortTermGoal(user),
+        loadPracticeData(user).catch(error => {
+          logger.error(`[useCalendarData] loadPracticeDataエラー:`, error);
+        }),
+        loadTotalPracticeTime(user).catch(error => {
+          logger.error(`[useCalendarData] loadTotalPracticeTimeエラー:`, error);
+        }),
+        loadEvents(user).catch(error => {
+          logger.error(`[useCalendarData] loadEventsエラー:`, error);
+        }),
+        loadRecordingsData(user).catch(error => {
+          logger.error(`[useCalendarData] loadRecordingsDataエラー:`, error);
+        }),
+        loadShortTermGoal(user).catch(error => {
+          logger.error(`[useCalendarData] loadShortTermGoalエラー:`, error);
+        })
       ]);
     } catch (error) {
       if (!cancelled) {
         ErrorHandler.handle(error, 'データ読み込み', false);
-        logger.error('データ読み込みエラー:', error);
+        logger.error('[useCalendarData] データ読み込みエラー:', error);
       }
     } finally {
       if (!cancelled) {
