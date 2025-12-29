@@ -718,15 +718,87 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         
         // タイムアウトエラーの場合は、セッションをクリアせず、デフォルト値で処理を続行
         // ネットワークが遅い場合でも、ログインは成功している可能性があるため
+        // タイムアウト時には、すぐにフォールバックユーザーを作成して認証状態を更新し、
+        // その後バックグラウンドでプロフィール取得を試みる
         if (profileError.code === 'TIMEOUT') {
-          logger.warn('プロフィール取得がタイムアウトしました。デフォルト値で処理を続行します。', { userId });
-          // プロフィールが存在しないものとして処理を続行（デフォルト値を使用）
+          logger.warn('プロフィール取得がタイムアウトしました。フォールバックユーザーを作成して認証状態を更新します。', { userId });
+          
+          // user_instrument_profilesから最新の楽器を確認（非同期で実行、タイムアウトしない）
+          let fallbackInstrumentId: string | null = null;
+          (async () => {
+            try {
+              const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
+                .from('user_instrument_profiles')
+                .select('instrument_id, updated_at, created_at')
+                .eq('user_id', userId)
+                .order('updated_at', { ascending: false })
+                .limit(1);
+              
+              if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
+                fallbackInstrumentId = instrumentProfiles[0].instrument_id;
+                logger.debug('user_instrument_profilesから最新の楽器を取得しました（タイムアウト時）:', { instrumentId: fallbackInstrumentId });
+              }
+            } catch (instrumentProfileError) {
+              logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+            }
+          })();
+          
+          // すぐにフォールバックユーザーを作成して認証状態を更新
+          const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
+          const fallbackUser: AuthUser = {
+            id: userId,
+            email: user.email || '',
+            name: fallbackName,
+            avatar_url: user?.user_metadata?.avatar_url,
+            created_at: user.created_at || new Date().toISOString(),
+            last_sign_in_at: user.last_sign_in_at,
+            selected_instrument_id: fallbackInstrumentId,
+            tutorial_completed: false,
+            onboarding_completed: false,
+          };
+          
+          updateAuthState({
+            user: fallbackUser,
+            isAuthenticated: true,
+            isLoading: false,
+            isInitialized: true,
+            error: null,
+          });
+          
+          logger.debug('タイムアウト時フォールバックユーザーを作成しました:', { 
+            userId: fallbackUser.id, 
+            email: fallbackUser.email,
+            selected_instrument_id: fallbackUser.selected_instrument_id
+          });
+          
           // タイムアウト後も、バックグラウンドでプロフィール取得を試みる（非同期）
           profilePromise.then((result) => {
             if (result.data && !result.error) {
               logger.debug('タイムアウト後のプロフィール取得に成功しました。認証状態を更新します。', { userId });
               // プロフィールが取得できた場合は、認証状態を更新
               const profileName = result.data.display_name || user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
+              
+              // user_instrument_profilesから最新の楽器を確認
+              let selectedInstrumentId = result.data.selected_instrument_id || null;
+              if (!selectedInstrumentId) {
+                (async () => {
+                  try {
+                    const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
+                      .from('user_instrument_profiles')
+                      .select('instrument_id, updated_at, created_at')
+                      .eq('user_id', userId)
+                      .order('updated_at', { ascending: false })
+                      .limit(1);
+                    
+                    if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
+                      selectedInstrumentId = instrumentProfiles[0].instrument_id;
+                    }
+                  } catch (error) {
+                    logger.debug('user_instrument_profilesからの楽器取得エラー（無視）:', error);
+                  }
+                })();
+              }
+              
               const authUser: AuthUser = {
                 id: userId,
                 email: user.email || '',
@@ -734,7 +806,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                 avatar_url: (result.data as any).avatar_url || user?.user_metadata?.avatar_url,
                 created_at: user.created_at || new Date().toISOString(),
                 last_sign_in_at: user.last_sign_in_at,
-                selected_instrument_id: result.data.selected_instrument_id || null,
+                selected_instrument_id: selectedInstrumentId,
                 tutorial_completed: (result.data as any).tutorial_completed ?? false,
                 onboarding_completed: (result.data as any).onboarding_completed ?? false,
               };
@@ -749,9 +821,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           }).catch((error) => {
             logger.debug('タイムアウト後のプロフィール取得エラー（無視）:', error);
           });
-          // プロフィールが存在しないものとして処理を続行（デフォルト値を使用）
-          profile = null;
-          profileError = null;
+          
+          // フォールバックユーザーを返して処理を完了
+          return fallbackUser;
         }
         // 400エラー（カラムが存在しない）の場合は、カラムが存在しないものとして処理
         if (profileError.status === 400 || profileError.code === 'PGRST116' || profileError.code === 'PGRST205') {
