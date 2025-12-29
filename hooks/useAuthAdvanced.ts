@@ -1383,8 +1383,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         // これにより、ログイン時の処理と初期化時の処理を分離できる
         if (event === 'SIGNED_IN' && session?.user) {
           // ログイン画面または新規登録画面にいる場合は、handleAuthenticatedUserをスキップ
-          // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぐ
-          // Web環境ではwindow.location.pathnameを使用、React Native環境ではsegmentsを使用
+          // ただし、ログインボタンを押した時（isLoginInProgress === true）は、認証状態を更新する
+          // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぎつつ、
+          // ログインボタンを押した時は正常にログインできる
           let isInLoginScreen = false;
           let isInSignupScreen = false;
           
@@ -1403,14 +1404,25 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             isInSignupScreen = false;
           }
           
-          if (isInLoginScreen || isInSignupScreen) {
+          // ログインボタンを押した時は、ログイン画面にいても認証状態を更新する
+          if ((isInLoginScreen || isInSignupScreen) && !isLoginInProgress) {
             logger.debug('[useAuthAdvanced] onAuthStateChange: ログイン画面または新規登録画面にいるため、handleAuthenticatedUserをスキップします', {
               event,
               isInLoginScreen,
               isInSignupScreen,
-              userId: session.user.id
+              userId: session.user.id,
+              isLoginInProgress
             });
             return;
+          }
+          
+          // ログインボタンを押した時は、ログイン画面にいても認証状態を更新する
+          if (isLoginInProgress) {
+            logger.debug('[useAuthAdvanced] onAuthStateChange: ログイン処理中なので、handleAuthenticatedUserを実行します', {
+              event,
+              userId: session.user.id,
+              isLoginInProgress
+            });
           }
           
           const userId = session.user.id;
