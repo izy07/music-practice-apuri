@@ -449,27 +449,13 @@ export default function StatisticsScreen() {
     });
   }, [practiceRecords, anchorDate]);
 
-  // 年別（月ごとの棒グラフ）
-  // 仕様:
-  // - 選択した年（anchorDateの年）の月別データを表示
-  // - 記録が12ヶ月未満の間は「初めて記録した月（初月）」を左端にし、初月〜最新記録月までを時系列で表示
-  // - 記録が12ヶ月以上になったら、常に「記録のある月のうち直近12ヶ月」を表示（右端が最新記録月）
+  // 年別（月単位）- メモ化で最適化（常に1月〜12月の順に表示）
   const yearlyData = useMemo<DayData[]>(() => {
     const arr: DayData[] = [];
     
-    // anchorDateの年を取得
-    const targetYear = anchorDate.getFullYear();
-    const targetYearStr = String(targetYear);
-    
-    // 選択した年の練習記録のみをフィルタリング
-    const filteredRecords = practiceRecords.filter(record => {
-      const recordYear = record.practice_date.substring(0, 4); // YYYY
-      return recordYear === targetYearStr;
-    });
-    
     // 練習記録を月でマップ化（O(1)アクセス）
     const recordsByMonth = new Map<string, number>();
-    filteredRecords.forEach(record => {
+    practiceRecords.forEach(record => {
       const monthKey = record.practice_date.substring(0, 7); // YYYY-MM
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = record.duration_minutes ?? 0;
@@ -479,33 +465,18 @@ export default function StatisticsScreen() {
       }
     });
     
-    // 記録がない場合は空配列
-    if (filteredRecords.length === 0 || recordsByMonth.size === 0) {
-      return arr;
-    }
+    // 表示対象の年を決定（アンカー日の年）
+    const now = new Date(anchorDate);
+    const currentYear = now.getFullYear();
     
-    // 練習記録が存在する月のリストをソート（古い→新しい）
-    const monthKeys = Array.from(recordsByMonth.keys()).sort(); // "YYYY-MM" 文字列のままソートで時系列順
-    
-    // 表示する月のリスト（year, month）を決定
-    const maxMonths = 12;
-    const targetMonths = monthKeys.length <= maxMonths
-      ? monthKeys // 12ヶ月未満: 初月から最新月まで
-      : monthKeys.slice(-maxMonths); // 12ヶ月以上: 直近12ヶ月
-    
-    const displayMonths: Array<{ year: number; month: number }> = targetMonths.map(key => {
-      const [y, m] = key.split('-');
-      return { year: parseInt(y, 10), month: parseInt(m, 10) };
-    });
-    
-    // データを配列に追加
-    displayMonths.forEach(({ year, month }) => {
-      const monthPrefix = `${year}-${String(month).padStart(2, '0')}`;
+    // 常に 1月〜12月 の順に表示
+    for (let month = 1; month <= 12; month++) {
+      const monthPrefix = `${currentYear}-${String(month).padStart(2, '0')}`;
       const total = recordsByMonth.get(monthPrefix) || 0;
       
       // ラベルは月のみ表示
       arr.push({ dateLabel: `${month}月`, minutes: total });
-    });
+    }
     
     return arr;
   }, [practiceRecords, anchorDate]);
