@@ -452,8 +452,8 @@ export function useCalendarData(currentDate: Date) {
       const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
       const currentInstrumentId = getInstrumentId(selectedInstrument);
       
-      // まずinstrument_idカラムを含めずにクエリを構築（安全な方法）
-      let query = supabase
+      // ベースクエリ（instrument_id なし）
+      const baseQuery = supabase
         .from('events')
         .select('id, title, description, date')
         .eq('user_id', user.id)
@@ -461,8 +461,8 @@ export function useCalendarData(currentDate: Date) {
         .gte('date', formatLocalDate(startOfMonth))
         .lte('date', formatLocalDate(endOfMonth));
       
-      // instrument_idカラムを含めてフィルタリングを試行
-      let queryWithInstrument = supabase
+      // instrument_id カラムを含めたクエリ
+      let queryWithInstrument: any = supabase
         .from('events')
         .select('id, title, description, date, instrument_id')
         .eq('user_id', user.id)
@@ -472,29 +472,63 @@ export function useCalendarData(currentDate: Date) {
       
       // 楽器ごとにフィルタリング（統一関数を使用）
       queryWithInstrument = await applyInstrumentFilter(queryWithInstrument, currentInstrumentId, true, 'events');
-      query = queryWithInstrument;
       
-      let { data: eventsData, error } = await query.order('date', { ascending: true });
-
-      // instrument_idカラムが存在しないエラーの場合（初期スキーマに含まれているため、通常は発生しない）
-      if (error && (error.code === '42703' || error.code === '400' || error.message?.includes('instrument_id') || error.message?.includes('does not exist'))) {
-        logger.warn('instrument_idカラムが存在しないエラーが発生しました。初期スキーマに含まれているはずですが、マイグレーションが未適用の可能性があります。フィルタリングなしで再試行します。');
+      let eventsData: any[] | null = null;
+      let error: any = null;
+      
+      // applyInstrumentFilter 後のクエリに order メソッドがあるかチェック
+      const hasOrder = queryWithInstrument && typeof queryWithInstrument.order === 'function';
+      
+      if (hasOrder) {
+        const result = await queryWithInstrument.order('date', { ascending: true });
+        eventsData = result.data;
+        error = result.error;
+      } else {
+        // order が無い＝クエリビルダーではない。安全なフォールバッククエリを実行
+        logger.warn('[useCalendarData.loadEvents] フィルタリング後のクエリに order メソッドが存在しません。フォールバッククエリを実行します。', {
+          hasOrder,
+          currentInstrumentId,
+        });
         
-        // フィルタリングなしで再試行（初期スキーマに含まれているため、カラム作成は不要）
-        let retryQuery = supabase
+        let fallbackQuery: any = supabase
           .from('events')
-          .select('id, title, description, date')
+          .select('id, title, description, date, instrument_id')
           .eq('user_id', user.id)
           .eq('is_completed', false)
           .gte('date', formatLocalDate(startOfMonth))
-          .lte('date', formatLocalDate(endOfMonth));
+          .lte('date', formatLocalDate(endOfMonth))
+          .order('date', { ascending: true });
         
-        const { data: retryData, error: retryError } = await retryQuery.order('date', { ascending: true });
-        if (retryError) {
-          error = retryError;
+        const fallbackResult = await fallbackQuery;
+        if (fallbackResult.error) {
+          error = fallbackResult.error;
         } else {
-          eventsData = retryData;
+          let raw = (fallbackResult.data || []) as any[];
+          // TypeScript 側で各楽器ごとに絞り込み（practice_sessions と同じルール）
+          if (currentInstrumentId) {
+            // 選択された楽器 + 既存の null データ（後方互換性）
+            raw = raw.filter(row =>
+              row.instrument_id === currentInstrumentId || row.instrument_id == null
+            );
+          } else {
+            // 楽器未選択の場合は null のみ
+            raw = raw.filter(row => row.instrument_id == null);
+          }
+          
+          // instrument_id は以降使わないので落としておく
+          eventsData = raw.map(row => ({
+            id: row.id,
+            title: row.title,
+            description: row.description,
+            date: row.date,
+          }));
           error = null;
+          
+          logger.debug('[useCalendarData.loadEvents] フォールバッククエリでイベントデータ取得に成功しました（楽器ごとに絞り込み済み）', {
+            rawCount: fallbackResult.data?.length || 0,
+            filteredCount: raw.length,
+            instrumentId: currentInstrumentId,
+          });
         }
       }
 
