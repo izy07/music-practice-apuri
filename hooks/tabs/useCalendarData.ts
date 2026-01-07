@@ -117,64 +117,14 @@ export function useCalendarData(currentDate: Date) {
             .gte('practice_date', formatLocalDate(startOfMonth))
             .lte('practice_date', formatLocalDate(endOfMonth));
           
-          // 楽器IDでフィルタリング（統一関数を使用、テーブル名を指定して自動作成を試みる）
-          // 楽器変更時に確実にフィルタリングを適用するため、currentInstrumentIdを明示的に使用
+          // 楽器IDでフィルタリング（統一関数を使用）
           logger.debug('[useCalendarData.loadPracticeData] 楽器フィルタリングを適用します', {
             currentInstrumentId,
             previousInstrumentId: previousInstrumentIdRef.current,
             instrumentChanged
           });
           
-          // 元のクエリを保持（フィルタリング失敗時に使用）
-          const originalQuery = query;
-          
-          try {
-            const filteredQuery = await applyInstrumentFilter(query, currentInstrumentId, true, 'practice_sessions');
-            
-            // フィルタリング後のクエリが有効か確認
-            if (filteredQuery && typeof filteredQuery.order === 'function') {
-              query = filteredQuery;
-            } else {
-              throw new Error('フィルタリング後のクエリが無効です');
-            }
-          } catch (filterError) {
-            logger.warn('[useCalendarData.loadPracticeData] フィルタリング関数が失敗しました。直接フィルタリングを適用します。', filterError);
-            
-            // 元のクエリが有効か確認
-            if (originalQuery && typeof originalQuery.order === 'function') {
-              // 元のクエリが有効な場合、直接フィルタリングを適用
-              try {
-                if (currentInstrumentId) {
-                  // 選択楽器のデータ + nullデータ（既存データ保護、後方互換性）
-                  query = (originalQuery as any).or(`instrument_id.eq.${currentInstrumentId},instrument_id.is.null`);
-                  // 直接フィルタリング後のクエリが有効か確認
-                  if (typeof query !== 'object' || query === null || typeof query.order !== 'function') {
-                    throw new Error('直接フィルタリング後のクエリが無効です');
-                  }
-                } else {
-                  // 楽器が選択されていない場合: nullデータのみ
-                  query = (originalQuery as any).is('instrument_id', null);
-                  // 直接フィルタリング後のクエリが有効か確認
-                  if (typeof query !== 'object' || query === null || typeof query.order !== 'function') {
-                    throw new Error('直接フィルタリング後のクエリが無効です');
-                  }
-                }
-              } catch (directFilterError) {
-                logger.error('[useCalendarData.loadPracticeData] 直接フィルタリングも失敗しました。フィルタリングなしで続行します。', directFilterError);
-                // フィルタリングなしで元のクエリを使用
-                query = originalQuery;
-              }
-            } else {
-              logger.error('[useCalendarData.loadPracticeData] 元のクエリも無効です。クエリを再構築します。');
-              // クエリを再構築
-              query = supabase
-                .from('practice_sessions')
-                .select('practice_date, duration_minutes, input_method, instrument_id')
-                .eq('user_id', user.id)
-                .gte('practice_date', formatLocalDate(startOfMonth))
-                .lte('practice_date', formatLocalDate(endOfMonth));
-            }
-          }
+          query = await applyInstrumentFilter(query, currentInstrumentId, true, 'practice_sessions');
           
           const { data: sessions, error } = await query;
 
@@ -520,57 +470,9 @@ export function useCalendarData(currentDate: Date) {
         .gte('date', formatLocalDate(startOfMonth))
         .lte('date', formatLocalDate(endOfMonth));
       
-      // 楽器ごとにフィルタリング（統一関数を使用、テーブル名を指定して自動作成を試みる）
-      // 元のクエリを保持（フィルタリング失敗時に使用）
-      const originalEventsQuery = queryWithInstrument;
-      
-      try {
-        queryWithInstrument = await applyInstrumentFilter(queryWithInstrument, currentInstrumentId, true, 'events');
-        // フィルタリングが成功した場合は、そのクエリを使用
-        // .order()メソッドが存在することを確認
-        if (queryWithInstrument && typeof queryWithInstrument.order === 'function') {
-          query = queryWithInstrument;
-        } else {
-          throw new Error('フィルタリング後のクエリが無効です');
-        }
-      } catch (filterError: any) {
-        logger.warn('[loadEvents] フィルタリング関数が失敗しました。直接フィルタリングを適用します。', filterError);
-        
-        // 元のクエリが有効か確認
-        if (originalEventsQuery && typeof originalEventsQuery.order === 'function') {
-          // 元のクエリが有効な場合、直接フィルタリングを適用
-          try {
-            if (currentInstrumentId) {
-              // 選択楽器のデータ + nullデータ（既存データ保護、後方互換性）
-              query = (originalEventsQuery as any).or(`instrument_id.eq.${currentInstrumentId},instrument_id.is.null`);
-              // 直接フィルタリング後のクエリが有効か確認
-              if (typeof query !== 'object' || query === null || typeof query.order !== 'function') {
-                throw new Error('直接フィルタリング後のクエリが無効です');
-              }
-            } else {
-              // 楽器が選択されていない場合: nullデータのみ
-              query = (originalEventsQuery as any).is('instrument_id', null);
-              // 直接フィルタリング後のクエリが有効か確認
-              if (typeof query !== 'object' || query === null || typeof query.order !== 'function') {
-                throw new Error('直接フィルタリング後のクエリが無効です');
-              }
-            }
-          } catch (directFilterError) {
-            logger.error('[loadEvents] 直接フィルタリングも失敗しました。フィルタリングなしで続行します。', directFilterError);
-            // フィルタリングなしで元のクエリを使用
-            query = originalEventsQuery;
-          }
-        } else {
-          logger.error('[loadEvents] 元のクエリも無効です。クエリを再構築します。');
-          // クエリを再構築
-          query = supabase
-            .from('events')
-            .select('*')
-            .eq('user_id', user.id)
-            .gte('date', startOfMonth.toISOString().split('T')[0])
-            .lte('date', endOfMonth.toISOString().split('T')[0]);
-        }
-      }
+      // 楽器ごとにフィルタリング（統一関数を使用）
+      queryWithInstrument = await applyInstrumentFilter(queryWithInstrument, currentInstrumentId, true, 'events');
+      query = queryWithInstrument;
       
       let { data: eventsData, error } = await query.order('date', { ascending: true });
 

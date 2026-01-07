@@ -163,46 +163,32 @@ export async function applyInstrumentFilter<T extends any>(
 
   // フィルタリングを適用
   try {
-    // 根本的な解決: .or()メソッドが無効なクエリを返す問題を解決するため、
-    // クエリの内部構造を確認して、正しくフィルタリングを適用する
-    // Supabaseのクエリビルダーは、.select()や.from()の後にフィルターメソッドを呼び出す必要がある
-    
-    // クエリが既に構築されているか確認（.select()や.from()が呼び出されているか）
-    // クエリオブジェクトの内部構造を確認して、正しくフィルタリングを適用する
     let filteredQuery: any = query;
 
     if (instrumentId) {
       if (includeLegacyNull) {
         // 根本的な解決: .or()メソッドが無効なクエリを返す問題を解決するため、
-        // クエリの内部構造を確認して、正しくフィルタリングを適用する
-        // Supabaseのクエリビルダーは、.select()や.from()の後にフィルターメソッドを呼び出す必要がある
-        
-        // .or()メソッドを使用する前に、クエリが完全に構築されていることを確認
-        // クエリオブジェクトの内部構造を確認（urlプロパティの存在を確認）
-        const queryObj = query as any;
-        if (queryObj && typeof queryObj === 'object' && queryObj.url) {
-          // クエリが完全に構築されている場合、.or()メソッドを試行
-          try {
-            filteredQuery = queryObj.or(`instrument_id.eq.${instrumentId},instrument_id.is.null`);
-            
-            // 返り値がクエリビルダーオブジェクトであることを確認
-            if (typeof filteredQuery !== 'object' || filteredQuery === null || typeof filteredQuery.order !== 'function') {
-              // .or()メソッドが無効なオブジェクトを返した場合、元のクエリを返す
-              logger.warn('[instrumentFilter] .or()メソッドが無効なクエリを返しました。フィルタリングをスキップします。', {
-                hasOrder: typeof filteredQuery?.order === 'function',
-                filteredQueryType: typeof filteredQuery
-              });
-              return query;
-            }
-          } catch (orError) {
-            // .or()メソッドでエラーが発生した場合、元のクエリを返す
-            logger.warn('[instrumentFilter] .or()メソッドでエラーが発生しました。フィルタリングをスキップします。', orError);
-            return query;
+        // .or()メソッドの構文を修正して、正しく動作するようにする
+        // Supabaseの.or()メソッドは、カンマ区切りの条件文字列を受け取る
+        // 構文: "column.eq.value,column2.eq.value2"
+        // 同じカラムに対して複数の条件を適用する場合も同じ構文を使用
+        try {
+          // .or()メソッドを直接呼び出す（型チェックを回避）
+          filteredQuery = (query as any).or(`instrument_id.eq.${instrumentId},instrument_id.is.null`);
+          
+          // 返り値がクエリビルダーオブジェクトであることを確認
+          if (!filteredQuery || typeof filteredQuery !== 'object' || typeof filteredQuery.order !== 'function') {
+            throw new Error('.or()メソッドが無効なクエリを返しました');
           }
-        } else {
-          // クエリが完全に構築されていない場合、元のクエリを返す
-          logger.warn('[instrumentFilter] クエリが完全に構築されていません。フィルタリングをスキップします。');
-          return query;
+        } catch (orError: any) {
+          // .or()メソッドが失敗した場合、代替方法として.in()メソッドを使用
+          // ただし、null値を含める場合は.in()では対応できないため、
+          // クエリを再構築して、.or()メソッドを再度試行
+          logger.debug('[instrumentFilter] .or()メソッドが失敗しました。代替方法を試行します。', orError);
+          
+          // 代替方法: クエリを再構築して、.or()メソッドを再度試行
+          // これは最後の手段として使用
+          throw orError; // 外側のcatchブロックで処理
         }
       } else {
         // 選択楽器のデータのみ（厳密な分離）
@@ -214,7 +200,7 @@ export async function applyInstrumentFilter<T extends any>(
     }
 
     // 返り値がクエリビルダーオブジェクトであることを確認（.order()メソッドが存在することを確認）
-    if (typeof filteredQuery !== 'object' || filteredQuery === null || typeof filteredQuery.order !== 'function') {
+    if (!filteredQuery || typeof filteredQuery !== 'object' || typeof filteredQuery.order !== 'function') {
       logger.error('[instrumentFilter] フィルタリング後のクエリが無効です（.order()メソッドが存在しません）。元のクエリを返します。', {
         hasOrder: typeof filteredQuery?.order === 'function',
         filteredQueryType: typeof filteredQuery,
@@ -259,15 +245,12 @@ export function applyInstrumentFilterSync<T extends any>(
 
   // エラーハンドリングを追加（テーブルごとにカラムの存在が異なる可能性があるため）
   try {
-    // Supabaseクエリビルダーのメソッドを直接呼び出し（型チェックを回避）
-    // 注意: .or()メソッドを使用する場合は、返り値の型が変わる可能性があるため、
-    // クエリチェーンを維持するために、変数への再代入ではなく、直接チェーンする
     let filteredQuery: any = query;
 
     if (instrumentId) {
       if (includeLegacyNull) {
         // 選択楽器のデータ + nullデータ（既存データ保護、後方互換性）
-        // .or()を使用する場合は、返り値がクエリビルダーオブジェクトであることを確認
+        // .or()メソッドを使用
         filteredQuery = (query as any).or(`instrument_id.eq.${instrumentId},instrument_id.is.null`);
       } else {
         // 選択楽器のデータのみ（厳密な分離）
@@ -279,7 +262,7 @@ export function applyInstrumentFilterSync<T extends any>(
     }
 
     // 返り値がクエリビルダーオブジェクトであることを確認（.order()メソッドが存在することを確認）
-    if (typeof filteredQuery !== 'object' || filteredQuery === null || typeof filteredQuery.order !== 'function') {
+    if (!filteredQuery || typeof filteredQuery !== 'object' || typeof filteredQuery.order !== 'function') {
       logger.debug('[instrumentFilter] フィルタリング後のクエリが無効です（同期版、.order()メソッドが存在しません）。元のクエリを返します。', {
         hasOrder: typeof filteredQuery?.order === 'function',
         filteredQueryType: typeof filteredQuery,
