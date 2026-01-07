@@ -145,6 +145,11 @@ export const computeEntitlement = (sub: UserSubscription | null) => {
 };
 
 export const canAccessFeature = (feature: string, entitlement: { isEntitled: boolean }) => {
+  // GitHub Pages環境では常にアクセス可能（開発・デモ用）
+  if (typeof window !== 'undefined' && window.location.hostname.includes('github.io')) {
+    return true;
+  }
+  
   if (entitlement.isEntitled) return true;
   const freeFeatures = ['calendar', 'tuner', 'timer'];
   return freeFeatures.includes(feature);
