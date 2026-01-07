@@ -117,29 +117,14 @@ let globalHandleAuthenticatedUserRef: ((user: any) => Promise<AuthUser | null>) 
 // グローバルな処理中のPromise管理（重複実行を防ぐ）
 const globalProcessingPromises = new Map<string, Promise<AuthUser | null>>();
 
-// ログイン処理中のフラグ（ログインボタンを押した時は、updateAuthStateのブロックを無効化する）
+// ログイン処理中のフラグ（ログインボタンを押した時は、onAuthStateChangeで処理を許可する）
 let isLoginInProgress = false;
 
-// 新規登録処理中のフラグ（新規登録ボタンを押した時は、updateAuthStateのブロックを無効化する）
+// 新規登録処理中のフラグ（新規登録ボタンを押した時は、onAuthStateChangeで処理を許可する）
 let isSignupInProgress = false;
 
-// 現在の画面がログイン画面または新規登録画面かどうかを確認するヘルパー関数
-const isInLoginOrSignupScreen = (): boolean => {
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    // Web環境: window.location.pathnameを使用
-    const currentPath = window.location.pathname || '';
-    return currentPath.includes('/auth/login') || 
-           currentPath.includes('/login') ||
-           currentPath.includes('/auth/signup') || 
-           currentPath.includes('/signup');
-  }
-  // React Native環境: segmentsをグローバルに保持する必要があるが、
-  // 現時点ではWeb環境でのみチェックする（React Native環境では常にfalse）
-  // 将来的にsegmentsをグローバルに保持する場合は、ここでチェックする
-  return false;
-};
-
 // 認証状態を更新し、リスナーに通知（状態が実際に変更された場合のみ）
+// 注意: 認証状態の更新は常に許可する。画面遷移の制御は_layout.tsxで行う。
 const updateAuthState = (newState: Partial<AuthState>) => {
   // 状態が実際に変更されたかチェック（不要な再レンダリングを防ぐ）
   let hasChanged = false;
@@ -147,27 +132,6 @@ const updateAuthState = (newState: Partial<AuthState>) => {
   // 空のオブジェクトが渡された場合はスキップ
   if (!newState || Object.keys(newState).length === 0) {
     return;
-  }
-  
-  // 根本的な修正: ログイン画面または新規登録画面にいる場合は、
-  // isAuthenticated: trueへの更新をブロックする
-  // ただし、ログインボタンまたは新規登録ボタンを押した時（isLoginInProgress === true または isSignupInProgress === true）はブロックを無効化する
-  // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぎつつ、
-  // ログインボタンまたは新規登録ボタンを押した時は正常に認証状態を更新できる
-  if (newState.isAuthenticated === true && isInLoginOrSignupScreen() && !isLoginInProgress && !isSignupInProgress) {
-    logger.debug('[updateAuthState] ログイン画面または新規登録画面にいるため、isAuthenticated: trueへの更新をブロックします', {
-      currentPath: Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.pathname : 'N/A',
-      isLoginInProgress,
-      isSignupInProgress
-    });
-    // isAuthenticated: trueへの更新をブロック（他の状態更新は許可）
-    const { isAuthenticated, ...restState } = newState;
-    if (Object.keys(restState).length === 0) {
-      // isAuthenticated以外に更新する状態がない場合は、完全にスキップ
-      return;
-    }
-    // isAuthenticated以外の状態のみ更新
-    newState = restState;
   }
   
   for (const key in newState) {
@@ -1444,44 +1408,25 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         // SIGNED_INイベントのみを処理（INITIAL_SESSIONはinitializeAuthで処理）
         // これにより、ログイン時の処理と初期化時の処理を分離できる
         if (event === 'SIGNED_IN' && session?.user) {
-          // ログイン画面または新規登録画面にいる場合は、handleAuthenticatedUserをスキップ
-          // ただし、ログインボタンを押した時（isLoginInProgress === true）は、認証状態を更新する
-          // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぎつつ、
-          // ログインボタンを押した時は正常にログインできる
-          let isInLoginScreen = false;
-          let isInSignupScreen = false;
-          
-          if (Platform.OS === 'web' && typeof window !== 'undefined') {
-            // Web環境: window.location.pathnameを使用
-            const currentPath = window.location.pathname || '';
-            isInLoginScreen = currentPath.includes('/auth/login') || currentPath.includes('/login');
-            isInSignupScreen = currentPath.includes('/auth/signup') || currentPath.includes('/signup');
-          } else {
-            // React Native環境: segmentsを使用（グローバルに保持されているsegmentsを参照）
-            // 注意: segmentsはuseSegments()で取得されるため、ここでは直接参照できない
-            // そのため、Web環境でのみチェックし、React Native環境では常にfalseとする
-            // または、segmentsをグローバルに保持する必要がある
-            // 現時点では、Web環境でのみチェックする
-            isInLoginScreen = false;
-            isInSignupScreen = false;
-          }
-          
-          // ログインボタンまたは新規登録ボタンを押した時は、ログイン画面または新規登録画面にいても認証状態を更新する
-          if ((isInLoginScreen || isInSignupScreen) && !isLoginInProgress && !isSignupInProgress) {
-            // ログイン画面または新規登録画面にいる場合は、handleAuthenticatedUserをスキップ
-            // ログ出力は削減（頻繁に出力されるため）
+          // 根本的な修正: ログイン/新規登録処理中（isLoginInProgress または isSignupInProgress が true）の場合のみ処理する
+          // これにより、ユーザーが明示的にログイン/新規登録ボタンを押した時のみ認証状態を更新する
+          // 画面遷移の制御は_layout.tsxで行うため、ここでは認証状態の更新のみを行う
+          if (!isLoginInProgress && !isSignupInProgress) {
+            // ログイン/新規登録処理中でない場合は、SIGNED_INイベントをスキップ
+            // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぐ
+            logger.debug('[useAuthAdvanced] onAuthStateChange: ログイン/新規登録処理中でないため、SIGNED_INイベントをスキップします', {
+              event,
+              userId: session.user.id
+            });
             return;
           }
           
-          // ログインボタンまたは新規登録ボタンを押した時は、ログイン画面または新規登録画面にいても認証状態を更新する
-          if (isLoginInProgress || isSignupInProgress) {
-            logger.debug('[useAuthAdvanced] onAuthStateChange: ログインまたは新規登録処理中なので、handleAuthenticatedUserを実行します', {
-              event,
-              userId: session.user.id,
-              isLoginInProgress,
-              isSignupInProgress
-            });
-          }
+          logger.debug('[useAuthAdvanced] onAuthStateChange: ログインまたは新規登録処理中なので、handleAuthenticatedUserを実行します', {
+            event,
+            userId: session.user.id,
+            isLoginInProgress,
+            isSignupInProgress
+          });
           
           const userId = session.user.id;
           
