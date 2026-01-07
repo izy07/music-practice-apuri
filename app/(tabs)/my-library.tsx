@@ -9,9 +9,11 @@ import { useLanguage } from '@/components/LanguageContext';
 import { supabase } from '@/lib/supabase';
 import { canAccessFeature } from '../../lib/subscriptionService';
 import { useSubscription } from '@/hooks/useSubscription';
+import { checkMyLibraryLimit, canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { safeGoBack } from '@/lib/navigationUtils';
+import { isColumnNotFoundError, handleColumnError } from '@/lib/columnErrorHandler';
 import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 
 interface Song {
@@ -33,7 +35,7 @@ export default function MyLibraryScreen() {
   const { t } = useLanguage();
   
   // サブスクリプション状態を取得
-  const { entitlement, loading: entitlementLoading } = useSubscription();
+  const { entitlement, loading: entitlementLoading, error: subscriptionError, errorMessage: subscriptionErrorMessage, refresh: refreshSubscription } = useSubscription();
   
   const [songs, setSongs] = useState<Song[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -88,9 +90,9 @@ export default function MyLibraryScreen() {
   // 曲の読み込み
   const loadSongs = async () => {
     try {
-      // ペイウォール: 未購読かつトライアル外はデータ非表示
+      // 機能アクセスチェック（フリープランでも制限内で使用可能）
       if (!canAccessFeature('my-library', entitlement)) {
-        logger.debug('楽曲読み込み: 機能アクセス不可（ペイウォール）');
+        logger.debug('楽曲読み込み: 機能アクセス不可');
         setSongs([]);
         return;
       }
@@ -102,44 +104,67 @@ export default function MyLibraryScreen() {
           .select('*')
           .eq('user_id', user.id);
         
-        // 楽器ごとにフィルタリング（統一関数を使用、既存nullデータも含める）
-        try {
-          const { applyInstrumentFilter } = await import('@/repositories/common/instrumentFilter');
-          const filteredQuery = await applyInstrumentFilter(query, selectedInstrument, true, 'my_songs');
-          
-          // フィルタリング後のクエリが有効かチェック
-          if (typeof filteredQuery === 'object' && filteredQuery !== null && typeof filteredQuery.order === 'function') {
-            query = filteredQuery;
-          } else {
-            logger.warn('[my-library] フィルタリング後のクエリが無効です。直接フィルタリングを適用します。');
-            // 直接フィルタリングを適用
-            if (selectedInstrument) {
-              query = (query as any).or(`instrument_id.eq.${selectedInstrument},instrument_id.is.null`);
-            } else {
-              query = (query as any).is('instrument_id', null);
-            }
-          }
-        } catch (filterError: any) {
-          // エラーが発生した場合は、フィルタリングなしで続行
-          logger.warn('[my-library] instrument_idフィルタリングでエラーが発生しました。フィルタリングなしで続行します:', filterError);
-          // queryはそのまま使用（フィルタリングなし）
-        }
+        // 楽器ごとにフィルタリング（TypeScript側で実行）
+        // applyInstrumentFilterは常に元のクエリを返すため、TypeScript側でフィルタリングを実行
+        const { applyInstrumentFilter, filterByInstrumentIdInMemory } = await import('@/repositories/common/instrumentFilter');
         
-        const { data, error } = await query.order('created_at', { ascending: false });
+        // クエリを実行（instrument_idカラムの有無に関わらず実行）
+        const { data: rawData, error } = await query.order('created_at', { ascending: false });
 
         if (error) {
-          logger.error('楽曲読み込みエラー:', error);
+          logger.error('楽曲読み込みエラー:', {
+            error,
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          });
+          
+          // 400エラーでinstrument_idカラムが原因の場合は、エラーを表示してマイグレーションを促す
+          if (error.code === '42703' || error.message?.includes('instrument_id') || error.message?.includes('column') && error.message?.includes('does not exist')) {
+            const errorMessage = 'my_songsテーブルにinstrument_idカラムが存在しません。データベースのマイグレーションを実行してください。';
+            logger.error('[my-library] データベーススキーマエラー:', errorMessage);
+            ErrorHandler.handle(new Error(errorMessage), '楽曲読み込み（スキーマエラー）', true);
+            Alert.alert(
+              'データベースエラー',
+              'my_songsテーブルにinstrument_idカラムが存在しません。\n\nデータベースのマイグレーションを実行してください。\n\nマイグレーションファイル: supabase/migrations/20251226000000_add_instrument_id_to_my_songs.sql'
+            );
+            setSongs([]);
+            return;
+          }
+          
           throw error;
         }
         
+        // TypeScript側で楽器フィルタリングを実行
+        let currentInstrumentId: string | null = null;
+        if (selectedInstrument) {
+          try {
+            const { getInstrumentId } = await import('@/lib/instrumentUtils');
+            currentInstrumentId = getInstrumentId(selectedInstrument);
+          } catch (e) {
+            logger.error('[my-library] 楽器ID取得エラー:', e);
+            // エラーが発生した場合は、フィルタリングなしで続行（すべての楽曲を表示）
+            currentInstrumentId = null;
+          }
+        }
+        
+        const filteredData = filterByInstrumentIdInMemory(
+          (rawData || []) as any[],
+          currentInstrumentId,
+          true // 既存のnullデータも含める
+        );
+        
         logger.debug('楽曲読み込み成功:', { 
-          totalCount: data?.length || 0, 
+          rawCount: rawData?.length || 0,
+          filteredCount: filteredData.length,
           filteredByStatus: filterStatus,
-          songs: data?.map((s: any) => ({ id: s.id, title: s.title, status: s.status }))
+          instrumentId: currentInstrumentId,
+          songs: filteredData.map((s: any) => ({ id: s.id, title: s.title, status: s.status }))
         });
         
         // データを設定
-        const loadedSongs = data || [];
+        const loadedSongs = filteredData as Song[];
         setSongs(loadedSongs);
         
         // フィルターされた結果もログに記録
@@ -235,22 +260,54 @@ export default function MyLibraryScreen() {
           updateData.instrument_id = selectedInstrument;
         }
         logger.debug('曲を更新:', editingSong.id, updateData);
-        const { error } = await supabase
+        
+        let updateError = null;
+        let updateResult = null;
+        
+        // まずinstrument_idを含めて試行
+        updateResult = await supabase
           .from('my_songs')
           .update(updateData)
           .eq('id', editingSong.id);
+        
+        updateError = updateResult.error;
 
-        if (error) {
+        // instrument_idカラムが存在しないエラーの場合、instrument_idを除外して再試行
+        if (updateError && (updateError.code === 'PGRST204' || updateError.code === '42703' || 
+            (updateError.message?.includes('instrument_id') && updateError.message?.includes('schema cache')))) {
+          logger.warn('[my-library] instrument_idカラムが存在しないため、instrument_idを除外して再試行します');
+          const { instrument_id, ...updateDataWithoutInstrumentId } = updateData;
+          const retryResult = await supabase
+            .from('my_songs')
+            .update(updateDataWithoutInstrumentId)
+            .eq('id', editingSong.id);
+          
+          if (retryResult.error) {
+            logger.error('曲更新エラー詳細（再試行後）:', {
+              error: retryResult.error,
+              errorCode: retryResult.error.code,
+              errorMessage: retryResult.error.message,
+              errorDetails: retryResult.error.details,
+              errorHint: retryResult.error.hint,
+              updateData: updateDataWithoutInstrumentId
+            });
+            ErrorHandler.handle(retryResult.error, '曲更新', true);
+            throw retryResult.error;
+          }
+          
+          // 再試行が成功した場合は続行
+          logger.info('[my-library] instrument_idを除外して曲の更新に成功しました');
+        } else if (updateError) {
           logger.error('曲更新エラー詳細:', {
-            error,
-            errorCode: error.code,
-            errorMessage: error.message,
-            errorDetails: error.details,
-            errorHint: error.hint,
+            error: updateError,
+            errorCode: updateError.code,
+            errorMessage: updateError.message,
+            errorDetails: updateError.details,
+            errorHint: updateError.hint,
             updateData
           });
-          ErrorHandler.handle(error, '曲更新', true);
-          throw error;
+          ErrorHandler.handle(updateError, '曲更新', true);
+          throw updateError;
         }
         
         logger.debug('更新成功');
@@ -274,6 +331,56 @@ export default function MyLibraryScreen() {
         
         Alert.alert('成功', '曲の情報を更新しました');
       } else {
+        // 新規追加の場合、Freeプランで新しい楽器にデータを保存できるかチェック
+        const canSaveCheck = await canSaveDataForInstrument(user.id, selectedInstrument, entitlement);
+        if (!canSaveCheck.canSave) {
+          Alert.alert(
+            'アップグレードが必要です',
+            canSaveCheck.reason || '新しい楽器で楽曲を追加するには、プレミアムにアップグレードしてください。',
+            [
+              { text: 'キャンセル', style: 'cancel', onPress: () => {
+                setIsSaving(false);
+              }},
+              { text: 'プレミアムを見る', onPress: () => {
+                setIsSaving(false);
+                router.push('/(tabs)/pricing-plans');
+              }}
+            ]
+          );
+          return;
+        }
+        
+        // 新規追加の場合、Freeプランの制限をチェック（楽器ごとに6個まで）
+        // 現在選択されている楽器IDを取得
+        let currentInstrumentId: string | null = null;
+        if (selectedInstrument) {
+          try {
+            const { getInstrumentId } = await import('@/lib/instrumentUtils');
+            currentInstrumentId = getInstrumentId(selectedInstrument);
+          } catch (e) {
+            logger.error('[my-library] 楽器ID取得エラー:', e);
+            currentInstrumentId = null;
+          }
+        }
+        
+        const limitCheck = await checkMyLibraryLimit(user.id, entitlement, currentInstrumentId);
+        if (!limitCheck.canAdd) {
+          Alert.alert(
+            '制限に達しました',
+            `Freeプランでは各楽器ごとに楽曲を${limitCheck.limit}曲まで追加できます。\n現在の曲数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nこれ以上追加するには、プレミアムにアップグレードしてください。`,
+            [
+              { text: 'キャンセル', style: 'cancel', onPress: () => {
+                setIsSaving(false);
+              }},
+              { text: 'アップグレード', onPress: () => {
+                setIsSaving(false);
+                router.push('/(tabs)/pricing-plans');
+              }}
+            ]
+          );
+          return;
+        }
+        
         // 新規追加
         // artistが空の場合は空文字列を設定（NOT NULL制約のため）
         // genreが空文字列の場合はnullに変換
@@ -288,7 +395,8 @@ export default function MyLibraryScreen() {
           notes: formData.notes || null
         };
         
-        // 楽器IDを設定
+        // 楽器IDを設定（カラムが存在する場合のみ）
+        // instrument_idカラムの存在を確認（エラーが発生した場合はinstrument_idを除外）
         if (selectedInstrument) {
           songData.instrument_id = selectedInstrument;
         }
@@ -298,24 +406,77 @@ export default function MyLibraryScreen() {
           statusType: typeof statusValue,
           statusValueLength: statusValue?.length,
           formDataStatus: formData.status,
-          formDataStatusType: typeof formData.status
+          formDataStatusType: typeof formData.status,
+          limitCheck
         });
         
-        const { error } = await supabase
+        // まずinstrument_idを含めて試行
+        const { data: insertData, error: insertError } = await supabase
           .from('my_songs')
           .insert(songData);
 
-        if (error) {
-          logger.error('曲追加エラー詳細:', {
-            error,
-            errorCode: error.code,
-            errorMessage: error.message,
-            errorDetails: error.details,
-            errorHint: error.hint,
-            songData
+        // カラムが存在しないエラーの場合、該当カラムを除外して再試行
+        if (insertError) {
+          logger.debug('[my-library] エラーを検出:', {
+            errorCode: insertError.code,
+            errorMessage: insertError.message,
+            isColumnError: isColumnNotFoundError(insertError)
           });
-          ErrorHandler.handle(error, '曲追加', true);
-          throw error;
+          
+          if (isColumnNotFoundError(insertError)) {
+            const optionalColumns = ['instrument_id'];
+            const handled = handleColumnError(insertError, songData, optionalColumns);
+            
+            if (handled) {
+              logger.warn('[my-library] カラムが存在しないため、除外して再試行します', {
+                errorCode: insertError.code,
+                errorMessage: insertError.message,
+                excludedColumns: handled.excludedColumns,
+                payload: handled.payload
+              });
+              
+              const retryResult = await supabase
+                .from('my_songs')
+                .insert(handled.payload);
+              
+              if (retryResult.error) {
+                logger.error('[my-library] 曲追加エラー詳細（再試行後）:', {
+                  error: retryResult.error,
+                  errorCode: retryResult.error.code,
+                  errorMessage: retryResult.error.message,
+                  errorDetails: retryResult.error.details,
+                  errorHint: retryResult.error.hint,
+                  songData: handled.payload
+                });
+                ErrorHandler.handle(retryResult.error, '曲追加', true);
+                throw retryResult.error;
+              }
+              
+              // 再試行が成功した場合は続行
+              logger.info('[my-library] カラムを除外して曲の追加に成功しました', {
+                excludedColumns: handled.excludedColumns
+              });
+            } else {
+              logger.error('[my-library] handleColumnErrorがnullを返しました', {
+                errorCode: insertError.code,
+                errorMessage: insertError.message,
+                optionalColumns
+              });
+              ErrorHandler.handle(insertError, '曲追加', true);
+              throw insertError;
+            }
+          } else {
+            logger.error('曲追加エラー詳細:', {
+              error: insertError,
+              errorCode: insertError.code,
+              errorMessage: insertError.message,
+              errorDetails: insertError.details,
+              errorHint: insertError.hint,
+              songData
+            });
+            ErrorHandler.handle(insertError, '曲追加', true);
+            throw insertError;
+          }
         }
         
         logger.debug('追加成功');
@@ -569,15 +730,56 @@ export default function MyLibraryScreen() {
   };
 
   const goBack = () => {
-    safeGoBack('/(tabs)/settings', true); // 強制的にsettings画面に戻る
+    safeGoBack(router, '/(tabs)/settings', true); // 確実にsettings画面に戻る
   };
 
-  // サブスク状態読込中は何も表示しない（誤ってプレミアム限定を出さない）
+  // サブスク状態読込中はローディング表示（誤ってプレミアム限定を出さない）
   if (entitlementLoading) {
-    return null;
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]}>
+        <InstrumentHeader />
+        <View style={[styles.emptyContainer, { justifyContent: 'center', alignItems: 'center', flex: 1 }]}>
+          <Text style={[styles.emptySubtitle, { color: currentTheme.textSecondary }]}>読み込み中...</Text>
+        </View>
+      </SafeAreaView>
+    );
   }
 
-  // 非購読時のゲート表示
+  // サブスクリプションエラーが発生した場合はエラーを表示
+  if (subscriptionError && subscriptionErrorMessage) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]}>
+        <InstrumentHeader />
+        <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}> 
+          <TouchableOpacity onPress={() => router.push('/(tabs)/settings' as any)} style={styles.backButton}>
+            <Text style={{ color: currentTheme.text }}>← 戻る</Text>
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: currentTheme.text }]}>マイライブラリ</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyTitle, { color: '#DC2626' }]}>⚠️ エラーが発生しました</Text>
+          <Text style={[styles.emptySubtitle, { color: currentTheme.textSecondary, marginTop: 8 }]}>
+            {subscriptionErrorMessage}
+          </Text>
+          <Text style={[styles.emptySubtitle, { color: currentTheme.textSecondary, marginTop: 16, fontSize: 12 }]}>
+            サブスクリプション情報の読み込みに失敗しました。もう一度お試しください。
+          </Text>
+          <TouchableOpacity 
+            style={[styles.emptyAddButton, { backgroundColor: currentTheme.primary, marginTop: 24 }]}
+            onPress={async () => {
+              await refreshSubscription();
+            }}
+          >
+            <Text style={styles.emptyAddButtonText}>再試行</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // 機能アクセス不可の場合のゲート表示（通常は表示されない、フリープランでも制限内で使用可能）
+  // このチェックは、entitlementが取得できない場合などのエラー時のフォールバック
   if (!canAccessFeature('my-library', entitlement)) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} > 
@@ -623,6 +825,26 @@ export default function MyLibraryScreen() {
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* フリープラン用アップグレードバナー */}
+        {!entitlement.isEntitled && (
+          <View style={[styles.upgradeBanner, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
+            <View style={styles.upgradeBannerContent}>
+              <Text style={[styles.upgradeBannerTitle, { color: currentTheme.text }]}>
+                各楽器ごとに6曲まで追加可能
+              </Text>
+              <Text style={[styles.upgradeBannerSubtitle, { color: currentTheme.textSecondary }]}>
+                無制限にするにはプレミアムへアップグレード
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.upgradeBannerButton, { backgroundColor: currentTheme.primary }]}
+              onPress={() => router.push('/(tabs)/pricing-plans')}
+            >
+              <Text style={styles.upgradeBannerButtonText}>アップグレード</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
         {/* フィルター */}
         <View style={styles.filterContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScrollContent}>
@@ -1428,5 +1650,47 @@ const styles = StyleSheet.create({
   pickerOptionText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  upgradeBanner: {
+    margin: 16,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    ...(Platform.OS === 'web' 
+      ? { boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+          elevation: 3,
+        }
+    ),
+  },
+  upgradeBannerContent: {
+    flex: 1,
+    marginRight: 12,
+  },
+  upgradeBannerTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  upgradeBannerSubtitle: {
+    fontSize: 12,
+  },
+  upgradeBannerButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  upgradeBannerButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
 });

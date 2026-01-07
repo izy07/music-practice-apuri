@@ -18,6 +18,8 @@ import { logger } from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { supabase } from '@/lib/supabase';
 import { getInstrumentId } from '@/lib/instrumentUtils';
+import { useSubscription } from '@/hooks/useSubscription';
+import { canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 import Stopwatch from '@/components/timer/Stopwatch';
 import { styles } from '@/lib/tabs/timer/styles';
 import { setCurrentRoute } from '@/lib/navigationHistory';
@@ -281,6 +283,7 @@ export default function TimerScreen() {
   const router = useRouter();
   const { isAuthenticated, isLoading, user } = useAuthAdvanced();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
+  const { entitlement } = useSubscription();
   const { t } = useLanguage();
   const [mode, setMode] = useState<'timer' | 'stopwatch'>('timer');
   
@@ -683,6 +686,20 @@ export default function TimerScreen() {
 
       // 共通関数を使用して楽器IDを取得
       const currentInstrumentId = getInstrumentId(selectedInstrument);
+      
+      // Freeプランの場合、新しい楽器でデータを保存できるかチェック
+      const canSaveCheck = await canSaveDataForInstrument(user.id, currentInstrumentId, entitlement);
+      if (!canSaveCheck.canSave) {
+        Alert.alert(
+          'アップグレードが必要です',
+          canSaveCheck.reason || '新しい楽器で練習記録を追加するには、プレミアムにアップグレードしてください。',
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
+          ]
+        );
+        return;
+      }
       
       const result = await savePracticeSessionWithIntegration(
         user.id,

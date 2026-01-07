@@ -366,91 +366,6 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           return;
         }
         
-        // 最後のアクティビティ時刻をチェック（1時間以上経過している場合は自動ログアウト）
-        const IDLE_TIMEOUT_MS = TIMEOUT.IDLE_MS; // 1時間
-        let shouldLogoutDueToIdle = false;
-        
-        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-          // Web環境: localStorageから読み込む
-          try {
-            const savedLastActivity = window.localStorage.getItem(LAST_ACTIVITY_KEY);
-            if (savedLastActivity) {
-              const savedTime = parseInt(savedLastActivity, 10);
-              if (!isNaN(savedTime)) {
-                const timeSinceLastActivity = Date.now() - savedTime;
-                
-                if (timeSinceLastActivity >= IDLE_TIMEOUT_MS) {
-                  shouldLogoutDueToIdle = true;
-                  logger.info('[useAuthAdvanced] 最後のアクティビティから1時間以上経過 - 自動ログアウト', {
-                    timeSinceLastActivity,
-                    savedTime,
-                    now: Date.now(),
-                  });
-                }
-              }
-            }
-          } catch (error) {
-            // localStorageの読み込みエラーは無視（セッションは有効なので続行）
-            logger.debug('[useAuthAdvanced] 最後のアクティビティ時刻のチェックに失敗（続行）:', error);
-          }
-        } else if (Platform.OS !== 'web') {
-          // React Native環境: AsyncStorageから読み込む
-          try {
-            const savedLastActivity = await AsyncStorage.getItem(LAST_ACTIVITY_KEY);
-            if (savedLastActivity) {
-              const savedTime = parseInt(savedLastActivity, 10);
-              if (!isNaN(savedTime)) {
-                const timeSinceLastActivity = Date.now() - savedTime;
-                
-                if (timeSinceLastActivity >= IDLE_TIMEOUT_MS) {
-                  shouldLogoutDueToIdle = true;
-                  logger.info('[useAuthAdvanced] 最後のアクティビティから1時間以上経過 - 自動ログアウト', {
-                    timeSinceLastActivity,
-                    savedTime,
-                    now: Date.now(),
-                  });
-                }
-              }
-            }
-          } catch (error) {
-            // AsyncStorageの読み込みエラーは無視（セッションは有効なので続行）
-            logger.debug('[useAuthAdvanced] 最後のアクティビティ時刻のチェックに失敗（続行）:', error);
-          }
-        }
-        
-        // アイドルタイムアウトの場合は自動ログアウト（ログイン画面に遷移）
-        if (shouldLogoutDueToIdle) {
-          logger.info('[useAuthAdvanced] アイドルタイムアウト: 1時間以上操作がなかったため自動ログアウトします');
-          
-          // セッションをクリア
-          await supabase.auth.signOut();
-          
-          // 最後のアクティビティ時刻を削除
-          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-            try {
-              window.localStorage.removeItem(LAST_ACTIVITY_KEY);
-            } catch (error) {
-              // エラーは無視
-            }
-          } else if (Platform.OS !== 'web') {
-            try {
-              await AsyncStorage.removeItem(LAST_ACTIVITY_KEY);
-            } catch (error) {
-              // エラーは無視
-            }
-          }
-          
-          // 未認証状態として処理（_layout.tsxでログイン画面にリダイレクトされる）
-          updateAuthState({
-            isAuthenticated: false,
-            user: null,
-            isLoading: false,
-            isInitialized: true,
-            error: null,
-          });
-          return;
-        }
-        
         // セッションが有効な場合、handleAuthenticatedUserを呼び出して認証状態を更新
         // ただし、ログイン画面にいる場合は、ユーザーがログインボタンを押すまで待機する
         // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぐ
@@ -831,24 +746,70 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           // フォールバックユーザーを作成して認証状態を更新し、後でプロフィールを取得する
           const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
           
-          // 新規登録フラグをチェック（ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ）
-          // 新規登録フラグが存在しない場合は、既存ユーザーとみなしてtutorial_completed: trueを設定
+          // 既存ユーザーかどうかを判定（user.created_atとlast_sign_in_atを使用）
+          // 1. last_sign_in_atが存在し、created_atと異なる場合 → 既存ユーザー（以前にログインしたことがある）
+          // 2. ユーザーが24時間以上前に作成された場合 → 既存ユーザー
+          // これにより、ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ
           let isNewSignup = false;
-          try {
-            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-              isNewSignup = localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
-            } else {
-              const flag = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
-              isNewSignup = flag === 'true';
-            }
-          } catch (error) {
-            // エラー時は既存ユーザーとみなす
+          const userCreatedAt = user.created_at ? new Date(user.created_at) : null;
+          const lastSignInAt = user.last_sign_in_at ? new Date(user.last_sign_in_at) : null;
+          const now = new Date();
+          const hoursSinceCreation = userCreatedAt 
+            ? (now.getTime() - userCreatedAt.getTime()) / (1000 * 60 * 60)
+            : Infinity;
+          
+          // last_sign_in_atが存在し、created_atと異なる場合、既存ユーザーとみなす
+          // これは最も確実な既存ユーザーの判定方法
+          const isExistingUserBySignIn = lastSignInAt && userCreatedAt && 
+            lastSignInAt.getTime() > userCreatedAt.getTime() + (1000 * 60); // 作成から1分以上経過後にログインしている場合
+          
+          if (isExistingUserBySignIn) {
+            // 以前にログインしたことがある場合は、既存ユーザーとみなす
             isNewSignup = false;
+            logger.debug('既存ユーザーと判定（以前にログインしたことがある）:', { 
+              created_at: user.created_at,
+              last_sign_in_at: user.last_sign_in_at
+            });
+          } else if (hoursSinceCreation > 24) {
+            // 24時間以上前に作成されたユーザーは既存ユーザーとみなす
+            isNewSignup = false;
+            logger.debug('既存ユーザーと判定（作成日時から24時間以上経過）:', { 
+              hoursSinceCreation: Math.floor(hoursSinceCreation) 
+            });
+          } else {
+            // 24時間以内に作成されたユーザーのみ、新規登録フラグをチェック
+            // これにより、既存ユーザーが誤ってチュートリアル画面に遷移するのを防ぐ
+            try {
+              if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+                isNewSignup = localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
+              } else {
+                const flag = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
+                isNewSignup = flag === 'true';
+              }
+            } catch (error) {
+              // エラー時は既存ユーザーとみなす
+              isNewSignup = false;
+            }
           }
           
-          // 新規登録フラグが存在しない場合は、既存ユーザーとみなしてtutorial_completed: trueを設定
+          // 既存ユーザーの場合、チュートリアル完了とみなす
           // これにより、ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ
           const fallbackTutorialCompleted = !isNewSignup;
+          
+          // プロフィール取得タイムアウト時は、newSignupFlagStateも更新する
+          // 既存ユーザーの場合、フラグをfalseに設定
+          // これにより、needsTutorial()が正しくfalseを返すようになる
+          newSignupFlagState = isNewSignup;
+          
+          logger.debug('プロフィール取得タイムアウト時フォールバックユーザーを作成しました:', {
+            userId,
+            email: user.email,
+            selected_instrument_id: fallbackInstrumentId,
+            tutorial_completed: fallbackTutorialCompleted,
+            isNewSignup,
+            newSignupFlagState,
+            hoursSinceCreation: userCreatedAt ? Math.floor(hoursSinceCreation) : null,
+          });
           
           const fallbackUser: AuthUser = {
             id: userId,
@@ -869,12 +830,6 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             isLoading: false,
             isInitialized: true,
             error: null,
-          });
-          
-          logger.debug('プロフィール取得タイムアウト時フォールバックユーザーを作成しました:', { 
-            userId: fallbackUser.id, 
-            email: fallbackUser.email,
-            selected_instrument_id: fallbackUser.selected_instrument_id
           });
           
           // タイムアウト後も、バックグラウンドでプロフィール取得を試みる（非同期）

@@ -34,7 +34,7 @@ export default function SupportScreen() {
   const { currentTheme } = useInstrumentTheme();
 
   const goBack = () => {
-    safeGoBack('/(tabs)/settings', true); // 強制的にsettings画面に戻る
+    safeGoBack(router, '/(tabs)/settings', true); // 確実にsettings画面に戻る
   };
 
   const handleShare = async () => {

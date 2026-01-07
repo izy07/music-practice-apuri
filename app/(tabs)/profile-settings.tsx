@@ -592,6 +592,41 @@ export default function ProfileSettingsScreen() {
     logger.debug('ユーザー認証状態:', !!currentUser);
     logger.debug('現在のアバターURL:', avatarUrl);
     
+    // Web環境では直接ファイル選択ダイアログを開く
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+      logger.debug('Web環境: ファイル選択ダイアログを開きます');
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.style.display = 'none';
+      input.onchange = async (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) {
+          logger.debug('ファイルが選択されました:', file.name);
+          // ファイルをDataURLに変換してuploadImageに渡す
+          const reader = new FileReader();
+          reader.onload = async (event) => {
+            const dataUrl = event.target?.result as string;
+            if (dataUrl) {
+              await uploadImage(dataUrl);
+            }
+          };
+          reader.onerror = (error) => {
+            logger.error('ファイル読み込みエラー:', error);
+            Alert.alert('エラー', '画像の読み込みに失敗しました');
+          };
+          reader.readAsDataURL(file);
+        }
+        if (document.body.contains(input)) {
+          document.body.removeChild(input);
+        }
+      };
+      document.body.appendChild(input);
+      input.click();
+      return;
+    }
+    
+    // ネイティブ環境ではAlert.alertを使用
     Alert.alert(
       'プロフィール画像を選択',
       '画像の選択方法を選んでください',
@@ -934,7 +969,7 @@ export default function ProfileSettingsScreen() {
   };
 
   const goBack = () => {
-    safeGoBack('/(tabs)/settings', true); // 強制的にsettings画面に戻る
+    safeGoBack(router, '/(tabs)/settings', true); // 確実にsettings画面に戻る
   };
 
   // 現在の年齢を計算する関数（削除）

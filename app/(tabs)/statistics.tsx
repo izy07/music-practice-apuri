@@ -11,7 +11,7 @@ import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { UI, DATA, STATISTICS } from '@/lib/constants';
 import { getPracticeSessionsByDateRange } from '@/repositories/practiceSessionRepository';
 import { formatMinutesToHours } from '@/lib/dateUtils';
-import { getInstrumentId } from '@/lib/instrumentUtils';
+import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
 import { practiceDataCache, PracticeDataCache } from '@/lib/cache/practiceDataCache';
 import logger from '@/lib/logger';
 
@@ -129,12 +129,8 @@ export default function StatisticsScreen() {
     try {
       setLoading(true);
       
-      // 共通関数を使用して楽器IDを取得
-      // InstrumentThemeContextがタイムアウトしてselectedInstrumentが空の場合は、
-      // 認証情報のuser.selected_instrument_idをフォールバックとして使用する
-      const fallbackInstrumentId = user?.selected_instrument_id as string | null | undefined;
-      const effectiveSelectedInstrument = selectedInstrument || fallbackInstrumentId || null;
-      const currentInstrumentId = getInstrumentId(effectiveSelectedInstrument);
+      // 有効な楽器IDを取得（統一的なフォールバック処理）
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
       
       // 楽器が変更された場合は、キャッシュを無効化
       const instrumentChanged = previousInstrumentIdRef.current !== (currentInstrumentId || 'null');
@@ -267,9 +263,7 @@ export default function StatisticsScreen() {
         try {
           const lastTimestamp = window.localStorage.getItem('last_practice_record_timestamp');
           const lastInstrumentId = window.localStorage.getItem('last_practice_record_instrument_id');
-          const fallbackInstrumentId = user?.selected_instrument_id as string | null | undefined;
-          const effectiveSelectedInstrument = selectedInstrument || fallbackInstrumentId || null;
-          const currentInstrumentId = getInstrumentId(effectiveSelectedInstrument);
+          const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
           
           if (lastTimestamp && Date.now() - parseInt(lastTimestamp) < 60000) {
             // 60秒以内に記録があった場合、楽器IDが一致する場合は強制更新
@@ -292,9 +286,7 @@ export default function StatisticsScreen() {
       
       // 通常のデータ読み込み（キャッシュを確認してから実行）
       // キャッシュキーを生成
-      const fallbackInstrumentId = user?.selected_instrument_id as string | null | undefined;
-      const effectiveSelectedInstrument = selectedInstrument || fallbackInstrumentId || null;
-      const currentInstrumentId = getInstrumentId(effectiveSelectedInstrument);
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
       const twoYearsAgo = new Date();
       twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
       const startDate = twoYearsAgo.toISOString().split('T')[0];
@@ -345,7 +337,7 @@ export default function StatisticsScreen() {
           setTimeout(async () => {
             try {
               // キャッシュを無効化してから取得
-              const currentInstrumentId = getInstrumentId(selectedInstrument);
+              const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
               const twoYearsAgo = new Date();
               twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
               const startDate = twoYearsAgo.toISOString().split('T')[0];

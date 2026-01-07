@@ -33,7 +33,7 @@ export default function PrivacySettingsScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   const goBack = () => {
-    safeGoBack('/(tabs)/settings', true); // 強制的にsettings画面に戻る
+    safeGoBack(router, '/(tabs)/settings', true); // 確実にsettings画面に戻る
   };
 
   const handlePrivacyPolicy = () => {

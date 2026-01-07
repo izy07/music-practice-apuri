@@ -14,13 +14,16 @@ import { Platform } from 'react-native';
 import { SttService } from '@/lib/sttService';
 import { useInstrumentTheme } from './InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import { useSubscription } from '@/hooks/useSubscription';
 import { savePracticeSessionWithIntegration } from '@/repositories/practiceSessionRepository';
+import { canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { formatLocalDate } from '@/lib/dateUtils';
 import { supabase } from '@/lib/supabase';
 import { getInstrumentId } from '@/lib/instrumentUtils';
+import { useRouter } from 'expo-router';
 import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
 import { readableTextColor } from '@/lib/colors';
 
@@ -35,6 +38,8 @@ const { height } = Dimensions.get('window');
 const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose, onRecord }: QuickRecordModalProps) {
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const { user } = useAuthAdvanced();
+  const { entitlement } = useSubscription();
+  const router = useRouter();
   const [isRecording, setIsRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
 
@@ -47,6 +52,20 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
 
       // 共通関数を使用して楽器IDを取得
       const currentInstrumentId = getInstrumentId(selectedInstrument);
+      
+      // Freeプランの場合、新しい楽器でデータを保存できるかチェック
+      const canSaveCheck = await canSaveDataForInstrument(user.id, currentInstrumentId, entitlement);
+      if (!canSaveCheck.canSave) {
+        Alert.alert(
+          'アップグレードが必要です',
+          canSaveCheck.reason || '新しい楽器で練習記録を追加するには、プレミアムにアップグレードしてください。',
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
+          ]
+        );
+        return;
+      }
       
       const result = await savePracticeSessionWithIntegration(
         user.id,

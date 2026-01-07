@@ -8,6 +8,8 @@ import { View, Text, TouchableOpacity, Modal, ScrollView, Alert } from 'react-na
 import { Play } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import { useSubscription } from '@/hooks/useSubscription';
+import { canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 import logger from '@/lib/logger';
 import { getCurrentUser } from '@/repositories/userRepository';
 import { updatePracticeSession, createPracticeSession } from '@/repositories/practiceSessionRepository';
@@ -16,6 +18,7 @@ import type { PracticeItem } from '../types/practice.types';
 import { styles } from '../styles';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import { supabase } from '@/lib/supabase';
+import { useRouter } from 'expo-router';
 
 export interface PracticeDetailModalProps {
   visible: boolean;
@@ -34,6 +37,8 @@ export function PracticeDetailModal({
 }: PracticeDetailModalProps) {
   const { currentTheme } = useInstrumentTheme();
   const { user } = useAuthAdvanced();
+  const { entitlement } = useSubscription();
+  const router = useRouter();
 
   const handleSavePractice = async () => {
     if (!user) {
@@ -57,6 +62,20 @@ export function PracticeDetailModal({
       }
 
       const instrumentId = getInstrumentId(selectedInstrument);
+      
+      // Freeプランの場合、新しい楽器でデータを保存できるかチェック
+      const canSaveCheck = await canSaveDataForInstrument(authUser.id, instrumentId, entitlement);
+      if (!canSaveCheck.canSave) {
+        Alert.alert(
+          'アップグレードが必要です',
+          canSaveCheck.reason || '新しい楽器で基礎練を記録するには、プレミアムにアップグレードしてください。',
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
+          ]
+        );
+        return;
+      }
       
       // 基礎練のみを検索
       let query = supabase

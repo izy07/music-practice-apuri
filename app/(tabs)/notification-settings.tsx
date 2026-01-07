@@ -211,7 +211,7 @@ export default function NotificationSettingsScreen() {
       {/* ヘッダー */}
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>
         <TouchableOpacity
-          onPress={() => safeGoBack('/(tabs)/settings', true)} // 強制的にsettings画面に戻る
+          onPress={() => safeGoBack(router, '/(tabs)/settings', true)} // 確実にsettings画面に戻る
           style={styles.backButton}
         >
           <Text style={[styles.backButtonText, { color: currentTheme.text }]}>← 戻る</Text>

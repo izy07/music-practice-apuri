@@ -6,6 +6,7 @@
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
 import { applyInstrumentFilter } from './common/instrumentFilter';
+import { isColumnNotFoundError, handleColumnError, excludeColumnFromPayload } from '@/lib/columnErrorHandler';
 
 const REPOSITORY_CONTEXT = 'eventRepository';
 
@@ -52,11 +53,69 @@ export const createEvent = async (
       payload.instrument_id = event.instrument_id;
     }
     
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('events')
       .insert(payload)
       .select()
       .single();
+    
+    // カラムが存在しないエラーの場合、該当カラムを除外して再試行
+    if (error && isColumnNotFoundError(error)) {
+      const optionalColumns = ['instrument_id', 'event_date', 'practice_schedule_id'];
+      const handled = handleColumnError(error, payload, optionalColumns);
+      
+      if (handled) {
+        logger.warn(`[${REPOSITORY_CONTEXT}] カラムが存在しないため、除外して再試行します`, {
+          errorCode: error.code,
+          errorMessage: error.message,
+          excludedColumns: handled.excludedColumns
+        });
+        
+        const retryResult = await supabase
+          .from('events')
+          .insert(handled.payload)
+          .select()
+          .single();
+        
+        if (retryResult.error) {
+          // 再試行後もエラーが発生した場合、さらに他のカラムを除外して再試行
+          if (isColumnNotFoundError(retryResult.error)) {
+            const secondHandled = handleColumnError(retryResult.error, handled.payload, optionalColumns);
+            if (secondHandled) {
+              const finalResult = await supabase
+                .from('events')
+                .insert(secondHandled.payload)
+                .select()
+                .single();
+              
+              if (finalResult.error) {
+                logger.error(`[${REPOSITORY_CONTEXT}] createEvent:再試行後もエラー`, { 
+                  error: finalResult.error, 
+                  payload: secondHandled.payload 
+                });
+                return { data: null, error: finalResult.error };
+              }
+              
+              logger.info(`[${REPOSITORY_CONTEXT}] カラムを除外してイベントの作成に成功しました`, {
+                excludedColumns: [...handled.excludedColumns, ...secondHandled.excludedColumns]
+              });
+              return { data: finalResult.data, error: null };
+            }
+          }
+          
+          logger.error(`[${REPOSITORY_CONTEXT}] createEvent:再試行後もエラー`, { 
+            error: retryResult.error, 
+            payload: handled.payload 
+          });
+          return { data: null, error: retryResult.error };
+        }
+        
+        logger.info(`[${REPOSITORY_CONTEXT}] カラムを除外してイベントの作成に成功しました`, {
+          excludedColumns: handled.excludedColumns
+        });
+        return { data: retryResult.data, error: null };
+      }
+    }
     
     if (error) {
       logger.error(`[${REPOSITORY_CONTEXT}] createEvent:error`, { error, payload });
@@ -102,12 +161,72 @@ export const updateEvent = async (
       payload.instrument_id = updates.instrument_id;
     }
     
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('events')
       .update(payload)
       .eq('id', eventId)
       .select()
       .single();
+    
+    // カラムが存在しないエラーの場合、該当カラムを除外して再試行
+    if (error && isColumnNotFoundError(error)) {
+      const optionalColumns = ['instrument_id', 'event_date', 'practice_schedule_id'];
+      const handled = handleColumnError(error, payload, optionalColumns);
+      
+      if (handled) {
+        logger.warn(`[${REPOSITORY_CONTEXT}] カラムが存在しないため、除外して再試行します`, {
+          errorCode: error.code,
+          errorMessage: error.message,
+          excludedColumns: handled.excludedColumns
+        });
+        
+        const retryResult = await supabase
+          .from('events')
+          .update(handled.payload)
+          .eq('id', eventId)
+          .select()
+          .single();
+        
+        if (retryResult.error) {
+          // 再試行後もエラーが発生した場合、さらに他のカラムを除外して再試行
+          if (isColumnNotFoundError(retryResult.error)) {
+            const secondHandled = handleColumnError(retryResult.error, handled.payload, optionalColumns);
+            if (secondHandled) {
+              const finalResult = await supabase
+                .from('events')
+                .update(secondHandled.payload)
+                .eq('id', eventId)
+                .select()
+                .single();
+              
+              if (finalResult.error) {
+                logger.error(`[${REPOSITORY_CONTEXT}] updateEvent:再試行後もエラー`, { 
+                  error: finalResult.error, 
+                  payload: secondHandled.payload 
+                });
+                return { data: null, error: finalResult.error };
+              }
+              
+              logger.info(`[${REPOSITORY_CONTEXT}] カラムを除外してイベントの更新に成功しました`, {
+                excludedColumns: [...handled.excludedColumns, ...secondHandled.excludedColumns]
+              });
+              return { data: finalResult.data, error: null };
+            }
+          }
+          
+          logger.error(`[${REPOSITORY_CONTEXT}] updateEvent:再試行後もエラー`, { 
+            error: retryResult.error, 
+            payload: handled.payload 
+          });
+          return { data: null, error: retryResult.error };
+        }
+        
+        logger.info(`[${REPOSITORY_CONTEXT}] カラムを除外してイベントの更新に成功しました`, {
+          excludedColumns: handled.excludedColumns
+        });
+        return { data: retryResult.data, error: null };
+      }
+    }
     
     if (error) {
       logger.error(`[${REPOSITORY_CONTEXT}] updateEvent:error`, { error, payload });

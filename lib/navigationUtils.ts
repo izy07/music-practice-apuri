@@ -1,89 +1,136 @@
-import { router } from 'expo-router';
-import logger from './logger';
-import { ErrorHandler } from './errorHandler';
+/**
+ * ナビゲーション関連のユーティリティ関数
+ */
+
+import { useRouter } from 'expo-router';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import logger from '@/lib/logger';
 
 /**
- * 安全な戻る処理
- * 常に前の画面に戻る。ナビゲーションスタックに戻る画面がない場合のみフォールバック画面に遷移
- * この関数を使用することで、どの画面からでも確実に前の画面に戻ることができます
+ * 認証状態に基づいて適切な画面に遷移する（統一関数）
  * 
- * @param fallbackRoute - 戻る画面がない場合のフォールバックルート
- * @param forceFallback - trueの場合、常にフォールバックルートに遷移（router.back()を使わない）
+ * この関数は、ログイン成功後や認証状態変更時に適切な画面に遷移するための
+ * 統一的なロジックを提供します。
+ * 
+ * 遷移ルール:
+ * 1. 楽器選択済み → メインカレンダー画面
+ * 2. チュートリアル未完了（新規登録直後） → チュートリアル画面
+ * 3. その他 → 楽器選択画面
+ * 
+ * @param router Expo Router の router インスタンス
+ * @param options オプション
+ * @param options.user 認証ユーザー情報（オプション、指定しない場合は useAuthAdvanced から取得）
+ * @param options.hasInstrumentSelected 楽器選択状態（オプション、指定しない場合は useAuthAdvanced から取得）
+ * @param options.needsTutorial チュートリアル必要状態（オプション、指定しない場合は useAuthAdvanced から取得）
+ * @param options.canAccessMainApp メインアプリアクセス可能状態（オプション、指定しない場合は useAuthAdvanced から取得）
  */
-export const safeGoBack = (fallbackRoute: string = '/(tabs)/settings', forceFallback: boolean = false) => {
+export const navigateToAppropriateScreen = (
+  router: ReturnType<typeof useRouter>,
+  options?: {
+    user?: { selected_instrument_id?: string | null; tutorial_completed?: boolean } | null;
+    hasInstrumentSelected?: () => boolean;
+    needsTutorial?: () => boolean;
+    canAccessMainApp?: () => boolean;
+  }
+): void => {
   try {
-    // forceFallbackがtrueの場合、またはタブナビゲーション内で確実に戻りたい場合は、常にフォールバックルートに遷移
-    if (forceFallback) {
-      router.push(fallbackRoute as any);
-      return;
-    }
+    // オプションが指定されていない場合は、useAuthAdvanced から取得
+    // 注意: この関数は hook の外で呼ばれる可能性があるため、
+    // オプションで渡された値を使用することを推奨
+    const hasSelectedInstrument = options?.user?.selected_instrument_id != null && options.user.selected_instrument_id !== '';
+    const canAccess = options?.canAccessMainApp?.() ?? false;
+    const needsTut = options?.needsTutorial?.() ?? false;
     
-    // canGoBack()がtrueの場合は、確実に前の画面に戻る
-    if (router.canGoBack()) {
-      router.back();
-      return;
-    }
+    // タイムアウト時のフォールバックユーザーの判定
+    const isTimeoutFallback = options?.user && !options.user.selected_instrument_id && options.user.tutorial_completed === true;
     
-    // 戻る画面がない場合のみフォールバック画面に遷移
-    router.push(fallbackRoute as any);
+    if (hasSelectedInstrument || canAccess || isTimeoutFallback) {
+      logger.debug('カレンダー画面に遷移（最後に使用していた楽器のメイン画面）', { 
+        isTimeoutFallback,
+        hasSelectedInstrument,
+        selectedInstrumentId: options?.user?.selected_instrument_id
+      });
+      router.push('/(tabs)/index');
+    } else if (needsTut) {
+      logger.debug('チュートリアル画面に遷移');
+      router.push('/(tabs)/tutorial');
+    } else {
+      logger.debug('楽器選択画面に遷移');
+      router.push('/(tabs)/instrument-selection');
+    }
   } catch (error) {
-    ErrorHandler.handle(error, 'Navigation safeGoBack', false);
-    // エラーが発生した場合も、フォールバックルートに遷移
-    router.push(fallbackRoute as any);
+    logger.error('画面遷移エラー:', error);
+    // エラー時は安全にカレンダー画面に遷移
+    try {
+      router.push('/(tabs)/index');
+    } catch (fallbackError) {
+      logger.error('フォールバック画面遷移も失敗:', fallbackError);
+    }
   }
 };
 
 /**
- * 特定の画面に安全に遷移
- * エラーが発生した場合はフォールバック画面に遷移
+ * 安全に前の画面に戻る（統一関数）
+ * 
+ * @param router Expo Router の router インスタンス
+ * @param fallbackPath フォールバックパス（戻れない場合の遷移先）
+ * @param forceReplace 強制的に replace を使用するか（デフォルト: false）
  */
-export const safeNavigate = (route: string, fallbackRoute: string = '/(tabs)/index') => {
+export const safeGoBack = (
+  router: ReturnType<typeof useRouter>,
+  fallbackPath: string = '/(tabs)/index',
+  forceReplace: boolean = false
+): void => {
   try {
-    router.push(route);
+    if (forceReplace) {
+      router.replace(fallbackPath as any);
+    } else {
+      // router.back() が利用可能な場合は使用
+      if (typeof router.back === 'function') {
+        router.back();
+      } else {
+        router.replace(fallbackPath as any);
+      }
+    }
   } catch (error) {
-    ErrorHandler.handle(error, 'Navigation safeNavigate', false);
-    router.push(fallbackRoute);
+    logger.error('戻る操作エラー:', error);
+    // エラー時はフォールバックパスに遷移
+    try {
+      router.replace(fallbackPath as any);
+    } catch (fallbackError) {
+      logger.error('フォールバック遷移も失敗:', fallbackError);
+    }
   }
 };
 
 /**
- * 画面を置き換える（履歴に追加しない）
- */
-export const safeReplace = (route: string, fallbackRoute: string = '/(tabs)/index') => {
-  try {
-    router.replace(route);
-  } catch (error) {
-    ErrorHandler.handle(error, 'Navigation safeReplace', false);
-    router.push(fallbackRoute);
-  }
-};
-
-/**
- * GitHub Pages用のベースパスを取得
+ * ベースパスを取得（GitHub Pages対応）
  */
 export const getBasePath = (): string => {
   if (typeof window === 'undefined') {
-    return process.env.EXPO_PUBLIC_WEB_BASE || '/';
+    return '';
   }
   
-  // 現在のパスからベースパスを推測
+  // 環境変数からベースパスを取得
+  const envBasePath = process.env.EXPO_PUBLIC_BASE_PATH;
+  if (envBasePath) {
+    return envBasePath;
+  }
+  
+  // GitHub Pages の場合、パスから推測
   const pathname = window.location.pathname;
-  if (pathname.startsWith('/music-practice-apuri')) {
+  if (pathname.includes('/music-practice-apuri/')) {
     return '/music-practice-apuri';
   }
   
-  return process.env.EXPO_PUBLIC_WEB_BASE || '/';
+  return '';
 };
 
 /**
- * ベースパスを考慮したURL遷移（フォールバック用）
+ * ベースパスを考慮したナビゲーション
  */
-export const navigateWithBasePath = (path: string): void => {
-  if (typeof window === 'undefined') {
-    return;
-  }
-  
+export const navigateWithBasePath = (router: ReturnType<typeof useRouter>, path: string): void => {
   const basePath = getBasePath();
-  const fullPath = basePath === '/' ? path : `${basePath}${path}`;
-  window.location.href = fullPath;
+  const fullPath = basePath ? `${basePath}${path}` : path;
+  router.push(fullPath as any);
 };

@@ -18,8 +18,75 @@ import { getUserProfile } from '@/repositories/userRepository';
 import { OfflineStorage, isOnline } from '@/lib/offlineStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ErrorHandler } from '@/lib/errorHandler';
-import { getInstrumentId } from '@/lib/instrumentUtils';
+import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
 import { setCurrentRoute } from '@/lib/navigationHistory';
+import { useSubscription } from '@/hooks/useSubscription';
+import { checkGoalLimit, canSaveDataForInstrument } from '@/lib/subscriptionLimits';
+
+// アップグレードバナーコンポーネント
+const UpgradeBanner = ({ currentTheme, router, limitText }: { currentTheme: any; router: any; limitText: string }) => (
+  <View style={[upgradeBannerStyles.container, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
+    <View style={upgradeBannerStyles.content}>
+      <Text style={[upgradeBannerStyles.title, { color: currentTheme.text }]}>
+        {limitText}
+      </Text>
+      <Text style={[upgradeBannerStyles.subtitle, { color: currentTheme.textSecondary }]}>
+        無制限にするにはプレミアムへアップグレード
+      </Text>
+    </View>
+    <TouchableOpacity
+      style={[upgradeBannerStyles.button, { backgroundColor: currentTheme.primary }]}
+      onPress={() => router.push('/(tabs)/pricing-plans')}
+    >
+      <Text style={upgradeBannerStyles.buttonText}>アップグレード</Text>
+    </TouchableOpacity>
+  </View>
+);
+
+const upgradeBannerStyles = {
+  container: {
+    margin: 16,
+    marginBottom: 12,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    justifyContent: 'space-between' as const,
+    ...(Platform.OS === 'web' 
+      ? { boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)' }
+      : {
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 8,
+          elevation: 3,
+        }
+    ),
+  },
+  content: {
+    flex: 1,
+    marginRight: 12,
+  },
+  title: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 12,
+  },
+  button: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  buttonText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: '#FFFFFF',
+  },
+};
 
 interface Goal {
   id: string;
@@ -58,6 +125,7 @@ interface Event {
 export default function GoalsScreen() {
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const router = useRouter();
+  const { entitlement } = useSubscription();
   const { isAuthenticated, user } = useAuthAdvanced();
   
   // 現在のルートを記録（マウント時）
@@ -126,11 +194,8 @@ export default function GoalsScreen() {
       }
 
       // 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
-      // selectedInstrumentが空の場合は、user.selected_instrument_idをフォールバックとして使用
-      const effectiveInstrumentId = selectedInstrument && selectedInstrument.trim() !== '' 
-        ? selectedInstrument 
-        : (user?.selected_instrument_id || null);
-      const instrumentId = getInstrumentId(effectiveInstrumentId);
+      // 有効な楽器IDを取得（統一的なフォールバック処理）
+      const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
 
       // オフライン時はキャッシュから読み込み
       if (!isOnline()) {
@@ -255,10 +320,7 @@ export default function GoalsScreen() {
       try {
         const { data: { user: errorAuthUser } } = await supabase.auth.getUser();
         if (errorAuthUser) {
-          const errorEffectiveInstrumentId = selectedInstrument && selectedInstrument.trim() !== '' 
-            ? selectedInstrument 
-            : (user?.selected_instrument_id || null);
-          const errorInstrumentId = getInstrumentId(errorEffectiveInstrumentId);
+          const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
           const cacheKey = `goals_cache_${errorAuthUser.id}_${errorInstrumentId || 'all'}`;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -287,11 +349,8 @@ export default function GoalsScreen() {
       }
 
       // 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
-      // selectedInstrumentが空の場合は、user.selected_instrument_idをフォールバックとして使用
-      const effectiveInstrumentId = selectedInstrument && selectedInstrument.trim() !== '' 
-        ? selectedInstrument 
-        : (user?.selected_instrument_id || null);
-      const instrumentId = getInstrumentId(effectiveInstrumentId);
+      // 有効な楽器IDを取得（統一的なフォールバック処理）
+      const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
 
       // オフライン時はキャッシュから読み込み
       if (!isOnline()) {
@@ -340,10 +399,7 @@ export default function GoalsScreen() {
       try {
         const { data: { user: errorAuthUser } } = await supabase.auth.getUser();
         if (errorAuthUser) {
-          const errorEffectiveInstrumentId = selectedInstrument && selectedInstrument.trim() !== '' 
-            ? selectedInstrument 
-            : (user?.selected_instrument_id || null);
-          const errorInstrumentId = getInstrumentId(errorEffectiveInstrumentId);
+          const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
           const cacheKey = `completed_goals_cache_${errorAuthUser.id}_${errorInstrumentId || 'all'}`;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -381,6 +437,29 @@ export default function GoalsScreen() {
 
       for (const offlineGoal of unsyncedGoals) {
         try {
+          // オフライン保存された目標を同期する際に、楽器数制限をチェック
+          const { canSaveDataForInstrument, checkGoalLimit } = await import('@/lib/subscriptionLimits');
+          const canSaveCheck = await canSaveDataForInstrument(user.id, offlineGoal.instrument_id || null, entitlement);
+          if (!canSaveCheck.canSave) {
+            logger.warn('オフライン目標の同期をスキップ: 楽器数制限に達しています', {
+              goalId: offlineGoal.id,
+              instrumentId: offlineGoal.instrument_id
+            });
+            // 制限に達している場合は同期をスキップ（削除はしない）
+            continue;
+          }
+          
+          // 目標数制限もチェック
+          const limitCheck = await checkGoalLimit(user.id, offlineGoal.instrument_id || null, entitlement);
+          if (!limitCheck.canCreate) {
+            logger.warn('オフライン目標の同期をスキップ: 目標数制限に達しています', {
+              goalId: offlineGoal.id,
+              currentCount: limitCheck.currentCount,
+              limit: limitCheck.limit
+            });
+            continue;
+          }
+          
           await goalRepository.createGoal(user.id, {
             title: offlineGoal.title,
             description: offlineGoal.description,
@@ -614,10 +693,38 @@ export default function GoalsScreen() {
       }
 
       // selectedInstrumentが空の場合は、user.selected_instrument_idをフォールバックとして使用
-      const effectiveInstrumentId = selectedInstrument && selectedInstrument.trim() !== '' 
-        ? selectedInstrument 
-        : (user?.selected_instrument_id || null);
-      const instrumentId = getInstrumentId(effectiveInstrumentId);
+      const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+      
+      // Freeプランの場合、新しい楽器でデータを保存できるかチェック
+      const canSaveCheck = await canSaveDataForInstrument(user.id, instrumentId, entitlement);
+      if (!canSaveCheck.canSave) {
+        Alert.alert(
+          'アップグレードが必要です',
+          canSaveCheck.reason || '新しい楽器で目標を追加するには、プレミアムにアップグレードしてください。',
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
+          ]
+        );
+        setIsSaving(false);
+        return;
+      }
+      
+      // Freeプランの場合、目標設定数をチェック
+      const limitCheck = await checkGoalLimit(user.id, instrumentId, entitlement);
+      if (!limitCheck.canCreate) {
+        Alert.alert(
+          '制限に達しました',
+          `Freeプランでは目標を${limitCheck.limit}つまで設定できます。\n現在の設定数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムにアップグレードすると無制限で設定できます。`,
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
+          ]
+        );
+        setIsSaving(false);
+        return;
+      }
+      
       const goalData = {
         title: newGoal.title.trim(),
         description: newGoal.description.trim() || undefined,
@@ -713,7 +820,7 @@ export default function GoalsScreen() {
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const errorInstrumentId = getInstrumentId(selectedInstrument);
+          const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
           const tempId = `temp_goal_${Date.now()}`;
           const offlineGoal = {
             id: tempId,
@@ -1470,6 +1577,14 @@ export default function GoalsScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {/* フリープラン用アップグレードバナー */}
+        {!entitlement.isEntitled && user && (
+          <UpgradeBanner
+            currentTheme={currentTheme}
+            router={router}
+            limitText="楽器数×2個まで設定可能"
+          />
+        )}
 
         {/* 1. 個人目標セクション */}
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>

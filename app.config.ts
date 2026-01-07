@@ -2,14 +2,20 @@ import type { ExpoConfig } from 'expo/config';
 
 // Minimal, env-driven config to set EAS projectId and keep current app.json values.
 const config: ExpoConfig = {
-  name: 'bolt-expo-nativewind',
-  slug: 'bolt-expo-nativewind',
+  name: 'Music Practice',
+  slug: 'music-practice',
   scheme: 'music-practice',
   orientation: 'portrait',
   userInterfaceStyle: 'automatic',
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.musicpractice.app',
+    displayName: '楽器練習記録アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
+    infoPlist: {
+      // 年齢制限: 12+（録音機能があるため）
+      // App Store Connectで設定する必要がありますが、ここでも明示
+      // CFBundleDisplayNameはdisplayNameで自動設定されます
+    },
   },
   android: {
     adaptiveIcon: {
@@ -17,6 +23,9 @@ const config: ExpoConfig = {
       backgroundColor: '#FFFFFF',
     },
     package: 'com.musicpractice.app',
+    label: '楽器練習記録アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
+    // 年齢制限: 12+（録音機能があるため）
+    // Google Play Consoleで設定する必要がありますが、ここでも明示
   },
   web: {
     bundler: 'metro', // WebプラットフォームでもMetroを使用（Webpackとの競合を避ける）

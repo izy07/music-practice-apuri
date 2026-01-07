@@ -191,20 +191,26 @@ export const organizationRepository = {
         errorString.includes('pgrst205');
       
       if (isNotFoundError) {
-        // 404エラーの場合は空配列を返す（エラーとして扱わない）
-        if (__DEV__) {
-          logger.debug('[organizationRepository] getUserOrganizations:テーブルが存在しないため空配列を返します（catch）', {
-            code: errorCode,
-            status: errorStatus,
-            message: errorMessage?.substring(0, 100),
-          });
-        }
+        // 404エラーの場合は空配列を返す（テーブルが存在しない場合は正常な動作）
+        // ただし、エラーを適切に記録する
+        logger.debug('[organizationRepository] getUserOrganizations:テーブルが存在しないため空配列を返します', {
+          code: errorCode,
+          status: errorStatus,
+          message: errorMessage?.substring(0, 100),
+        });
+        // テーブルが存在しない場合は空配列を返す（エラーではない）
         return { data: [], error: null };
       }
       
-      // 404以外のエラーのみログに記録
+      // 404以外のエラーは適切に記録し、エラーを返す
       const normalizedError = normalizeError(error, 'getUserOrganizations');
-      logger.error(`[organizationRepository] getUserOrganizations:error`, { error: normalizedError });
+      logger.error(`[organizationRepository] getUserOrganizations:error`, { 
+        error: normalizedError,
+        code: errorCode,
+        status: errorStatus,
+        message: errorMessage
+      });
+      // エラーを返す（呼び出し側で適切に処理できるように）
       return { data: null, error: normalizedError };
     }
   },

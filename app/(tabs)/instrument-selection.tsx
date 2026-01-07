@@ -5,8 +5,11 @@ import { useRouter } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { CheckCircle, ArrowLeft } from 'lucide-react-native';
+import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
 import logger from '@/lib/logger';
 import { createShadowStyle } from '@/lib/shadowStyles';
+import { useSubscription } from '@/hooks/useSubscription';
+import { canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 
 interface Instrument {
   id: string;
@@ -19,6 +22,7 @@ export default function InstrumentSelectionScreen() {
   const router = useRouter();
   const { setSelectedInstrument, currentTheme, selectedInstrument, syncStatus } = useInstrumentTheme();
   const { user, fetchUserProfile } = useAuthAdvanced();
+  const { entitlement } = useSubscription();
 
   const [selectedInstrumentId, setSelectedInstrumentId] = useState<string>('');
   const [customInstrumentName, setCustomInstrumentName] = useState<string>('');
@@ -49,7 +53,7 @@ export default function InstrumentSelectionScreen() {
 
   // 現在の楽器をContextから取得（単一のデータソース）
   useEffect(() => {
-    const currentInstrumentId = selectedInstrument || user?.selected_instrument_id || '';
+    const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id) || '';
     setSelectedInstrumentId(currentInstrumentId);
   }, [selectedInstrument, user?.selected_instrument_id]);
 
@@ -75,11 +79,27 @@ export default function InstrumentSelectionScreen() {
     }
 
     // 現在の楽器と同じ場合は、カレンダー画面に遷移するだけ
-    const currentInstrumentId = selectedInstrument || user?.selected_instrument_id || '';
+    const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id) || '';
     if (currentInstrumentId && currentInstrumentId !== '' && selectedInstrumentId === currentInstrumentId) {
       // 既に同じ楽器が選択されている場合は、カレンダー画面に遷移
       router.replace('/(tabs)/index');
       return;
+    }
+
+    // フリープランの場合、新しい楽器を追加できるかチェック（楽器数制限）
+    if (user && selectedInstrumentId !== currentInstrumentId) {
+      const canSaveCheck = await canSaveDataForInstrument(user.id, selectedInstrumentId, entitlement);
+      if (!canSaveCheck.canSave) {
+        Alert.alert(
+          'アップグレードが必要です',
+          canSaveCheck.reason || 'Freeプランでは楽器を2個まで記録できます。3個目以降の楽器を追加するには、プレミアムにアップグレードしてください。',
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
+          ]
+        );
+        return;
+      }
     }
 
     try {
@@ -118,11 +138,31 @@ export default function InstrumentSelectionScreen() {
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
-          {(selectedInstrument || user?.selected_instrument_id) ? '楽器変更' : '楽器選択'}
+          {getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id) ? '楽器変更' : '楽器選択'}
         </Text>
         <View style={styles.placeholder} />
       </View>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* フリープラン用の楽器数制限メッセージ */}
+        {!entitlement.isEntitled && user && (
+          <View style={[styles.freePlanInfoBanner, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
+            <View style={styles.freePlanInfoContent}>
+              <Text style={[styles.freePlanInfoTitle, { color: currentTheme.text }]}>
+                ⚠️ Freeプランでは楽器を2個まで使用できます
+              </Text>
+              <Text style={[styles.freePlanInfoSubtitle, { color: currentTheme.textSecondary }]}>
+                3個目以降の楽器を追加するには、プレミアムにアップグレードしてください。既存の楽器（2個まで）は自由に切り替えできます。
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.freePlanInfoButton, { backgroundColor: currentTheme.primary }]}
+              onPress={() => router.push('/(tabs)/pricing-plans')}
+            >
+              <Text style={styles.freePlanInfoButtonText}>プレミアムを見る</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        
         <View style={styles.instrumentGrid}>
           {instruments.map((instrument) => (
             <TouchableOpacity
@@ -189,7 +229,7 @@ export default function InstrumentSelectionScreen() {
         {selectedInstrumentId ? (
           <View style={styles.completionSection}>
             {(() => {
-              const currentInstrumentId = selectedInstrument || user?.selected_instrument_id || '';
+              const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id) || '';
               const isSameInstrument = currentInstrumentId && currentInstrumentId !== '' && selectedInstrumentId === currentInstrumentId;
               const isLoading = syncStatus === 'syncing';
 
@@ -345,6 +385,44 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  freePlanInfoBanner: {
+    marginBottom: 16,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: 3,
+    }),
+    elevation: 3,
+  },
+  freePlanInfoContent: {
+    marginBottom: 12,
+  },
+  freePlanInfoTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 8,
+    lineHeight: 22,
+  },
+  freePlanInfoSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  freePlanInfoButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  freePlanInfoButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   sameInstrumentMessage: {
     paddingVertical: 16,

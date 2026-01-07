@@ -85,7 +85,7 @@ export default function MainSettingsScreen() {
 
 
   const goBack = () => {
-    safeGoBack('/(tabs)/settings', true);
+    safeGoBack(router, '/(tabs)/settings', true); // 確実にsettings画面に戻る
   };
 
   return (
@@ -101,7 +101,7 @@ export default function MainSettingsScreen() {
         >
           <ArrowLeft size={24} color={currentTheme?.text || '#2D3748'} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: currentTheme?.text || '#2D3748' }]}>{t('mainFeaturesSettings')}</Text>
+        <Text style={[styles.headerTitle, { color: currentTheme?.text || '#2D3748' }]}>楽器変更</Text>
         <View style={styles.placeholder} />
       </View>
 

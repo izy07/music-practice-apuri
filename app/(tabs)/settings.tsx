@@ -87,15 +87,6 @@ export default function SettingsScreen() {
 
 
   const settingsItems = [
-    // 料金プラン項目を一時的に非表示（アプリリリース後に表示予定）
-    // {
-    //   id: 'pricing',
-    //   title: '料金プラン',
-    //   subtitle: 'プレミアム・年額プラン',
-    //   icon: Crown,
-    //   color: '#FFD700',
-    //   onPress: () => router.push('/(tabs)/pricing-plans' as any)
-    // },
     {
       id: 'profile',
       title: t('profileSettings'),
@@ -122,11 +113,19 @@ export default function SettingsScreen() {
     },
     {
       id: 'main-settings',
-      title: t('mainFeatures'),
-      subtitle: t('mainFeaturesSubtitle'),
+      title: '楽器変更',
+      subtitle: '楽器の選択と外観設定',
       icon: Zap,
       color: '#FF6B35',
       onPress: () => router.push('/(tabs)/main-settings' as any)
+    },
+    {
+      id: 'pricing',
+      title: '料金プラン',
+      subtitle: 'プレミアム・年額プラン',
+      icon: Crown,
+      color: '#FFD700',
+      onPress: () => router.push('/(tabs)/pricing-plans' as any)
     },
     {
       id: 'tutorial',

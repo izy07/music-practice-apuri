@@ -64,11 +64,16 @@ export const getPracticeMenus = async (
       .select('id, instrument_id, title, description, difficulty, points, how_to_practice, recommended_tempo, duration, tips, video_url, display_order, created_at, updated_at')
       .order('display_order', { ascending: true });
     
-    if (query?.instrumentId) {
-      dbQuery = dbQuery.eq('instrument_id', query.instrumentId);
-    } else if (query?.instrumentId === null) {
-      // nullの場合は共通メニューのみ
-      dbQuery = dbQuery.is('instrument_id', null);
+    // 楽器IDでフィルタリング
+    if (query?.instrumentId !== undefined) {
+      if (query.instrumentId === null) {
+        // nullの場合は共通メニューのみ（instrument_idがnullのレコード）
+        dbQuery = dbQuery.is('instrument_id', null);
+      } else if (query.instrumentId) {
+        // 特定の楽器IDが指定されている場合は、その楽器IDのメニューのみ（共通メニューは含めない）
+        dbQuery = dbQuery.eq('instrument_id', query.instrumentId);
+      }
+      // undefinedの場合はフィルタリングしない（すべてのメニューを取得）
     }
     
     if (query?.difficulty) {

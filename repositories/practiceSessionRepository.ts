@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { formatLocalDate } from '@/lib/dateUtils';
 import logger from '@/lib/logger';
 import { cleanContentFromTimeDetails, appendToContent } from '@/lib/utils/contentCleaner';
-import { applyInstrumentFilter } from './common/instrumentFilter';
+import { applyInstrumentFilter, filterByInstrumentIdInMemory } from './common/instrumentFilter';
 
 const REPOSITORY_CONTEXT = 'practiceSessionRepository';
 
@@ -162,6 +162,41 @@ export const createPracticeSession = async (
     }
     
     if (error) {
+      // カラムが存在しないエラーの場合、該当カラムを除外して再試行
+      if (isColumnNotFoundError(error)) {
+        const optionalColumns = ['instrument_id'];
+        const handled = handleColumnError(error, insertPayload, optionalColumns);
+        
+        if (handled) {
+          logger.warn(`[${REPOSITORY_CONTEXT}] カラムが存在しないため、除外して再試行します`, {
+            errorCode: error.code,
+            errorMessage: error.message,
+            excludedColumns: handled.excludedColumns
+          });
+          
+          const { data: retryData, error: retryError } = await supabase
+            .from('practice_sessions')
+            .insert(handled.payload)
+            .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, created_at')
+            .single();
+          
+          if (retryError) {
+            logger.error(`[${REPOSITORY_CONTEXT}] createPracticeSession:再試行後もエラー`, {
+              error: retryError,
+              error_code: retryError.code,
+              error_message: retryError.message,
+              insertPayload: handled.payload
+            });
+            return { data: null, error: retryError };
+          }
+          
+          logger.info(`[${REPOSITORY_CONTEXT}] カラムを除外して練習記録の保存に成功しました`, {
+            excludedColumns: handled.excludedColumns
+          });
+          return { data: retryData, error: null };
+        }
+      }
+      
       // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:createPracticeSession`, false);
       logger.error(`[${REPOSITORY_CONTEXT}] createPracticeSession:error`, {
         error,
@@ -708,78 +743,13 @@ export const getPracticeSessionsByDateRange = async (
       query = query.lte('practice_date', endDate);
     }
     
-    // 楽器IDでフィルタリング（統一関数を使用）
-    query = await applyInstrumentFilter(query, instrumentId, true, 'practice_sessions');
-    
-    // applyInstrumentFilter 後のクエリが正しいビルダーか確認（order メソッドの有無）
-    const hasOrder = query && typeof (query as any).order === 'function';
-    if (!hasOrder) {
-      logger.warn('[practiceSessionRepository.getPracticeSessionsByDateRange] フィルタリング後のクエリに order メソッドが存在しません。フォールバッククエリを実行します。', {
-        userId,
-        startDate,
-        endDate,
-        instrumentId,
-        limit,
-        queryType: typeof query,
-      });
-      
-      // SQL 上の楽器フィルタは外してフォールバック（TypeScript 側で楽器ごとに絞り込み）
-      let fallbackQuery = supabase
-        .from('practice_sessions')
-        .select(`
-          id,
-          practice_date,
-          duration_minutes,
-          input_method,
-          content,
-          created_at,
-          instrument_id
-        `)
-        .eq('user_id', userId)
-        .gte('practice_date', startDate);
-      
-      if (endDate) {
-        fallbackQuery = fallbackQuery.lte('practice_date', endDate);
-      }
-      
-      fallbackQuery = fallbackQuery.order('practice_date', { ascending: false }).limit(limit);
-      const fallbackResult = await fallbackQuery;
-      
-      if (fallbackResult.error) {
-        logger.error('[practiceSessionRepository.getPracticeSessionsByDateRange] フォールバッククエリも失敗しました', {
-          code: (fallbackResult.error as any)?.code,
-          message: (fallbackResult.error as any)?.message,
-          details: (fallbackResult.error as any)?.details,
-        });
-        return { data: null, error: fallbackResult.error as SupabaseError };
-      }
-      
-      let filtered = (fallbackResult.data || []) as any[];
-      if (instrumentId) {
-        // 選択された楽器 + 既存のnullデータ（後方互換性）
-        filtered = filtered.filter(row =>
-          row.instrument_id === instrumentId || row.instrument_id == null
-        );
-      } else {
-        // 楽器未選択の場合は null のみ
-        filtered = filtered.filter(row => row.instrument_id == null);
-      }
-      
-      logger.debug('[practiceSessionRepository.getPracticeSessionsByDateRange] フォールバッククエリでデータ取得に成功しました（order なしクエリ対応、楽器ごとに絞り込み済み）', {
-        rawCount: fallbackResult.data?.length || 0,
-        filteredCount: filtered.length,
-        instrumentId,
-      });
-      return { data: filtered as PracticeSession[] | null, error: null as any };
-    }
-    
-    // フィルタリング後にorderとlimitを適用
+    // 根本的な改善: applyInstrumentFilterは常に元のクエリを返すため、
+    // 直接クエリを実行し、TypeScript側でフィルタリングする
     query = query.order('practice_date', { ascending: false }).limit(limit);
     
-    let { data, error } = await query;
+    const { data: rawData, error } = await query;
     
     if (error) {
-      // エラー内容を詳細にログ出力して診断しやすくする
       logger.error('[practiceSessionRepository.getPracticeSessionsByDateRange] クエリエラー', {
         userId,
         startDate,
@@ -791,75 +761,23 @@ export const getPracticeSessionsByDateRange = async (
         details: (error as any)?.details,
         hint: (error as any)?.hint,
       });
-      
-      // instrument_id 周りのエラーや 400 Bad Request の場合は、
-      // 楽器フィルタを外してフォールバッククエリを一度だけ試行する
-      const message: string = (error as any)?.message || '';
-      const code: string | undefined = (error as any)?.code;
-      const isInstrumentFilterError =
-        code === '400' ||
-        code === '42703' ||
-        message.includes('instrument_id') ||
-        message.includes('column') && message.includes('instrument');
-      
-      if (isInstrumentFilterError) {
-        logger.warn('[practiceSessionRepository.getPracticeSessionsByDateRange] 楽器フィルタでエラーが発生したため、SQL上の楽器フィルタを外して再試行し、TypeScript側で楽器ごとに絞り込みます');
-        
-        let fallbackQuery = supabase
-          .from('practice_sessions')
-          .select(`
-            id,
-            practice_date,
-            duration_minutes,
-            input_method,
-            content,
-            created_at,
-            instrument_id
-          `)
-          .eq('user_id', userId)
-          .gte('practice_date', startDate);
-        
-        if (endDate) {
-          fallbackQuery = fallbackQuery.lte('practice_date', endDate);
-        }
-        
-        fallbackQuery = fallbackQuery.order('practice_date', { ascending: false }).limit(limit);
-        const fallbackResult = await fallbackQuery;
-        
-        if (fallbackResult.error) {
-          logger.error('[practiceSessionRepository.getPracticeSessionsByDateRange] フォールバッククエリも失敗しました', {
-            code: (fallbackResult.error as any)?.code,
-            message: (fallbackResult.error as any)?.message,
-            details: (fallbackResult.error as any)?.details,
-          });
-          return { data: null, error: fallbackResult.error as SupabaseError };
-        }
-        
-        // ここで TypeScript 側で各楽器ごとに絞り込みを行う
-        let filtered = (fallbackResult.data || []) as any[];
-        if (instrumentId) {
-          // 選択された楽器 + 既存のnullデータ（後方互換性）
-          filtered = filtered.filter(row =>
-            row.instrument_id === instrumentId || row.instrument_id == null
-          );
-        } else {
-          // 楽器未選択の場合は null のみ
-          filtered = filtered.filter(row => row.instrument_id == null);
-        }
-        
-        logger.debug('[practiceSessionRepository.getPracticeSessionsByDateRange] フォールバッククエリでデータ取得に成功しました（楽器ごとに絞り込み済み）', {
-          rawCount: fallbackResult.data?.length || 0,
-          filteredCount: filtered.length,
-          instrumentId,
-        });
-        return { data: filtered as PracticeSession[] | null, error: null as any };
-      }
-      
-      // フォールバック条件に当てはまらない場合は、そのままエラーを返す
-      return { data: null, error };
+      return { data: null, error: error as SupabaseError };
     }
     
-    return { data: data as PracticeSession[] | null, error: null as any };
+    // TypeScript側で楽器フィルタリングを実行
+    const filtered = filterByInstrumentIdInMemory(
+      (rawData || []) as PracticeSession[],
+      instrumentId,
+      true
+    );
+    
+    logger.debug('[practiceSessionRepository.getPracticeSessionsByDateRange] データ取得に成功しました（楽器ごとに絞り込み済み）', {
+      rawCount: rawData?.length || 0,
+      filteredCount: filtered.length,
+      instrumentId,
+    });
+    
+    return { data: filtered as PracticeSession[] | null, error: null as any };
   } catch (error) {
     // 例外も詳細にログ出力
     logger.error('[practiceSessionRepository.getPracticeSessionsByDateRange] 例外が発生しました', {

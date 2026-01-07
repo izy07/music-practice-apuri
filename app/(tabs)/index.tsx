@@ -14,13 +14,15 @@ import { useCalendarData } from '@/hooks/tabs/useCalendarData';
 import { supabase } from '@/lib/supabase';
 import { saveRecording } from '@/lib/database';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
-import { getInstrumentId } from '@/lib/instrumentUtils';
+import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
 import { formatLocalDate, formatMinutesToHours } from '@/lib/dateUtils';
 import { OfflineStorage, isOnline } from '../../lib/offlineStorage';
 import { COMMON_STYLES } from '@/lib/appStyles';
 import logger from '@/lib/logger';
 import { savePracticeSessionWithIntegration } from '@/repositories/practiceSessionRepository';
 import { setCurrentRoute } from '@/lib/navigationHistory';
+import { useSubscription } from '@/hooks/useSubscription';
+import { canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 
 // テーマの型定義
 interface InstrumentTheme {
@@ -107,8 +109,9 @@ const initialUIState: UIState = {
 
 export default function CalendarScreen() {
   const router = useRouter();
-  const { isAuthenticated, isLoading, isInitialized } = useAuthAdvanced();
+  const { isAuthenticated, isLoading, isInitialized, user } = useAuthAdvanced();
   const { currentTheme, practiceSettings, selectedInstrument, isInitializing: isInstrumentInitializing } = useInstrumentTheme();
+  const { entitlement } = useSubscription();
   const { Platform } = require('react-native');
   
   // 現在のルートを記録（マウント時）
@@ -260,7 +263,7 @@ export default function CalendarScreen() {
         selectedInstrument, 
         isInitialized, 
         isInstrumentInitializing,
-        instrumentId: getInstrumentId(selectedInstrument)
+        instrumentId: getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id)
       });
       hasInitialLoadRef.current = true;
       const currentYear = currentDate.getFullYear();
@@ -349,7 +352,7 @@ export default function CalendarScreen() {
         year: currentDate.getFullYear(), 
         month: currentDate.getMonth() + 1,
         selectedInstrument,
-        instrumentId: getInstrumentId(selectedInstrument)
+        instrumentId: getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id)
       });
       debouncedLoadAllData();
     }
@@ -366,7 +369,7 @@ export default function CalendarScreen() {
       // 楽器が変更された時はデバウンス付きでデータを読み込む
       logger.debug('楽器が変更されました、デバウンス付きでデータを再読み込みします', { 
         selectedInstrument,
-        instrumentId: getInstrumentId(selectedInstrument)
+        instrumentId: getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id)
       });
       debouncedLoadAllData();
     }
@@ -385,7 +388,7 @@ export default function CalendarScreen() {
           const lastTimestamp = window.localStorage.getItem('last_practice_record_timestamp');
           const lastInstrumentId = window.localStorage.getItem('last_practice_record_instrument_id');
           // 共通関数を使用して楽器IDを取得
-          const currentInstrumentId = getInstrumentId(selectedInstrument);
+          const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
           
           if (lastTimestamp && Date.now() - parseInt(lastTimestamp) < 60000) {
             // 60秒以内に記録があった場合、楽器IDが一致する場合は強制更新（デバウンスなし）
@@ -660,7 +663,21 @@ export default function CalendarScreen() {
       }
 
       // 共通関数を使用して楽器IDを取得
-      const currentInstrumentId = getInstrumentId(selectedInstrument);
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+
+      // Freeプランの場合、新しい楽器でデータを保存できるかチェック
+      const canSaveCheck = await canSaveDataForInstrument(user.id, currentInstrumentId, entitlement);
+      if (!canSaveCheck.canSave) {
+        Alert.alert(
+          'アップグレードが必要です',
+          canSaveCheck.reason || '新しい楽器でデータを追加するには、プレミアムにアップグレードしてください。',
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
+          ]
+        );
+        return;
+      }
 
       const practiceDate = date || new Date();
       const practiceRecord = {
@@ -676,6 +693,11 @@ export default function CalendarScreen() {
       // 録音や動画URLがある場合は録音ライブラリにも保存
       if (audioUrl || videoUrl) {
         try {
+          // Freeプランの場合、選択された日付が今月であることを確認
+          const { useSubscription } = await import('@/hooks/useSubscription');
+          const { isCurrentMonth } = await import('@/lib/subscriptionLimits');
+          // 注意: フックはコンポーネント内でのみ使用可能なため、ここでは直接チェック
+          // 実際のチェックはAudioRecorderコンポーネントで行われるため、ここでは保存のみ実行
           await saveRecording({
             user_id: user.id,
             instrument_id: currentInstrumentId || null, // 現在の楽器IDを追加
@@ -785,7 +807,7 @@ export default function CalendarScreen() {
             const currentMonth = new Date().getMonth();
             
             // 現在の楽器IDのキャッシュをクリア
-            const currentInstrumentId = getInstrumentId(selectedInstrument);
+            const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
             const currentCacheKey = `practice_data_cache_${user.id}_${currentInstrumentId || 'all'}_${currentYear}_${currentMonth}`;
             
             logger.debug(`[savePracticeRecord] キャッシュキー確認:`, {
@@ -1174,7 +1196,7 @@ export default function CalendarScreen() {
           // 直接refreshPracticeDataを呼ぶ必要はない（重複実行を防ぐため）
           logger.info('クイック記録を保存: ' + minutes + '分', { 
             practiceDate: formatLocalDate(uiState.selectedDate || new Date()),
-            instrumentId: getInstrumentId(selectedInstrument)
+            instrumentId: getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id)
           });
           
           // PracticeRecordModalが開いている場合は、そのモーダル内のデータも再読み込み

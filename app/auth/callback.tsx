@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
-import { navigateWithBasePath } from '@/lib/navigationUtils';
 
 export default function AuthCallback() {
   const router = useRouter();
@@ -62,40 +61,15 @@ export default function AuthCallback() {
             // server_errorの場合は認証状態を再確認
             if (oauthError === 'server_error') {
               logger.debug('🔄 server_error検出 - 認証状態を再確認');
-              // 少し待ってから認証状態を再確認
-              setTimeout(async () => {
-                const { data: sessionData } = await supabase.auth.getSession();
-                if (sessionData.session) {
-                  logger.debug('✅ セッションが存在 - 認証成功');
-                  // 認証状態監視に任せる
-                } else {
-                  logger.debug('❌ セッションなし - 強制的に認証状態を更新');
-                  // 最後の手段：強制的に認証状態を更新
-                  // forceAuthUpdateは存在しないため、ログイン画面に遷移
-                  const success = false;
-                  if (success) {
-                    logger.debug('✅ 認証状態更新成功 - チュートリアル画面に遷移');
-                    // 少し待ってからチュートリアル画面に遷移
-                    setTimeout(() => {
-                      logger.debug('🔄 チュートリアル画面への遷移を開始');
-                      try {
-                        router.replace('/(tabs)/tutorial');
-                        logger.debug('✅ チュートリアル画面への遷移完了');
-                      } catch (error) {
-                        logger.error('❌ チュートリアル画面への遷移エラー:', error);
-                        ErrorHandler.handle(error, 'チュートリアル画面への遷移', false);
-                        // フォールバック: 直接URLを変更
-                        navigateWithBasePath('/(tabs)/tutorial');
-                      }
-                    }, 500);
-                  } else {
-                    logger.debug('❌ 認証状態更新失敗 - ログイン画面に遷移');
-                    setTimeout(() => {
-                      router.replace('/auth/login');
-                    }, 1000);
-                  }
-                }
-              }, 1000);
+              // 認証状態を再確認（認証状態監視に任せる）
+              const { data: sessionData } = await supabase.auth.getSession();
+              if (sessionData.session) {
+                logger.debug('✅ セッションが存在 - 認証状態監視に任せます');
+                // 認証状態監視に任せる（_layout.tsxが自動的に適切な画面に遷移）
+              } else {
+                logger.debug('❌ セッションなし - ログイン画面に遷移');
+                router.replace('/auth/login');
+              }
             }
             return;
           }
@@ -106,13 +80,15 @@ export default function AuthCallback() {
             logger.error('❌ セッション交換エラー:', exchangeError);
             ErrorHandler.handle(exchangeError, 'セッション交換', false);
             
-            // セッション交換エラーでも認証状態を再確認
-            setTimeout(async () => {
-              const { data: sessionData } = await supabase.auth.getSession();
-              if (sessionData.session) {
-                logger.debug('✅ セッションが存在 - 認証成功');
-              }
-            }, 1000);
+            // セッション交換エラーでも認証状態を再確認（認証状態監視に任せる）
+            const { data: sessionData } = await supabase.auth.getSession();
+            if (sessionData.session) {
+              logger.debug('✅ セッションが存在 - 認証状態監視に任せます');
+              // 認証状態監視に任せる（_layout.tsxが自動的に適切な画面に遷移）
+            } else {
+              logger.debug('❌ セッションなし - ログイン画面に遷移');
+              router.replace('/auth/login');
+            }
             return;
           }
 
@@ -134,26 +110,14 @@ export default function AuthCallback() {
         logger.debug('📋 セッション情報:', data.session?.user?.email);
 
         if (data.session) {
-          logger.debug('✅ 認証成功 - 状態更新完了');
-          // 認証状態の更新を待ってからRootLayoutで遷移処理
-          setTimeout(() => {
-            try {
-              router.replace('/(tabs)/tutorial');
-            } catch (navError) {
-              logger.error('❌ ナビゲーションエラー:', navError);
-              ErrorHandler.handle(navError, 'ナビゲーション', false);
-            }
-          }, 1000);
+          logger.debug('✅ 認証成功 - 認証状態監視に任せます（_layout.tsxが自動的に適切な画面に遷移します）');
+          // 認証状態の更新は useAuthAdvanced の onAuthStateChange で監視されているため、
+          // _layout.tsx が自動的に適切な画面に遷移します。
+          // ここでは画面遷移を行わず、認証状態監視に任せます。
         } else {
           logger.debug('❌ 認証失敗 - ログイン画面に戻る');
-          setTimeout(() => {
-            try {
-              router.replace('/auth/login');
-            } catch (navError) {
-              logger.error('❌ ナビゲーションエラー:', navError);
-              ErrorHandler.handle(navError, 'ナビゲーション', false);
-            }
-          }, 500);
+          // 認証失敗時のみログイン画面に遷移
+          router.replace('/auth/login');
         }
       } catch (error) {
         logger.error('💥 認証コールバック処理エラー:', error);

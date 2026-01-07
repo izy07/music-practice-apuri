@@ -46,7 +46,7 @@ export default function TermsOfServiceScreen() {
             音楽練習支援アプリケーション
           </Text>
           <Text style={[styles.lastUpdated, { color: currentTheme.textSecondary }]}>
-            最終更新日: 2025年1月20日
+            最終更新日: 2026年1月8日
           </Text>
         </View>
 
@@ -96,9 +96,6 @@ export default function TermsOfServiceScreen() {
               • 本規約に違反したことがある者からの申請である場合
             </Text>
             <Text style={[styles.bulletItem, { color: currentTheme.textSecondary }]}>
-              • 13歳未満の者からの申請である場合
-            </Text>
-            <Text style={[styles.bulletItem, { color: currentTheme.textSecondary }]}>
               • その他、当社が利用登録を適当でないと判断した場合
             </Text>
           </View>
@@ -126,10 +123,7 @@ export default function TermsOfServiceScreen() {
               • 月額プラン: 380円（税込）
             </Text>
             <Text style={[styles.bulletItem, { color: currentTheme.textSecondary }]}>
-              • 年額プラン: 3,800円（税込、月額プランより約17%割引）
-            </Text>
-            <Text style={[styles.bulletItem, { color: currentTheme.textSecondary }]}>
-              • 学生プラン: 月額190円（税込、学生証の提示が必要）
+              • 年額プラン: 3,600円（税込、月額換算300円、月額プランより約21%割引）
             </Text>
           </View>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>

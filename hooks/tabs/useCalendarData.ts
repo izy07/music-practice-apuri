@@ -5,8 +5,9 @@ import { OfflineStorage, isOnline } from '@/lib/offlineStorage';
 import { logger } from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
-import { getInstrumentId } from '@/lib/instrumentUtils';
-import { applyInstrumentFilter } from '@/repositories/common/instrumentFilter';
+import { getInstrumentId, getEffectiveInstrumentId } from '@/lib/instrumentUtils';
+import { applyInstrumentFilter, filterByInstrumentIdInMemory } from '@/repositories/common/instrumentFilter';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 
 interface PracticeData {
   [key: string]: { // キーを日付文字列（YYYY-MM-DD）に変更
@@ -38,6 +39,7 @@ interface ShortTermGoal {
 
 export function useCalendarData(currentDate: Date) {
   const { selectedInstrument } = useInstrumentTheme();
+  const { user } = useAuthAdvanced();
   const [practiceData, setPracticeData] = useState<PracticeData>({});
   const [recordingsData, setRecordingsData] = useState<RecordingsData>({});
   const [events, setEvents] = useState<EventData>({});
@@ -56,8 +58,8 @@ export function useCalendarData(currentDate: Date) {
         return;
       }
 
-      // selectedInstrumentを最新の値として取得（楽器変更時に確実に最新の値を取得）
-      const currentInstrumentId = getInstrumentId(selectedInstrument);
+      // 有効な楽器IDを取得（統一的なフォールバック処理）
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
       
       // 楽器が変わった場合のみ、キャッシュをクリア（楽器切り替え時のデータ更新を確実にする）
       const instrumentChanged = previousInstrumentIdRef.current !== currentInstrumentId && previousInstrumentIdRef.current !== null;
@@ -117,16 +119,15 @@ export function useCalendarData(currentDate: Date) {
             .gte('practice_date', formatLocalDate(startOfMonth))
             .lte('practice_date', formatLocalDate(endOfMonth));
           
-          // 楽器IDでフィルタリング（統一関数を使用）
+          // 根本的な改善: applyInstrumentFilterは常に元のクエリを返すため、
+          // 直接クエリを実行し、TypeScript側でフィルタリングする
           logger.debug('[useCalendarData.loadPracticeData] 楽器フィルタリングを適用します', {
             currentInstrumentId,
             previousInstrumentId: previousInstrumentIdRef.current,
             instrumentChanged
           });
           
-          query = await applyInstrumentFilter(query, currentInstrumentId, true, 'practice_sessions');
-          
-          const { data: sessions, error } = await query;
+          const { data: rawSessions, error } = await query;
 
           if (error) {
             if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
@@ -139,6 +140,13 @@ export function useCalendarData(currentDate: Date) {
             logger.error('練習データ読み込みエラー:', error);
             return;
           }
+
+          // TypeScript側で楽器フィルタリングを実行
+          const sessions = filterByInstrumentIdInMemory(
+            (rawSessions || []) as any[],
+            currentInstrumentId,
+            true
+          );
 
           if (sessions && Array.isArray(sessions)) {
             
@@ -343,7 +351,7 @@ export function useCalendarData(currentDate: Date) {
       const user = userParam ?? (await supabase.auth.getUser()).data.user;
       if (!user) return;
 
-      const currentInstrumentId = getInstrumentId(selectedInstrument);
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
       
       // RPC関数を使用してデータベース側で集計（パフォーマンス最適化）
       try {
@@ -448,9 +456,8 @@ export function useCalendarData(currentDate: Date) {
         }
       }
       
-      // 楽器IDを取得
-      const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
-      const currentInstrumentId = getInstrumentId(selectedInstrument);
+      // 有効な楽器IDを取得（統一的なフォールバック処理）
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
       
       // ベースクエリ（instrument_id なし）
       const baseQuery = supabase
@@ -462,74 +469,44 @@ export function useCalendarData(currentDate: Date) {
         .lte('date', formatLocalDate(endOfMonth));
       
       // instrument_id カラムを含めたクエリ
-      let queryWithInstrument: any = supabase
+      let query: any = supabase
         .from('events')
         .select('id, title, description, date, instrument_id')
         .eq('user_id', user.id)
         .eq('is_completed', false)
         .gte('date', formatLocalDate(startOfMonth))
-        .lte('date', formatLocalDate(endOfMonth));
+        .lte('date', formatLocalDate(endOfMonth))
+        .order('date', { ascending: true });
       
-      // 楽器ごとにフィルタリング（統一関数を使用）
-      queryWithInstrument = await applyInstrumentFilter(queryWithInstrument, currentInstrumentId, true, 'events');
+      // 根本的な改善: applyInstrumentFilterは常に元のクエリを返すため、
+      // 直接クエリを実行し、TypeScript側でフィルタリングする
+      const { data: rawData, error } = await query;
       
       let eventsData: any[] | null = null;
-      let error: any = null;
       
-      // applyInstrumentFilter 後のクエリに order メソッドがあるかチェック
-      const hasOrder = queryWithInstrument && typeof queryWithInstrument.order === 'function';
-      
-      if (hasOrder) {
-        const result = await queryWithInstrument.order('date', { ascending: true });
-        eventsData = result.data;
-        error = result.error;
+      if (error) {
+        // エラー処理は後続のコードで行う
       } else {
-        // order が無い＝クエリビルダーではない。安全なフォールバッククエリを実行
-        logger.warn('[useCalendarData.loadEvents] フィルタリング後のクエリに order メソッドが存在しません。フォールバッククエリを実行します。', {
-          hasOrder,
+        // TypeScript側で楽器フィルタリングを実行
+        const filtered = filterByInstrumentIdInMemory(
+          (rawData || []) as any[],
           currentInstrumentId,
+          true
+        );
+        
+        // instrument_id は以降使わないので落としておく
+        eventsData = filtered.map(row => ({
+          id: row.id,
+          title: row.title,
+          description: row.description,
+          date: row.date,
+        }));
+        
+        logger.debug('[useCalendarData.loadEvents] イベントデータ取得に成功しました（楽器ごとに絞り込み済み）', {
+          rawCount: rawData?.length || 0,
+          filteredCount: filtered.length,
+          instrumentId: currentInstrumentId,
         });
-        
-        let fallbackQuery: any = supabase
-          .from('events')
-          .select('id, title, description, date, instrument_id')
-          .eq('user_id', user.id)
-          .eq('is_completed', false)
-          .gte('date', formatLocalDate(startOfMonth))
-          .lte('date', formatLocalDate(endOfMonth))
-          .order('date', { ascending: true });
-        
-        const fallbackResult = await fallbackQuery;
-        if (fallbackResult.error) {
-          error = fallbackResult.error;
-        } else {
-          let raw = (fallbackResult.data || []) as any[];
-          // TypeScript 側で各楽器ごとに絞り込み（practice_sessions と同じルール）
-          if (currentInstrumentId) {
-            // 選択された楽器 + 既存の null データ（後方互換性）
-            raw = raw.filter(row =>
-              row.instrument_id === currentInstrumentId || row.instrument_id == null
-            );
-          } else {
-            // 楽器未選択の場合は null のみ
-            raw = raw.filter(row => row.instrument_id == null);
-          }
-          
-          // instrument_id は以降使わないので落としておく
-          eventsData = raw.map(row => ({
-            id: row.id,
-            title: row.title,
-            description: row.description,
-            date: row.date,
-          }));
-          error = null;
-          
-          logger.debug('[useCalendarData.loadEvents] フォールバッククエリでイベントデータ取得に成功しました（楽器ごとに絞り込み済み）', {
-            rawCount: fallbackResult.data?.length || 0,
-            filteredCount: raw.length,
-            instrumentId: currentInstrumentId,
-          });
-        }
       }
 
       if (error) {
@@ -641,7 +618,7 @@ export function useCalendarData(currentDate: Date) {
       const user = userParam ?? (await supabase.auth.getUser()).data.user;
       if (!user) return;
 
-      const currentInstrumentId = getInstrumentId(selectedInstrument);
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
       
       // 月の開始日時（ローカルタイムゾーンで00:00:00）
       const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -770,7 +747,7 @@ export function useCalendarData(currentDate: Date) {
 
       // 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
       const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
-      const currentInstrumentId = getInstrumentId(selectedInstrument);
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
 
       // 強制リフレッシュまたは楽器が変わった場合、目標のキャッシュをクリア
       if (forceRefresh || (previousInstrumentIdForGoalsRef.current !== currentInstrumentId && previousInstrumentIdForGoalsRef.current !== null)) {
@@ -987,12 +964,11 @@ export function useCalendarData(currentDate: Date) {
       ErrorHandler.handle(error, '目標の読み込み', false);
       logger.error('目標の読み込みエラー:', error);
       // エラー時もキャッシュから読み込みを試行（現在選択されている楽器の目標のみ）
-      try {
-        const user = userParam ?? (await supabase.auth.getUser()).data.user;
-        if (user) {
-          const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
-          const errorInstrumentId = getInstrumentId(selectedInstrument);
-          const cacheKey = `short_term_goals_cache_${user.id}_${errorInstrumentId || 'null'}`;
+        try {
+          const errorUser = userParam ?? (await supabase.auth.getUser()).data.user;
+          if (errorUser) {
+            const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, errorUser?.selected_instrument_id);
+            const cacheKey = `short_term_goals_cache_${errorUser.id}_${errorInstrumentId || 'null'}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -1011,7 +987,7 @@ export function useCalendarData(currentDate: Date) {
       setShortTermGoal(null);
       setShortTermGoals([]);
     }
-  }, [selectedInstrument]);
+  }, [selectedInstrument, user]);
 
   const loadAllData = useCallback(async (userParam?: { id: string }) => {
     if (isFetchingRef.current) {

@@ -141,8 +141,8 @@ export default function LanguageSettingsScreen() {
   }, [isLoading, texts, setLanguage, selectedInstrument]);
 
   const goBack = useCallback(() => {
-    safeGoBack('/(tabs)/settings', true); // 強制的にsettings画面に戻る
-  }, []);
+    safeGoBack(router, '/(tabs)/settings', true); // 確実にsettings画面に戻る
+  }, [router]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: fallbackTheme.background }]} >

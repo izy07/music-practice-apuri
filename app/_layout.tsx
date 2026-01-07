@@ -7,7 +7,7 @@ import { useRouter, useSegments } from 'expo-router'; // ルーティング関�
 import { useFrameworkReady } from '@/hooks/useFrameworkReady'; // フレームワーク準備状態の管理
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced'; // 認証フック（統一版）
 import { LanguageProvider } from '@/components/LanguageContext'; // 多言語対応の管理
-import { InstrumentThemeProvider, useInstrumentTheme } from '@/components/InstrumentThemeContext'; // 楽器別テーマの管理
+import { InstrumentThemeProvider } from '@/components/InstrumentThemeContext'; // 楽器別テーマの管理
 import LoadingSkeleton from '@/components/LoadingSkeleton'; // ローディング表示コンポーネント
 import { supabase } from '@/lib/supabase'; // Supabaseクライアント
 import { RoutePath } from '@/types/common'; // ルートパス型
@@ -15,8 +15,7 @@ import { TIMEOUT } from '@/lib/constants'; // タイムアウト定数
 import logger from '@/lib/logger'; // ロガー
 import { ErrorHandler } from '@/lib/errorHandler'; // エラーハンドラー
 import { getBasePath, navigateWithBasePath } from '@/lib/navigationUtils'; // ベースパス取得関数とナビゲーション関数
-// データベーススキーマチェックは削除（初期スキーマに含まれているため、不要）
-// import { checkDatabaseSchema } from '@/lib/databaseSchemaChecker';
+import { checkDatabaseSchema } from '@/lib/databaseSchemaChecker'; // データベーススキーマチェック
 import { initializeGoalRepository } from '@/repositories/goalRepository'; // 目標リポジトリの初期化
 import audioResourceManager from '@/lib/audioResourceManager'; // オーディオリソース管理
 
@@ -112,9 +111,6 @@ function RootLayoutContent() {
     signOut,
     user
   } = useAuthAdvanced();
-  
-  // InstrumentThemeContextから選択されている楽器を取得（プロフィール取得タイムアウト時でも正しく動作）
-  const { selectedInstrument, isInitializing: isInstrumentInitializing } = useInstrumentTheme();
 
 
   // アプリのライフサイクル管理：バックグラウンド移行時にオーディオリソースを解放
@@ -647,43 +643,10 @@ function RootLayoutContent() {
         return; // 遷移を許可
       }
       
-      // プロフィール取得がタイムアウトした可能性を考慮
-      // 既存ユーザー（新規登録フラグが存在しない、tutorial_completedがtrue、またはlast_sign_in_atが存在する）の場合、
-      // プロフィール取得がタイムアウトした可能性が高いので、メインカレンダー画面に遷移する
-      const isLikelyExistingUser = user && (
-        user.tutorial_completed === true ||
-        user.last_sign_in_at !== undefined ||
-        !needsTutorial()
-      );
-      
-      if (isLikelyExistingUser) {
-        // プロフィール取得がタイムアウトした可能性がある既存ユーザーの場合、
-        // メインカレンダー画面に遷移（後でプロフィールが取得されたら自動的に更新される）
-        logger.debug('プロフィール取得タイムアウトの可能性を考慮し、メインカレンダー画面に遷移（既存ユーザー）', {
-          tutorial_completed: user.tutorial_completed,
-          last_sign_in_at: user.last_sign_in_at,
-          needsTutorial: needsTutorial()
-        });
-        router.replace('/(tabs)/index');
-        return;
-      }
-      
-      // ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ
-      // needsTutorial()がtrueを返す場合でも、ユーザーが存在しない場合はチュートリアル画面に遷移しない
-      // （プロフィール取得がタイムアウトした可能性があるため）
-      if (needsTutorial() && user) {
+      if (needsTutorial()) {
         // チュートリアルが必要な場合（新規登録直後など）
-        // ただし、ユーザーが存在する場合のみ（ネットワークエラー時の誤遷移を防ぐ）
         logger.debug('新規登録直後のため、チュートリアル画面にリダイレクト');
         router.replace('/(tabs)/tutorial');
-        return;
-      }
-      
-      // needsTutorial()がtrueでも、ユーザーが存在しない場合は楽器選択画面に遷移
-      // （プロフィール取得がタイムアウトした可能性があるため）
-      if (needsTutorial() && !user) {
-        logger.debug('チュートリアルが必要だが、ユーザー情報が不完全なため、楽器選択画面にリダイレクト（ネットワークエラーの可能性）');
-        router.replace('/(tabs)/instrument-selection');
         return;
       }
       // チュートリアル完了後は楽器選択画面にリダイレクト
@@ -693,36 +656,22 @@ function RootLayoutContent() {
     }
 
     // 認証済み + 楽器選択済み
-    // ログイン後、最後に使用していた楽器のメイン画面を表示
-    // user.selected_instrument_idまたはInstrumentThemeContextのselectedInstrumentが設定されている場合は、メイン画面に遷移
-    // プロフィール取得タイムアウト時でも、InstrumentThemeContextのselectedInstrumentが設定されていればメイン画面に遷移
-    const hasSelectedInstrumentFromUser = user?.selected_instrument_id != null && user.selected_instrument_id !== '';
-    const hasSelectedInstrumentFromContext = selectedInstrument != null && selectedInstrument !== '';
-    const hasSelectedInstrument = hasSelectedInstrumentFromUser || hasSelectedInstrumentFromContext;
+    // チュートリアル画面または楽器選択画面にいる場合はカレンダー画面に遷移
+    if (currentTab === 'tutorial' || currentTab === 'instrument-selection') {
+      logger.debug('楽器選択済みのため、チュートリアル画面または楽器選択画面からカレンダー画面にリダイレクト');
+      router.replace('/(tabs)/index');
+      return;
+    }
     
-    if (hasSelectedInstrument || hasInstrumentSelected()) {
-      // チュートリアル画面または楽器選択画面にいる場合はカレンダー画面に遷移
-      if (currentTab === 'tutorial' || currentTab === 'instrument-selection') {
-        logger.debug('楽器選択済みのため、チュートリアル画面または楽器選択画面からカレンダー画面にリダイレクト（最後に使用していた楽器のメイン画面）', {
-          selectedInstrumentId: user?.selected_instrument_id
-        });
-        router.replace('/(tabs)/index');
-        return;
-      }
-      
-      // Web環境: 既に適切な画面にいる場合は維持（リロード時も現在の画面を保持）
-      if (Platform.OS === 'web' && (isInTabsGroup || isInOrgGroup)) {
-        return;
-      }
-      
-      // ルートパスまたは認証画面にいる場合はカレンダー画面に遷移
-      if (isAtRoot || isInAuthGroup) {
-        logger.debug('ログイン成功 - 最後に使用していた楽器のメイン画面に遷移', {
-          selectedInstrumentId: user?.selected_instrument_id
-        });
-        router.replace('/(tabs)/index');
-        return;
-      }
+    // Web環境: 既に適切な画面にいる場合は維持（リロード時も現在の画面を保持）
+    if (Platform.OS === 'web' && (isInTabsGroup || isInOrgGroup)) {
+      return;
+    }
+    
+    // ルートパスまたは認証画面にいる場合はカレンダー画面に遷移
+    if (isAtRoot || isInAuthGroup) {
+      router.replace('/(tabs)/index');
+      return;
     }
   }, [isReady, isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, needsTutorial, router, segments]);
 

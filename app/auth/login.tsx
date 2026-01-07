@@ -26,7 +26,7 @@ import { useRouter } from 'expo-router';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
-import { getBasePath } from '@/lib/navigationUtils';
+import { getBasePath, navigateToAppropriateScreen } from '@/lib/navigationUtils';
 import { ErrorHandler } from '@/lib/errorHandler';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -123,29 +123,13 @@ export default function LoginScreen() {
         }
       }
       
-      // 適切な画面に遷移（router.pushを使用して_layout.tsxのスキップを回避）
-      // タイムアウト時のフォールバックユーザーの場合、selected_instrument_idがnullでも
-      // 楽器選択画面に遷移せず、カレンダー画面に遷移する（実際のユーザーデータが取得された後、正しい画面に遷移）
-      const isTimeoutFallback = user && !user.selected_instrument_id && user.tutorial_completed === true;
-      
-      // ログイン成功後、最後に使用していた楽器のメイン画面を表示
-      // user.selected_instrument_idが設定されている場合は、即座にメイン画面に遷移
-      const hasSelectedInstrument = user?.selected_instrument_id != null && user.selected_instrument_id !== '';
-      
-      if (hasSelectedInstrument || canAccessMainApp() || isTimeoutFallback) {
-        logger.debug('カレンダー画面に遷移（最後に使用していた楽器のメイン画面）', { 
-          isTimeoutFallback,
-          hasSelectedInstrument,
-          selectedInstrumentId: user?.selected_instrument_id
-        });
-        router.push('/(tabs)/index');
-      } else if (needsTutorial()) {
-        logger.debug('チュートリアル画面に遷移');
-        router.push('/(tabs)/tutorial');
-      } else {
-        logger.debug('楽器選択画面に遷移');
-        router.push('/(tabs)/instrument-selection');
-      }
+      // 適切な画面に遷移（統一関数を使用）
+      navigateToAppropriateScreen(router, {
+        user,
+        hasInstrumentSelected,
+        needsTutorial,
+        canAccessMainApp,
+      });
     }
   }, [isAuthenticated, isLoading, isLoggingIn, hasInstrumentSelected, needsTutorial, canAccessMainApp, router]);
   

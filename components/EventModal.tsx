@@ -20,6 +20,7 @@ import EventCalendar from './EventCalendar';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { disableBackgroundFocus, enableBackgroundFocus, focusFirstElement, blurActiveElement } from '@/lib/modalFocusManager';
+import { isColumnNotFoundError, handleColumnError } from '@/lib/columnErrorHandler';
 
 interface Event {
   id: string;
@@ -144,12 +145,53 @@ export default function EventModal({
           updateData.event_date = date;
         }
         
-        const { error } = await supabase
+        let { error } = await supabase
           .from('events')
           .update(updateData)
           .eq('id', event.id);
 
-        if (error) throw error;
+        // カラムが存在しないエラーの場合、該当カラムを除外して再試行
+        if (error && isColumnNotFoundError(error)) {
+          const optionalColumns = ['instrument_id', 'event_date'];
+          const handled = handleColumnError(error, updateData, optionalColumns);
+          
+          if (handled) {
+            logger.warn('[EventModal] カラムが存在しないため、除外して再試行します', {
+              errorCode: error.code,
+              errorMessage: error.message,
+              excludedColumns: handled.excludedColumns
+            });
+            
+            let retryResult = await supabase
+              .from('events')
+              .update(handled.payload)
+              .eq('id', event.id);
+            
+            // 再試行後もエラーが発生した場合、さらに他のカラムを除外して再試行
+            if (retryResult.error && isColumnNotFoundError(retryResult.error)) {
+              const secondHandled = handleColumnError(retryResult.error, handled.payload, optionalColumns);
+              if (secondHandled) {
+                retryResult = await supabase
+                  .from('events')
+                  .update(secondHandled.payload)
+                  .eq('id', event.id);
+              }
+            }
+            
+            if (retryResult.error) {
+              logger.error('[EventModal] イベント更新エラー（再試行後）:', retryResult.error);
+              throw retryResult.error;
+            }
+            
+            logger.info('[EventModal] カラムを除外してイベントの更新に成功しました', {
+              excludedColumns: handled.excludedColumns
+            });
+          } else if (error) {
+            throw error;
+          }
+        } else if (error) {
+          throw error;
+        }
         logger.debug('イベントを更新しました', { eventId: event.id, date, event_date: updateData.event_date });
       } else {
         // 新規イベントの作成
@@ -172,11 +214,50 @@ export default function EventModal({
           insertData.instrument_id = instrumentId;
         }
         
-        const { error } = await supabase
+        let { error } = await supabase
           .from('events')
           .insert(insertData);
 
-        if (error) throw error;
+        // カラムが存在しないエラーの場合、該当カラムを除外して再試行
+        if (error && isColumnNotFoundError(error)) {
+          const optionalColumns = ['instrument_id', 'event_date'];
+          const handled = handleColumnError(error, insertData, optionalColumns);
+          
+          if (handled) {
+            logger.warn('[EventModal] カラムが存在しないため、除外して再試行します', {
+              errorCode: error.code,
+              errorMessage: error.message,
+              excludedColumns: handled.excludedColumns
+            });
+            
+            let retryResult = await supabase
+              .from('events')
+              .insert(handled.payload);
+            
+            // 再試行後もエラーが発生した場合、さらに他のカラムを除外して再試行
+            if (retryResult.error && isColumnNotFoundError(retryResult.error)) {
+              const secondHandled = handleColumnError(retryResult.error, handled.payload, optionalColumns);
+              if (secondHandled) {
+                retryResult = await supabase
+                  .from('events')
+                  .insert(secondHandled.payload);
+              }
+            }
+            
+            if (retryResult.error) {
+              logger.error('[EventModal] イベント作成エラー（再試行後）:', retryResult.error);
+              throw retryResult.error;
+            }
+            
+            logger.info('[EventModal] カラムを除外してイベントの作成に成功しました', {
+              excludedColumns: handled.excludedColumns
+            });
+          } else if (error) {
+            throw error;
+          }
+        } else if (error) {
+          throw error;
+        }
         logger.debug('イベントを登録しました', { date, event_date: insertData.event_date });
       }
 

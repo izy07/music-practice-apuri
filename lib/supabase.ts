@@ -181,22 +181,26 @@ const getSupabaseClient = () => {
             }
           }
           
-          // 404エラーを静かに処理（フォールバック方法で処理されるため）
+          // 404エラーを適切に処理（フォールバック方法で処理されるため）
           if (response.status === 404) {
             const urlObj = new URL(url);
             const pathname = urlObj.pathname;
             
-            // RPC関数の404エラーは、フォールバック方法で処理されるため無視
+            // RPC関数の404エラーは、フォールバック方法で処理されるため、エラーレスポンスをそのまま返す
             if (pathname.includes('/rpc/check_column_exists') || pathname.includes('/rpc/get_total_practice_time')) {
               // エラーレスポンスをそのまま返す（呼び出し側で処理される）
+              logger.debug('RPC関数の404エラー（フォールバック方法で処理されます）:', { url: pathname });
               return response;
             }
             
-            // representative_songsテーブルの404エラーは、フォールバックデータを使用するため無視
-            // コンソールにエラーを表示しないように、空のレスポンスを返す
+            // representative_songsテーブルの404エラーは、フォールバックデータを使用するため、空のレスポンスを返す
             if (pathname.includes('/representative_songs') || url.includes('representative_songs')) {
-              // 404エラーを完全に抑制するため、空のJSONレスポンスを返す
-              logger.debug('representative_songsテーブルの404エラー（フォールバックデータを使用）:', { url: pathname });
+              // 404エラーを適切に記録し、フォールバックデータを使用することを示す
+              logger.debug('representative_songsテーブルの404エラー（フォールバックデータを使用）:', { 
+                url: pathname,
+                note: 'テーブルが存在しない場合は、フォールバックデータを使用します'
+              });
+              // フォールバック用に空のJSONレスポンスを返す
               return new Response(JSON.stringify([]), {
                 status: 200,
                 statusText: 'OK',

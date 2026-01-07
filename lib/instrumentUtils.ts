@@ -107,3 +107,37 @@ export const getInstrumentId = (selectedInstrument: string | null | undefined): 
     : null;
 };
 
+/**
+ * 有効な楽器IDを取得（統一的なフォールバック処理）
+ * 
+ * 優先順位:
+ * 1. InstrumentThemeContext の selectedInstrument
+ * 2. user.selected_instrument_id（認証情報から）
+ * 3. null
+ * 
+ * これにより、InstrumentThemeContext がタイムアウトした場合でも、
+ * user.selected_instrument_id をフォールバックとして使用できます。
+ * 
+ * @param selectedInstrument InstrumentThemeContext から取得した楽器ID
+ * @param userSelectedInstrumentId user.selected_instrument_id（認証情報から）
+ * @returns 有効な楽器ID（string）またはnull
+ */
+export const getEffectiveInstrumentId = (
+  selectedInstrument: string | null | undefined,
+  userSelectedInstrumentId?: string | null | undefined
+): string | null => {
+  // 優先順位1: InstrumentThemeContext の selectedInstrument
+  const contextId = getInstrumentId(selectedInstrument);
+  if (contextId) {
+    return contextId;
+  }
+  
+  // 優先順位2: user.selected_instrument_id（認証情報から）
+  const userId = getInstrumentId(userSelectedInstrumentId);
+  if (userId) {
+    return userId;
+  }
+  
+  // 優先順位3: null
+  return null;
+};

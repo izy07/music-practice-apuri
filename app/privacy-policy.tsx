@@ -140,7 +140,7 @@ export default function PrivacyPolicyScreen() {
         <View style={styles.section}>
           <Text style={styles.title}>音楽練習アプリ プライバシーポリシー</Text>
           <Text style={styles.effectiveDate}>制定日: 2024年1月1日</Text>
-          <Text style={styles.text}>最終更新日: 2025-10-20</Text>
+          <Text style={styles.text}>最終更新日: 2026年1月8日</Text>
         </View>
 
         <View style={styles.section}>

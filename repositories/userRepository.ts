@@ -540,33 +540,49 @@ export const updateUserProfile = async (
             ]
           });
           
-          // 外部キー制約違反の場合は、エラーを無視して続行（楽器が存在しない場合）
+          // 外部キー制約違反の場合は、エラーを適切に処理（楽器が存在しない場合）
           if (error.code === '23503' || (error.message?.includes('violates foreign key constraint') && error.message?.includes('instruments'))) {
-            logger.warn(`[${REPOSITORY_CONTEXT}] updateUserProfile:外部キー制約違反 - selected_instrument_idをNULLに設定して再試行`, {
+            logger.error(`[${REPOSITORY_CONTEXT}] updateUserProfile:外部キー制約違反 - selected_instrument_idが無効です`, {
               userId,
               updates,
-              error: error.message
+              error: {
+                code: error.code,
+                message: error.message,
+                details: error.details,
+                hint: error.hint
+              }
             });
             
-            // selected_instrument_idを除外して再試行
+            // selected_instrument_idを除外して再試行（楽器が存在しない場合はNULLに設定）
             const { selected_instrument_id, ...updatesWithoutInstrument } = updates;
             if (Object.keys(updatesWithoutInstrument).length > 0) {
               const { error: retryError } = await supabase
                 .from('user_profiles')
                 .update({
                   ...updatesWithoutInstrument,
+                  selected_instrument_id: null, // 無効な楽器IDをNULLに設定
                   updated_at: new Date().toISOString(),
                 })
                 .eq('user_id', userId)
                 .select('id, user_id, display_name, selected_instrument_id');
               
               if (retryError) {
-                logger.error(`[${REPOSITORY_CONTEXT}] updateUserProfile:再試行も失敗`, retryError);
-                throw retryError;
+                logger.error(`[${REPOSITORY_CONTEXT}] updateUserProfile:再試行も失敗`, {
+                  error: retryError,
+                  code: retryError.code,
+                  message: retryError.message
+                });
+                // エラーを適切にスロー（呼び出し側で処理できるように）
+                throw new Error(`プロフィールの更新に失敗しました: ${retryError.message || '不明なエラー'}`);
               }
               
-              logger.warn(`[${REPOSITORY_CONTEXT}] updateUserProfile:selected_instrument_idを除外して更新成功`);
+              logger.warn(`[${REPOSITORY_CONTEXT}] updateUserProfile:selected_instrument_idをNULLに設定して更新成功（楽器が存在しないため）`);
+              // 成功した場合はここで終了（ただし、楽器IDが無効だったことを記録）
+              // 呼び出し側で適切に処理できるように、エラーをスローするか、成功フラグを返す
               return; // 成功した場合はここで終了
+            } else {
+              // selected_instrument_id以外に更新項目がない場合は、エラーをスロー
+              throw new Error(`選択された楽器が存在しません。楽器ID: ${updates.selected_instrument_id}`);
             }
           }
         }

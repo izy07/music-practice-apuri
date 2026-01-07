@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import logger from '@/lib/logger';
 import { practiceDataCache, PracticeDataCache } from '@/lib/cache/practiceDataCache';
+import { safeGoBack } from '@/lib/navigationUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -193,7 +194,7 @@ export default function RepresentativeSongsScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <TouchableOpacity onPress={() => safeGoBack(router, '/(tabs)/index', false)} style={styles.backButton}>
             <ArrowLeft size={24} color={currentTheme.text} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: currentTheme.text }]}>代表曲</Text>
@@ -210,9 +211,7 @@ export default function RepresentativeSongsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       {/* ヘッダー */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => {
-          router.back();
-        }} style={styles.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        <TouchableOpacity onPress={() => safeGoBack(router, '/(tabs)/index', false)} style={styles.backButton} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>

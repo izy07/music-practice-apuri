@@ -502,7 +502,8 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
 
   // selectedInstrumentまたはuser.selected_instrument_idが変更されたらテーマを更新
   useEffect(() => {
-    const instrumentId = selectedInstrument || user?.selected_instrument_id;
+    const { getEffectiveInstrumentId } = require('@/lib/instrumentUtils');
+    const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
     if (!instrumentId) return;
 
     const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
@@ -551,7 +552,8 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       await AsyncStorage.removeItem(getKey(STORAGE_KEYS.customTheme));
       await AsyncStorage.setItem(getKey(STORAGE_KEYS.isCustomTheme), 'false');
       
-      const instrumentId = selectedInstrument || user?.selected_instrument_id;
+      const { getEffectiveInstrumentId } = require('@/lib/instrumentUtils');
+      const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
       if (instrumentId) {
         const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
                            defaultInstruments.find(inst => inst.id === instrumentId);

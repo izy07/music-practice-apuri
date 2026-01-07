@@ -17,6 +17,8 @@ import { supabase } from '@/lib/supabase';
 import { uploadRecordingBlob, saveRecording } from '@/lib/database';
 import { useRouter } from 'expo-router';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { useSubscription } from '@/hooks/useSubscription';
+import { checkMonthlyRecordingLimit, isCurrentMonth, canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 import logger from '@/lib/logger';
 import audioResourceManager from '@/lib/audioResourceManager';
 
@@ -43,6 +45,7 @@ interface AudioRecorderProps {
 export default function AudioRecorder({ visible, onSave, onClose, onRecordingSaved, onBack, selectedDate, initialRecordingType }: AudioRecorderProps) {
   const { currentTheme } = useInstrumentTheme();
   const router = useRouter();
+  const { entitlement } = useSubscription();
   const OWNER_NAME = 'AudioRecorder';
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -179,6 +182,22 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const startRecording = async () => {
     try {
       logger.debug('録音開始ボタンが押されました');
+      
+      // Freeプランの場合、選択された日付が今月であることを確認
+      if (!entitlement?.isEntitled && selectedDate && !isCurrentMonth(selectedDate)) {
+        Alert.alert(
+          '録音できません',
+          'Freeプランでは当月のみ録音できます。\n\n過去の月や未来の月に録音するには、プレミアムにアップグレードしてください。',
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { text: 'プレミアムを見る', onPress: () => {
+              onClose();
+              router.push('/(tabs)/pricing-plans');
+            }}
+          ]
+        );
+        return;
+      }
       
       if (Platform.OS !== 'web') {
         Alert.alert('録音機能', '録音機能はWeb環境でのみ利用できます');
@@ -781,13 +800,80 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       
       const instrumentId = profile?.selected_instrument_id || null;
       
+      // Freeプランの場合、新しい楽器でデータを保存できるかチェック
+      const canSaveCheck = await canSaveDataForInstrument(user.id, instrumentId, entitlement);
+      if (!canSaveCheck.canSave) {
+        Alert.alert(
+          'アップグレードが必要です',
+          canSaveCheck.reason || '新しい楽器で録音を追加するには、プレミアムにアップグレードしてください。',
+          [
+            { text: 'キャンセル', style: 'cancel', onPress: () => {
+              setIsSaving(false);
+              isSavingRef.current = false;
+            }},
+            { text: 'プレミアムを見る', onPress: () => {
+              setIsSaving(false);
+              isSavingRef.current = false;
+              onClose();
+              router.push('/(tabs)/pricing-plans');
+            }}
+          ]
+        );
+        return;
+      }
+      
       const recordedAt = selectedDate ? new Date(selectedDate) : new Date();
+      
+      // Freeプランの場合、選択された日付が今月であることを確認
+      if (!entitlement?.isEntitled && !isCurrentMonth(recordedAt)) {
+        Alert.alert(
+          '録音できません',
+          'Freeプランでは当月のみ録音できます。\n\n過去の月や未来の月に録音するには、プレミアムにアップグレードしてください。',
+          [
+            { text: 'キャンセル', style: 'cancel', onPress: () => {
+              setIsSaving(false);
+              isSavingRef.current = false;
+            }},
+            { text: 'プレミアムを見る', onPress: () => {
+              setIsSaving(false);
+              isSavingRef.current = false;
+              onClose();
+              router.push('/(tabs)/pricing-plans');
+            }}
+          ]
+        );
+        return;
+      }
+      
+      // Freeプランの場合、月間録音回数をチェック（今月の日付のみ）
+      const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, recordedAt);
+      if (!limitCheck.canRecord) {
+        const reason = limitCheck.reason || '';
+        Alert.alert(
+          '制限に達しました',
+          reason || `Freeプランでは月${limitCheck.limit}回まで録音できます。\n現在の使用回数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムにアップグレードすると無制限で録音できます。`,
+          [
+            { text: 'キャンセル', style: 'cancel', onPress: () => {
+              setIsSaving(false);
+              isSavingRef.current = false;
+            }},
+            { text: 'プレミアムを見る', onPress: () => {
+              setIsSaving(false);
+              isSavingRef.current = false;
+              onClose();
+              router.push('/(tabs)/pricing-plans');
+            }}
+          ]
+        );
+        return;
+      }
       logger.debug('録音保存開始:', {
         title: recordingTitle,
         instrumentId,
         duration: finalDuration,
         hasFilePath: !!filePath,
-        recordedAt: recordedAt.toISOString()
+        recordedAt: recordedAt.toISOString(),
+        monthlyLimitCheck: limitCheck
       });
       
       const { data: savedRecording, error: saveError } = await saveRecording({

@@ -591,19 +591,95 @@ export default function BeginnerGuideScreen() {
                 <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.fingering.chart}</Text>
               </View>
               
+              {/* 音名対応表 */}
+              <View style={styles.infoItem}>
+                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary, marginBottom: 12 }]}>音名対応表</Text>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={true}
+                  style={styles.noteTableScrollView}
+                  contentContainerStyle={styles.noteTableScrollContent}
+                >
+                  <View style={[styles.noteTableContainer, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary }]}>
+                  {/* ヘッダー行 */}
+                  <View style={[styles.noteTableRow, { borderBottomWidth: 0 }]}>
+                    <View style={[styles.noteTableLabelCell, { backgroundColor: currentTheme.surface, borderRightWidth: 0 }]}>
+                      <Text style={[styles.noteTableHeaderText, { color: currentTheme.textSecondary }]}></Text>
+                    </View>
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map((num, idx) => (
+                      <View key={num} style={[styles.noteTableHeaderCell, { backgroundColor: currentTheme.surface, borderRightWidth: idx === 7 ? 0 : 1 }]}>
+                        <Text style={[styles.noteTableHeaderText, { color: currentTheme.textSecondary }]}>{num}音</Text>
+                      </View>
+                    ))}
+                  </View>
+                  
+                  {/* ドレミ行 */}
+                  <View style={styles.noteTableRow}>
+                    <View style={[styles.noteTableLabelCell, { backgroundColor: currentTheme.surface }]}>
+                      <Text style={[styles.noteTableLabelText, { color: currentTheme.text }]}>ドレミ</Text>
+                    </View>
+                    {['ド', 'レ', 'ミ', 'ファ', 'ソ', 'ラ', 'シ', 'ド'].map((note, idx) => (
+                      <View key={idx} style={[styles.noteTableCell, { backgroundColor: currentTheme.background, borderRightWidth: idx === 7 ? 0 : 1 }]}>
+                        <Text style={[styles.noteTableText, { color: currentTheme.text }]}>{note}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  
+                  {/* 日本語行 */}
+                  <View style={styles.noteTableRow}>
+                    <View style={[styles.noteTableLabelCell, { backgroundColor: currentTheme.surface }]}>
+                      <Text style={[styles.noteTableLabelText, { color: currentTheme.text }]}>日本語</Text>
+                    </View>
+                    {['ハ', 'ニ', 'ホ', 'ヘ', 'ト', 'イ', 'ロ', 'ハ'].map((note, idx) => (
+                      <View key={idx} style={[styles.noteTableCell, { backgroundColor: currentTheme.background, borderRightWidth: idx === 7 ? 0 : 1 }]}>
+                        <Text style={[styles.noteTableText, { color: currentTheme.text }]}>{note}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  
+                  {/* 英語行 */}
+                  <View style={styles.noteTableRow}>
+                    <View style={[styles.noteTableLabelCell, { backgroundColor: currentTheme.surface }]}>
+                      <Text style={[styles.noteTableLabelText, { color: currentTheme.text }]}>英語</Text>
+                    </View>
+                    {['C', 'D', 'E', 'F', 'G', 'A', 'B', 'C'].map((note, idx) => (
+                      <View key={idx} style={[styles.noteTableCell, { backgroundColor: currentTheme.background, borderRightWidth: idx === 7 ? 0 : 1 }]}>
+                        <Text style={[styles.noteTableText, { color: currentTheme.text }]}>{note}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  
+                  {/* ドイツ語行 */}
+                  <View style={styles.noteTableRow}>
+                    <View style={[styles.noteTableLabelCell, { backgroundColor: currentTheme.surface }]}>
+                      <Text style={[styles.noteTableLabelText, { color: currentTheme.text }]}>ドイツ語</Text>
+                    </View>
+                    {['C', 'D', 'E', 'F', 'G', 'A', 'H', 'C'].map((note, idx) => (
+                      <View key={idx} style={[styles.noteTableCell, { backgroundColor: currentTheme.background, borderRightWidth: idx === 7 ? 0 : 1 }]}>
+                        <Text style={[styles.noteTableText, { color: currentTheme.text }]}>{note}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  
+                  {/* ドイツ読み行 */}
+                  <View style={[styles.noteTableRow, { borderBottomWidth: 0 }]}>
+                    <View style={[styles.noteTableLabelCell, { backgroundColor: currentTheme.surface }]}>
+                      <Text style={[styles.noteTableLabelText, { color: currentTheme.text }]}>ドイツ読み</Text>
+                    </View>
+                    {['チェー', 'デー', 'エー', 'エフ', 'ゲー', 'アー', 'ハー', 'チェー'].map((note, idx) => (
+                      <View key={idx} style={[styles.noteTableCell, { backgroundColor: currentTheme.background, borderRightWidth: idx === 7 ? 0 : 1 }]}>
+                        <Text style={[styles.noteTableText, { color: currentTheme.text }]}>{note}</Text>
+                      </View>
+                    ))}
+                  </View>
+                  </View>
+                </ScrollView>
+              </View>
+              
               {/* 音階表記（英語・ドイツ語） */}
               {/* stringInfoがない場合のみ表示（弦楽器の場合はstringInfoの説明を優先） */}
               {(currentGuide.fingering as any)?.noteNames && !(currentGuide.fingering as any)?.stringInfo && (
                 <>
-                  <View style={styles.infoItem}>
-                    <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>音階の表記</Text>
-                    <Text style={[styles.infoText, { color: currentTheme.text }]}>
-                      日本語：{(currentGuide.fingering as any).noteNames.japanese}{'\n'}
-                      英語：{(currentGuide.fingering as any).noteNames.english}{'\n'}
-                      ドイツ語：{(currentGuide.fingering as any).noteNames.german}
-                    </Text>
-                  </View>
-                  
                   <View style={styles.infoItem}>
                     <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>なぜ英語で表記されているのか</Text>
                     <Text style={[styles.infoText, { color: currentTheme.text }]}>

@@ -39,7 +39,7 @@ export default function PrivacyPolicyScreen() {
         </Text>
         
         <Text style={[styles.lastUpdated, { color: currentTheme.textSecondary }]}>
-          最終更新日: 2025年10月12日
+          最終更新日: 2026年1月8日
         </Text>
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
@@ -121,7 +121,8 @@ export default function PrivacyPolicyScreen() {
             • 「忘れられる権利」の行使{'\n\n'}
             <Text style={{ fontWeight: '600' }}>【データポータビリティ権 (Article 20)】</Text>{'\n'}
             • 機械可読形式でのデータ提供{'\n'}
-            • 他のサービスへのデータ移行{'\n\n'}
+            • 他のサービスへのデータ移行{'\n'}
+            • データエクスポート機能については、現在開発中です。データエクスポートをご希望の場合は、お問い合わせ先（app.gakki@gmail.com）までご連絡ください。SupabaseダッシュボードからSQLクエリを実行してエクスポートすることも可能です。詳細はアプリのドキュメント（docs/USER_DATA_EXPORT_GUIDE.md）をご参照ください。{'\n\n'}
             <Text style={{ fontWeight: '600' }}>【異議申し立て権 (Article 21)】</Text>{'\n'}
             • 特定のデータ処理への異議申し立て{'\n\n'}
             <Text style={{ fontWeight: '600' }}>【処理制限権 (Article 18)】</Text>{'\n'}

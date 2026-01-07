@@ -126,7 +126,7 @@ export default function AppGuideScreen() {
         '👤 プロフィール設定で、個人情報を登録でき自分の経歴を一目で確認することができます。',
         '📚 マイライブラリで、過去に弾いた曲や弾きたい曲を管理することができます。',
         '🌐 録音ライブラリで演奏録音を一覧で確認することができ、上達を実感しやすくなります。',
-        '🎨 画面の背景は主要機能設定にある外観設定からお好みの色にすることができます。',
+        '🎨 画面の背景は楽器変更画面にある外観設定からお好みの色にすることができます。',
         '📚 マイライブラリで、楽曲を管理できます。'
       ]
     }
@@ -145,7 +145,7 @@ export default function AppGuideScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary, backgroundColor: currentTheme.surface }]}>
-        <TouchableOpacity onPress={() => safeGoBack('/(tabs)/settings', true)} style={styles.backButton}>
+        <TouchableOpacity onPress={() => safeGoBack(router, '/(tabs)/settings', true)} style={styles.backButton}>
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>アプリ使い方ガイド</Text>

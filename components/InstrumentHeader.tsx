@@ -11,6 +11,7 @@ import { getUserProfile } from '@/repositories/userRepository';
 import { getSession } from '@/lib/authService';
 import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
 import { getCurrentRouteFromHistory } from '@/lib/navigationHistory';
+import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
 export default function InstrumentHeader() {
   const router = useRouter();
   const segments = useSegments();
@@ -22,8 +23,8 @@ export default function InstrumentHeader() {
   
   // 楽器情報をコンテキストから取得（単一のデータソース）
   const instrumentInfo = useMemo(() => {
-    // selectedInstrumentまたはuser.selected_instrument_idを使用
-    const instrumentId = selectedInstrument || user?.selected_instrument_id;
+    // 有効な楽器IDを取得（統一的なフォールバック処理）
+    const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
     if (!instrumentId) return null;
     
     // コンテキストのdbInstrumentsから楽器情報を取得
@@ -201,7 +202,7 @@ export default function InstrumentHeader() {
 
   const getInstrumentName = () => {
     // 現在選択されている楽器がある場合はそれを表示
-    const currentInstrumentId = selectedInstrument || user?.selected_instrument_id;
+    const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
     if (currentInstrumentId && instrumentInfo) {
       const displayName = language === 'en' ? instrumentInfo.name_en : instrumentInfo.name;
       return removeEmoji(displayName);

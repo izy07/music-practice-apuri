@@ -5,7 +5,9 @@ import { useRouter } from 'expo-router';
 import { CheckCircle2, Crown, ChevronRight } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useSubscription } from '@/hooks/useSubscription';
-import { mockPurchase } from '@/lib/subscriptionService';
+import { purchaseSubscription } from '@/lib/subscriptionService';
+import { getUserInstrumentCount, FREE_PLAN_LIMITS } from '@/lib/subscriptionLimits';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 
@@ -13,10 +15,20 @@ export default function PricingPlansScreen() {
   const router = useRouter();
   const { currentTheme } = useInstrumentTheme();
   const { entitlement } = useSubscription();
+  const { user } = useAuthAdvanced();
+  const [instrumentCount, setInstrumentCount] = React.useState(1);
   
-  const daysLeft = entitlement?.isTrial && typeof entitlement?.daysLeftOnTrial === 'number'
-    ? Math.max(0, entitlement.daysLeftOnTrial)
-    : 0;
+  // 楽器数を取得
+  React.useEffect(() => {
+    if (user?.id) {
+      getUserInstrumentCount(user.id).then(count => {
+        setInstrumentCount(count);
+      }).catch(() => {
+        setInstrumentCount(1); // エラー時は1個として扱う
+      });
+    }
+  }, [user?.id]);
+  
   const handlePurchase = async (plan: 'premium_monthly' | 'premium_yearly') => {
     try {
       const { supabase } = await import('@/lib/supabase');
@@ -25,11 +37,38 @@ export default function PricingPlansScreen() {
         Alert.alert('エラー', 'ログインしてください');
         return;
       }
-      await mockPurchase(user.id, plan);
+      
+      logger.debug('購入処理開始:', { plan, userId: user.id });
+      await purchaseSubscription(user.id, plan);
+      logger.debug('購入処理成功');
       Alert.alert('完了', 'プレミアムが有効になりました。アプリを再起動してください。');
     } catch (e) {
+      // エラーを適切に記録
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      logger.error('購入処理エラー:', {
+        error: e,
+        message: errorMessage,
+        plan
+      });
       ErrorHandler.handle(e, '購入処理', true);
-      Alert.alert('エラー', '購入処理に失敗しました');
+      
+      // ユーザーに詳細なエラーメッセージを表示
+      const userFriendlyMessage = e instanceof Error 
+        ? (e.message || '購入処理に失敗しました')
+        : '購入処理に失敗しました';
+      
+      Alert.alert(
+        'エラー',
+        `${userFriendlyMessage}\n\nもう一度お試しください。問題が続く場合は、アプリを再起動してください。`,
+        [
+          { text: '了解', style: 'default' },
+          { 
+            text: '再試行', 
+            onPress: () => handlePurchase(plan),
+            style: 'default'
+          }
+        ]
+      );
     }
   };
 
@@ -49,25 +88,23 @@ export default function PricingPlansScreen() {
         <View style={[styles.hero, { backgroundColor: currentTheme.surface }]}>
           <Crown size={28} color={currentTheme.primary} />
           <Text style={[styles.heroTitle, { color: currentTheme.text }]}>あなたの練習を、もっと効率的に</Text>
-          <Text style={[styles.heroSubtitle, { color: currentTheme.textSecondary }]}>最初の21日間は無料体験。以降は月額¥380 または年額¥3,800。</Text>
+          <Text style={[styles.heroSubtitle, { color: currentTheme.textSecondary }]}>月額¥380 または年額¥3,600（月額換算¥300）で全ての機能が無制限で利用可能。</Text>
         </View>
 
         {/* プラン比較 */}
         <View style={styles.plansRow}>
-          {/* Free / Trial */}
+          {/* Free */}
           <View style={[styles.planCard, { backgroundColor: currentTheme.surface, borderColor: currentTheme.secondary }]}> 
-            <Text style={[styles.planName, { color: currentTheme.text }]}>{entitlement.isTrial ? 'トライアル（Free）' : 'Free'}</Text>
+            <Text style={[styles.planName, { color: currentTheme.text }]}>Free</Text>
             <Text style={[styles.price, { color: currentTheme.text }]}> 
               ¥0<span style={{ fontSize: 12 }}>/月</span>
             </Text>
             <View style={styles.featureList}>
               {[
-                '練習カレンダーの利用',
-                '演奏録音機能（21日間のみ無料）',
-                'タイマー機能',
-                'チューナー機能',
-                '共有機能',
-                '音楽用語辞典',
+                `演奏録音機能（月${FREE_PLAN_LIMITS.RECORDINGS_PER_MONTH_PER_INSTRUMENT * instrumentCount}回まで）`,
+                `楽器データ（${FREE_PLAN_LIMITS.MAX_INSTRUMENTS}個まで楽器データ使用可能）`,
+                `マイライブラリ（各楽器ごとに${FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT}曲まで）`,
+                `目標設定（${FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT * instrumentCount}つまで）`,
               ].map((f) => (
                 <View key={f} style={styles.featureItem}>
                   <CheckCircle2 size={16} color={currentTheme.primary} />
@@ -76,9 +113,7 @@ export default function PricingPlansScreen() {
               ))}
             </View>
             <View style={[styles.ctaButton, { backgroundColor: currentTheme.secondary }]}>
-              <Text style={[styles.ctaText, { color: currentTheme.primary }]}>
-                {daysLeft > 0 ? `体験残り ${daysLeft} 日` : '無料で利用中'}
-              </Text>
+              <Text style={[styles.ctaText, { color: currentTheme.primary }]}>無料で利用中</Text>
               <ChevronRight size={18} color={currentTheme.primary} />
             </View>
           </View>
@@ -91,11 +126,7 @@ export default function PricingPlansScreen() {
             </Text>
             <View style={styles.featureList}>
               {[
-                '演奏録音機能無制限',
-                '自動譜読み・スクロール機能',
-                'マイライブラリ',
-                '目標設定',
-                'グラフ・統計分析',
+                '全ての機能が無制限で利用可能',
               ].map((f) => (
                 <View key={f} style={styles.featureItem}>
                   <CheckCircle2 size={16} color={currentTheme.primary} />
@@ -118,10 +149,11 @@ export default function PricingPlansScreen() {
         <View style={[styles.planCard, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary, marginTop: 12 }]}> 
           <Text style={[styles.planName, { color: currentTheme.text }]}>Premium 年額</Text>
           <Text style={[styles.price, { color: currentTheme.primary }]}> 
-            ¥3,800<span style={{ fontSize: 12 }}>/年</span>
+            ¥3,600<span style={{ fontSize: 12 }}>/年</span>
+            <Text style={{ fontSize: 12, color: currentTheme.textSecondary }}>（月額換算¥300）</Text>
           </Text>
           <View style={styles.featureList}>
-            {['月額よりお得', '機能は月額と同じ'].map((f) => (
+            {['全ての機能が無制限で利用可能'].map((f) => (
               <View key={f} style={styles.featureItem}>
                 <CheckCircle2 size={16} color={currentTheme.primary} />
                 <Text style={[styles.featureText, { color: currentTheme.text }]}>{f}</Text>
@@ -138,9 +170,16 @@ export default function PricingPlansScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* 備考 */}
-        <View style={[styles.noteBox, { backgroundColor: currentTheme.surface, borderColor: currentTheme.secondary }]}>
-          <Text style={[styles.noteText, { color: currentTheme.textSecondary }]}>価格は税込・予告なく変更される場合があります。現在は開発用の模擬購入を使用しています。</Text>
+        {/* 重要事項 */}
+        <View style={[styles.noteBox, { backgroundColor: `${currentTheme.primary}10`, borderColor: currentTheme.primary }]}>
+          <Text style={[styles.noteTitle, { color: currentTheme.text }]}>重要事項</Text>
+          <Text style={[styles.noteText, { color: currentTheme.textSecondary, marginTop: 8 }]}>
+            • サブスクリプションは自動更新されます。{'\n'}
+            • 自動更新を停止するには、購入後24時間以内にApp StoreまたはGoogle Playの設定からキャンセルできます。{'\n'}
+            • 現在の期間終了の少なくとも24時間前までにキャンセルしない限り、サブスクリプションは自動的に更新されます。{'\n'}
+            • キャンセル後も、現在の期間が終了するまでサービスをご利用いただけます。{'\n'}
+            • 価格は税込・予告なく変更される場合があります。
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -257,6 +296,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 12,
     padding: 12,
+  },
+  noteTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
   },
   noteText: {
     fontSize: 12,

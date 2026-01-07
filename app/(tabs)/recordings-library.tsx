@@ -9,6 +9,7 @@ import {
   Dimensions,
   RefreshControl,
   TextInput,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Play, Pause, Trash2, Star, StarOff, Calendar, Clock, Music, ArrowLeft, Video, Search, X } from 'lucide-react-native';
@@ -44,7 +45,7 @@ type TimeFilter = 'all' | '1week' | '1month' | '3months' | '6months' | '1year';
 export default function RecordingsLibraryScreen() {
   const router = useRouter();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
-  const { entitlement, loading: entitlementLoading } = useSubscription();
+  const { entitlement, loading: entitlementLoading, error: subscriptionError, errorMessage: subscriptionErrorMessage, refresh: refreshSubscription } = useSubscription();
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -88,12 +89,12 @@ export default function RecordingsLibraryScreen() {
         hostname: typeof window !== 'undefined' ? window.location.hostname : 'unknown'
       });
       
-      // ペイウォール: 未購読かつトライアル外の場合はデータをロードしない
+      // 機能アクセスチェック（フリープランでも制限内で使用可能）
       const canAccess = canAccessFeature('recordings', entitlement);
       logger.debug('録音機能アクセス可否:', canAccess);
       
       if (!canAccess) {
-        logger.debug('ペイウォール: 録音ライブラリアクセス拒否');
+        logger.debug('録音ライブラリアクセス拒否');
         setRecordings([]);
         setLoading(false);
         return;
@@ -559,7 +560,34 @@ export default function RecordingsLibraryScreen() {
     );
   }
 
-  // 非購読時のゲート表示（エンタイトルメント読み込み完了後のみ表示）
+  // サブスクリプションエラーが発生した場合はエラーを表示
+  if (!entitlementLoading && subscriptionError && subscriptionErrorMessage) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]}> 
+        <InstrumentHeader />
+        <View style={styles.emptyContainer}>
+          <Text style={[styles.emptyTitle, { color: '#DC2626' }]}>⚠️ エラーが発生しました</Text>
+          <Text style={[styles.emptySubtitle, { color: currentTheme.textSecondary, marginTop: 8 }]}>
+            {subscriptionErrorMessage}
+          </Text>
+          <Text style={[styles.emptySubtitle, { color: currentTheme.textSecondary, marginTop: 16, fontSize: 12 }]}>
+            サブスクリプション情報の読み込みに失敗しました。もう一度お試しください。
+          </Text>
+          <TouchableOpacity 
+            style={[styles.backButton, { backgroundColor: currentTheme.primary, marginTop: 24 }]}
+            onPress={async () => {
+              await refreshSubscription();
+            }}
+          >
+            <Text style={{ color: '#FFFFFF', fontWeight: '700' }}>再試行</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // 機能アクセス不可の場合のゲート表示（通常は表示されない、フリープランでも制限内で使用可能）
+  // このチェックは、entitlementが取得できない場合などのエラー時のフォールバック
   if (!entitlementLoading && !loading && !canAccessFeature('recordings', entitlement)) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} > 
@@ -595,7 +623,7 @@ export default function RecordingsLibraryScreen() {
           <View style={styles.headerTop}>
             <TouchableOpacity 
               style={styles.backButton}
-              onPress={() => safeGoBack('/(tabs)/settings', true)} // 強制的にsettings画面に戻る
+              onPress={() => safeGoBack(router, '/(tabs)/settings', true)} // 確実にsettings画面に戻る
               activeOpacity={0.7}
             >
               <ArrowLeft size={18} color={currentTheme.text} />
@@ -608,7 +636,7 @@ export default function RecordingsLibraryScreen() {
               </Text>
               <Text style={[styles.subtitle, { color: currentTheme.textSecondary }]}>
                 {sortedRecordings.length}件の録音
-                {(timeFilter !== 'all' || searchQuery.trim()) ? ` (全${recordings.length}件)` : ''}
+                {(timeFilter !== 'all' || searchQuery.trim()) ? ` (全${recordings.length}件)` : null}
               </Text>
             </View>
           </View>

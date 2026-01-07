@@ -59,6 +59,7 @@ export default function SignupScreen() {
   }
   
   const router = useRouter();
+  const segments = useSegments();
   const { user, isAuthenticated, isLoading, isInitialized, signUp: signUpFromHook, error: authError } = useAuthAdvanced();
   
   // 新規登録画面のローカル状態（UI用）

@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { Database } from './supabase';
 import logger from './logger';
 import { ErrorHandler } from './errorHandler';
+import { isColumnNotFoundError, handleColumnError } from './columnErrorHandler';
 
 type UserSettings = Database['public']['Tables']['user_settings']['Row'];
 type TutorialProgress = Database['public']['Tables']['tutorial_progress']['Row'];
@@ -605,25 +606,55 @@ export const saveRecording = async (record: {
       .single();
 
     if (error) {
-      // recording_typeカラムが存在しないエラーの場合、recording_typeなしで保存を試行
-      if (error.message?.includes('recording_type') || error.code === '42703' || error.message?.includes('column "recording_type" does not exist')) {
-        logger.warn('recording_typeカラムが存在しません。recording_typeなしで保存を試行します。', error);
-        // recording_typeを削除して再試行
-        const { recording_type, ...payloadWithoutType } = payload;
+      // カラムが存在しないエラーの場合、該当カラムを除外して再試行
+      if (isColumnNotFoundError(error)) {
+        const optionalColumns = ['instrument_id', 'recording_type'];
+        let currentPayload = payload;
+        let excludedColumns: string[] = [];
         
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('recordings')
-          .insert(payloadWithoutType)
-          .select()
-          .single();
-        
-        if (fallbackError) {
+        // 最大3回まで再試行（複数のカラムが存在しない場合に対応）
+        for (let attempt = 0; attempt < 3; attempt++) {
+          const handled = handleColumnError(error, currentPayload, optionalColumns);
+          
+          if (!handled) {
+            // カラムエラーでない場合、ループを抜ける
+            break;
+          }
+          
+          excludedColumns = [...excludedColumns, ...handled.excludedColumns];
+          currentPayload = handled.payload as typeof payload;
+          
+          logger.warn(`[database] カラムが存在しないため、除外して再試行します（試行 ${attempt + 1}）`, {
+            errorCode: error.code,
+            errorMessage: error.message,
+            excludedColumns: handled.excludedColumns
+          });
+          
+          const { data: fallbackData, error: fallbackError } = await supabase
+            .from('recordings')
+            .insert(currentPayload)
+            .select()
+            .single();
+          
+          if (!fallbackError) {
+            logger.info(`[database] 録音保存成功（除外カラム: ${excludedColumns.join(', ')}）:`, fallbackData);
+            return { data: fallbackData, error: null };
+          }
+          
+          // 再試行後もエラーが発生した場合、次のループで処理
+          if (isColumnNotFoundError(fallbackError)) {
+            error = fallbackError;
+            continue;
+          }
+          
+          // カラムエラー以外のエラーの場合
           ErrorHandler.handle(fallbackError, 'Supabase保存（フォールバック）', false);
           throw fallbackError;
         }
         
-        logger.debug('録音保存成功（recording_typeなし）:', fallbackData);
-        return { data: fallbackData, error: null };
+        // すべての再試行が失敗した場合
+        ErrorHandler.handle(error, 'Supabase保存', false);
+        throw error;
       } else {
         ErrorHandler.handle(error, 'Supabase保存', false);
         throw error;
@@ -633,8 +664,19 @@ export const saveRecording = async (record: {
     logger.debug('録音保存成功:', data);
     return { data, error: null };
   } catch (error) {
-    console.error('録音保存エラー:', error);
-    return { data: null, error };
+    // エラーを適切に記録し、再スローする（呼び出し側で処理できるように）
+    logger.error('録音保存エラー:', {
+      error,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    });
+    ErrorHandler.handle(error, '録音保存', false);
+    
+    // エラーを再スロー（呼び出し側で適切に処理できるように）
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(`録音保存中にエラーが発生しました: ${String(error)}`);
   }
 };
 
