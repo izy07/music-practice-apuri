@@ -2122,7 +2122,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     return !!(authState.user?.selected_instrument_id);
   }, [authState.user]);
 
-    // 新規登録フラグを設定
+  // 新規登録フラグを設定
   const setNewSignupFlag = useCallback(async (): Promise<void> => {
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
       try {
@@ -2163,7 +2163,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       }
     }
   }, []);
-  
+
   // 新規登録フラグの状態を初期化（認証状態が初期化された時に実行）
   useEffect(() => {
     if (authState.isInitialized) {
