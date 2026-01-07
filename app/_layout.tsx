@@ -7,7 +7,7 @@ import { useRouter, useSegments } from 'expo-router'; // ルーティング関�
 import { useFrameworkReady } from '@/hooks/useFrameworkReady'; // フレームワーク準備状態の管理
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced'; // 認証フック（統一版）
 import { LanguageProvider } from '@/components/LanguageContext'; // 多言語対応の管理
-import { InstrumentThemeProvider } from '@/components/InstrumentThemeContext'; // 楽器別テーマの管理
+import { InstrumentThemeProvider, useInstrumentTheme } from '@/components/InstrumentThemeContext'; // 楽器別テーマの管理
 import LoadingSkeleton from '@/components/LoadingSkeleton'; // ローディング表示コンポーネント
 import { supabase } from '@/lib/supabase'; // Supabaseクライアント
 import { RoutePath } from '@/types/common'; // ルートパス型
@@ -112,6 +112,9 @@ function RootLayoutContent() {
     signOut,
     user
   } = useAuthAdvanced();
+  
+  // InstrumentThemeContextから選択されている楽器を取得（プロフィール取得タイムアウト時でも正しく動作）
+  const { selectedInstrument, isInitializing: isInstrumentInitializing } = useInstrumentTheme();
 
 
   // アプリのライフサイクル管理：バックグラウンド移行時にオーディオリソースを解放
@@ -691,8 +694,11 @@ function RootLayoutContent() {
 
     // 認証済み + 楽器選択済み
     // ログイン後、最後に使用していた楽器のメイン画面を表示
-    // user.selected_instrument_idが設定されている場合は、メイン画面に遷移
-    const hasSelectedInstrument = user?.selected_instrument_id != null && user.selected_instrument_id !== '';
+    // user.selected_instrument_idまたはInstrumentThemeContextのselectedInstrumentが設定されている場合は、メイン画面に遷移
+    // プロフィール取得タイムアウト時でも、InstrumentThemeContextのselectedInstrumentが設定されていればメイン画面に遷移
+    const hasSelectedInstrumentFromUser = user?.selected_instrument_id != null && user.selected_instrument_id !== '';
+    const hasSelectedInstrumentFromContext = selectedInstrument != null && selectedInstrument !== '';
+    const hasSelectedInstrument = hasSelectedInstrumentFromUser || hasSelectedInstrumentFromContext;
     
     if (hasSelectedInstrument || hasInstrumentSelected()) {
       // チュートリアル画面または楽器選択画面にいる場合はカレンダー画面に遷移
