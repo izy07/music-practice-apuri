@@ -698,7 +698,8 @@ export const getPracticeSessionsByDateRange = async (
         duration_minutes,
         input_method,
         content,
-        created_at
+        created_at,
+        instrument_id
       `)
       .eq('user_id', userId)
       .gte('practice_date', startDate);
@@ -740,7 +741,7 @@ export const getPracticeSessionsByDateRange = async (
         message.includes('column') && message.includes('instrument');
       
       if (isInstrumentFilterError) {
-        logger.warn('[practiceSessionRepository.getPracticeSessionsByDateRange] 楽器フィルタでエラーが発生したため、楽器フィルタなしで再試行します');
+        logger.warn('[practiceSessionRepository.getPracticeSessionsByDateRange] 楽器フィルタでエラーが発生したため、SQL上の楽器フィルタを外して再試行し、TypeScript側で楽器ごとに絞り込みます');
         
         let fallbackQuery = supabase
           .from('practice_sessions')
@@ -750,7 +751,8 @@ export const getPracticeSessionsByDateRange = async (
             duration_minutes,
             input_method,
             content,
-            created_at
+            created_at,
+            instrument_id
           `)
           .eq('user_id', userId)
           .gte('practice_date', startDate);
@@ -771,10 +773,24 @@ export const getPracticeSessionsByDateRange = async (
           return { data: null, error: fallbackResult.error as SupabaseError };
         }
         
-        logger.debug('[practiceSessionRepository.getPracticeSessionsByDateRange] フォールバッククエリでデータ取得に成功しました', {
-          count: fallbackResult.data?.length || 0,
+        // ここで TypeScript 側で各楽器ごとに絞り込みを行う
+        let filtered = (fallbackResult.data || []) as any[];
+        if (instrumentId) {
+          // 選択された楽器 + 既存のnullデータ（後方互換性）
+          filtered = filtered.filter(row =>
+            row.instrument_id === instrumentId || row.instrument_id == null
+          );
+        } else {
+          // 楽器未選択の場合は null のみ
+          filtered = filtered.filter(row => row.instrument_id == null);
+        }
+        
+        logger.debug('[practiceSessionRepository.getPracticeSessionsByDateRange] フォールバッククエリでデータ取得に成功しました（楽器ごとに絞り込み済み）', {
+          rawCount: fallbackResult.data?.length || 0,
+          filteredCount: filtered.length,
+          instrumentId,
         });
-        return { data: fallbackResult.data as PracticeSession[] | null, error: null as any };
+        return { data: filtered as PracticeSession[] | null, error: null as any };
       }
       
       // フォールバック条件に当てはまらない場合は、そのままエラーを返す
