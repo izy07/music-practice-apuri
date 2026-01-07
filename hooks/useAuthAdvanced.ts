@@ -1911,6 +1911,48 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     return false;
   }, []);
 
+  // 新規登録フラグを設定
+  const setNewSignupFlag = useCallback(async (): Promise<void> => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+      try {
+        localStorage.setItem(NEW_SIGNUP_FLAG_KEY, 'true');
+        newSignupFlagState = true;
+        logger.debug('新規登録フラグを設定しました');
+      } catch (error) {
+        logger.warn('新規登録フラグの設定に失敗しました:', error);
+      }
+    } else {
+      try {
+        await AsyncStorage.setItem(NEW_SIGNUP_FLAG_KEY, 'true');
+        newSignupFlagState = true;
+        logger.debug('新規登録フラグを設定しました（AsyncStorage）');
+      } catch (error) {
+        logger.warn('新規登録フラグの設定に失敗しました（AsyncStorage）:', error);
+      }
+    }
+  }, []);
+  
+  // 新規登録フラグを削除
+  const clearNewSignupFlag = useCallback(async (): Promise<void> => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+      try {
+        localStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
+        newSignupFlagState = false;
+        logger.debug('新規登録フラグを削除しました');
+      } catch (error) {
+        logger.warn('新規登録フラグの削除に失敗しました:', error);
+      }
+    } else {
+      try {
+        await AsyncStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
+        newSignupFlagState = false;
+        logger.debug('新規登録フラグを削除しました（AsyncStorage）');
+      } catch (error) {
+        logger.warn('新規登録フラグの削除に失敗しました（AsyncStorage）:', error);
+      }
+    }
+  }, []);
+
   // ログアウト処理
   const signOut = useCallback(async (): Promise<void> => {
     try {
@@ -2121,48 +2163,6 @@ export const useAuthAdvanced = (): AuthHookReturn => {
   const hasInstrumentSelected = useCallback((): boolean => {
     return !!(authState.user?.selected_instrument_id);
   }, [authState.user]);
-
-  // 新規登録フラグを設定
-  const setNewSignupFlag = useCallback(async (): Promise<void> => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-      try {
-        localStorage.setItem(NEW_SIGNUP_FLAG_KEY, 'true');
-        newSignupFlagState = true;
-        logger.debug('新規登録フラグを設定しました');
-      } catch (error) {
-        logger.warn('新規登録フラグの設定に失敗しました:', error);
-      }
-    } else {
-      try {
-        await AsyncStorage.setItem(NEW_SIGNUP_FLAG_KEY, 'true');
-        newSignupFlagState = true;
-        logger.debug('新規登録フラグを設定しました（AsyncStorage）');
-      } catch (error) {
-        logger.warn('新規登録フラグの設定に失敗しました（AsyncStorage）:', error);
-      }
-    }
-  }, []);
-  
-  // 新規登録フラグを削除
-  const clearNewSignupFlag = useCallback(async (): Promise<void> => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-      try {
-        localStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
-        newSignupFlagState = false;
-        logger.debug('新規登録フラグを削除しました');
-      } catch (error) {
-        logger.warn('新規登録フラグの削除に失敗しました:', error);
-      }
-    } else {
-      try {
-        await AsyncStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
-        newSignupFlagState = false;
-        logger.debug('新規登録フラグを削除しました（AsyncStorage）');
-      } catch (error) {
-        logger.warn('新規登録フラグの削除に失敗しました（AsyncStorage）:', error);
-      }
-    }
-  }, []);
 
   // 新規登録フラグの状態を初期化（認証状態が初期化された時に実行）
   useEffect(() => {
