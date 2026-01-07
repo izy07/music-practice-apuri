@@ -869,22 +869,18 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           
           // 新規登録フラグをチェック（ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ）
           // 新規登録フラグが存在しない場合は、既存ユーザーとみなしてtutorial_completed: trueを設定
-          const isNewSignup = await (async () => {
+          let isNewSignup = false;
+          try {
             if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-              try {
-                return localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
-              } catch (error) {
-                return false;
-              }
+              isNewSignup = localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
             } else {
-              try {
-                const flag = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
-                return flag === 'true';
-              } catch (error) {
-                return false;
-              }
+              const flag = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
+              isNewSignup = flag === 'true';
             }
-          })();
+          } catch (error) {
+            // エラー時は既存ユーザーとみなす
+            isNewSignup = false;
+          }
           
           // 新規登録フラグが存在しない場合は、既存ユーザーとみなしてtutorial_completed: trueを設定
           // これにより、ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ
