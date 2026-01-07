@@ -223,6 +223,31 @@ export default function CalendarScreen() {
     }
   }, [currentDate]);
 
+  // ログイン成功時にカレンダーの日付を今日にリセット
+  useEffect(() => {
+    if (!isAuthenticated || isLoading || !isInitialized) {
+      return;
+    }
+    
+    if (typeof window !== 'undefined') {
+      try {
+        const loginSuccessFlag = localStorage.getItem('login_success_reset_calendar');
+        if (loginSuccessFlag === 'true') {
+          // ログイン成功フラグが存在する場合、カレンダーの日付を今日にリセット
+          const today = new Date();
+          setCurrentDate(today);
+          localStorage.removeItem('login_success_reset_calendar');
+          logger.debug('ログイン成功を検出 - カレンダーの日付を今日にリセットしました', {
+            year: today.getFullYear(),
+            month: today.getMonth() + 1
+          });
+        }
+      } catch (error) {
+        logger.warn('ログイン成功時のカレンダー日付リセットに失敗しました（続行）:', error);
+      }
+    }
+  }, [isAuthenticated, isLoading, isInitialized]);
+
   // 初回データ読み込み（初期化完了後、認証済み、楽器選択済みの場合）
   useEffect(() => {
     if (isLoading || !isInitialized || !isAuthenticated || isInstrumentInitializing || !selectedInstrument || selectedInstrument.trim() === '') {

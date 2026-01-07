@@ -832,10 +832,17 @@ export default function GoalsScreen() {
                 nextGoalId: result.data,
                 instrumentId: goalInstrumentId
               });
+              // カレンダー表示更新イベントを発火
+              if (typeof window !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
+              }
+            } else if (result.error) {
+              // エラーは無視（目標の自動表示は補助的な機能のため）
+              logger.debug('達成後の次の目標の自動表示処理でエラーが発生しました（無視）:', result.error);
             }
           } catch (error) {
             // エラーは無視（目標の自動表示は補助的な機能のため）
-            logger.warn('達成後の次の目標の自動表示処理でエラーが発生しました（無視）:', error);
+            logger.debug('達成後の次の目標の自動表示処理で例外が発生しました（無視）:', error);
           }
         }
       } else {
@@ -891,10 +898,17 @@ export default function GoalsScreen() {
               nextGoalId: result.data,
               instrumentId: goalInstrumentId
             });
+            // カレンダー表示更新イベントを発火
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
+            }
+          } else if (result.error) {
+            // エラーは無視（目標の自動表示は補助的な機能のため）
+            logger.debug('達成後の次の目標の自動表示処理でエラーが発生しました（無視）:', result.error);
           }
         } catch (error) {
           // エラーは無視（目標の自動表示は補助的な機能のため）
-          logger.warn('達成後の次の目標の自動表示処理でエラーが発生しました（無視）:', error);
+          logger.debug('達成後の次の目標の自動表示処理で例外が発生しました（無視）:', error);
         }
       }
       

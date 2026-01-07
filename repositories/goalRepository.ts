@@ -453,7 +453,8 @@ export const goalRepository = {
     let query = supabase
       .from('goals')
       .select(selectFields)
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .or('is_completed.eq.true,progress_percentage.eq.100'); // 達成済み目標のみを取得
     
     // 楽器IDでフィルタリング（カラムが存在する場合のみ）
     if (supportsInstrumentId) {
@@ -1082,6 +1083,54 @@ export const goalRepository = {
       
       // その他のエラーはthrow
       throw error;
+    }
+  },
+
+  /**
+   * 達成された目標の代わりに、同じ楽器の次の目標を取得（カレンダー表示用）
+   */
+  async getNextGoalForCalendar(
+    userId: string,
+    instrumentId: string | null,
+    excludeGoalId: string
+  ): Promise<string | null> {
+    try {
+      let query = supabase
+        .from('goals')
+        .select('id')
+        .eq('user_id', userId)
+        .in('goal_type', ['personal_short', 'personal_long'])
+        .neq('id', excludeGoalId)
+        .eq('is_completed', false)
+        .neq('progress_percentage', 100)
+        .eq('show_on_calendar', false); // まだカレンダーに表示されていない目標
+      
+      // 楽器IDでフィルタリング
+      if (instrumentId) {
+        query = query.eq('instrument_id', instrumentId);
+      } else {
+        query = query.is('instrument_id', null);
+      }
+      
+      const { data: goals, error } = await query
+        .order('created_at', { ascending: true })
+        .limit(1);
+      
+      if (error) {
+        // エラーは無視（次の目標の自動表示は補助的な機能のため）
+        logger.debug('[goalRepository.getNextGoalForCalendar] エラー（無視）:', error);
+        return null;
+      }
+      
+      if (goals && goals.length > 0) {
+        return goals[0].id;
+      }
+      
+      return null;
+    } catch (error) {
+      // エラーは無視（次の目標の自動表示は補助的な機能のため）
+      logger.debug('[goalRepository.getNextGoalForCalendar] 例外（無視）:', error);
+      return null;
     }
   },
 };

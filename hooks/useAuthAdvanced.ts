@@ -66,6 +66,7 @@ export interface AuthHookReturn extends AuthState {
   // ユーティリティ
   clearError: () => void;
   fetchUserProfile: () => Promise<AuthUser | null>;
+  clearNewSignupFlag: () => Promise<void>; // 新規登録フラグを削除（チュートリアル完了時）
   
   // 状態チェック
   hasInstrumentSelected: () => boolean;
@@ -80,6 +81,30 @@ let globalAuthState: AuthState = {
   isLoading: true,
   isInitialized: false,
   error: null,
+};
+
+// 新規登録フラグのキー
+const NEW_SIGNUP_FLAG_KEY = 'music-practice-new-signup-flag';
+
+// 新規登録フラグの状態（メモリ上で保持）
+let newSignupFlagState: boolean = false;
+
+// 新規登録フラグの状態を更新
+const updateNewSignupFlagState = async (): Promise<void> => {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+    try {
+      newSignupFlagState = localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
+    } catch (error) {
+      newSignupFlagState = false;
+    }
+  } else {
+    try {
+      const value = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
+      newSignupFlagState = value === 'true';
+    } catch (error) {
+      newSignupFlagState = false;
+    }
+  }
 };
 
 // 認証状態更新のリスナー
@@ -841,6 +866,30 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           // プロフィール取得がタイムアウトした場合でも、ログインは成功している可能性があるため
           // フォールバックユーザーを作成して認証状態を更新し、後でプロフィールを取得する
           const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
+          
+          // 新規登録フラグをチェック（ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ）
+          // 新規登録フラグが存在しない場合は、既存ユーザーとみなしてtutorial_completed: trueを設定
+          const isNewSignup = await (async () => {
+            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+              try {
+                return localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
+              } catch (error) {
+                return false;
+              }
+            } else {
+              try {
+                const flag = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
+                return flag === 'true';
+              } catch (error) {
+                return false;
+              }
+            }
+          })();
+          
+          // 新規登録フラグが存在しない場合は、既存ユーザーとみなしてtutorial_completed: trueを設定
+          // これにより、ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ
+          const fallbackTutorialCompleted = !isNewSignup;
+          
           const fallbackUser: AuthUser = {
             id: userId,
             email: user.email || '',
@@ -849,7 +898,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             created_at: user.created_at || new Date().toISOString(),
             last_sign_in_at: user.last_sign_in_at,
             selected_instrument_id: fallbackInstrumentId,
-            tutorial_completed: false, // プロフィール取得後に正しい値が設定される
+            tutorial_completed: fallbackTutorialCompleted, // 新規登録フラグが存在しない場合はtrue（既存ユーザーとみなす）
             onboarding_completed: false,
           };
           
@@ -1837,6 +1886,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       if (data.user) {
         logger.debug('新規登録成功:', data.user.email);
         logger.debug('新規登録成功 - onAuthStateChangeで認証状態が更新されます');
+        // 新規登録フラグを設定（チュートリアル画面を表示するため）
+        await setNewSignupFlag();
         // 新規登録成功後はonAuthStateChangeのSIGNED_INイベントでhandleAuthenticatedUserが呼ばれるため、
         // ここでは直接呼び出さない（重複実行を防ぐ）
         // 外観設定のクリアはログアウト時に行う
@@ -1941,7 +1992,15 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         logger.error('AsyncStorageクリアエラー:', error);
       }
       
-      // 6. 認証状態をリセット
+      // 6. 新規登録フラグを削除（ログアウト時）
+      try {
+        await clearNewSignupFlag();
+        logger.debug('新規登録フラグを削除しました（ログアウト時）');
+      } catch (flagError) {
+        logger.warn('新規登録フラグの削除に失敗しました（続行）:', flagError);
+      }
+      
+      // 7. 認証状態をリセット
       updateAuthState({
         user: null,
         isAuthenticated: false,
@@ -1958,7 +2017,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         error: error instanceof Error ? error.message : 'ログアウトに失敗しました' 
       });
     }
-  }, [clearInstrumentThemeLocal]);
+  }, [clearInstrumentThemeLocal, clearNewSignupFlag]);
   
   // signOut関数の参照を更新（useEffectで使用するため）
   useEffect(() => {
@@ -2067,8 +2126,59 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     return !!(authState.user?.selected_instrument_id);
   }, [authState.user]);
 
-  // チュートリアル必要状態のチェック（新規登録ユーザーも含む）
-  // 楽器が選択されている、またはチュートリアルが完了している場合はチュートリアルをスキップ
+    // 新規登録フラグを設定
+  const setNewSignupFlag = useCallback(async (): Promise<void> => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+      try {
+        localStorage.setItem(NEW_SIGNUP_FLAG_KEY, 'true');
+        newSignupFlagState = true;
+        logger.debug('新規登録フラグを設定しました');
+      } catch (error) {
+        logger.warn('新規登録フラグの設定に失敗しました:', error);
+      }
+    } else {
+      try {
+        await AsyncStorage.setItem(NEW_SIGNUP_FLAG_KEY, 'true');
+        newSignupFlagState = true;
+        logger.debug('新規登録フラグを設定しました（AsyncStorage）');
+      } catch (error) {
+        logger.warn('新規登録フラグの設定に失敗しました（AsyncStorage）:', error);
+      }
+    }
+  }, []);
+  
+  // 新規登録フラグを削除
+  const clearNewSignupFlag = useCallback(async (): Promise<void> => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+      try {
+        localStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
+        newSignupFlagState = false;
+        logger.debug('新規登録フラグを削除しました');
+      } catch (error) {
+        logger.warn('新規登録フラグの削除に失敗しました:', error);
+      }
+    } else {
+      try {
+        await AsyncStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
+        newSignupFlagState = false;
+        logger.debug('新規登録フラグを削除しました（AsyncStorage）');
+      } catch (error) {
+        logger.warn('新規登録フラグの削除に失敗しました（AsyncStorage）:', error);
+      }
+    }
+  }, []);
+  
+  // 新規登録フラグの状態を初期化（認証状態が初期化された時に実行）
+  useEffect(() => {
+    if (authState.isInitialized) {
+      updateNewSignupFlagState().catch(() => {
+        // エラーは無視
+      });
+    }
+  }, [authState.isInitialized]);
+  
+  // チュートリアル必要状態のチェック（新規登録時のみ）
+  // 新規登録フラグが存在する場合のみチュートリアルを表示
   const needsTutorial = useCallback((): boolean => {
     if (!authState.isAuthenticated) {
       return false;
@@ -2081,7 +2191,12 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     if (hasInstrumentSelected()) {
       return false;
     }
-    // 楽器が選択されていない場合はチュートリアルが必要
+    // 新規登録フラグが存在する場合のみチュートリアルが必要
+    // メモリ上の状態をチェック（初期化時に更新される）
+    if (!newSignupFlagState) {
+      return false;
+    }
+    // 新規登録フラグが存在し、チュートリアル未完了、楽器未選択の場合のみチュートリアルが必要
     return true;
   }, [authState.isAuthenticated, authState.user?.tutorial_completed, hasInstrumentSelected]);
 
@@ -2103,6 +2218,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     needsTutorial,
     canAccessMainApp,
     fetchUserProfile,
+    clearNewSignupFlag, // チュートリアル完了時に呼び出す
   };
 };
 

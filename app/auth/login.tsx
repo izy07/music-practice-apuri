@@ -110,6 +110,19 @@ export default function LoginScreen() {
       // 一般的なアプリと同様に、すぐに画面遷移を実行（遅延なし）
       logger.debug('認証状態更新完了 - 画面遷移を実行');
       
+      // ログイン成功時: カレンダーの日付を今日にリセット
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          // 保存されたカレンダーの日付を削除（今日の日付が表示されるように）
+          window.localStorage.removeItem('home_calendar_view_date');
+          // ログイン成功フラグを設定（カレンダー画面で日付をリセットするため）
+          window.localStorage.setItem('login_success_reset_calendar', 'true');
+          logger.debug('ログイン成功 - カレンダーの日付を今日にリセットしました');
+        } catch (error) {
+          logger.warn('カレンダー日付のリセットに失敗しました（続行）:', error);
+        }
+      }
+      
       // 適切な画面に遷移（router.pushを使用して_layout.tsxのスキップを回避）
       // タイムアウト時のフォールバックユーザーの場合、selected_instrument_idがnullでも
       // 楽器選択画面に遷移せず、カレンダー画面に遷移する（実際のユーザーデータが取得された後、正しい画面に遷移）

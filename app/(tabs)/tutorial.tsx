@@ -20,6 +20,7 @@ import logger from '@/lib/logger';
 import { navigateWithBasePath } from '@/lib/navigationUtils';
 import NotificationService from '@/lib/notificationService';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -32,6 +33,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 export default function TutorialScreen() {
   const router = useRouter();
   const { currentTheme } = useInstrumentTheme();
+  const { clearNewSignupFlag } = useAuthAdvanced();
   const [currentStep, setCurrentStep] = useState(0);
   const [isNavigating, setIsNavigating] = useState(false);
   const [notificationEnabled, setNotificationEnabled] = useState(false);
@@ -325,6 +327,14 @@ export default function TutorialScreen() {
         logger.error('チュートリアル完了状況の保存エラー:', updateError);
       } else {
         logger.debug('チュートリアル完了状況を保存しました');
+      }
+
+      // 新規登録フラグを削除（チュートリアル完了時）
+      try {
+        await clearNewSignupFlag();
+        logger.debug('新規登録フラグを削除しました（チュートリアル完了）');
+      } catch (flagError) {
+        logger.warn('新規登録フラグの削除に失敗しました（続行）:', flagError);
       }
 
       logger.debug('🔍 楽器選択状況を確認中...');

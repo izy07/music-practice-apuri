@@ -644,10 +644,43 @@ function RootLayoutContent() {
         return; // 遷移を許可
       }
       
-      if (needsTutorial()) {
+      // プロフィール取得がタイムアウトした可能性を考慮
+      // 既存ユーザー（新規登録フラグが存在しない、tutorial_completedがtrue、またはlast_sign_in_atが存在する）の場合、
+      // プロフィール取得がタイムアウトした可能性が高いので、メインカレンダー画面に遷移する
+      const isLikelyExistingUser = user && (
+        user.tutorial_completed === true ||
+        user.last_sign_in_at !== undefined ||
+        !needsTutorial()
+      );
+      
+      if (isLikelyExistingUser) {
+        // プロフィール取得がタイムアウトした可能性がある既存ユーザーの場合、
+        // メインカレンダー画面に遷移（後でプロフィールが取得されたら自動的に更新される）
+        logger.debug('プロフィール取得タイムアウトの可能性を考慮し、メインカレンダー画面に遷移（既存ユーザー）', {
+          tutorial_completed: user.tutorial_completed,
+          last_sign_in_at: user.last_sign_in_at,
+          needsTutorial: needsTutorial()
+        });
+        router.replace('/(tabs)/index');
+        return;
+      }
+      
+      // ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ
+      // needsTutorial()がtrueを返す場合でも、ユーザーが存在しない場合はチュートリアル画面に遷移しない
+      // （プロフィール取得がタイムアウトした可能性があるため）
+      if (needsTutorial() && user) {
         // チュートリアルが必要な場合（新規登録直後など）
+        // ただし、ユーザーが存在する場合のみ（ネットワークエラー時の誤遷移を防ぐ）
         logger.debug('新規登録直後のため、チュートリアル画面にリダイレクト');
         router.replace('/(tabs)/tutorial');
+        return;
+      }
+      
+      // needsTutorial()がtrueでも、ユーザーが存在しない場合は楽器選択画面に遷移
+      // （プロフィール取得がタイムアウトした可能性があるため）
+      if (needsTutorial() && !user) {
+        logger.debug('チュートリアルが必要だが、ユーザー情報が不完全なため、楽器選択画面にリダイレクト（ネットワークエラーの可能性）');
+        router.replace('/(tabs)/instrument-selection');
         return;
       }
       // チュートリアル完了後は楽器選択画面にリダイレクト

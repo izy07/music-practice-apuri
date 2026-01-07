@@ -859,7 +859,7 @@ export function useCalendarData(currentDate: Date) {
         .in('goal_type', ['personal_short', 'personal_long'])
         .eq('show_on_calendar', true); // show_on_calendarがtrueの目標のみを取得
       
-      // 現在選択されている楽器IDでフィルタリング
+      // 現在選択されている楽器IDでフィルタリング（各楽器で設定された目標のみを各楽器カレンダーに表示）
       if (currentInstrumentId) {
         query = query.eq('instrument_id', currentInstrumentId);
       } else {
@@ -934,15 +934,46 @@ export function useCalendarData(currentDate: Date) {
       }
 
       if (goals && goals.length > 0) {
+        logger.debug('[loadShortTermGoal] 取得した目標:', {
+          goalsCount: goals.length,
+          goals: goals.map((g: any) => ({
+            title: g.title,
+            show_on_calendar: g.show_on_calendar,
+            is_completed: g.is_completed,
+            progress_percentage: g.progress_percentage,
+            instrument_id: g.instrument_id,
+            currentInstrumentId
+          }))
+        });
+        
         // 達成済みでない目標をフィルタリング
         const activeGoals = goals.filter((goal: any) => {
           const isCompleted = goal.is_completed === true || goal.progress_percentage === 100;
           return !isCompleted;
         });
 
+        logger.debug('[loadShortTermGoal] 達成済みでない目標:', {
+          activeGoalsCount: activeGoals.length,
+          activeGoals: activeGoals.map((g: any) => ({
+            title: g.title,
+            show_on_calendar: g.show_on_calendar,
+            instrument_id: g.instrument_id
+          }))
+        });
+
         // show_on_calendarがtrueの目標のみを表示（クエリで既にフィルタリング済みだが、念のためクライアント側でも確認）
         const visibleGoals = activeGoals.filter((goal: any) => {
           return goal.show_on_calendar === true;
+        });
+
+        logger.debug('[loadShortTermGoal] 表示対象の目標:', {
+          visibleGoalsCount: visibleGoals.length,
+          visibleGoals: visibleGoals.map((g: any) => ({
+            title: g.title,
+            show_on_calendar: g.show_on_calendar,
+            instrument_id: g.instrument_id,
+            currentInstrumentId
+          }))
         });
 
         // 現在選択されている楽器の目標のみを表示（既に楽器IDでフィルタリング済み）
