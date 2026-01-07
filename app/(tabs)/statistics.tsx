@@ -815,7 +815,8 @@ export default function StatisticsScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: Background }]} > 
         <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        {/* 統計・分析画面から戻るときも、他の画面と同様に常にカレンダー画面に戻る */}
+        <TouchableOpacity onPress={() => router.replace('/(tabs)/index')} style={styles.backBtn}>
           <ArrowLeft size={22} color={TextColor} />
           </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: TextColor }]}>統計・分析</Text>
