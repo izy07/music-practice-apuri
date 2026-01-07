@@ -131,16 +131,39 @@ export const cancelSubscription = async (userId: string) => {
   return data as UserSubscription;
 };
 
-export const computeEntitlement = (sub: UserSubscription | null) => {
+export const computeEntitlement = async (sub: UserSubscription | null) => {
   const now = new Date();
-  const isTrial = !!sub?.trial_ends_at && new Date(sub.trial_ends_at) >= now;
-  const isPremiumActive = !!sub?.is_active && !!sub.current_period_end && new Date(sub.current_period_end) >= now;
-  const isEntitled = isTrial || isPremiumActive;
+  
+  // サブスクリプションレコードからトライアル期間を取得
+  let isTrial = !!sub?.trial_ends_at && new Date(sub.trial_ends_at) >= now;
   let daysLeftOnTrial = 0;
+  
   if (isTrial && sub?.trial_ends_at) {
     const diffMs = new Date(sub.trial_ends_at).getTime() - now.getTime();
     daysLeftOnTrial = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+  } else if (!sub || !sub.trial_ends_at) {
+    // サブスクリプションレコードがない、またはtrial_ends_atが設定されていない場合
+    // ユーザーのcreated_atを基準に21日間のトライアルを計算
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.created_at) {
+        const createdAt = new Date(user.created_at);
+        const trialEnd = new Date(createdAt.getTime() + (21 * 24 * 60 * 60 * 1000)); // 21日後
+        isTrial = now <= trialEnd;
+        if (isTrial) {
+          const diffMs = trialEnd.getTime() - now.getTime();
+          daysLeftOnTrial = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+        }
+      }
+    } catch (e) {
+      // エラー時は既存のロジックに従う
+      ErrorHandler.handle(e, 'computeEntitlement: ユーザー情報取得', false);
+    }
   }
+  
+  const isPremiumActive = !!sub?.is_active && !!sub.current_period_end && new Date(sub.current_period_end) >= now;
+  const isEntitled = isTrial || isPremiumActive;
+  
   return { isEntitled, isTrial, isPremiumActive, daysLeftOnTrial };
 };
 

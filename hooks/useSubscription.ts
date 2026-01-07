@@ -7,7 +7,7 @@ import { ErrorHandler } from '@/lib/errorHandler';
 export const useSubscription = () => {
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [loading, setLoading] = useState(true);
-  const [entitlement, setEntitlement] = useState(() => computeEntitlement(null));
+  const [entitlement, setEntitlement] = useState({ isEntitled: false, isTrial: false, isPremiumActive: false, daysLeftOnTrial: 0 });
 
   useEffect(() => {
     let mounted = true;
@@ -18,7 +18,8 @@ export const useSubscription = () => {
         if (!user) {
           if (mounted) {
             setSubscription(null);
-            setEntitlement(computeEntitlement(null));
+            const defaultEntitlement = await computeEntitlement(null);
+            setEntitlement(defaultEntitlement);
           }
           return;
         }
@@ -26,7 +27,7 @@ export const useSubscription = () => {
           const sub = await ensureSubscription(user.id);
           if (mounted) {
             setSubscription(sub);
-            const entitlement = computeEntitlement(sub);
+            const entitlement = await computeEntitlement(sub);
             setEntitlement(entitlement);
           }
         } catch (e: unknown) {
@@ -55,7 +56,8 @@ export const useSubscription = () => {
     try {
       const sub = await ensureSubscription(user.id);
       setSubscription(sub);
-      setEntitlement(computeEntitlement(sub));
+      const entitlement = await computeEntitlement(sub);
+      setEntitlement(entitlement);
     } catch (e: any) {
       // Fallback: サインアップ日ベース
       const createdAt = user?.created_at ? new Date(user.created_at) : new Date();
