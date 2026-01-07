@@ -449,7 +449,10 @@ export default function StatisticsScreen() {
     });
   }, [practiceRecords, anchorDate]);
 
-  // 年別（現在の月から過去12ヶ月分）- メモ化で最適化
+  // 年別（月ごとの棒グラフ）
+  // 仕様:
+  // - 記録が12ヶ月未満の間は「初めて記録した月（初月）」を左端にし、初月〜現在月までを時系列で表示
+  // - 記録が12ヶ月以上になったら、常に「直近12ヶ月」を表示（右端が最新月）
   const yearlyData = useMemo<DayData[]>(() => {
     const arr: DayData[] = [];
     
@@ -465,22 +468,61 @@ export default function StatisticsScreen() {
       }
     });
     
-    // 現在の月から過去12ヶ月分を表示
+    // 記録がない場合は空配列
+    if (practiceRecords.length === 0 || recordsByMonth.size === 0) {
+      return arr;
+    }
+    
+    // アンカーとなる「現在の月」
     const now = new Date(anchorDate);
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
     
-    // 表示する月の範囲を決定（現在の月を最初にして過去12ヶ月）
-    let displayMonths: Array<{ year: number; month: number }> = [];
+    // 最初に記録された月（初月）を特定
+    let firstRecordDate: Date | null = null;
+    practiceRecords.forEach(record => {
+      const d = new Date(record.practice_date);
+      if (isNaN(d.getTime())) return;
+      if (!firstRecordDate || d < firstRecordDate) {
+        firstRecordDate = d;
+      }
+    });
+    
+    if (!firstRecordDate) {
+      return arr;
+    }
+    
+    const firstYear = firstRecordDate.getFullYear();
+    const firstMonth = firstRecordDate.getMonth() + 1;
+    
+    // 初月〜現在月までの経過月数（0ベース）
+    const monthsDiff =
+      (currentYear - firstYear) * 12 +
+      (currentMonth - firstMonth);
+    
+    // 表示する月のリスト（year, month）
+    const displayMonths: Array<{ year: number; month: number }> = [];
     const maxMonths = 12;
     
-    // 過去の月から現在の月に向かって12ヶ月分を追加（古い順）
-    for (let i = maxMonths - 1; i >= 0; i--) {
-      const date = new Date(currentYear, currentMonth - 1 - i, 1);
-      const displayYear = date.getFullYear();
-      const displayMonth = date.getMonth() + 1;
-      
-      displayMonths.push({ year: displayYear, month: displayMonth }); // 古い順（過去の月が最初）
+    if (monthsDiff < maxMonths) {
+      // 記録が12ヶ月未満: 初月〜現在月までを左から右へ時系列で表示
+      const totalMonths = monthsDiff + 1; // 初月を含める
+      for (let i = 0; i < totalMonths; i++) {
+        const date = new Date(firstYear, firstMonth - 1 + i, 1);
+        displayMonths.push({
+          year: date.getFullYear(),
+          month: date.getMonth() + 1,
+        });
+      }
+    } else {
+      // 記録が12ヶ月以上: 現在月を右端にした直近12ヶ月を表示（古い順に並べる）
+      for (let i = maxMonths - 1; i >= 0; i--) {
+        const date = new Date(currentYear, currentMonth - 1 - i, 1);
+        displayMonths.push({
+          year: date.getFullYear(),
+          month: date.getMonth() + 1,
+        });
+      }
     }
     
     // データを配列に追加
