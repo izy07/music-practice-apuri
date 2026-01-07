@@ -708,29 +708,48 @@ export const getPracticeSessionsByDateRange = async (
     }
     
     // 楽器IDでフィルタリング（統一関数を使用、テーブル名を指定して自動作成を試みる）
-    const filteredQuery = await applyInstrumentFilter(query, instrumentId, true, 'practice_sessions');
+    // 元のクエリを保持（フィルタリング失敗時に使用）
+    const originalQuery = query;
     
-    // フィルタリング後のクエリが有効かチェック（.order()メソッドが存在することを確認）
-    if (typeof filteredQuery === 'object' && filteredQuery !== null && typeof filteredQuery.order === 'function') {
-      query = filteredQuery;
-    } else {
-      // フィルタリング関数が失敗した場合、直接フィルタリングを適用
-      logger.warn('[getPracticeSessionsByDateRange] フィルタリング後のクエリが無効です。直接フィルタリングを適用します。', {
-        hasOrder: typeof filteredQuery?.order === 'function',
-        filteredQueryType: typeof filteredQuery
-      });
-      // 直接フィルタリングを適用
-      if (instrumentId) {
-        // 選択楽器のデータ + nullデータ（既存データ保護、後方互換性）
-        query = (query as any).or(`instrument_id.eq.${instrumentId},instrument_id.is.null`);
+    try {
+      const filteredQuery = await applyInstrumentFilter(query, instrumentId, true, 'practice_sessions');
+      
+      // フィルタリング後のクエリが有効かチェック（.order()メソッドが存在することを確認）
+      if (typeof filteredQuery === 'object' && filteredQuery !== null && typeof filteredQuery.order === 'function') {
+        query = filteredQuery;
       } else {
-        // 楽器が選択されていない場合: nullデータのみ
-        query = (query as any).is('instrument_id', null);
+        throw new Error('フィルタリング後のクエリが無効です');
       }
-      // 直接フィルタリング後のクエリもチェック
-      if (typeof query !== 'object' || query === null || typeof query.order !== 'function') {
-        logger.error('[getPracticeSessionsByDateRange] 直接フィルタリング後のクエリも無効です。フィルタリングなしで続行します。');
-        // フィルタリングなしで元のクエリを使用（楽器IDフィルタリングをスキップ）
+    } catch (filterError) {
+      logger.warn('[getPracticeSessionsByDateRange] フィルタリング関数が失敗しました。直接フィルタリングを適用します。', filterError);
+      
+      // 元のクエリが有効か確認
+      if (originalQuery && typeof originalQuery.order === 'function') {
+        // 元のクエリが有効な場合、直接フィルタリングを適用
+        try {
+          if (instrumentId) {
+            // 選択楽器のデータ + nullデータ（既存データ保護、後方互換性）
+            query = (originalQuery as any).or(`instrument_id.eq.${instrumentId},instrument_id.is.null`);
+            // 直接フィルタリング後のクエリが有効か確認
+            if (typeof query !== 'object' || query === null || typeof query.order !== 'function') {
+              throw new Error('直接フィルタリング後のクエリが無効です');
+            }
+          } else {
+            // 楽器が選択されていない場合: nullデータのみ
+            query = (originalQuery as any).is('instrument_id', null);
+            // 直接フィルタリング後のクエリが有効か確認
+            if (typeof query !== 'object' || query === null || typeof query.order !== 'function') {
+              throw new Error('直接フィルタリング後のクエリが無効です');
+            }
+          }
+        } catch (directFilterError) {
+          logger.error('[getPracticeSessionsByDateRange] 直接フィルタリングも失敗しました。フィルタリングなしで続行します。', directFilterError);
+          // フィルタリングなしで元のクエリを使用
+          query = originalQuery;
+        }
+      } else {
+        logger.error('[getPracticeSessionsByDateRange] 元のクエリも無効です。クエリを再構築します。');
+        // クエリを再構築
         query = supabase
           .from('practice_sessions')
           .select(`
@@ -783,7 +802,55 @@ export const getPracticeSessionsByDate = async (
       .eq('practice_date', practiceDate);
     
     // 楽器IDでフィルタリング（統一関数を使用、テーブル名を指定して自動作成を試みる）
-    query = await applyInstrumentFilter(query, instrumentId, true, 'practice_sessions');
+    // 元のクエリを保持（フィルタリング失敗時に使用）
+    const originalQuery = query;
+    
+    try {
+      const filteredQuery = await applyInstrumentFilter(query, instrumentId, true, 'practice_sessions');
+      
+      // フィルタリング後のクエリが有効かチェック（.order()メソッドが存在することを確認）
+      if (typeof filteredQuery === 'object' && filteredQuery !== null && typeof filteredQuery.order === 'function') {
+        query = filteredQuery;
+      } else {
+        throw new Error('フィルタリング後のクエリが無効です');
+      }
+    } catch (filterError) {
+      logger.warn('[getPracticeSessionsByDate] フィルタリング関数が失敗しました。直接フィルタリングを適用します。', filterError);
+      
+      // 元のクエリが有効か確認
+      if (originalQuery && typeof originalQuery.order === 'function') {
+        // 元のクエリが有効な場合、直接フィルタリングを適用
+        try {
+          if (instrumentId) {
+            // 選択楽器のデータ + nullデータ（既存データ保護、後方互換性）
+            query = (originalQuery as any).or(`instrument_id.eq.${instrumentId},instrument_id.is.null`);
+            // 直接フィルタリング後のクエリが有効か確認
+            if (typeof query !== 'object' || query === null || typeof query.order !== 'function') {
+              throw new Error('直接フィルタリング後のクエリが無効です');
+            }
+          } else {
+            // 楽器が選択されていない場合: nullデータのみ
+            query = (originalQuery as any).is('instrument_id', null);
+            // 直接フィルタリング後のクエリが有効か確認
+            if (typeof query !== 'object' || query === null || typeof query.order !== 'function') {
+              throw new Error('直接フィルタリング後のクエリが無効です');
+            }
+          }
+        } catch (directFilterError) {
+          logger.error('[getPracticeSessionsByDate] 直接フィルタリングも失敗しました。フィルタリングなしで続行します。', directFilterError);
+          // フィルタリングなしで元のクエリを使用
+          query = originalQuery;
+        }
+      } else {
+        logger.error('[getPracticeSessionsByDate] 元のクエリも無効です。クエリを再構築します。');
+        // クエリを再構築
+        query = supabase
+          .from('practice_sessions')
+          .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, created_at')
+          .eq('user_id', userId)
+          .eq('practice_date', practiceDate);
+      }
+    }
     
     const { data, error } = await query.order('created_at', { ascending: true });
     
