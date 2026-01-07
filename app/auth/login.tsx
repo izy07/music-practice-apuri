@@ -127,8 +127,17 @@ export default function LoginScreen() {
       // タイムアウト時のフォールバックユーザーの場合、selected_instrument_idがnullでも
       // 楽器選択画面に遷移せず、カレンダー画面に遷移する（実際のユーザーデータが取得された後、正しい画面に遷移）
       const isTimeoutFallback = user && !user.selected_instrument_id && user.tutorial_completed === true;
-      if (canAccessMainApp() || isTimeoutFallback) {
-        logger.debug('カレンダー画面に遷移', { isTimeoutFallback });
+      
+      // ログイン成功後、最後に使用していた楽器のメイン画面を表示
+      // user.selected_instrument_idが設定されている場合は、即座にメイン画面に遷移
+      const hasSelectedInstrument = user?.selected_instrument_id != null && user.selected_instrument_id !== '';
+      
+      if (hasSelectedInstrument || canAccessMainApp() || isTimeoutFallback) {
+        logger.debug('カレンダー画面に遷移（最後に使用していた楽器のメイン画面）', { 
+          isTimeoutFallback,
+          hasSelectedInstrument,
+          selectedInstrumentId: user?.selected_instrument_id
+        });
         router.push('/(tabs)/index');
       } else if (needsTutorial()) {
         logger.debug('チュートリアル画面に遷移');

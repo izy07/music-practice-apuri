@@ -690,22 +690,33 @@ function RootLayoutContent() {
     }
 
     // 認証済み + 楽器選択済み
-    // チュートリアル画面または楽器選択画面にいる場合はカレンダー画面に遷移
-    if (currentTab === 'tutorial' || currentTab === 'instrument-selection') {
-      logger.debug('楽器選択済みのため、チュートリアル画面または楽器選択画面からカレンダー画面にリダイレクト');
-      router.replace('/(tabs)/index');
-      return;
-    }
+    // ログイン後、最後に使用していた楽器のメイン画面を表示
+    // user.selected_instrument_idが設定されている場合は、メイン画面に遷移
+    const hasSelectedInstrument = user?.selected_instrument_id != null && user.selected_instrument_id !== '';
     
-    // Web環境: 既に適切な画面にいる場合は維持（リロード時も現在の画面を保持）
-    if (Platform.OS === 'web' && (isInTabsGroup || isInOrgGroup)) {
-      return;
-    }
-    
-    // ルートパスまたは認証画面にいる場合はカレンダー画面に遷移
-    if (isAtRoot || isInAuthGroup) {
-      router.replace('/(tabs)/index');
-      return;
+    if (hasSelectedInstrument || hasInstrumentSelected()) {
+      // チュートリアル画面または楽器選択画面にいる場合はカレンダー画面に遷移
+      if (currentTab === 'tutorial' || currentTab === 'instrument-selection') {
+        logger.debug('楽器選択済みのため、チュートリアル画面または楽器選択画面からカレンダー画面にリダイレクト（最後に使用していた楽器のメイン画面）', {
+          selectedInstrumentId: user?.selected_instrument_id
+        });
+        router.replace('/(tabs)/index');
+        return;
+      }
+      
+      // Web環境: 既に適切な画面にいる場合は維持（リロード時も現在の画面を保持）
+      if (Platform.OS === 'web' && (isInTabsGroup || isInOrgGroup)) {
+        return;
+      }
+      
+      // ルートパスまたは認証画面にいる場合はカレンダー画面に遷移
+      if (isAtRoot || isInAuthGroup) {
+        logger.debug('ログイン成功 - 最後に使用していた楽器のメイン画面に遷移', {
+          selectedInstrumentId: user?.selected_instrument_id
+        });
+        router.replace('/(tabs)/index');
+        return;
+      }
     }
   }, [isReady, isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, needsTutorial, router, segments]);
 
