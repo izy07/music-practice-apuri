@@ -103,8 +103,27 @@ export default function MyLibraryScreen() {
           .eq('user_id', user.id);
         
         // 楽器ごとにフィルタリング（統一関数を使用、既存nullデータも含める）
-        const { applyInstrumentFilter } = await import('@/repositories/common/instrumentFilter');
-        query = await applyInstrumentFilter(query, selectedInstrument, true);
+        try {
+          const { applyInstrumentFilter } = await import('@/repositories/common/instrumentFilter');
+          const filteredQuery = await applyInstrumentFilter(query, selectedInstrument, true, 'my_songs');
+          
+          // フィルタリング後のクエリが有効かチェック
+          if (typeof filteredQuery === 'object' && filteredQuery !== null && typeof filteredQuery.order === 'function') {
+            query = filteredQuery;
+          } else {
+            logger.warn('[my-library] フィルタリング後のクエリが無効です。直接フィルタリングを適用します。');
+            // 直接フィルタリングを適用
+            if (selectedInstrument) {
+              query = (query as any).or(`instrument_id.eq.${selectedInstrument},instrument_id.is.null`);
+            } else {
+              query = (query as any).is('instrument_id', null);
+            }
+          }
+        } catch (filterError: any) {
+          // エラーが発生した場合は、フィルタリングなしで続行
+          logger.warn('[my-library] instrument_idフィルタリングでエラーが発生しました。フィルタリングなしで続行します:', filterError);
+          // queryはそのまま使用（フィルタリングなし）
+        }
         
         const { data, error } = await query.order('created_at', { ascending: false });
 
