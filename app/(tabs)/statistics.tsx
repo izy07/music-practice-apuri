@@ -113,8 +113,11 @@ export default function StatisticsScreen() {
   const [practiceRecords, setPracticeRecords] = useState<PracticeRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // 前回の楽器IDを保持（楽器変更を検出するため）
+  const previousInstrumentIdRef = useRef<string | null>(null);
+  
   // 練習記録データを取得（キャッシュ付き）
-  const fetchPracticeRecords = React.useCallback(async () => {
+  const fetchPracticeRecords = React.useCallback(async (forceRefresh: boolean = false) => {
     // Nullチェック: userとuser.idの存在を確認
     if (!user?.id) {
       logger.warn('[統計画面] ユーザーがログインしていません');
@@ -129,6 +132,17 @@ export default function StatisticsScreen() {
       // 共通関数を使用して楽器IDを取得
       const currentInstrumentId = getInstrumentId(selectedInstrument);
       
+      // 楽器が変更された場合は、キャッシュを無効化
+      const instrumentChanged = previousInstrumentIdRef.current !== (currentInstrumentId || 'null');
+      if (instrumentChanged) {
+        logger.debug('[統計画面] 楽器が変更されました。キャッシュを無効化します。', {
+          previous: previousInstrumentIdRef.current,
+          current: currentInstrumentId || 'null'
+        });
+        previousInstrumentIdRef.current = currentInstrumentId || 'null';
+        forceRefresh = true; // 楽器変更時は強制更新
+      }
+      
       // 最適化されたクエリ: 必要なカラムのみ取得、最近2年分を取得（年別統計のため24ヶ月分）
       // 2年分のデータで年別グラフ（12ヶ月）を表示可能
       const twoYearsAgo = new Date();
@@ -142,30 +156,40 @@ export default function StatisticsScreen() {
         startDate,
       });
       
-      // メモリキャッシュから取得を試行
-      const cachedData = practiceDataCache.get<PracticeRecord[]>(cacheKey);
-      if (cachedData) {
-        setPracticeRecords(cachedData);
-        setLoading(false);
-        return;
+      // 強制更新でない場合のみキャッシュを確認
+      if (!forceRefresh) {
+        // メモリキャッシュから取得を試行
+        const cachedData = practiceDataCache.get<PracticeRecord[]>(cacheKey);
+        if (cachedData) {
+          logger.debug('[統計画面] メモリキャッシュから取得しました', { count: cachedData.length });
+          setPracticeRecords(cachedData);
+          setLoading(false);
+          return;
+        }
+        
+        // ローカルストレージキャッシュから取得を試行
+        const storageData = await practiceDataCache.getFromStorage<PracticeRecord[]>(cacheKey);
+        if (storageData) {
+          logger.debug('[統計画面] ローカルストレージキャッシュから取得しました', { count: storageData.length });
+          setPracticeRecords(storageData);
+          // メモリキャッシュにも保存
+          practiceDataCache.set(cacheKey, storageData);
+          setLoading(false);
+          return;
+        }
+      } else {
+        // 強制更新の場合はキャッシュを削除
+        practiceDataCache.delete(cacheKey);
+        await practiceDataCache.deleteFromStorage(cacheKey);
       }
       
-      // ローカルストレージキャッシュから取得を試行
-      const storageData = await practiceDataCache.getFromStorage<PracticeRecord[]>(cacheKey);
-      if (storageData) {
-        setPracticeRecords(storageData);
-        // メモリキャッシュにも保存
-        practiceDataCache.set(cacheKey, storageData);
-        setLoading(false);
-        return;
-      }
-      
-      console.log('[統計画面] 練習記録取得開始:', {
+      logger.debug('[統計画面] 練習記録取得開始:', {
         userId: user.id,
         startDate,
         instrumentId: currentInstrumentId,
         selectedInstrument: selectedInstrument,
-        limit: DATA.MAX_PRACTICE_RECORDS
+        limit: DATA.MAX_PRACTICE_RECORDS,
+        forceRefresh
       });
       
       const result = await getPracticeSessionsByDateRange(
@@ -177,23 +201,24 @@ export default function StatisticsScreen() {
       );
 
       if (result.error) {
-        console.error('[統計画面] 練習記録取得エラー:', result.error);
+        logger.error('[統計画面] 練習記録取得エラー:', result.error);
         Alert.alert('エラー', '練習記録の取得に失敗しました');
         return;
       }
 
       const sessions = result.data || [];
-      console.log('[統計画面] 取得した練習記録数:', sessions.length);
-      console.log('[統計画面] 取得した練習記録（最初の5件）:', sessions.slice(0, 5).map(r => ({
+      logger.debug('[統計画面] 取得した練習記録数:', sessions.length);
+      logger.debug('[統計画面] 取得した練習記録（最初の5件）:', sessions.slice(0, 5).map(r => ({
         date: r.practice_date,
         minutes: r.duration_minutes,
-        method: r.input_method
+        method: r.input_method,
+        instrument_id: (r as any).instrument_id
       })));
       
       // duration_minutesがnullやundefinedのレコードを確認
       const invalidRecords = sessions.filter(r => r.duration_minutes == null);
       if (invalidRecords.length > 0) {
-        console.warn('[統計画面] duration_minutesがnull/undefinedのレコード:', invalidRecords.length, '件');
+        logger.warn('[統計画面] duration_minutesがnull/undefinedのレコード:', invalidRecords.length, '件');
       }
 
       // PracticeSession[]をPracticeRecord[]に変換
@@ -214,7 +239,7 @@ export default function StatisticsScreen() {
 
       setPracticeRecords(records);
     } catch (error) {
-      console.error('[統計画面] 練習記録取得例外:', error);
+      logger.error('[統計画面] 練習記録取得例外:', error);
       Alert.alert('エラー', '練習記録の取得に失敗しました');
     } finally {
       setLoading(false);
@@ -365,13 +390,8 @@ export default function StatisticsScreen() {
     const weekdays = ['月','火','水','木','金','土','日'];
     
     // 練習記録を日付でマップ化（O(1)アクセス）
-    // 基礎練（preset）は時間が0のため統計から除外
     const recordsByDate = new Map<string, number>();
     practiceRecords.forEach(record => {
-      // 基礎練（preset）は統計から除外
-      if (record.input_method === 'preset') {
-        return;
-      }
       const dateStr = record.practice_date;
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = record.duration_minutes ?? 0;
@@ -408,13 +428,8 @@ export default function StatisticsScreen() {
     const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
     
     // 練習記録を日付でマップ化（O(1)アクセス）
-    // 基礎練（preset）は時間が0のため統計から除外
     const recordsByDate = new Map<string, number>();
     practiceRecords.forEach(record => {
-      // 基礎練（preset）は統計から除外
-      if (record.input_method === 'preset') {
-        return;
-      }
       const dateStr = record.practice_date;
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = record.duration_minutes ?? 0;
@@ -439,13 +454,8 @@ export default function StatisticsScreen() {
     const arr: DayData[] = [];
     
     // 練習記録を月でマップ化（O(1)アクセス）
-    // 基礎練（preset）は時間が0のため統計から除外
     const recordsByMonth = new Map<string, number>();
     practiceRecords.forEach(record => {
-      // 基礎練（preset）は統計から除外
-      if (record.input_method === 'preset') {
-        return;
-      }
       const monthKey = record.practice_date.substring(0, 7); // YYYY-MM
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = record.duration_minutes ?? 0;
@@ -490,13 +500,8 @@ export default function StatisticsScreen() {
     const arr: DayData[] = [];
     
     // 練習記録を年でマップ化（O(1)アクセス）
-    // 基礎練（preset）は時間が0のため統計から除外
     const recordsByYear = new Map<string, number>();
     practiceRecords.forEach(record => {
-      // 基礎練（preset）は統計から除外
-      if (record.input_method === 'preset') {
-        return;
-      }
       const yearKey = record.practice_date.substring(0, 4); // YYYY
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = record.duration_minutes ?? 0;
@@ -528,15 +533,10 @@ export default function StatisticsScreen() {
   }, [practiceRecords]);
 
   // 練習方法別統計を計算 - メモ化で最適化
-  // 基礎練（preset）は時間が0のため統計から除外
   const getInputMethodStats = useMemo(() => {
     const methodStats: { [key: string]: { count: number; totalMinutes: number } } = {};
     
     practiceRecords.forEach(record => {
-      // 基礎練（preset）は統計から除外
-      if (record.input_method === 'preset') {
-        return;
-      }
       const method = record.input_method || 'その他';
       if (!methodStats[method]) {
         methodStats[method] = { count: 0, totalMinutes: 0 };
@@ -568,10 +568,8 @@ export default function StatisticsScreen() {
     }
 
     // 1. 平均練習時間
-    // 基礎練（preset）とduration_minutesが0の記録を除外
-    const validRecords = practiceRecords.filter(r => 
-      r.input_method !== 'preset' && (r.duration_minutes ?? 0) > 0
-    );
+    // duration_minutesが0の記録を除外
+    const validRecords = practiceRecords.filter(r => (r.duration_minutes ?? 0) > 0);
     const totalMinutes = validRecords.reduce((sum, r) => {
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = r.duration_minutes ?? 0;
@@ -580,9 +578,9 @@ export default function StatisticsScreen() {
     const avgMinutes = validRecords.length > 0 ? Math.round(totalMinutes / validRecords.length) : 0;
 
     // 2. 最長連続練習日
-    // 基礎練（preset）とduration_minutesが0の記録を除外
+    // duration_minutesが0の記録を除外
     const sortedRecords = [...practiceRecords]
-      .filter(r => r.input_method !== 'preset' && (r.duration_minutes ?? 0) > 0)
+      .filter(r => (r.duration_minutes ?? 0) > 0)
       .sort((a, b) => 
       new Date(a.practice_date).getTime() - new Date(b.practice_date).getTime()
     );
@@ -614,13 +612,9 @@ export default function StatisticsScreen() {
     longestStreak = Math.max(longestStreak, currentStreak);
 
     // 3. 週間練習パターン（曜日別）
-    // 基礎練（preset）とduration_minutesが0の記録を除外
+    // duration_minutesが0の記録を除外
     const weeklyPattern: { [key: string]: number } = {};
     practiceRecords.forEach(record => {
-      // 基礎練（preset）は統計から除外
-      if (record.input_method === 'preset') {
-        return;
-      }
       // duration_minutesが0より大きい場合のみ統計に含める
       const minutes = record.duration_minutes ?? 0;
       if (minutes > 0) {
@@ -633,13 +627,9 @@ export default function StatisticsScreen() {
     });
 
     // 4. 月別練習傾向（最近6ヶ月）
-    // 基礎練（preset）とduration_minutesが0の記録を除外
+    // duration_minutesが0の記録を除外
     const monthlyTendency: { [key: string]: number } = {};
     practiceRecords.forEach(record => {
-      // 基礎練（preset）は統計から除外
-      if (record.input_method === 'preset') {
-        return;
-      }
       const date = new Date(record.practice_date);
       const yearMonth = `${date.getFullYear()}年${date.getMonth() + 1}月`;
       // duration_minutesがnullやundefinedの場合、0として扱う
@@ -656,24 +646,18 @@ export default function StatisticsScreen() {
       .slice(-6);
 
     // 5. 練習頻度（週に何回）
-    // 基礎練（preset）とduration_minutesが0の記録を除外
-    const validRecordsCount = practiceRecords.filter(r => 
-      r.input_method !== 'preset' && (r.duration_minutes ?? 0) > 0
-    ).length;
+    // duration_minutesが0の記録を除外
+    const validRecordsCount = practiceRecords.filter(r => (r.duration_minutes ?? 0) > 0).length;
     const recordsPerWeek = Math.round((validRecordsCount / 30) * 7);
 
     // 6. 練習強度別統計（短時間/中時間/長時間）
-    // 基礎練（preset）とduration_minutesが0の記録を除外
+    // duration_minutesが0の記録を除外
     const intensityStats = {
       short: 0, // 30分未満
       medium: 0, // 30分-60分
       long: 0, // 60分以上
     };
     practiceRecords.forEach(record => {
-      // 基礎練（preset）は統計から除外
-      if (record.input_method === 'preset') {
-        return;
-      }
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = record.duration_minutes ?? 0;
       // duration_minutesが0より大きい場合のみ統計に含める
@@ -685,7 +669,7 @@ export default function StatisticsScreen() {
     });
 
     // 7. 総練習日数と練習回数
-    // 基礎練（preset）とduration_minutesが0の記録を除外
+    // duration_minutesが0の記録を除外
     // 549行目で既に計算済みのvalidRecordsを再利用
     const uniqueDates = new Set(validRecords.map(r => r.practice_date));
     const totalPracticeDays = uniqueDates.size;
