@@ -818,6 +818,15 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           // 保存直後でもなく、savedRecordingIdも指定されていない場合はクリア
           setExistingRecordings([]);
           setAudioUrl('');
+        } else if (savedRecordingId || currentIsRecordingJustSaved) {
+          // 保存直後の場合は、既存の録音情報を保持（データベース反映を待つため）
+          // 録音済みUIが消えないようにする
+          logger.debug('録音保存直後のため、既存の録音情報を保持します', {
+            savedRecordingId,
+            currentIsRecordingJustSaved,
+            currentRecordingsCount: currentExistingRecordings?.length || 0
+          });
+          // 既存の録音情報を保持（setExistingRecordingsを呼び出さない）
         }
       }
     } catch (error) {
@@ -1107,12 +1116,27 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       // 録音保存後、データを再取得（データベース反映を待つため少し遅延）
       if (visible && selectedDate) {
         // データベース反映を待つため、少し遅延してから読み込む
+        // 録音済みUIが消えないように、既存の録音情報を保持したまま読み込む
         setTimeout(async () => {
           // フォーム状態を一時保存（loadExistingRecordで上書きされる可能性があるため）
           const savedMinutes = formStateBeforeRecording?.minutes || minutes;
           const savedContent = formStateBeforeRecording?.content || content;
           
+          // 既存の録音情報を一時保存（loadExistingRecordで上書きされる可能性があるため）
+          const savedRecordings = existingRecordingsRef.current;
+          
           await loadExistingRecord(audioData.recordingId);
+          
+          // 読み込み後に録音情報を確認し、録音が見つからない場合は既存の録音情報を復元
+          // これにより、録音済みUIが消えるのを防ぐ
+          const currentRecordings = existingRecordingsRef.current;
+          if (currentRecordings.length === 0 && savedRecordings.length > 0) {
+            logger.debug('録音が見つからないため、既存の録音情報を復元します', {
+              savedRecordingsCount: savedRecordings.length,
+              recordingId: audioData.recordingId
+            });
+            setExistingRecordings(savedRecordings);
+          }
           
           // 読み込み後にフォーム状態を復元（既存記録で上書きされた場合でも、ユーザーが入力した情報を優先）
           if (savedMinutes || savedContent) {
