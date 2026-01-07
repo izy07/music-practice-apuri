@@ -20,6 +20,7 @@ import { OfflineStorage, isOnline } from '../../lib/offlineStorage';
 import { COMMON_STYLES } from '@/lib/appStyles';
 import logger from '@/lib/logger';
 import { savePracticeSessionWithIntegration } from '@/repositories/practiceSessionRepository';
+import { setCurrentRoute } from '@/lib/navigationHistory';
 
 // テーマの型定義
 interface InstrumentTheme {
@@ -110,6 +111,14 @@ export default function CalendarScreen() {
   const { currentTheme, practiceSettings, selectedInstrument, isInitializing: isInstrumentInitializing } = useInstrumentTheme();
   const { Platform } = require('react-native');
   
+  // 現在のルートを記録（マウント時）
+  useEffect(() => {
+    setCurrentRoute('/(tabs)/index');
+    return () => {
+      // アンマウント時はクリアしない（他の画面に遷移する際に使用するため）
+    };
+  }, []);
+  
   // 初期化完了を追跡するためのref（初回データ読み込み用）
   const hasInitialLoadRef = useRef(false);
   
@@ -118,6 +127,9 @@ export default function CalendarScreen() {
   const lastDataFetchTimeRef = useRef<number>(0);
   const lastMonthRef = useRef<{ year: number; month: number } | null>(null);
   const lastInstrumentRef = useRef<string | null>(null);
+  
+  // 練習記録更新処理の重複実行を防ぐためのフラグ
+  const isUpdatingRef = useRef(false);
   
   // 日付管理
   const [currentDate, setCurrentDate] = useState(() => {
@@ -527,42 +539,41 @@ export default function CalendarScreen() {
   }, [refreshGoalDisplay]);
 
   // 練習記録更新イベントをリッスン（タイマー記録など）
+  // 練習記録更新イベントの処理（重複実行を防ぐ）
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
 
     const handlePracticeRecordUpdated = (event: Event) => {
+      // 既に更新処理中の場合はスキップ（重複実行を防ぐ）
+      if (isUpdatingRef.current) {
+        logger.debug('📅 練習記録更新イベントを受信しましたが、既に更新処理中のためスキップします');
+        return;
+      }
+
       const customEvent = event as CustomEvent;
       const detail = customEvent?.detail;
       logger.debug('📅 練習記録更新イベントを受信、データを再読み込みします', detail);
       
+      // 更新処理中フラグを設定
+      isUpdatingRef.current = true;
+      
       // verifiedフラグがtrueの場合は、データベースへの反映が確認済みなので即座に更新
       // falseの場合は、データベース反映を待つ必要がある
       const isVerified = detail?.verified === true;
-      const initialDelay = isVerified ? 200 : 1000;
+      const initialDelay = isVerified ? 300 : 500; // 遅延時間を短縮（重複実行を防ぐため）
       
-      // データベースの反映を待つため、十分な遅延を設けてから更新
-      // 複数回試行して確実にデータを取得する
+      // データベースの反映を待つため、適切な遅延を設けてから更新（1回のみ）
       setTimeout(async () => {
         try {
-          // まず1回目の更新を試行
           await loadAllData();
-          logger.debug('1回目のデータ更新完了', { isVerified });
+          logger.debug('データ更新完了', { isVerified, source: detail?.source });
         } catch (error) {
-          logger.error('1回目のデータ更新エラー:', error);
-        }
-        
-        // verifiedでない場合は、さらに待機してから2回目の更新を試行
-        if (!isVerified) {
-          setTimeout(async () => {
-            try {
-              await loadAllData();
-              logger.debug('2回目のデータ更新完了');
-            } catch (error) {
-              logger.error('2回目のデータ更新エラー:', error);
-            }
-          }, 1000);
+          logger.error('データ更新エラー:', error);
+        } finally {
+          // 更新処理完了後、フラグをリセット
+          isUpdatingRef.current = false;
         }
       }, initialDelay);
     };
@@ -571,6 +582,8 @@ export default function CalendarScreen() {
 
     return () => {
       window.removeEventListener('practiceRecordUpdated', handlePracticeRecordUpdated);
+      // クリーンアップ時にフラグをリセット
+      isUpdatingRef.current = false;
     };
   }, [loadAllData]);
 
@@ -1131,13 +1144,13 @@ export default function CalendarScreen() {
         visible={uiState.showQuickRecord}
         onClose={() => setShowQuickRecord(false)}
         onRecord={async (minutes) => {
-          // QuickRecordModal内で既に保存処理が完了しているため、
-          // データ更新のみを実行（保存処理はスキップ）
-          logger.info('クイック記録のデータ更新を開始...', { minutes });
-          
-          // データベースへの反映を確実にするため、少し待機してから更新
-          await new Promise(resolve => setTimeout(resolve, 300));
-          await refreshPracticeData(false);
+          // QuickRecordModal内で既に保存処理とpracticeRecordUpdatedイベントの発火が完了しているため、
+          // データ更新はイベントリスナー（handlePracticeRecordUpdated）に任せる
+          // 直接refreshPracticeDataを呼ぶ必要はない（重複実行を防ぐため）
+          logger.info('クイック記録を保存: ' + minutes + '分', { 
+            practiceDate: formatLocalDate(uiState.selectedDate || new Date()),
+            instrumentId: getInstrumentId(selectedInstrument)
+          });
           
           // PracticeRecordModalが開いている場合は、そのモーダル内のデータも再読み込み
           if (uiState.showPracticeRecord) {
@@ -1145,7 +1158,6 @@ export default function CalendarScreen() {
             setPracticeRecordRefreshKey(prev => prev + 1);
           }
           
-          logger.info('クイック記録のデータ更新が完了しました', { minutes });
           setShowQuickRecord(false);
         }}
       />

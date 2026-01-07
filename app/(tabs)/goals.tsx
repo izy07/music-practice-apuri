@@ -19,6 +19,7 @@ import { OfflineStorage, isOnline } from '@/lib/offlineStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { getInstrumentId } from '@/lib/instrumentUtils';
+import { setCurrentRoute } from '@/lib/navigationHistory';
 
 interface Goal {
   id: string;
@@ -58,6 +59,14 @@ export default function GoalsScreen() {
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const router = useRouter();
   const { isAuthenticated, user } = useAuthAdvanced();
+  
+  // 現在のルートを記録（マウント時）
+  useEffect(() => {
+    setCurrentRoute('/(tabs)/goals');
+    return () => {
+      // アンマウント時はクリアしない（他の画面に遷移する際に使用するため）
+    };
+  }, []);
   
   // 目標関連の状態
   const [goals, setGoals] = useState<Goal[]>([]);

@@ -102,12 +102,9 @@ export default function MyLibraryScreen() {
           .select('*')
           .eq('user_id', user.id);
         
-        // 楽器ごとにフィルタリング
-        if (selectedInstrument) {
-          query = query.eq('instrument_id', selectedInstrument);
-        } else {
-          query = query.is('instrument_id', null);
-        }
+        // 楽器ごとにフィルタリング（統一関数を使用、既存nullデータも含める）
+        const { applyInstrumentFilter } = await import('@/repositories/common/instrumentFilter');
+        query = await applyInstrumentFilter(query, selectedInstrument, true);
         
         const { data, error } = await query.order('created_at', { ascending: false });
 

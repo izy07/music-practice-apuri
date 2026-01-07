@@ -136,9 +136,22 @@ export function useCalendarData(currentDate: Date) {
             });
             // フィルタリング関数が失敗した場合、直接フィルタリングを適用
             if (currentInstrumentId) {
-              query = query.eq('instrument_id', currentInstrumentId);
+              // 選択楽器のデータ + nullデータ（既存データ保護、後方互換性）
+              query = (query as any).or(`instrument_id.eq.${currentInstrumentId},instrument_id.is.null`);
             } else {
-              query = query.is('instrument_id', null);
+              // 楽器が選択されていない場合: nullデータのみ
+              query = (query as any).is('instrument_id', null);
+            }
+            // 直接フィルタリング後のクエリもチェック
+            if (typeof query !== 'object' || query === null || typeof query.order !== 'function') {
+              logger.error('[useCalendarData.loadPracticeData] 直接フィルタリング後のクエリも無効です。フィルタリングなしで続行します。');
+              // フィルタリングなしで元のクエリを使用
+              query = supabase
+                .from('practice_sessions')
+                .select('practice_date, duration_minutes, input_method, instrument_id')
+                .eq('user_id', user.id)
+                .gte('practice_date', formatLocalDate(startOfMonth))
+                .lte('practice_date', formatLocalDate(endOfMonth));
             }
           }
           
@@ -494,8 +507,29 @@ export function useCalendarData(currentDate: Date) {
         if (queryWithInstrument && typeof queryWithInstrument.order === 'function') {
           query = queryWithInstrument;
         } else {
-          logger.warn('[loadEvents] フィルタリング後のクエリが無効です（.order()メソッドが存在しません）。フィルタリングなしで続行します。');
-          // queryはそのまま使用（フィルタリングなし）
+          logger.warn('[loadEvents] フィルタリング後のクエリが無効です。直接フィルタリングを適用します。', {
+            hasOrder: typeof queryWithInstrument?.order === 'function',
+            filteredQueryType: typeof queryWithInstrument
+          });
+          // フィルタリング関数が失敗した場合、直接フィルタリングを適用
+          if (currentInstrumentId) {
+            // 選択楽器のデータ + nullデータ（既存データ保護、後方互換性）
+            query = (query as any).or(`instrument_id.eq.${currentInstrumentId},instrument_id.is.null`);
+          } else {
+            // 楽器が選択されていない場合: nullデータのみ
+            query = (query as any).is('instrument_id', null);
+          }
+          // 直接フィルタリング後のクエリもチェック
+          if (typeof query !== 'object' || query === null || typeof query.order !== 'function') {
+            logger.error('[loadEvents] 直接フィルタリング後のクエリも無効です。フィルタリングなしで続行します。');
+            // フィルタリングなしで元のクエリを使用
+            query = supabase
+              .from('events')
+              .select('*')
+              .eq('user_id', user.id)
+              .gte('date', startOfMonth.toISOString().split('T')[0])
+              .lte('date', endOfMonth.toISOString().split('T')[0]);
+          }
         }
       } catch (filterError: any) {
         // エラーが発生した場合は、フィルタリングなしで続行
@@ -505,50 +539,25 @@ export function useCalendarData(currentDate: Date) {
       
       let { data: eventsData, error } = await query.order('date', { ascending: true });
 
-      // instrument_idカラムが存在しない場合は、カラム作成を試みてから再試行
+      // instrument_idカラムが存在しないエラーの場合（初期スキーマに含まれているため、通常は発生しない）
       if (error && (error.code === '42703' || error.code === '400' || error.message?.includes('instrument_id') || error.message?.includes('does not exist'))) {
-        logger.debug('instrument_idカラムが存在しないため、カラム作成を試みます');
+        logger.warn('instrument_idカラムが存在しないエラーが発生しました。初期スキーマに含まれているはずですが、マイグレーションが未適用の可能性があります。フィルタリングなしで再試行します。');
         
-        // カラム作成を試みる
-        const { ensureInstrumentIdColumn } = await import('@/repositories/common/ensureInstrumentIdColumn');
-        const ensured = await ensureInstrumentIdColumn('events');
+        // フィルタリングなしで再試行（初期スキーマに含まれているため、カラム作成は不要）
+        let retryQuery = supabase
+          .from('events')
+          .select('id, title, description, date')
+          .eq('user_id', user.id)
+          .eq('is_completed', false)
+          .gte('date', formatLocalDate(startOfMonth))
+          .lte('date', formatLocalDate(endOfMonth));
         
-        if (ensured) {
-          // カラムが作成されたので、フィルタリングありで再試行
-          logger.debug('instrument_idカラムを作成しました。フィルタリングありで再試行します');
-          let retryQuery = supabase
-            .from('events')
-            .select('id, title, description, date, instrument_id')
-            .eq('user_id', user.id)
-            .eq('is_completed', false)
-            .gte('date', formatLocalDate(startOfMonth))
-            .lte('date', formatLocalDate(endOfMonth));
-          
-          retryQuery = await applyInstrumentFilter(retryQuery, currentInstrumentId, true, 'events');
-          const { data: retryData, error: retryError } = await retryQuery.order('date', { ascending: true });
-          if (retryError) {
-            error = retryError;
-          } else {
-            eventsData = retryData;
-            error = null;
-          }
+        const { data: retryData, error: retryError } = await retryQuery.order('date', { ascending: true });
+        if (retryError) {
+          error = retryError;
         } else {
-          // カラム作成に失敗した場合は、フィルタリングなしで再試行
-          logger.debug('instrument_idカラムの作成に失敗しました。フィルタリングなしで再試行します');
-          let retryQuery = supabase
-            .from('events')
-            .select('id, title, description, date')
-            .eq('user_id', user.id)
-            .eq('is_completed', false)
-            .gte('date', formatLocalDate(startOfMonth))
-            .lte('date', formatLocalDate(endOfMonth));
-          const { data: retryData, error: retryError } = await retryQuery.order('date', { ascending: true });
-          if (retryError) {
-            error = retryError;
-          } else {
-            eventsData = retryData;
-            error = null;
-          }
+          eventsData = retryData;
+          error = null;
         }
       }
 

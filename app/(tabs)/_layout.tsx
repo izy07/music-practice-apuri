@@ -7,6 +7,7 @@ import { useAuthAdvanced } from '../../hooks/useAuthAdvanced';
 import { View, ActivityIndicator } from 'react-native';
 
 // タブのアイコンとタイトルを定義
+// カレンダー（index）を真ん中の3番目に配置
 const TAB_CONFIG = [
   {
     name: 'timer',

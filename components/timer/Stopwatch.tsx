@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { Clock, Pencil, RotateCcw } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useTimer } from '@/hooks/useTimer';
 import { createShadowStyle } from '@/lib/shadowStyles';
@@ -240,7 +239,6 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
           activeOpacity={0.7}
           hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
         >
-          <Clock size={16} color={isStopwatchRunning ? currentTheme.surface : currentTheme.text} />
           <Text 
             style={[
               styles.stopwatchControlButtonText,
@@ -266,7 +264,6 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
           activeOpacity={0.7}
           hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
         >
-          <Pencil size={16} color={currentTheme.textSecondary} />
           <Text 
             style={[
               styles.stopwatchControlButtonText,
@@ -290,7 +287,6 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
           onPress={handleClear}
           activeOpacity={0.7}
         >
-          <RotateCcw size={16} color={currentTheme.text} />
           <Text 
             style={[
               styles.stopwatchControlButtonText,

@@ -309,8 +309,10 @@ export default function TutorialScreen() {
         updateData.tutorial_completed = true;
         updateData.tutorial_completed_at = new Date().toISOString();
       } catch (checkErr: any) {
-        if (checkErr?.message?.includes('column') || checkErr?.message?.includes('does not exist') || checkErr?.code === 'PGRST204') {
-          logger.warn('tutorial_completedカラムが存在しません。スキップします。');
+        // PGRST204エラー（schema cache error）の場合は静かにスキップ
+        if (checkErr?.code === 'PGRST204' || checkErr?.message?.includes('column') || checkErr?.message?.includes('does not exist') || checkErr?.message?.includes('schema cache')) {
+          // エラーをログに出力せず、静かにスキップ
+          return;
         }
       }
       

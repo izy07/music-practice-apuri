@@ -1,7 +1,7 @@
 /**
  * 練習レベル管理のカスタムフック
  */
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { getUserProfile, updatePracticeLevel } from '@/repositories/userRepository';
@@ -385,34 +385,46 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
 
   // 楽器が変更された時、または初回マウント時にレベルを確認
   // 楽器ごとに初回のみモーダルを表示するため、楽器が変更されたら必ずチェック
+  // 楽器変更直後はモーダルを表示しないように、デバウンスを追加
+  const instrumentChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     let isMounted = true;
     
-    const checkLevel = async () => {
-    // 楽器が選択されている場合のみチェック
-    const instrumentId = getInstrumentId(selectedInstrument);
-    if (instrumentId) {
-        logger.debug('🔍 楽器変更を検出、レベル確認を開始:', { instrumentId, selectedInstrument });
+    // 既存のタイマーをクリア
+    if (instrumentChangeTimeoutRef.current) {
+      clearTimeout(instrumentChangeTimeoutRef.current);
+      instrumentChangeTimeoutRef.current = null;
+    }
+    
+    // 楽器変更直後はモーダルを表示しない（一瞬表示されるのを防ぐ）
+    // デバウンスを追加して、楽器変更が完了してからレベル確認を実行
+    instrumentChangeTimeoutRef.current = setTimeout(async () => {
+      // 楽器が選択されている場合のみチェック
+      const instrumentId = getInstrumentId(selectedInstrument);
+      if (instrumentId) {
+        logger.debug('🔍 楽器変更を検出、レベル確認を開始（デバウンス後）:', { instrumentId, selectedInstrument });
         await checkUserLevel();
         if (isMounted) {
           logger.debug('✅ レベル確認完了');
         }
-    } else {
-      // 楽器が選択されていない場合はモーダルを非表示
+      } else {
+        // 楽器が選択されていない場合はモーダルを非表示
         if (isMounted) {
-      setShowLevelModal(false);
-      setSelectedLevel('beginner');
-      setUserLevel(null);
-      setHasSelectedLevel(false);
-      setIsFirstTime(false);
-    }
+          setShowLevelModal(false);
+          setSelectedLevel('beginner');
+          setUserLevel(null);
+          setHasSelectedLevel(false);
+          setIsFirstTime(false);
+        }
       }
-    };
-    
-    checkLevel();
+    }, 500); // 500msのデバウンス（楽器変更が完了してからレベル確認を実行）
     
     return () => {
       isMounted = false;
+      if (instrumentChangeTimeoutRef.current) {
+        clearTimeout(instrumentChangeTimeoutRef.current);
+        instrumentChangeTimeoutRef.current = null;
+      }
     };
   }, [selectedInstrument, checkUserLevel]);
 

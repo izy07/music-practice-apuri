@@ -16,9 +16,15 @@ export const TIMEOUT = {
   /** 接続テストタイムアウト（ミリ秒） */
   CONNECTION_TEST_MS: 3000,
   /** セッションリフレッシュ前の余裕時間（秒） */
-  SESSION_REFRESH_BUFFER_SEC: 60,
+  SESSION_REFRESH_BUFFER_SEC: 300, // 5分（レート制限対策のため延長）
   /** セッション期限切れ警告時間（秒） */
   SESSION_EXPIRY_WARNING_SEC: 120,
+  /** 楽器データ取得タイムアウト（ミリ秒） */
+  INSTRUMENT_FETCH_MS: 10000,
+  /** 楽器同期タイムアウト（ミリ秒） */
+  INSTRUMENT_SYNC_MS: 5000,
+  /** 初期化タイムアウト（ミリ秒） */
+  INITIALIZATION_MS: 3000,
 } as const;
 
 /**
@@ -29,6 +35,30 @@ export const ERROR = {
   MAX_DISPLAY_COUNT: 5,
   /** エラーメッセージのデフォルト */
   DEFAULT_MESSAGE: '処理中にエラーが発生しました。時間をおいて再度お試しください。',
+  /** 最大リトライ回数 */
+  MAX_RETRIES: 3,
+  /** リトライの指数バックオフのベース遅延（ミリ秒） */
+  RETRY_BASE_DELAY_MS: 1000,
+  /** リトライの最大遅延（ミリ秒） */
+  RETRY_MAX_DELAY_MS: 5000,
+} as const;
+
+/**
+ * Supabaseエラーコード定数
+ */
+export const SUPABASE_ERROR_CODES = {
+  /** RLSポリシーエラー */
+  RLS_POLICY: '42501',
+  /** カラムが存在しない */
+  COLUMN_NOT_EXISTS: '42703',
+  /** 外部キー制約違反 */
+  FOREIGN_KEY_VIOLATION: '23503',
+  /** 一意制約違反 */
+  UNIQUE_VIOLATION: '23505',
+  /** レコードが見つからない */
+  NOT_FOUND: 'PGRST116',
+  /** カラムが存在しない */
+  COLUMN_NOT_FOUND: 'PGRST205',
 } as const;
 
 /**

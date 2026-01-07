@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, Alert, ScrollView, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { WebView } from 'react-native-webview';
@@ -345,6 +345,7 @@ export default function ScoreAutoScrollScreen() {
       Alert.alert('追加エラー', '選択したPDFの追加に失敗しました');
     }
   };
+
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >

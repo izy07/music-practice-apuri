@@ -9,41 +9,41 @@ import logger from './logger';
  */
 export async function checkNotificationSettingsColumnExists(): Promise<boolean> {
   try {
-    // 根本的な解決策: RPC関数の呼び出しを完全に削除し、フォールバック方法のみを使用
-    // RPC関数はオプションの最適化であり、必須ではない
-    // エラーを発生させないため、最初からフォールバック方法を使用
+    // 根本的な解決策: レコードの有無に関係なく、カラムの存在を確認
+    // SELECT notification_settings FROM user_settings LIMIT 0 を使用することで、
+    // レコードが存在しなくてもカラムが存在するかどうかを確認できる
+    // カラムが存在する場合: エラーは発生しない（空の結果が返る）
+    // カラムが存在しない場合: 42703エラー（undefined_column）が発生
     
-    // select('*')を使用してデータを取得し、notification_settingsプロパティが存在するかチェック
-    // レコードが存在する場合のみ有効
-    const { data: userData, error: selectError } = await supabase
+    const { error: columnCheckError } = await supabase
       .from('user_settings')
-      .select('*')
-      .limit(1)
-      .maybeSingle();
+      .select('notification_settings')
+      .limit(0); // レコードの取得は不要、カラムの存在確認のみ
 
-    if (!selectError && userData) {
-      // データが取得できた場合、notification_settingsプロパティが存在するかチェック
-      const hasColumn = 'notification_settings' in userData;
-      logger.debug(`notification_settingsカラムの存在チェック結果（データ確認）: ${hasColumn}`);
-      return hasColumn;
-    }
-
-    // レコードが存在しない場合、select('*')ではカラムの存在を確認できない
-    // この場合、カラムが存在すると仮定する（エラーを発生させないため）
-    // 実際にカラムを使用する際にエラーが発生した場合は、その時点で処理する
-    if (selectError && (selectError.code === 'PGRST116' || selectError.code === 'PGRST205')) {
-      logger.debug('user_settingsレコードが存在しないため、カラムの存在を確認できません。デフォルトでtrueを返します。');
-      return true; // レコードが存在しない場合は、カラムが存在すると仮定
-    }
-
-    // その他のエラーが発生した場合も、カラムが存在すると仮定（エラーを発生させないため）
-    if (selectError) {
-      logger.warn('user_settingsの取得中にエラーが発生しましたが、カラムは存在すると仮定します。', selectError);
+    if (columnCheckError) {
+      // 42703エラー（undefined_column）が発生した場合はカラムが存在しない
+      if (columnCheckError.code === '42703' || columnCheckError.message?.includes('notification_settings')) {
+        logger.debug('notification_settingsカラムが存在しません');
+        return false;
+      }
+      
+      // PGRST205エラー（テーブルが存在しない）の場合もカラムは存在しない
+      if (columnCheckError.code === 'PGRST205' || columnCheckError.code === '42P01') {
+        logger.debug('user_settingsテーブルが存在しません（カラムも存在しない）');
+        return false;
+      }
+      
+      // その他のエラー（RLSポリシーなど）の場合は、カラムが存在すると仮定
+      // （実際の使用時にエラーが発生した場合はその時点で処理）
+      logger.debug('notification_settingsカラムの存在チェックでエラーが発生しましたが、カラムは存在すると仮定します:', {
+        errorCode: columnCheckError.code,
+        errorMessage: columnCheckError.message
+      });
       return true;
     }
 
-    // エラーがなく、データも取得できなかった場合（空の結果）
-    logger.debug('user_settingsレコードが存在しないため、カラムの存在を確認できません。デフォルトでtrueを返します。');
+    // エラーが発生しなかった場合、カラムは存在する
+    logger.debug('notification_settingsカラムが存在します');
     return true;
   } catch (error: any) {
     // 予期しないエラーが発生した場合も、カラムが存在すると仮定（エラーを発生させないため）
@@ -177,29 +177,25 @@ export async function checkAttendanceRecordsTableExists(): Promise<boolean> {
 
 /**
  * データベーススキーマの整合性をチェック
- * アプリ起動時に呼び出して、必要なカラムが存在するか確認
+ * 
+ * 注意: 初期スキーマ（20251219000000_initial_schema.sql）に含まれているテーブル/カラムは
+ * 毎回チェックする必要はありません。この関数は現在使用されていません。
+ * 
+ * 初期スキーマに含まれているもの：
+ * - notification_settings: 初期スキーマに含まれている
+ * - attendance_records: 初期スキーマに含まれている
+ * - instrument_id: 各テーブルに初期スキーマで定義されている
+ * - show_on_calendar: goalsテーブルに初期スキーマで定義されている
+ * - tutorial_completed: user_profilesテーブルに初期スキーマで定義されている
+ * 
+ * @deprecated 初期スキーマに含まれているため、この関数は不要です
  */
 export async function checkDatabaseSchema(): Promise<{
-  notificationSettingsColumnExists: boolean;
-  attendanceRecordsTableExists: boolean;
   errors: string[];
 }> {
-  const errors: string[] = [];
-  
-  const notificationSettingsExists = await checkNotificationSettingsColumnExists();
-  if (!notificationSettingsExists) {
-    errors.push('notification_settingsカラムが存在しません');
-  }
-
-  const attendanceRecordsExists = await checkAttendanceRecordsTableExists();
-  if (!attendanceRecordsExists) {
-    errors.push('attendance_recordsテーブルが存在しません。マイグレーションを実行してください。');
-  }
-
+  // 初期スキーマに含まれているため、チェックは不要
   return {
-    notificationSettingsColumnExists: notificationSettingsExists,
-    attendanceRecordsTableExists: attendanceRecordsExists,
-    errors,
+    errors: [],
   };
 }
 

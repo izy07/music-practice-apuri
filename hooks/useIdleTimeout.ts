@@ -7,9 +7,13 @@ import { useEffect, useRef, useCallback } from 'react';
 import { AppState, Platform } from 'react-native';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // アイドルタイムアウト時間（1時間 = 3600秒 = 3600000ミリ秒）
 const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 1時間
+
+// 最後のアクティビティ時刻を保存するキー
+const LAST_ACTIVITY_KEY = 'music-practice-last-activity';
 
 interface UseIdleTimeoutOptions {
   /** 認証済みかどうか */
@@ -42,6 +46,22 @@ export const useIdleTimeout = ({
   const isPausedRef = useRef<boolean>(false);
 
   /**
+   * 最後のアクティビティ時刻をストレージに保存
+   */
+  const saveLastActivity = useCallback(async (timestamp: number) => {
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(LAST_ACTIVITY_KEY, timestamp.toString());
+      } else if (Platform.OS !== 'web') {
+        await AsyncStorage.setItem(LAST_ACTIVITY_KEY, timestamp.toString());
+      }
+    } catch (error) {
+      // ストレージ保存エラーは無視（タイマーは動作し続ける）
+      logger.debug('[useIdleTimeout] 最後のアクティビティ時刻の保存に失敗（続行）:', error);
+    }
+  }, []);
+
+  /**
    * タイマーをリセット
    */
   const resetTimer = useCallback(() => {
@@ -62,7 +82,11 @@ export const useIdleTimeout = ({
     }
 
     // 最後のアクティビティ時刻を更新
-    lastActivityRef.current = Date.now();
+    const now = Date.now();
+    lastActivityRef.current = now;
+
+    // ストレージにも保存（アプリ再起動時にも維持されるように）
+    saveLastActivity(now);
 
     // 新しいタイマーを設定
     timeoutRef.current = setTimeout(async () => {
@@ -73,7 +97,7 @@ export const useIdleTimeout = ({
         ErrorHandler.handle(error, '自動ログアウト', false);
       }
     }, timeoutMs);
-  }, [isAuthenticated, enabled, timeoutMs, onLogout]);
+  }, [isAuthenticated, enabled, timeoutMs, onLogout, saveLastActivity]);
 
   /**
    * ユーザーのアクティビティを検知
@@ -203,15 +227,70 @@ export const useIdleTimeout = ({
    */
   useEffect(() => {
     if (isAuthenticated && enabled) {
-      resetTimer();
+      // ストレージから最後のアクティビティ時刻を読み込んで、タイマーを適切に設定
+      const loadLastActivity = async () => {
+        try {
+          let savedTimestamp: number | null = null;
+          
+          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+            const saved = window.localStorage.getItem(LAST_ACTIVITY_KEY);
+            if (saved) {
+              savedTimestamp = parseInt(saved, 10);
+            }
+          } else if (Platform.OS !== 'web') {
+            const saved = await AsyncStorage.getItem(LAST_ACTIVITY_KEY);
+            if (saved) {
+              savedTimestamp = parseInt(saved, 10);
+            }
+          }
+
+          if (savedTimestamp && !isNaN(savedTimestamp)) {
+            // 保存された時刻から経過時間を計算
+            const timeSinceLastActivity = Date.now() - savedTimestamp;
+            
+            // タイムアウト時間を超えている場合は即座にログアウト
+            if (timeSinceLastActivity >= timeoutMs) {
+              logger.info('[useIdleTimeout] 最後のアクティビティから1時間以上経過 - 自動ログアウト');
+              onLogout().catch(error => {
+                ErrorHandler.handle(error, '自動ログアウト', false);
+              });
+              return;
+            }
+
+            // タイムアウト時間を超えていない場合は、保存された時刻を使用
+            lastActivityRef.current = savedTimestamp;
+          }
+        } catch (error) {
+          // ストレージ読み込みエラーは無視（新しいタイマーを開始）
+          logger.debug('[useIdleTimeout] 最後のアクティビティ時刻の読み込みに失敗（続行）:', error);
+        }
+
+        // タイマーをリセット（保存された時刻がある場合はそれを使用、ない場合は現在時刻を使用）
+        resetTimer();
+      };
+
+      loadLastActivity();
     } else {
       // ログアウトした場合はタイマーをクリア
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
         timeoutRef.current = null;
       }
+      
+      // ストレージからも最後のアクティビティ時刻を削除
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+        try {
+          window.localStorage.removeItem(LAST_ACTIVITY_KEY);
+        } catch (error) {
+          // エラーは無視
+        }
+      } else if (Platform.OS !== 'web') {
+        AsyncStorage.removeItem(LAST_ACTIVITY_KEY).catch(() => {
+          // エラーは無視
+        });
+      }
     }
-  }, [isAuthenticated, enabled, resetTimer]);
+  }, [isAuthenticated, enabled, resetTimer, timeoutMs, onLogout]);
 
   /**
    * グローバルなアクティビティハンドラーをエクスポート

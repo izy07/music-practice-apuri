@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useSegments } from 'expo-router';
 import { useInstrumentTheme } from './InstrumentThemeContext';
 import { useLanguage } from './LanguageContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
@@ -10,57 +10,17 @@ import { ErrorHandler } from '@/lib/errorHandler';
 import { getUserProfile } from '@/repositories/userRepository';
 import { getSession } from '@/lib/authService';
 import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_KEYS } from '@/lib/storageKeys';
-import { instrumentService } from '@/services';
-
+import { getCurrentRouteFromHistory } from '@/lib/navigationHistory';
 export default function InstrumentHeader() {
   const router = useRouter();
+  const segments = useSegments();
   const { selectedInstrument, currentTheme, setSelectedInstrument, dbInstruments } = useInstrumentTheme();
   const { language } = useLanguage();
   const { isAuthenticated, user } = useAuthAdvanced();
   const [showLearningTools, setShowLearningTools] = useState(false);
   const [showAppealModal, setShowAppealModal] = useState(false);
   
-  // AsyncStorageから即座に読み込んだ楽器情報（リロード時の一瞬消えを防ぐ）
-  const [cachedInstrumentInfo, setCachedInstrumentInfo] = useState<{ id: string; name: string; name_en: string } | null>(null);
-  
-  // 初期化時にAsyncStorageから楽器情報を即座に読み込む
-  useEffect(() => {
-    const loadCachedInstrument = async () => {
-      try {
-        const uid = user?.id || '';
-        const getKey = (base: string, userId?: string) => userId ? `${base}:${userId}` : base;
-        
-        // ユーザー別キーから読み込む
-        let storedInstrument = await AsyncStorage.getItem(getKey(STORAGE_KEYS.selectedInstrument, uid));
-        
-        // 従来キーもチェック
-        if (!storedInstrument) {
-          storedInstrument = await AsyncStorage.getItem(STORAGE_KEYS.selectedInstrument);
-        }
-        
-        if (storedInstrument) {
-          // デフォルト楽器から即座に取得（dbInstrumentsが読み込まれる前でも表示可能）
-          const defaultInstruments = instrumentService.getDefaultInstruments();
-          const instrument = defaultInstruments.find(inst => inst.id === storedInstrument);
-          if (instrument) {
-            setCachedInstrumentInfo({
-              id: instrument.id,
-              name: instrument.name,
-              name_en: instrument.nameEn,
-            });
-          }
-        }
-      } catch (error) {
-        // エラーは無視（コンテキストから取得する）
-      }
-    };
-    
-    loadCachedInstrument();
-  }, [user?.id]);
-  
-  // 楽器情報をコンテキストのキャッシュから取得（データベースクエリ不要）
+  // 楽器情報をコンテキストから取得（単一のデータソース）
   const instrumentInfo = useMemo(() => {
     // selectedInstrumentまたはuser.selected_instrument_idを使用
     const instrumentId = selectedInstrument || user?.selected_instrument_id;
@@ -263,8 +223,9 @@ export default function InstrumentHeader() {
     }
     
     // AsyncStorageから読み込んだ楽器情報を表示（リロード時の一瞬消えを防ぐ）
-    if (cachedInstrumentInfo) {
-      const displayName = language === 'en' ? cachedInstrumentInfo.name_en : cachedInstrumentInfo.name;
+    // Contextから取得した楽器情報を使用（単一のデータソース）
+    if (instrumentInfo) {
+      const displayName = language === 'en' ? instrumentInfo.name_en : instrumentInfo.name;
       return removeEmoji(displayName);
     }
     
@@ -376,6 +337,59 @@ export default function InstrumentHeader() {
     }
   };
 
+  // 現在の画面パスを取得する関数
+  const getCurrentRoute = (): string => {
+    // 根本的な解決: Expo Routerのsegmentsを優先的に使用（より確実）
+    // segmentsはExpo Routerが管理する現在のルート情報であり、window.location.pathnameより正確
+    if (segments.length > 0) {
+      // (tabs)グループ内にいる場合
+      if (segments[0] === '(tabs)' && segments.length > 1) {
+        const lastSegment = segments[segments.length - 1];
+        // タブ画面かどうかを確認
+        const tabScreens = ['index', 'timer', 'goals', 'tuner', 'settings', 'basic-practice', 'beginner-guide', 'score-auto-scroll', 'statistics'];
+        if (tabScreens.includes(lastSegment)) {
+          return `/(tabs)/${lastSegment}`;
+        }
+      }
+      // その他のセグメントの場合
+      const lastSegment = segments[segments.length - 1];
+      if (lastSegment !== 'auth' && lastSegment !== 'login' && lastSegment !== 'signup') {
+        const tabScreens = ['index', 'timer', 'goals', 'tuner', 'settings', 'basic-practice', 'beginner-guide', 'score-auto-scroll', 'statistics'];
+        if (tabScreens.includes(lastSegment)) {
+          return `/(tabs)/${lastSegment}`;
+        }
+      }
+    }
+    
+    // フォールバック: window.location.pathnameから直接現在のURLを取得
+    if (typeof window !== 'undefined' && window.location) {
+      const pathname = window.location.pathname;
+      // パス名からタブ画面のルートを抽出
+      const tabScreens = ['index', 'timer', 'goals', 'tuner', 'settings', 'basic-practice', 'beginner-guide', 'score-auto-scroll', 'statistics'];
+      for (const screen of tabScreens) {
+        if (pathname.includes(`/${screen}`) || pathname.endsWith(`/${screen}`) || pathname === `/${screen}`) {
+          return `/(tabs)/${screen}`;
+        }
+      }
+      // パス名が / または /(tabs) の場合はカレンダー画面
+      if (pathname === '/' || pathname === '/(tabs)' || pathname.includes('/index')) {
+        return '/(tabs)/index';
+      }
+    }
+    
+    // デフォルトはカレンダー画面
+    return '/(tabs)/index';
+  };
+
+  // 学習ツールから遷移する際の共通処理
+  const navigateFromLearningTools = (targetRoute: string) => {
+    // モーダルを閉じてから遷移
+    setShowLearningTools(false);
+    
+    // シンプルにrouter.replaceで遷移
+    router.replace(targetRoute as any);
+  };
+
   return (
     <View style={styles.headerContainer}>
 
@@ -464,8 +478,7 @@ export default function InstrumentHeader() {
               <TouchableOpacity
                 style={styles.toolItem}
                 onPress={() => {
-                  setShowLearningTools(false);
-                  router.push('/(tabs)/basic-practice');
+                  navigateFromLearningTools('/(tabs)/basic-practice');
                 }}
               >
                 <Zap size={24} color="#FF6B35" />
@@ -477,8 +490,7 @@ export default function InstrumentHeader() {
               <TouchableOpacity
                 style={styles.toolItem}
                 onPress={() => {
-                  setShowLearningTools(false);
-                  router.push('/(tabs)/beginner-guide');
+                  navigateFromLearningTools('/(tabs)/beginner-guide');
                 }}
               >
                 <BookOpen size={24} color="#8B4513" />
@@ -541,8 +553,7 @@ export default function InstrumentHeader() {
               <TouchableOpacity 
                 style={styles.toolItem}
                 onPress={() => {
-                  setShowLearningTools(false);
-                  router.push('/(tabs)/score-auto-scroll');
+                  navigateFromLearningTools('/(tabs)/score-auto-scroll');
                 }}
               >
                 <ScrollText size={24} color="#FF9800" />
@@ -554,10 +565,10 @@ export default function InstrumentHeader() {
               <TouchableOpacity 
                 style={styles.toolItem}
                 onPress={() => {
-                  setShowLearningTools(false);
                   try {
-                    router.push('/(tabs)/statistics');
+                    navigateFromLearningTools('/(tabs)/statistics');
                   } catch (e) {
+                    setShowLearningTools(false);
                     Alert.alert(
                       language === 'en' ? 'Coming Soon' : '準備中',
                       language === 'en' ? 'Statistics screen is coming soon' : '統計画面は準備中です'

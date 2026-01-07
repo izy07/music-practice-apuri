@@ -21,12 +21,13 @@ import { ErrorHandler } from '@/lib/errorHandler';
 import Metronome from '@/components/metronome/Metronome';
 import { styles } from '@/lib/tabs/tuner/styles';
 import audioResourceManager from '@/lib/audioResourceManager';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { autoCorrelate, getNoteFromFrequency, smoothValue, getTuningColor } from '@/lib/tunerAudioProcessor';
 import { getUserSettings } from '@/repositories/userSettingsRepository';
 import { getCurrentUser } from '@/lib/authService';
 import { DEFAULT_A4_FREQUENCY } from '@/lib/tunerUtils';
 import { saveTunerSettings } from '@/lib/database';
+import { setCurrentRoute } from '@/lib/navigationHistory';
 
 // プロ仕様の音名と周波数対応
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -346,9 +347,19 @@ const convertNoteName = (noteString: string, mode: 'en' | 'ja'): string => {
 
 
 export default function TunerScreen() {
+  const router = useRouter();
   const { currentTheme, selectedInstrument: contextSelectedInstrument } = useInstrumentTheme();
   const { t } = useLanguage();
   const [mode, setMode] = useState<'tuner' | 'metronome'>('tuner');
+  
+  // 現在のルートを記録（マウント時）
+  useEffect(() => {
+    setCurrentRoute('/(tabs)/tuner');
+    return () => {
+      // アンマウント時はクリアしない（他の画面に遷移する際に使用するため）
+    };
+  }, []);
+  
   
   // チューナー機能の状態
   const [isListening, setIsListening] = useState(false);

@@ -867,7 +867,19 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         loadExistingRecord();
       }
     }
-  }, [visible, selectedDate, showAudioRecorder, loadExistingRecord, formStateBeforeRecording]);
+  }, [visible, selectedDate, showAudioRecorder, selectedInstrument, loadExistingRecord, formStateBeforeRecording]);
+  
+  // 楽器変更時に録音データを再読み込み（モーダルが開いている場合のみ）
+  useEffect(() => {
+    if (visible && selectedDate && !showAudioRecorder && existingRecordings.length > 0) {
+      // 楽器変更時に録音データを再読み込み
+      logger.debug('楽器変更を検出、録音データを再読み込みします', {
+        instrumentId: getInstrumentId(selectedInstrument),
+        existingRecordingsCount: existingRecordings.length
+      });
+      loadExistingRecord();
+    }
+  }, [selectedInstrument]);
 
   // 外部からのリフレッシュ要求を処理（クイック記録保存後など）
   useEffect(() => {

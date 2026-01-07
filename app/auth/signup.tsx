@@ -8,7 +8,7 @@
  * - 無限ループを回避
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,7 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
+import { useSegments } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -50,159 +51,24 @@ const colors = {
 };
 
 export default function SignupScreen() {
-  logger.debug('SignupScreen component initialized');
+  // 初回のみログを出力（再レンダリング時のログ出力を防ぐ）
+  const hasLoggedRef = useRef(false);
+  if (!hasLoggedRef.current) {
+    logger.debug('SignupScreen component initialized');
+    hasLoggedRef.current = true;
+  }
   
   const router = useRouter();
-  const { user, isAuthenticated, isInitialized, fetchUserProfile } = useAuthAdvanced();
+  const { user, isAuthenticated, isLoading, isInitialized, signUp: signUpFromHook, error: authError } = useAuthAdvanced();
   
-  // 新規登録画面では独立した認証処理を実装（世に出回っているアプリの一般的なパターン）
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // 新規登録画面のローカル状態（UI用）
+  const [localError, setLocalError] = useState<string | null>(null);
   
-  // 独立した認証処理関数（世に出回っているアプリの一般的なパターン）
-  const signUp = async (formData: any): Promise<{ success: boolean; error?: string }> => {
-    logger.debug('新規登録処理（簡素化版）:', formData.email);
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      // Supabaseで直接新規登録処理（ニックネームをuser_metadataに含める）
-      const { data, error } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-        options: {
-          data: {
-            name: formData.name.trim(), // ニックネームをuser_metadataに保存
-            display_name: formData.name.trim(), // プロフィール用の表示名も設定
-          }
-        }
-      });
-      
-      if (error) {
-        // エラーの詳細をログに記録（デバッグ用）
-        logger.debug('新規登録エラー詳細:', {
-          code: error.code,
-          message: error.message,
-          status: (error as any).status,
-          fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
-        });
-        
-        // ユーザーが既に存在する場合の処理（根本的に厳密なチェック）
-        const errorMessage = error.message || '';
-        const errorCode = error.code || '';
-        const errorStatus = (error as any).status;
-        
-        // 根本的に厳密な判定：Supabaseの公式エラーコードのみをチェック
-        // Supabaseの公式ドキュメントによると、既存ユーザーのエラーコードは 'user_already_exists'
-        // エラーメッセージの文字列マッチングは、完全一致または特定のパターンのみ（誤判定を防ぐ）
-        const isUserAlreadyExists = 
-          errorCode === 'user_already_exists' ||
-          errorCode === 'user_already_registered'; // 後方互換性のため残す
-        
-        // signup_disabledは「登録済み」ではなく「新規登録が無効」なので別扱い
-        const isSignupDisabled = errorCode === 'signup_disabled';
-        
-        // エラーメッセージの文字列マッチング（完全一致パターンのみ、誤判定を防ぐ）
-        const lowerMessage = errorMessage.toLowerCase();
-        const hasExactAlreadyRegisteredMessage = 
-          lowerMessage === 'user already registered' ||
-          lowerMessage === 'email address is already registered' ||
-          lowerMessage === 'user already exists' ||
-          lowerMessage.includes('user already registered') && !lowerMessage.includes('not') && !lowerMessage.includes('cannot');
-        
-        // 最終判定：エラーコードが明確な場合のみ「登録済み」と判定
-        const isUserAlreadyRegistered = isUserAlreadyExists || (hasExactAlreadyRegisteredMessage && errorCode);
-        
-        if (isUserAlreadyRegistered) {
-          logger.debug('✅ ユーザーが既に存在します（厳密な判定）:', {
-            code: errorCode,
-            message: errorMessage,
-            isUserAlreadyExists,
-            hasExactAlreadyRegisteredMessage
-          });
-          setIsLoading(false);
-          
-          const userMessage = 'このメールアドレスは既に登録されています。\n\nメール確認が済んでいない場合は、Inbucket（http://127.0.0.1:54324）でメールを確認するか、ログイン画面から再度ログインしてください。';
-          setError(userMessage);
-          
-          return { success: false, error: userMessage };
-        }
-        
-        if (isSignupDisabled) {
-          logger.debug('⚠️ 新規登録が無効化されています:', {
-            code: errorCode,
-            message: errorMessage
-          });
-          setIsLoading(false);
-          const disabledMessage = '新規登録は現在無効になっています。管理者にお問い合わせください。';
-          setError(disabledMessage);
-          return { success: false, error: disabledMessage };
-        }
-        
-        // その他のエラーの場合は、エラーメッセージをそのまま表示（「登録済み」と誤判定しない）
-        const genericErrorMessage = errorMessage || '新規登録に失敗しました';
-        logger.warn('⚠️ 新規登録エラー（既存ユーザー以外）:', {
-          code: errorCode,
-          status: errorStatus,
-          message: errorMessage,
-          isUserAlreadyExists,
-          hasExactAlreadyRegisteredMessage
-        });
-        setError(genericErrorMessage);
-        setIsLoading(false);
-        return { success: false, error: genericErrorMessage };
-      }
-      
-      if (!data.user) {
-        logger.error('❌ ユーザー情報が取得できません');
-        const errorMessage = 'ユーザー情報の取得に失敗しました。もう一度お試しください。';
-        setError(errorMessage);
-        setIsLoading(false);
-        return { success: false, error: errorMessage };
-      }
-      
-      logger.debug('✅ 新規登録成功:', { 
-        userId: data.user.id, 
-        hasSession: !!data.session,
-        email: data.user.email 
-      });
-      
-      // プロフィール作成はデータベーストリガー（handle_new_user）で自動的に行われる
-      // トリガーはauth.usersにINSERTされたときに発火し、user_profilesを自動作成する
-      // 手動でのプロフィール作成処理は削除（トリガーと重複する可能性があるため）
-      // プロフィールが存在しない場合は、handleAuthenticatedUser関数でフォールバック処理が行われる
-      logger.debug('✅ プロフィール作成はデータベーストリガーで自動処理されます');
-      
-      // セッションが確立されている場合は成功
-      // セッションがない場合は、onAuthStateChangeで検出されるまで待つ
-      if (data.session) {
-        logger.debug('✅ セッション確立済み - onAuthStateChangeで処理されます');
-        setIsLoading(false);
-        return { success: true };
-      } else if (data.user) {
-        logger.debug('⏳ セッション未確立 - onAuthStateChangeで検出されるまで待機');
-        // セッションが確立されるまで少し待つ（onAuthStateChangeで検出される）
-        // 新規登録画面では手動でナビゲーションしない（_layout.tsxで処理）
-        setIsLoading(false);
-        return { success: true };
-      } else {
-        logger.error('❌ ユーザー情報が取得できません');
-        const errorMessage = 'ユーザー情報の取得に失敗しました。もう一度お試しください。';
-        setError(errorMessage);
-        setIsLoading(false);
-        return { success: false, error: errorMessage };
-      }
-    } catch (err) {
-      // エラーは既にAlertで表示済み
-      const errorMessage = '新規登録に失敗しました';
-      setError(errorMessage);
-      setIsLoading(false);
-      return { success: false, error: errorMessage };
-    }
-  };
+  // 画面遷移済みフラグ（無限ループを防ぐ）
+  const hasNavigatedRef = useRef(false);
   
   
-  const clearError = () => setError(null);
+  const clearError = () => setLocalError(null);
   
   // フォーム状態
   const [formData, setFormData] = useState({
@@ -220,40 +86,11 @@ export default function SignupScreen() {
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
   const [pulseAnim] = useState(new Animated.Value(1));
-  const [successAnim] = useState(new Animated.Value(0));
 
-  // 新規登録画面では認証状態チェックを完全に無効化（無限ループ完全停止）
+  // コンポーネントマウント時の初期化
   useEffect(() => {
-    // 認証状態をリセット
-    clearError();
-  }, []); // 依存配列を空にして無限ループを完全に停止
-
-  // 新規登録成功時の処理
-  const [signupSuccess, setSignupSuccess] = useState(false);
-  
-  // 注意: 新規登録成功後は、handleSignup内で即座にチュートリアル画面に遷移するため、
-  // ここでの自動画面遷移は不要（削除済み）
-  
-  useEffect(() => {
-    if (signupSuccess) {
-      setUiError(null);
-      
-      // 成功アニメーションを表示
-      Animated.timing(successAnim, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: false,
-      }).start();
-      
-      // アラートは表示せず、認証フローに任せる
-      // _layout.tsx が認証状態を検知して自動的に適切な画面に遷移する
-    }
-  }, [signupSuccess, successAnim]); // 依存配列を適切に設定
-
-  // 新規登録画面では認証状態をリセット（無限ループ完全停止）
-  useEffect(() => {
-    // 認証状態をクリア
-    clearError();
+    // エラー状態をクリア
+    setLocalError(null);
     
     // アニメーション開始
     Animated.parallel([
@@ -268,11 +105,60 @@ export default function SignupScreen() {
         useNativeDriver: false,
       }),
     ]).start();
-  }, []); // 依存配列を空にして無限ループを完全に停止
+  }, []); // 依存配列を空にしてマウント時のみ実行
+
+  // 認証状態が更新された時に画面遷移を実行（新規登録成功時の処理）
+  useEffect(() => {
+    // 既に遷移済みの場合はスキップ（無限ループを防ぐ）
+    if (hasNavigatedRef.current) {
+      return;
+    }
+    
+    // 新規登録画面にいない場合はスキップ（他の画面では実行しない）
+    const isInSignupScreen = segments.length >= 2 && segments[0] === 'auth' && segments[1] === 'signup';
+    if (!isInSignupScreen) {
+      return;
+    }
+    
+    // 認証状態が更新された場合のみ実行
+    if (isAuthenticated && !isLoading) {
+      logger.debug('新規登録成功 - 認証状態検出、画面遷移を実行', {
+        isAuthenticated,
+        isLoading,
+        hasInstrument: user?.selected_instrument_id,
+        needsTutorial: !user?.tutorial_completed,
+      });
+      
+      // 遷移済みフラグを設定（無限ループを防ぐ）
+      hasNavigatedRef.current = true;
+      
+      // エラー状態をクリア
+      setLocalError(null);
+      setUiError(null);
+      
+      // 新規登録成功時はチュートリアル画面に遷移
+      // ログイン画面と同じパターンで画面遷移を実行
+      logger.debug('新規登録成功 - チュートリアル画面に遷移');
+      try {
+        router.replace('/(tabs)/tutorial');
+      } catch (navError) {
+        logger.error('チュートリアル画面への遷移エラー:', navError);
+        // フォールバック: 少し遅延してから再試行
+        setTimeout(() => {
+          try {
+            router.replace('/(tabs)/tutorial');
+          } catch (retryError) {
+            logger.error('チュートリアル画面への遷移再試行エラー:', retryError);
+          }
+        }, 500);
+      }
+    }
+  }, [isAuthenticated, isLoading, user, router, segments]);
 
   // エラーが変更された時のアニメーション
   useEffect(() => {
-    if (error) {
+    const errorToShow = localError || authError || uiError;
+    if (errorToShow) {
       Animated.sequence([
         Animated.timing(pulseAnim, {
           toValue: 1.05,
@@ -286,7 +172,7 @@ export default function SignupScreen() {
         }),
       ]).start();
     }
-  }, [error]);
+  }, [localError, authError, uiError]);
 
   // フォームバリデーション
   const validateForm = (): boolean => {
@@ -338,73 +224,25 @@ export default function SignupScreen() {
     });
     
     try {
-      // 新規登録処理を実行
-      const result = await signUp(formData);
-      logger.debug('📊 新規登録結果:', result);
+      // useAuthAdvancedのsignUp関数を使用（認証状態の更新を統一管理）
+      const success = await signUpFromHook({
+        email: formData.email,
+        password: formData.password,
+        name: formData.name,
+      });
       
-      if (result.success) {
-        logger.debug('✅ 新規登録成功 - 認証状態を更新してからチュートリアル画面に遷移します');
-        setSignupSuccess(true);
-        
-        // 認証状態を更新してから画面遷移する（_layout.tsxの認証チェックと競合しないようにする）
-        try {
-          // セッションを確認
-          const { data: sessionData } = await supabase.auth.getSession();
-          if (sessionData.session?.user) {
-            logger.debug('✅ セッション確認成功 - 認証状態を更新', {
-              userId: sessionData.session.user.id,
-              email: sessionData.session.user.email,
-            });
-            // 認証状態を更新（同期的に待つ）
-            await fetchUserProfile();
-            logger.debug('✅ 認証状態更新完了 - チュートリアル画面に遷移');
-          } else {
-            // セッションが存在しない場合は、ポーリングで確認（指数バックオフ）
-            logger.debug('⏳ セッション未確立 - ポーリングで確認を開始');
-            let retryCount = 0;
-            const maxRetries = 5;
-            const baseDelay = 200; // ベース遅延時間（ms）
-            
-            while (retryCount < maxRetries) {
-              // 指数バックオフ: 200ms, 400ms, 800ms, 1600ms, 3200ms
-              const delay = baseDelay * Math.pow(2, retryCount);
-              await new Promise(resolve => setTimeout(resolve, delay));
-              
-              const { data: retrySessionData } = await supabase.auth.getSession();
-              if (retrySessionData.session?.user) {
-                await fetchUserProfile();
-                logger.debug(`✅ 認証状態更新完了（${retryCount + 1}回目の試行後） - チュートリアル画面に遷移`);
-                break;
-              }
-              
-              retryCount++;
-              if (retryCount < maxRetries) {
-                logger.debug(`⏳ セッション未確立 - ${delay}ms後に再試行（${retryCount + 1}/${maxRetries}）`);
-              }
-            }
-            
-            if (retryCount >= maxRetries) {
-              logger.warn('⚠️ セッション確立を待機しましたが、タイムアウトしました。続行します。');
-            }
-          }
-          
-          // 認証状態更新後にチュートリアル画面に遷移
-          logger.debug('🔄 チュートリアル画面への遷移を開始');
-          router.replace('/(tabs)/tutorial');
-          logger.debug('✅ チュートリアル画面への遷移完了');
-        } catch (navError) {
-          logger.error('❌ チュートリアル画面への遷移エラー:', navError);
-          // フォールバック: 直接URLを変更
-          if (typeof window !== 'undefined') {
-            navigateWithBasePath('/(tabs)/tutorial');
-          }
-        }
+      if (success) {
+        logger.debug('✅ 新規登録成功 - 認証状態が更新されるのを待ちます');
+        // 認証状態の更新を待つ（useEffectで画面遷移を実行）
+        // isLoadingは認証状態が更新された時にuseEffectでfalseになる
+        return; // 成功時はここで終了
       } else {
         logger.debug('❌ 新規登録失敗');
-        const errorMessage = result.error || '登録に失敗しました。入力内容を確認してください。';
+        const errorMessage = authError || '登録に失敗しました。入力内容を確認してください。';
+        setLocalError(errorMessage);
+        setUiError(errorMessage);
         
-        // 既に登録されているユーザーの場合はログイン画面への誘導（根本的に厳密なチェック）
-        // エラーメッセージの文字列マッチングは、完全一致または特定のパターンのみ（誤判定を防ぐ）
+        // 既に登録されているユーザーの場合はログイン画面への誘導
         const lowerErrorMessage = errorMessage.toLowerCase();
         const isAlreadyRegisteredMessage = 
           errorMessage.includes('既に登録されています') ||
@@ -414,10 +252,6 @@ export default function SignupScreen() {
           (lowerErrorMessage.includes('user already registered') && !lowerErrorMessage.includes('not') && !lowerErrorMessage.includes('cannot'));
         
         if (isAlreadyRegisteredMessage) {
-          // 既存ユーザーの場合のみ、エラーメッセージを設定
-          setError(errorMessage);
-          setUiError(errorMessage);
-          
           // 画面下のフィールドにも明示的にエラー表示
           setFormErrors(prev => ({
             ...prev,
@@ -441,16 +275,7 @@ export default function SignupScreen() {
             );
           }, 100);
         } else {
-          // その他のエラーの場合は新規登録画面に留まる
-          logger.debug('⚠️ 新規登録失敗（既存ユーザー以外のエラー） - 新規登録画面に留まります', {
-            errorMessage
-          });
-          
-          // error変数とuiError変数の両方に設定して確実に表示
-          setError(errorMessage);
-          setUiError(errorMessage);
-          
-          // 画面下のフィールドにも明示的にエラー表示（パスワード関連エラーのみ）
+          // 画面下のフィールドにも明示的にエラー表示
           setFormErrors(prev => ({
             ...prev,
             email: errorMessage.toLowerCase().includes('email') ? errorMessage : prev.email,
@@ -460,12 +285,10 @@ export default function SignupScreen() {
       }
     } catch (error) {
       logger.error('💥 新規登録処理エラー:', error);
-      // エラーは既にAlertで表示済み
-      setError('新規登録に失敗しました。もう一度お試しください。');
-      Alert.alert('エラー', '新規登録に失敗しました。もう一度お試しください。');
-    } finally {
-      // 確実にisLoadingをfalseにする
-      setIsLoading(false);
+      const errorMessage = error instanceof Error ? error.message : '新規登録に失敗しました。もう一度お試しください。';
+      setLocalError(errorMessage);
+      setUiError(errorMessage);
+      Alert.alert('エラー', errorMessage);
     }
   };
 
@@ -476,524 +299,263 @@ export default function SignupScreen() {
     router.push('/auth/login');
   };
 
-  // フィールド更新
-  const updateField = (field: string, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    
-    // エラーをクリア
-    if (formErrors[field]) {
-      setFormErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[field];
-        return newErrors;
-      });
-    }
-    
-    // 全体的なエラーをクリア
-    if (error) {
-      clearError();
-    }
-  };
-
   return (
-    <SafeAreaView style={styles.container} >
-      <KeyboardAvoidingView 
+    <SafeAreaView style={COMMON_STYLES.flex1}>
+      <KeyboardAvoidingView
+        style={COMMON_STYLES.flex1}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardView}
       >
         <ScrollView 
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContainer}
+          showsVerticalScrollIndicator={true}
           keyboardShouldPersistTaps="handled"
         >
-          <Animated.View 
-            style={[
-              styles.content,
-              {
-                opacity: fadeAnim,
-                transform: [{ translateY: slideAnim }],
-              },
-            ]}
-          >
-            {/* ヘッダー */}
-            <View style={styles.header}>
-              <View style={styles.logoContainer}>
-                <Text style={styles.logoIcon}>🎵</Text>
-              </View>
-              <Text style={styles.title}>新規登録</Text>
-              <Text style={styles.subtitle}>
-                アカウントを作成して音楽練習を始めましょう
-              </Text>
-            </View>
-
-            {/* 成功メッセージ */}
-            <Animated.View
-              style={[
-                styles.successContainer,
-                {
-                  opacity: successAnim,
-                  transform: [
-                    {
-                      scale: successAnim.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0.8, 1],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            >
-              <Text style={styles.successText}>🎉 登録完了！</Text>
-              <Text style={styles.successSubtext}>
-                チュートリアル画面に移動します...
-              </Text>
-            </Animated.View>
-
-            {/* エラー表示 */}
-            {(error || uiError) && (
-              <Animated.View
-                style={[
-                  styles.errorContainer,
-                  { transform: [{ scale: pulseAnim }] },
-                ]}
-              >
-                <Text style={styles.errorText}>⚠️ {error || uiError}</Text>
+          <View style={styles.container}>
+            <Animated.View style={[styles.card, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
+            <Text style={styles.title}>新規登録</Text>
+            
+            {uiError && (
+              <Animated.View style={[styles.errorContainer, { transform: [{ scale: pulseAnim }] }]}>
+                <Text style={styles.errorText}>{uiError}</Text>
               </Animated.View>
             )}
 
-            {/* フォーム */}
-            <View style={styles.form}>
-              {/* ニックネーム */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>ニックネーム</Text>
-                <View style={[
-                  styles.inputWrapper,
-                  formErrors.name ? styles.inputError : styles.inputFocus,
-                ]}>
-                  <View style={styles.inputIconContainer}>
-                    <Text style={styles.inputIcon}>👤</Text>
-                  </View>
-                  <TextInput
-                    style={styles.textInput}
-                    value={formData.name}
-                    onChangeText={(value) => updateField('name', value)}
-                    placeholder="ニックネームを入力"
-                    placeholderTextColor={colors.textSecondary}
-                    autoCapitalize="words"
-                    autoCorrect={false}
-                    editable={!isLoading}
-                    selectionColor={colors.primary}
-                    nativeID="signup-name-input"
-                    accessibilityLabel="ニックネーム"
-                  />
-                </View>
-                {formErrors.name && (
-                  <Text style={styles.fieldErrorText}>{formErrors.name}</Text>
-                )}
-              </View>
-
-              {/* メールアドレス */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>メールアドレス</Text>
-                <View style={[
-                  styles.inputWrapper,
-                  formErrors.email ? styles.inputError : styles.inputFocus,
-                ]}>
-                  <View style={styles.inputIconContainer}>
-                    <Text style={styles.inputIcon}>✉️</Text>
-                  </View>
-                  <TextInput
-                    style={styles.textInput}
-                    value={formData.email}
-                    onChangeText={(value) => updateField('email', value)}
-                    placeholder="your@email.com"
-                    placeholderTextColor={colors.textSecondary}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    editable={!isLoading}
-                    selectionColor={colors.primary}
-                    nativeID="signup-email-input"
-                    accessibilityLabel="メールアドレス"
-                  />
-                </View>
-                {formErrors.email && (
-                  <Text style={styles.fieldErrorText}>{formErrors.email}</Text>
-                )}
-              </View>
-
-              {/* パスワード */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>パスワード</Text>
-                <View style={[
-                  styles.inputWrapper,
-                  formErrors.password ? styles.inputError : styles.inputFocus,
-                ]}>
-                  <View style={styles.inputIconContainer}>
-                    <Text style={styles.inputIcon}>✳️</Text>
-                  </View>
-                  <TextInput
-                    style={styles.textInput}
-                    value={formData.password}
-                    onChangeText={(value) => updateField('password', value)}
-                    placeholder="8文字以上（小文字と数字を含む）"
-                    placeholderTextColor={colors.textSecondary}
-                    secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    editable={!isLoading}
-                    selectionColor={colors.primary}
-                    nativeID="signup-password-input"
-                    accessibilityLabel="パスワード"
-                  />
-                  <TouchableOpacity
-                    style={styles.passwordToggle}
-                    onPress={() => setShowPassword(!showPassword)}
-                    disabled={isLoading}
-                  >
-                    <Text style={styles.passwordToggleText}>
-                      {showPassword ? '👀' : '🔒'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                {formErrors.password && (
-                  <Text style={styles.fieldErrorText}>{formErrors.password}</Text>
-                )}
-              </View>
-
-              {/* パスワード確認 */}
-              <View style={styles.inputContainer}>
-                <Text style={styles.inputLabel}>パスワード確認</Text>
-                <View style={[
-                  styles.inputWrapper,
-                  formErrors.confirmPassword ? styles.inputError : styles.inputFocus,
-                ]}>
-                  <View style={styles.inputIconContainer}>
-                    <Text style={styles.inputIcon}>✳️</Text>
-                  </View>
-                  <TextInput
-                    style={styles.textInput}
-                    value={formData.confirmPassword}
-                    onChangeText={(value) => updateField('confirmPassword', value)}
-                    placeholder="パスワードを再入力"
-                    placeholderTextColor={colors.textSecondary}
-                    secureTextEntry={!showConfirmPassword}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    editable={!isLoading}
-                    selectionColor={colors.primary}
-                    nativeID="signup-confirm-password-input"
-                    accessibilityLabel="パスワード確認"
-                  />
-                  <TouchableOpacity
-                    style={styles.passwordToggle}
-                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-                    disabled={isLoading}
-                  >
-                    <Text style={styles.passwordToggleText}>
-                      {showConfirmPassword ? '👀' : '🔒'}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                {formErrors.confirmPassword && (
-                  <Text style={styles.fieldErrorText}>{formErrors.confirmPassword}</Text>
-                )}
-              </View>
-
-              {/* 新規登録ボタン */}
-              <TouchableOpacity
-                style={[
-                  styles.signupButton,
-                  isLoading ? styles.signupButtonDisabled : null,
-                ]}
-                onPress={handleSignup}
-                disabled={isLoading}
-              >
-                <View style={styles.buttonContent}>
-                  <Text style={styles.signupButtonText}>
-                    {isLoading ? '登録中...' : '新規登録'}
-                  </Text>
-                  <View style={styles.buttonIcon}>
-                    <Text style={styles.signupButtonIcon}>→</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>メールアドレス</Text>
+              <TextInput
+                style={[styles.input, formErrors.email && styles.inputError]}
+                placeholder="メールアドレスを入力"
+                placeholderTextColor={colors.primaryLight}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={formData.email}
+                onChangeText={(text) => setFormData({ ...formData, email: text })}
+              />
+              {formErrors.email && <Text style={styles.errorTextSmall}>{formErrors.email}</Text>}
             </View>
 
-            {/* 利用規約 */}
-            <View style={styles.termsContainer}>
-              <Text style={styles.termsText}>
-                新規登録することで、
-                <TouchableOpacity onPress={() => router.push('/terms-of-service')}>
-                  <Text style={styles.linkText}>利用規約</Text>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>パスワード</Text>
+              <View style={styles.passwordInputContainer}>
+                <TextInput
+                  style={[styles.passwordInput, formErrors.password && styles.inputError]}
+                  placeholder="8文字以上（小文字と数字を含む）"
+                  placeholderTextColor={colors.primaryLight}
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  value={formData.password}
+                  onChangeText={(text) => setFormData({ ...formData, password: text })}
+                />
+                <TouchableOpacity 
+                  style={styles.togglePassword} 
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Text style={styles.togglePasswordText}>{showPassword ? '非表示' : '表示'}</Text>
                 </TouchableOpacity>
-                および
-                <TouchableOpacity onPress={() => router.push('/privacy-policy')}>
-                  <Text style={styles.linkText}>プライバシーポリシー</Text>
+              </View>
+              {formErrors.password && <Text style={styles.errorTextSmall}>{formErrors.password}</Text>}
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>パスワード確認</Text>
+              <View style={styles.passwordInputContainer}>
+                <TextInput
+                  style={[styles.passwordInput, formErrors.confirmPassword && styles.inputError]}
+                  placeholder="パスワードを再入力"
+                  placeholderTextColor={colors.primaryLight}
+                  secureTextEntry={!showConfirmPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  value={formData.confirmPassword}
+                  onChangeText={(text) => setFormData({ ...formData, confirmPassword: text })}
+                />
+                <TouchableOpacity 
+                  style={styles.togglePassword} 
+                  onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  <Text style={styles.togglePasswordText}>{showConfirmPassword ? '非表示' : '表示'}</Text>
                 </TouchableOpacity>
-                に同意したものとみなされます。
+              </View>
+              {formErrors.confirmPassword && <Text style={styles.errorTextSmall}>{formErrors.confirmPassword}</Text>}
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>ニックネーム</Text>
+              <TextInput
+                style={[styles.input, formErrors.name && styles.inputError]}
+                placeholder="表示名を入力"
+                placeholderTextColor={colors.primaryLight}
+                autoCapitalize="words"
+                autoCorrect={false}
+                value={formData.name}
+                onChangeText={(text) => setFormData({ ...formData, name: text })}
+              />
+              {formErrors.name && <Text style={styles.errorTextSmall}>{formErrors.name}</Text>}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.button, isLoading && styles.buttonDisabled]}
+              onPress={handleSignup}
+              disabled={isLoading}
+            >
+              {isLoading ? (
+                <Text style={styles.buttonText}>登録中...</Text>
+              ) : (
+                <Text style={styles.buttonText}>新規登録</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={goToLogin} style={styles.loginLink}>
+              <Text style={styles.loginText}>
+                既にアカウントをお持ちですか？ <Text style={styles.loginLinkText}>ログイン</Text>
               </Text>
-            </View>
-
-            {/* ログインリンク */}
-            <View style={styles.loginContainer}>
-              <Text style={styles.loginText}>既にアカウントをお持ちの方は</Text>
-              <TouchableOpacity onPress={goToLogin} disabled={isLoading}>
-                  <Text style={styles.loginLink}>ログイン</Text>
-                </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           </Animated.View>
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollContent: {
+  scrollContainer: {
     flexGrow: 1,
-    justifyContent: 'flex-start',
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingVertical: 4,
-  },
-  header: {
     alignItems: 'center',
-    marginBottom: -20,
-    marginTop: 0,
+    backgroundColor: colors.background,
+    paddingVertical: 20,
+    minHeight: '100%',
   },
-  logoContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
+  container: {
+    width: '100%',
+    maxWidth: 400,
     alignItems: 'center',
-    marginBottom: 12,
-    elevation: 4,
+    padding: 20,
+  },
+  card: {
+    width: '100%',
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    padding: 25,
+    alignItems: 'center',
     ...createShadowStyle({
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.15,
-      shadowRadius: 8,
-      elevation: 4,
+      shadowColor: colors.primary,
+      shadowOpacity: 0.1,
+      shadowRadius: 10,
+      elevation: 8,
     }),
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  logoIcon: {
-    fontSize: 24,
-    color: colors.primary,
   },
   title: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginBottom: 25,
+  },
+  inputGroup: {
+    width: '100%',
+    marginBottom: 15,
+  },
+  label: {
+    fontSize: 15,
     color: colors.text,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: 0,
-  },
-  successContainer: {
-    backgroundColor: '#F0F9F0',
-    borderRadius: 10,
-    padding: 16,
-    marginBottom: 0,
-    alignItems: 'center',
-    borderLeftWidth: 4,
-    borderLeftColor: '#38A169',
-  },
-  successText: {
-    color: '#38A169',
-    fontSize: 18,
+    marginBottom: 5,
     fontWeight: '600',
-    marginBottom: 4,
   },
-  successSubtext: {
-    color: '#38A169',
+  input: {
+    width: '100%',
+    height: 50,
+    backgroundColor: '#F7FAFC',
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    fontSize: 16,
+    color: colors.text,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  passwordInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    backgroundColor: '#F7FAFC',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  passwordInput: {
+    flex: 1,
+    height: 50,
+    paddingHorizontal: 15,
+    fontSize: 16,
+    color: colors.text,
+  },
+  togglePassword: {
+    padding: 10,
+  },
+  togglePasswordText: {
+    color: colors.primary,
+    fontWeight: 'bold',
     fontSize: 14,
+  },
+  inputError: {
+    borderColor: colors.error,
+    borderWidth: 2,
   },
   errorContainer: {
-    backgroundColor: '#FEF5F5',
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 0,
-    borderLeftWidth: 4,
-    borderLeftColor: '#E53E3E',
+    width: '100%',
+    backgroundColor: '#FED7D7',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.error,
   },
   errorText: {
     color: colors.error,
     fontSize: 14,
-    fontWeight: '500',
-  },
-  form: {
-    marginBottom: 8,
-    marginTop: -40,
-  },
-  inputContainer: {
-    marginBottom: 8,
-  },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    elevation: 1,
-    ...createShadowStyle({
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 2,
-      elevation: 1,
-    }),
-  },
-  inputFocus: {
-    elevation: 2,
-    ...createShadowStyle({
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 0.15,
-      shadowRadius: 0,
-      elevation: 2,
-    }),
-  },
-  inputError: {
-    borderColor: colors.error,
-    backgroundColor: '#FEF5F5',
-  },
-  inputIconContainer: {
-    width: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
-  },
-  inputIcon: {
-    fontSize: 14,
-    color: '#FF6B35', // 明るいオレンジ
-  },
-  textInput: {
-    flex: 1,
-    fontSize: 15,
-    color: colors.text,
-    paddingVertical: 0,
-  },
-  passwordToggle: {
-    padding: 2,
-  },
-  passwordToggleText: {
-    fontSize: 14,
-    color: '#FF6B35', // 明るいオレンジ
-  },
-  fieldErrorText: {
-    color: colors.error,
-    fontSize: 13,
-    marginTop: 6,
-    marginLeft: 4,
-    fontWeight: '500',
-  },
-  signupButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    marginTop: 6,
-    elevation: 4,
-    ...createShadowStyle({
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 4,
-    }),
-  },
-  signupButtonDisabled: {
-    backgroundColor: colors.textSecondary,
-    elevation: 0,
-    ...createShadowStyle({
-      shadowColor: 'transparent',
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 0,
-      shadowRadius: 0,
-      elevation: 0,
-    }),
-  },
-  buttonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  signupButtonText: {
-    color: '#FFF',
-    fontSize: 16,
-    fontWeight: '700',
-    marginRight: 8,
-  },
-  buttonIcon: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  signupButtonIcon: {
-    color: '#FFF',
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  termsContainer: {
-    marginBottom: 8,
-    marginHorizontal: 10, // 左右の余白を減らす
-  },
-  termsText: {
-    color: colors.textSecondary,
-    fontSize: 11, // フォントサイズを少し小さく
     textAlign: 'center',
-    lineHeight: 16, // 行間を調整
+    fontWeight: '600',
   },
-  linkText: {
-    color: colors.primary,
-    fontWeight: '700',
-    textDecorationLine: 'underline',
+  errorTextSmall: {
+    color: colors.error,
+    fontSize: 12,
+    marginTop: 5,
+    marginLeft: 5,
   },
-  loginContainer: {
-    flexDirection: 'row',
+  button: {
+    width: '100%',
+    height: 50,
+    backgroundColor: colors.secondary,
+    borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
+    marginTop: 20,
+    ...createShadowStyle({
+      shadowColor: colors.secondary,
+      shadowOpacity: 0.2,
+      shadowRadius: 5,
+      elevation: 5,
+    }),
+  },
+  buttonDisabled: {
+    backgroundColor: colors.primaryLight,
+  },
+  buttonText: {
+    color: colors.surface,
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  loginLink: {
+    marginTop: 20,
   },
   loginText: {
     color: colors.textSecondary,
-    fontSize: 14,
-    marginRight: 8,
-  },
-  loginLink: {
-    color: colors.primary,
     fontSize: 15,
-    fontWeight: '700',
+  },
+  loginLinkText: {
+    color: colors.primary,
+    fontWeight: 'bold',
   },
 });

@@ -5,6 +5,7 @@
 
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
+import { applyInstrumentFilter } from './common/instrumentFilter';
 
 const REPOSITORY_CONTEXT = 'eventRepository';
 
@@ -44,6 +45,11 @@ export const createEvent = async (
     // practice_schedule_idが存在する場合のみ追加（カラムが存在しない場合のエラーを防ぐため）
     if (event.practice_schedule_id) {
       payload.practice_schedule_id = event.practice_schedule_id;
+    }
+    
+    // instrument_idが存在する場合のみ追加（カラムが存在しない場合のエラーを防ぐため）
+    if (event.instrument_id !== undefined) {
+      payload.instrument_id = event.instrument_id;
     }
     
     const { data, error } = await supabase
@@ -89,6 +95,11 @@ export const updateEvent = async (
       if (updates.practice_schedule_id !== null) {
         payload.practice_schedule_id = updates.practice_schedule_id;
       }
+    }
+    
+    // instrument_idが存在する場合のみ追加（カラムが存在しない場合のエラーを防ぐため）
+    if (updates.instrument_id !== undefined) {
+      payload.instrument_id = updates.instrument_id;
     }
     
     const { data, error } = await supabase
@@ -145,18 +156,29 @@ export const getEventsByUserId = async (
   } = {}
 ): Promise<{ data: Event[] | null; error: any }> => {
   try {
+    // まず、instrument_idカラムの存在を確認
+    const { error: checkError } = await supabase
+      .from('events')
+      .select('instrument_id')
+      .limit(1);
+    
+    const hasInstrumentId = !checkError || 
+      (checkError.code !== '42703' && !checkError.message?.includes('instrument_id'));
+    
+    // SELECT句を構築（instrument_idカラムが存在する場合のみ含める）
+    const selectColumns = hasInstrumentId
+      ? 'id,user_id,title,date,description,practice_schedule_id,instrument_id,is_completed,completed_at,created_at,updated_at'
+      : 'id,user_id,title,date,description,practice_schedule_id,is_completed,completed_at,created_at,updated_at';
+    
     let query = supabase
       .from('events')
-      .select('*')
+      .select(selectColumns)
       .eq('user_id', userId);
     
-    // 楽器ごとにフィルタリング
-    if (options.instrumentId !== undefined) {
-      if (options.instrumentId) {
-        query = query.eq('instrument_id', options.instrumentId);
-      } else {
-        query = query.is('instrument_id', null);
-      }
+    // 楽器ごとにフィルタリング（統一関数を使用、テーブル名を指定して自動作成を試みる）
+    // カラムが存在する場合のみフィルタリングを適用
+    if (options.instrumentId !== undefined && hasInstrumentId) {
+      query = await applyInstrumentFilter(query, options.instrumentId, true, 'events');
     }
     
     if (options.startDate) {

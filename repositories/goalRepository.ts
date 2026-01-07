@@ -2,7 +2,7 @@
  * 目標（goals）関連のリポジトリ
  */
 import { supabase } from '@/lib/supabase';
-import type { Goal } from '@/app/(tabs)/goals/types';
+import { Goal } from '@/app/(tabs)/goals/types';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 
@@ -31,7 +31,7 @@ export const checkShowOnCalendarSupport = async (forceCheck: boolean = false): P
   // 既にチェック済みの場合は即座に返す（強制チェックの場合は除く）
   const isFirstCheck = supportsShowOnCalendar === null;
     if (!isFirstCheck && !forceCheck) {
-    return supportsShowOnCalendar ?? true;
+    return supportsShowOnCalendar;
   }
   
   // 初期化中の場合、初期化の完了を待つ
@@ -40,21 +40,7 @@ export const checkShowOnCalendarSupport = async (forceCheck: boolean = false): P
     return supportsShowOnCalendar ?? true;
   }
 
-  // localStorageのフラグを先にチェック（初回チェック時のエラーを回避）
-  if (typeof window !== 'undefined' && !forceCheck) {
-    try {
-      const flag = window.localStorage.getItem('disable_show_on_calendar');
-      if (flag === '1') {
-        // カラムが存在しないことが既に分かっている
-        supportsShowOnCalendar = false;
-        return false;
-      }
-    } catch (e) {
-      // localStorageへのアクセスエラーは無視して続行
-    }
-  }
-
-  // データベースにクエリを送信して確認
+  // 常にデータベースにクエリを送信して確認（localStorageのフラグは無視）
   try {
     if (isFirstCheck || forceCheck) {
       logger.debug('📅 show_on_calendarカラムの存在を確認中...');
@@ -81,19 +67,11 @@ export const checkShowOnCalendarSupport = async (forceCheck: boolean = false): P
       
       if (isColumnError) {
         // カラムが存在しない場合
-        supportsShowOnCalendar = false;
-        // localStorageにフラグを設定して以降のチェックをスキップ（エラー表示を回避）
-        if (typeof window !== 'undefined') {
-          try {
-            window.localStorage.setItem('disable_show_on_calendar', '1');
-          } catch (e) {
-            // localStorageへの書き込みエラーは無視
-          }
-        }
-        // 初回チェック時のみ警告ログを出力（エラーは表示しない）
         if (isFirstCheck || forceCheck) {
-          logger.debug('show_on_calendarカラムが存在しません（正常な動作です）');
+          logger.warn('show_on_calendarカラムが存在しません');
         }
+        supportsShowOnCalendar = false;
+        // フラグは設定しない（次回も確認するため）
         return false;
       }
       
@@ -126,20 +104,14 @@ export const checkShowOnCalendarSupport = async (forceCheck: boolean = false): P
 };
 
 // 初期化時にlocalStorageのフラグを確認（非同期チェックの前に使用）
-// 重要: instrument_idカラムは必ず存在するため、localStorageのフラグを無視
 try {
   if (typeof window !== 'undefined') {
     const flag = window.localStorage.getItem('disable_show_on_calendar');
     if (flag === '1') {
       supportsShowOnCalendar = false;
     }
-    // instrument_idカラムは必ず存在するため、localStorageのフラグを無視して常にtrueに設定
-    // マイグレーションで追加されているため、常に存在する
-    supportsInstrumentId = true;
-    // localStorageのフラグを削除（誤った設定をクリア）
-    try {
-      window.localStorage.removeItem('disable_instrument_id');
-    } catch {}
+    const instrumentIdFlag = window.localStorage.getItem('disable_instrument_id');
+    if (instrumentIdFlag === '1') supportsInstrumentId = false;
     const isCompletedFlag = window.localStorage.getItem('disable_is_completed');
     if (isCompletedFlag === '1') supportsIsCompleted = false;
   }
@@ -148,39 +120,10 @@ try {
 /**
  * カラム存在確認を初期化時に一度だけ実行する関数
  * アプリ起動時に呼び出すことで、パフォーマンスを向上
+ * 
+ * 注意: 初期スキーマ（20251219000000_initial_schema.sql）に既にshow_on_calendarカラムが含まれているため、
+ *       カラム作成関数は削除しました。マイグレーションが未適用の場合は、初期スキーマを適用してください。
  */
-// カラムを強制的に作成する関数（マイグレーションが実行されていない場合のフォールバック）
-const ensureShowOnCalendarColumn = async (): Promise<boolean> => {
-  try {
-    // RPC関数を使用してカラムを追加（存在しない場合のみ）
-    const { error: rpcError } = await supabase.rpc('exec_sql', {
-      sql: `
-        DO $$ 
-        BEGIN 
-          IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'goals') THEN
-            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'goals' AND column_name = 'show_on_calendar') THEN
-              ALTER TABLE goals ADD COLUMN show_on_calendar BOOLEAN DEFAULT false;
-              COMMENT ON COLUMN goals.show_on_calendar IS 'カレンダーに表示するかどうか（true: 表示, false: 非表示）';
-              UPDATE goals SET show_on_calendar = false WHERE show_on_calendar IS NULL;
-            END IF;
-          END IF;
-        END $$;
-      `
-    });
-
-    // RPC関数が存在しない場合は、直接SQLを実行（Supabaseの制限により通常は失敗する）
-    if (rpcError) {
-      logger.debug('RPC関数を使用したカラム追加を試みましたが失敗:', rpcError);
-      // フォールバック: カラムが存在するか確認して、存在しない場合は警告を出す
-      return false;
-    }
-
-    return true;
-  } catch (error) {
-    logger.error('カラム追加の試行中にエラーが発生しました:', error);
-    return false;
-  }
-};
 
 export const initializeGoalRepository = async (forceRecheck: boolean = false): Promise<void> => {
   // 既に初期化済みの場合はスキップ（強制再チェックの場合は除く）
@@ -215,31 +158,16 @@ export const initializeGoalRepository = async (forceRecheck: boolean = false): P
         }
         const columnExists = await checkShowOnCalendarSupport();
         
-        // カラムが存在しない場合、自動的に追加を試みる
+        // カラムが存在しない場合（初期スキーマ未適用の可能性）
+        // 注意: 初期スキーマ（20251219000000_initial_schema.sql）に既にshow_on_calendarカラムが含まれているため、
+        //       カラム作成は行いません。マイグレーションが未適用の場合は、初期スキーマを適用してください。
         if (!columnExists) {
-          logger.warn('⚠️ show_on_calendarカラムが存在しません。追加を試みます...');
-          const added = await ensureShowOnCalendarColumn();
-          if (added) {
-            logger.info('show_on_calendarカラムを追加しました');
-            // 再度チェック
-            supportsShowOnCalendar = null;
-            await checkShowOnCalendarSupport(forceRecheck);
-          } else {
-            logger.warn('show_on_calendarカラムの自動追加に失敗しました。マイグレーションを実行してください。');
-          }
+          logger.warn('⚠️ show_on_calendarカラムが存在しません。初期スキーマが適用されていない可能性があります。初期スキーマ（20251219000000_initial_schema.sql）を適用してください。');
         }
       }
       
-      // instrument_idカラムの存在確認
-      // 重要: マイグレーションで追加されているため、常に存在する
-      // エラーが発生した場合でも、カラムは存在する可能性が高いため、常にtrueに設定
-      // localStorageのフラグを無視して、常にtrueに設定
-      if (typeof window !== 'undefined') {
-        try {
-          window.localStorage.removeItem('disable_instrument_id');
-        } catch {}
-      }
-      
+      // instrument_idカラムの存在確認（必要に応じて）
+      if (supportsInstrumentId) {
       try {
         const { error } = await supabase
           .from('goals')
@@ -247,19 +175,16 @@ export const initializeGoalRepository = async (forceRecheck: boolean = false): P
           .limit(1);
         
         if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('instrument_id'))) {
-          // エラーが発生した場合でも、マイグレーションで追加されているため、trueに設定
-          // ただし、ログには記録
-          logger.warn('[goalRepository] instrument_idカラムの確認でエラーが発生しましたが、マイグレーションで追加されているため、trueに設定します:', error);
-          supportsInstrumentId = true;
-        } else {
-          // エラーがない場合はカラムが存在する
-          supportsInstrumentId = true;
-          logger.debug('[goalRepository] instrument_idカラムが存在します');
+            supportsInstrumentId = false;
+            if (typeof window !== 'undefined') {
+              try {
+                window.localStorage.setItem('disable_instrument_id', '1');
+              } catch {}
+            }
         }
-      } catch (error) {
-        // エラーが発生した場合でも、マイグレーションで追加されているため、trueに設定
-        logger.warn('[goalRepository] instrument_idカラムの確認中にエラーが発生しましたが、マイグレーションで追加されているため、trueに設定します:', error);
-        supportsInstrumentId = true;
+        } catch {
+          // エラーは無視（デフォルトはtrue）
+        }
       }
       
       // is_completedカラムの存在確認（必要に応じて）
@@ -328,10 +253,8 @@ export const goalRepository = {
     // 楽器IDでフィルタリング（カラムが存在する場合のみ）
     if (supportsInstrumentId) {
       if (instrumentId) {
-        // その楽器の目標のみ取得（instrument_idがnullの目標は除外）
         query = query.eq('instrument_id', instrumentId);
       } else {
-        // 楽器が選択されていない場合: instrument_idがnullの目標のみ取得
         query = query.is('instrument_id', null);
       }
     }
@@ -339,25 +262,6 @@ export const goalRepository = {
     query = query.order('created_at', { ascending: false }).limit(50);
 
     const { data: goals, error } = await query;
-    
-    // デバッグログ
-    if (goals && goals.length > 0) {
-      logger.debug('[goalRepository.getGoals] 取得した目標:', {
-        count: goals.length,
-        instrumentId,
-        supportsInstrumentId,
-        goals: goals.map((g: any) => ({
-          id: g.id,
-          title: g.title,
-          instrument_id: g.instrument_id,
-        })),
-      });
-    } else if (goals && goals.length === 0) {
-      logger.debug('[goalRepository.getGoals] 目標が見つかりませんでした:', {
-        instrumentId,
-        supportsInstrumentId,
-      });
-    }
 
     if (error) {
       const isColumnError = error.code === '42703' || 
@@ -433,35 +337,41 @@ export const goalRepository = {
         }
         
         // instrument_idカラムのエラーの場合
-        // 重要: マイグレーションで追加されているため、エラーが発生してもカラムは存在する
-        // そのため、supportsInstrumentIdをfalseに設定せず、エラーを無視して続行
         if (error.message?.includes('instrument_id') || error.code === '400') {
-          logger.warn('[goalRepository.getGoals] instrument_idカラムのエラーが発生しましたが、マイグレーションで追加されているため、無視して続行します:', error);
-          // supportsInstrumentIdはtrueのまま維持
-          // フィルタリングを試行（カラムは存在するため）
-          let retryQuery = supabase
-            .from('goals')
-            .select(selectFields)
-            .eq('user_id', userId);
-          if (supportsInstrumentId) {
-            if (instrumentId) {
-              retryQuery = retryQuery.eq('instrument_id', instrumentId);
-            } else {
-              retryQuery = retryQuery.is('instrument_id', null);
+          supportsInstrumentId = false;
+          try { 
+            if (typeof window !== 'undefined') {
+              window.localStorage.setItem('disable_instrument_id', '1');
             }
-          }
-          // エラーを無視して、フィルタリング付きで再試行
-          const { data: retryGoals, error: retryError } = await retryQuery.order('created_at', { ascending: false }).limit(50);
-          if (retryError) {
-            logger.error('[goalRepository.getGoals] 再試行でもエラーが発生しました:', retryError);
+          } catch {}
+          
+          // instrument_idカラムを含めずに再試行
+          const fallbackSelect = isSupported 
+            ? `${baseSelectWithoutInstrument}, show_on_calendar` 
+            : baseSelectWithoutInstrument;
+          
+          let fallbackQuery = supabase
+            .from('goals')
+            .select(fallbackSelect)
+            .eq('user_id', userId);
+          
+          const { data: fallbackGoals, error: fbErr } = await fallbackQuery
+            .order('created_at', { ascending: false })
+            .limit(50);
+          
+          if (fbErr) {
+            // エラーログは出力しない（正常な動作の可能性があるため）
             return [];
           }
-          if (retryGoals) {
-            const goalsWithDefaults = retryGoals.map((g: any) => ({
+          
+          if (fallbackGoals) {
+            const goalsWithDefaults = fallbackGoals.map((g: any) => ({
               ...g,
               is_completed: g.is_completed ?? (g.progress_percentage === 100),
               show_on_calendar: g.show_on_calendar ?? false,
             }));
+            
+            // DBから取得した値をそのまま使用
             return goalsWithDefaults.filter((g: any) => !g.is_completed);
           }
         }
@@ -548,10 +458,8 @@ export const goalRepository = {
     // 楽器IDでフィルタリング（カラムが存在する場合のみ）
     if (supportsInstrumentId) {
       if (instrumentId) {
-        // その楽器の目標のみ取得（instrument_idがnullの目標は除外）
         query = query.eq('instrument_id', instrumentId);
       } else {
-        // 楽器が選択されていない場合: instrument_idがnullの目標のみ取得
         query = query.is('instrument_id', null);
       }
     }
@@ -580,30 +488,27 @@ export const goalRepository = {
       
       if (isColumnError) {
         // instrument_idカラムのエラーの場合
-        // 重要: マイグレーションで追加されているため、エラーが発生してもカラムは存在する
-        // そのため、supportsInstrumentIdをfalseに設定せず、エラーを無視して続行
         if (error.message?.includes('instrument_id') || error.code === '400') {
-          logger.warn('[goalRepository.getCompletedGoals] instrument_idカラムのエラーが発生しましたが、マイグレーションで追加されているため、無視して続行します:', error);
-          // supportsInstrumentIdはtrueのまま維持
-          // フィルタリングを試行（カラムは存在するため）
-          let retryQuery = supabase
-            .from('goals')
-            .select(selectFields)
-            .eq('user_id', userId);
-          if (supportsInstrumentId) {
-            if (instrumentId) {
-              retryQuery = retryQuery.eq('instrument_id', instrumentId);
-            } else {
-              retryQuery = retryQuery.is('instrument_id', null);
+          supportsInstrumentId = false;
+          try { 
+            if (typeof window !== 'undefined') {
+              window.localStorage.setItem('disable_instrument_id', '1');
             }
-          }
-          // エラーを無視して、フィルタリング付きで再試行
-          const { data: fbCompleted, error: fbErr } = await retryQuery
+          } catch {}
+          
+          // instrument_idカラムを含めずに再試行
+          const fallbackSelect = isSupported 
+            ? `${baseSelectWithoutInstrument}, show_on_calendar` 
+            : baseSelectWithoutInstrument;
+          
+          const { data: fbCompleted, error: fbErr } = await supabase
+            .from('goals')
+            .select(fallbackSelect)
+            .eq('user_id', userId)
             .order('created_at', { ascending: false })
             .limit(50);
           
           if (fbErr) {
-            logger.error('[goalRepository.getCompletedGoals] 再試行でもエラーが発生しました:', fbErr);
             return [];
           }
           
@@ -697,27 +602,25 @@ export const goalRepository = {
       const { count, error } = await query;
       
       if (error) {
-        // instrument_idカラムのエラーの場合
-        // 重要: マイグレーションで追加されているため、エラーが発生してもカラムは存在する
-        // そのため、supportsInstrumentIdをfalseに設定せず、エラーを無視して続行
+        // instrument_idカラムのエラーの場合、フィルタリングなしで再試行
         if ((error.code === '400' || error.code === '42703') && error.message?.includes('instrument_id')) {
-          logger.warn('[goalRepository.getExistingGoalsCount] instrument_idカラムのエラーが発生しましたが、マイグレーションで追加されているため、無視して続行します:', error);
-          // supportsInstrumentIdはtrueのまま維持
-          // フィルタリングを試行（カラムは存在するため）
-          if (supportsInstrumentId) {
-            if (instrumentId) {
-              query = query.eq('instrument_id', instrumentId);
-            } else {
-              query = query.is('instrument_id', null);
+          supportsInstrumentId = false;
+          try { 
+            if (typeof window !== 'undefined') {
+              window.localStorage.setItem('disable_instrument_id', '1');
             }
-          }
-          // エラーを無視して、フィルタリング付きで再試行
-          const { count: retryCount, error: retryError } = await query;
-          if (retryError) {
-            logger.error('[goalRepository.getExistingGoalsCount] 再試行でもエラーが発生しました:', retryError);
+          } catch {}
+          
+          const { count: fallbackCount, error: fbErr } = await supabase
+            .from('goals')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', userId);
+          
+          if (fbErr) {
             return 0;
           }
-          return retryCount || 0;
+          
+          return fallbackCount || 0;
         }
         
         return 0;
@@ -815,14 +718,17 @@ export const goalRepository = {
       }
 
       // instrument_idカラムのエラーの場合
-      // 重要: マイグレーションで追加されているため、エラーが発生してもカラムは存在する
-      // そのため、supportsInstrumentIdをfalseに設定せず、エラーを無視して続行
       if (isInstrumentIdError && supportsInstrumentId) {
-        logger.warn('[goalRepository.createGoal] instrument_idカラムのエラーが発生しましたが、マイグレーションで追加されているため、無視して続行します:', error);
-        // supportsInstrumentIdはtrueのまま維持
-        // instrument_idを含めて再試行（カラムは存在するため）
+        supportsInstrumentId = false;
+        try { 
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem('disable_instrument_id', '1');
+          }
+        } catch {}
+        
+        // instrument_idを除外して再試行
         const retryData = { ...insertData };
-        // instrument_idは削除しない（カラムは存在するため）
+        delete retryData.instrument_id;
         
         const retryPayload: any = { ...retryData };
         if (supportsShowOnCalendar) {
@@ -1025,8 +931,8 @@ export const goalRepository = {
     // completed_atカラムをnullに設定（エラー時は除外）
     updateData.completed_at = null;
     
-    // 進捗が100%の場合は90%に戻す（未達成に戻すため）
-    updateData.progress_percentage = 90;
+    // 進捗が100%の場合は99%に戻す（100%のままでは達成済みとして扱われる可能性があるため）
+    updateData.progress_percentage = 99;
     
     let { error } = await supabase
       .from('goals')
@@ -1040,7 +946,7 @@ export const goalRepository = {
       
       if (isCompletedError) {
         // is_completedまたはcompleted_atカラムが存在しない場合、除外して再試行
-        const retryData: any = { progress_percentage: 90 };
+        const retryData: any = { progress_percentage: 99 };
         
         // completed_atのエラーの場合、除外
         if (error.message?.includes('completed_at')) {
@@ -1096,8 +1002,14 @@ export const goalRepository = {
 
   /**
    * 目標のカレンダー表示を更新（DBのみ使用）
+   * show=trueの場合、同じ楽器の他の目標は自動的にfalseになる（各楽器で1つだけ表示）
    */
-  async updateShowOnCalendar(goalId: string, show: boolean, userId: string): Promise<void> {
+  async updateShowOnCalendar(
+    goalId: string, 
+    show: boolean, 
+    userId: string,
+    instrumentId?: string | null
+  ): Promise<void> {
     // カラム存在チェック
     let isSupported = supportsShowOnCalendar;
     if (isSupported === null) {
@@ -1107,6 +1019,41 @@ export const goalRepository = {
     if (!isSupported) {
       // カラムが存在しない場合は機能を無効化（何もしない）
       return;
+    }
+
+    // show=trueの場合、同じ楽器の他の目標をfalseにする（各楽器で1つだけ表示）
+    if (show && supportsInstrumentId) {
+      // 目標情報を取得してinstrument_idを確認（instrumentIdが指定されていない場合）
+      let targetInstrumentId = instrumentId;
+      if (targetInstrumentId === undefined) {
+        const { data: goalData } = await supabase
+          .from('goals')
+          .select('instrument_id')
+          .eq('id', goalId)
+          .eq('user_id', userId)
+          .single();
+        
+        targetInstrumentId = goalData?.instrument_id ?? null;
+      }
+
+      // 同じ楽器の他の目標をfalseにする
+      let otherGoalsQuery = supabase
+        .from('goals')
+        .update({ show_on_calendar: false })
+        .eq('user_id', userId)
+        .neq('id', goalId);
+      
+      if (targetInstrumentId === null) {
+        otherGoalsQuery = otherGoalsQuery.is('instrument_id', null);
+      } else {
+        otherGoalsQuery = otherGoalsQuery.eq('instrument_id', targetInstrumentId);
+      }
+      
+      const { error: otherGoalsError } = await otherGoalsQuery;
+      if (otherGoalsError) {
+        // エラーはログに記録するが、続行する（主な更新処理に影響させない）
+        logger.debug('[goalRepository.updateShowOnCalendar] 同じ楽器の他の目標の更新エラー（続行）:', otherGoalsError);
+      }
     }
 
     // データベースを更新

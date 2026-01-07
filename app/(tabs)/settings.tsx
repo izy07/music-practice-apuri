@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { useLanguage } from '@/components/LanguageContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { setCurrentRoute } from '@/lib/navigationHistory';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -15,6 +16,14 @@ export default function SettingsScreen() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const { language, setLanguage, t } = useLanguage();
   const { currentTheme } = useInstrumentTheme();
+  
+  // 現在のルートを記録（マウント時）
+  React.useEffect(() => {
+    setCurrentRoute('/(tabs)/settings');
+    return () => {
+      // アンマウント時はクリアしない（他の画面に遷移する際に使用するため）
+    };
+  }, []);
 
   // getCurrentUser関数を先に定義
   const getCurrentUser = async () => {

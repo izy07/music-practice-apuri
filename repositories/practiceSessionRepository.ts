@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { formatLocalDate } from '@/lib/dateUtils';
 import logger from '@/lib/logger';
 import { cleanContentFromTimeDetails, appendToContent } from '@/lib/utils/contentCleaner';
+import { applyInstrumentFilter } from './common/instrumentFilter';
 
 const REPOSITORY_CONTEXT = 'practiceSessionRepository';
 
@@ -55,11 +56,8 @@ export const getTodayPracticeSessions = async (
       .eq('user_id', userId)
       .eq('practice_date', today);
     
-    if (instrumentId) {
-      query = query.eq('instrument_id', instrumentId);
-    } else {
-      query = query.is('instrument_id', null);
-    }
+    // 楽器IDでフィルタリング（統一関数を使用、テーブル名を指定して自動作成を試みる）
+    query = await applyInstrumentFilter(query, instrumentId, true, 'practice_sessions');
     
     const { data, error } = await query.order('created_at', { ascending: true });
     
@@ -292,11 +290,8 @@ export const deletePracticeSessions = async (
         .delete()
         .in('id', sessionIds);
       
-      if (instrumentId) {
-        query = query.eq('instrument_id', instrumentId);
-      } else {
-        query = query.is('instrument_id', null);
-      }
+      // 楽器IDでフィルタリング（統一関数を使用、削除時は既存nullデータも含める）
+      query = await applyInstrumentFilter(query, instrumentId, true);
       
       const { error } = await query;
       
@@ -405,20 +400,58 @@ export const savePracticeSessionWithIntegration = async (
       ? (rawInputMethod as ValidInputMethod)
       : 'manual';
     
+    logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration: 既存記録検索開始`, {
+      userId,
+      targetDate,
+      instrumentId,
+      instrumentIdType: typeof instrumentId
+    });
+    
     // 指定された日付の既存の練習記録を取得（必要なフィールドのみ）
+    // 重要: 既存記録を検索する際は、instrumentIdでフィルタリングしない
+    // 同じ日付に異なる楽器の記録が存在する可能性があるため、すべての記録を取得してから手動でフィルタリングする
     let query = supabase
       .from('practice_sessions')
       .select('id, duration_minutes, input_method, content, instrument_id')
       .eq('user_id', userId)
       .eq('practice_date', targetDate);
     
-    if (instrumentId) {
-      query = query.eq('instrument_id', instrumentId);
-    } else {
-      query = query.is('instrument_id', null);
-    }
+    // 楽器IDでフィルタリングしない - すべての記録を取得
+    // query = await applyInstrumentFilter(query, instrumentId, true, 'practice_sessions');
     
-    const { data: existingRecords, error: fetchError } = await query.order('created_at', { ascending: true });
+    logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration: 既存記録検索クエリ実行（フィルタリングなし）`);
+    const { data: allRecords, error: fetchError } = await query.order('created_at', { ascending: true });
+    
+    logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration: フィルタリング前の既存記録`, {
+      count: allRecords?.length || 0,
+      records: allRecords?.map((r: any) => ({
+        id: r.id,
+        instrument_id: r.instrument_id,
+        input_method: r.input_method,
+        duration_minutes: r.duration_minutes
+      })) || []
+    });
+    
+    // 手動でフィルタリング: 指定されたinstrumentIdまたはnullのレコードのみを取得
+    const existingRecords = (allRecords || []).filter((record: any) => {
+      // instrumentIdが指定されている場合: 一致するかnull
+      if (instrumentId) {
+        return record.instrument_id === instrumentId || record.instrument_id === null;
+      }
+      // instrumentIdが指定されていない場合: nullのみ
+      return record.instrument_id === null;
+    });
+    
+    logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration: フィルタリング後の既存記録`, {
+      count: existingRecords.length,
+      instrumentId,
+      records: existingRecords.map((r: any) => ({
+        id: r.id,
+        instrument_id: r.instrument_id,
+        input_method: r.input_method,
+        duration_minutes: r.duration_minutes
+      }))
+    });
     
     if (fetchError && fetchError.code === 'PGRST205') {
       logger.warn(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:table-not-found`);
@@ -589,12 +622,20 @@ export const savePracticeSessionWithIntegration = async (
         instrument_id: instrumentId || null,
       };
       
-      logger.debug('savePracticeSessionWithIntegration: 新規記録作成開始', {
+      logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration: 新規記録作成開始`, {
         practice_date: targetDate,
         duration_minutes: minutes,
         input_method: inputMethod,
         instrumentId: instrumentId,
         instrumentId_type: typeof instrumentId,
+        sessionData: {
+          user_id: userId,
+          practice_date: targetDate,
+          duration_minutes: minutes,
+          content: content || null,
+          input_method: inputMethod,
+          instrument_id: instrumentId || null
+        },
         sessionDataInstrumentId: sessionData.instrument_id,
         sessionDataInstrumentId_type: typeof sessionData.instrument_id
       });
@@ -652,25 +693,64 @@ export const getPracticeSessionsByDateRange = async (
     let query = supabase
       .from('practice_sessions')
       .select(`
+        id,
         practice_date,
         duration_minutes,
         input_method,
+        content,
         created_at
       `)
       .eq('user_id', userId)
-      .gte('practice_date', startDate)
-      .order('practice_date', { ascending: false })
-      .limit(limit);
+      .gte('practice_date', startDate);
     
     if (endDate) {
       query = query.lte('practice_date', endDate);
     }
     
-    if (instrumentId) {
-      query = query.eq('instrument_id', instrumentId);
+    // 楽器IDでフィルタリング（統一関数を使用、テーブル名を指定して自動作成を試みる）
+    const filteredQuery = await applyInstrumentFilter(query, instrumentId, true, 'practice_sessions');
+    
+    // フィルタリング後のクエリが有効かチェック（.order()メソッドが存在することを確認）
+    if (typeof filteredQuery === 'object' && filteredQuery !== null && typeof filteredQuery.order === 'function') {
+      query = filteredQuery;
     } else {
-      query = query.is('instrument_id', null);
+      // フィルタリング関数が失敗した場合、直接フィルタリングを適用
+      logger.warn('[getPracticeSessionsByDateRange] フィルタリング後のクエリが無効です。直接フィルタリングを適用します。', {
+        hasOrder: typeof filteredQuery?.order === 'function',
+        filteredQueryType: typeof filteredQuery
+      });
+      // 直接フィルタリングを適用
+      if (instrumentId) {
+        // 選択楽器のデータ + nullデータ（既存データ保護、後方互換性）
+        query = (query as any).or(`instrument_id.eq.${instrumentId},instrument_id.is.null`);
+      } else {
+        // 楽器が選択されていない場合: nullデータのみ
+        query = (query as any).is('instrument_id', null);
+      }
+      // 直接フィルタリング後のクエリもチェック
+      if (typeof query !== 'object' || query === null || typeof query.order !== 'function') {
+        logger.error('[getPracticeSessionsByDateRange] 直接フィルタリング後のクエリも無効です。フィルタリングなしで続行します。');
+        // フィルタリングなしで元のクエリを使用（楽器IDフィルタリングをスキップ）
+        query = supabase
+          .from('practice_sessions')
+          .select(`
+            id,
+            practice_date,
+            duration_minutes,
+            input_method,
+            content,
+            created_at
+          `)
+          .eq('user_id', userId)
+          .gte('practice_date', startDate);
+        if (endDate) {
+          query = query.lte('practice_date', endDate);
+        }
+      }
     }
+    
+    // フィルタリング後にorderとlimitを適用
+    query = query.order('practice_date', { ascending: false }).limit(limit);
     
     const { data, error } = await query;
     
@@ -702,11 +782,8 @@ export const getPracticeSessionsByDate = async (
       .eq('user_id', userId)
       .eq('practice_date', practiceDate);
     
-    if (instrumentId) {
-      query = query.eq('instrument_id', instrumentId);
-    } else {
-      query = query.is('instrument_id', null);
-    }
+    // 楽器IDでフィルタリング（統一関数を使用、テーブル名を指定して自動作成を試みる）
+    query = await applyInstrumentFilter(query, instrumentId, true, 'practice_sessions');
     
     const { data, error } = await query.order('created_at', { ascending: true });
     

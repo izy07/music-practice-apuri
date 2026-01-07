@@ -2,7 +2,8 @@ import { Platform, AppState } from 'react-native';
 import { supabase } from './supabase';
 import logger from './logger';
 import { ErrorHandler } from './errorHandler';
-import { checkNotificationSettingsColumnExists, getMissingColumnErrorMessage } from './databaseSchemaChecker';
+// カラム存在チェックは削除（初期スキーマに含まれているため）
+// import { checkNotificationSettingsColumnExists, getMissingColumnErrorMessage } from './databaseSchemaChecker';
 
 // expo-notificationsはWeb環境では使用しない
 let Notifications: any = null;
@@ -60,25 +61,10 @@ export class NotificationService {
         return this.settings;
       }
 
-      // カラムの存在をチェック
-      const columnExists = await checkNotificationSettingsColumnExists();
-      if (!columnExists) {
-        // カラムが存在しない場合、明確なエラーメッセージを表示
-        const errorMessage = getMissingColumnErrorMessage();
-        logger.error('notification_settingsカラムが存在しません。マイグレーションを実行してください。', {
-          message: errorMessage
-        });
-        ErrorHandler.handle(
-          new Error('notification_settingsカラムがデータベースに存在しません。マイグレーションを実行してください。'),
-          'データベーススキーマエラー',
-          true // ユーザーに表示
-        );
-        // デフォルト設定を返す（アプリは動作し続ける）
-        this.settings = this.getDefaultSettings();
-        return this.settings;
-      }
+      // カラムの存在チェックは削除（初期スキーマに含まれているため）
+      // エラーが発生した場合は、その時点でエラーハンドリングする
 
-      // カラムが存在する場合、通常通り読み込み
+      // 通常通り読み込み
       try {
         const { data, error } = await supabase
           .from('user_settings')
@@ -129,25 +115,10 @@ export class NotificationService {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return false;
 
-      // カラムの存在をチェック
-      const columnExists = await checkNotificationSettingsColumnExists();
-      if (!columnExists) {
-        // カラムが存在しない場合、明確なエラーメッセージを表示
-        const errorMessage = getMissingColumnErrorMessage();
-        logger.error('notification_settingsカラムが存在しません。マイグレーションを実行してください。', {
-          message: errorMessage
-        });
-        ErrorHandler.handle(
-          new Error('notification_settingsカラムがデータベースに存在しません。マイグレーションを実行してください。'),
-          'データベーススキーマエラー',
-          true // ユーザーに表示
-        );
-        // メモリ上には設定を保存（次回起動時まで有効）
-        this.settings = settings;
-        return false; // 保存は失敗したが、メモリ上には保存済み
-      }
+      // カラムの存在チェックは削除（初期スキーマに含まれているため）
+      // エラーが発生した場合は、その時点でエラーハンドリングする
 
-      // カラムが存在する場合、通常通り保存
+      // 通常通り保存
       try {
         const { error } = await supabase
           .from('user_settings')

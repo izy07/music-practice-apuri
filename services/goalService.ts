@@ -177,20 +177,141 @@ export class GoalService {
   }
 
   /**
-   * 目標のカレンダー表示を更新
+   * 目標のカレンダー表示を更新（各楽器ごとに1つだけ表示）
    */
   async updateShowOnCalendar(
     goalId: string,
     userId: string,
-    show: boolean
+    show: boolean,
+    instrumentId?: string | null
   ): Promise<ServiceResult<void>> {
     return safeServiceExecute(
       async () => {
-        logger.debug(`[${SERVICE_CONTEXT}] updateShowOnCalendar:start`, { goalId, show });
-        await goalRepository.updateShowOnCalendar(goalId, show, userId);
-        logger.info(`[${SERVICE_CONTEXT}] updateShowOnCalendar:success`, { goalId });
+        logger.debug(`[${SERVICE_CONTEXT}] updateShowOnCalendar:start`, { 
+          goalId, 
+          show, 
+          instrumentId 
+        });
+        
+        // 目標情報を取得してinstrument_idを確認（instrumentIdが指定されていない場合）
+        let targetInstrumentId = instrumentId;
+        if (targetInstrumentId === undefined) {
+          const goalsResult = await this.getGoals(userId);
+          if (goalsResult.success && goalsResult.data) {
+            const targetGoal = goalsResult.data.find(g => g.id === goalId);
+            targetInstrumentId = targetGoal?.instrument_id ?? null;
+          } else {
+            targetInstrumentId = null;
+          }
+        }
+        
+        await goalRepository.updateShowOnCalendar(
+          goalId, 
+          show, 
+          userId, 
+          targetInstrumentId
+        );
+        
+        logger.info(`[${SERVICE_CONTEXT}] updateShowOnCalendar:success`, { 
+          goalId, 
+          instrumentId: targetInstrumentId 
+        });
       },
       `${SERVICE_CONTEXT}.updateShowOnCalendar`,
+      'GOAL_UPDATE_ERROR'
+    );
+  }
+
+  /**
+   * 目標削除後に次の目標を自動的にカレンダーに表示
+   */
+  async autoShowNextGoalAfterDelete(
+    userId: string,
+    deletedGoalId: string,
+    deletedGoalInstrumentId: string | null
+  ): Promise<ServiceResult<string | null>> {
+    return safeServiceExecute(
+      async () => {
+        logger.debug(`[${SERVICE_CONTEXT}] autoShowNextGoalAfterDelete:start`, {
+          deletedGoalId,
+          deletedGoalInstrumentId
+        });
+        
+        const nextGoalId = await goalRepository.getNextGoalForCalendar(
+          userId,
+          deletedGoalInstrumentId,
+          deletedGoalId
+        );
+        
+        if (nextGoalId) {
+          await goalRepository.updateShowOnCalendar(
+            nextGoalId,
+            true,
+            userId,
+            deletedGoalInstrumentId
+          );
+          logger.info(`[${SERVICE_CONTEXT}] autoShowNextGoalAfterDelete:success`, {
+            deletedGoalId,
+            nextGoalId,
+            instrumentId: deletedGoalInstrumentId
+          });
+        } else {
+          logger.debug(`[${SERVICE_CONTEXT}] autoShowNextGoalAfterDelete:noNextGoal`, {
+            deletedGoalId,
+            instrumentId: deletedGoalInstrumentId
+          });
+        }
+        
+        return nextGoalId;
+      },
+      `${SERVICE_CONTEXT}.autoShowNextGoalAfterDelete`,
+      'GOAL_UPDATE_ERROR'
+    );
+  }
+
+  /**
+   * 目標達成後に次の目標を自動的にカレンダーに表示
+   */
+  async autoShowNextGoalAfterComplete(
+    userId: string,
+    completedGoalId: string,
+    completedGoalInstrumentId: string | null
+  ): Promise<ServiceResult<string | null>> {
+    return safeServiceExecute(
+      async () => {
+        logger.debug(`[${SERVICE_CONTEXT}] autoShowNextGoalAfterComplete:start`, {
+          completedGoalId,
+          completedGoalInstrumentId
+        });
+        
+        const nextGoalId = await goalRepository.getNextGoalForCalendar(
+          userId,
+          completedGoalInstrumentId,
+          completedGoalId
+        );
+        
+        if (nextGoalId) {
+          await goalRepository.updateShowOnCalendar(
+            nextGoalId,
+            true,
+            userId,
+            completedGoalInstrumentId
+          );
+          logger.info(`[${SERVICE_CONTEXT}] autoShowNextGoalAfterComplete:success`, {
+            completedGoalId,
+            nextGoalId,
+            instrumentId: completedGoalInstrumentId
+          });
+        } else {
+          logger.debug(`[${SERVICE_CONTEXT}] autoShowNextGoalAfterComplete:noNextGoal`, {
+            completedGoalId,
+            instrumentId: completedGoalInstrumentId
+          });
+        }
+        
+        return nextGoalId;
+      },
+      `${SERVICE_CONTEXT}.autoShowNextGoalAfterComplete`,
       'GOAL_UPDATE_ERROR'
     );
   }

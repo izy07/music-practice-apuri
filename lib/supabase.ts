@@ -131,85 +131,136 @@ const getSupabaseClient = () => {
     // カスタムfetch関数：ネットワークエラーを適切にハンドリング
     const customFetch = async (url: string, options?: RequestInit): Promise<Response> => {
       try {
-        const response = await fetch(url, options);
+        // タイムアウト機能付きでfetchを実行
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒でタイムアウト
         
-        // 400エラーの詳細をログ出力（user_profiles更新エラーのデバッグ用）
-        if (response.status === 400) {
-          const urlObj = new URL(url);
-          const pathname = urlObj.pathname;
+        try {
+          const response = await fetch(url, {
+            ...options,
+            signal: controller.signal,
+          });
           
-          // user_profilesテーブルへのPATCHリクエストの場合、エラーの詳細を取得してログ出力
-          if (pathname.includes('/user_profiles') && (options?.method === 'PATCH' || options?.method === 'PUT')) {
-            try {
-              // エラーレスポンスのボディを取得（クローンして読み取る）
-              const responseClone = response.clone();
-              const errorBody = await responseClone.json().catch(() => null);
-              
-              logger.warn('user_profiles更新400エラー（詳細）:', {
-                url: url,
-                method: options?.method,
-                pathname: pathname,
-                status: response.status,
-                statusText: response.statusText,
-                errorBody: errorBody,
-                requestBody: options?.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : null,
-                headers: Object.fromEntries(response.headers.entries()),
-                timestamp: new Date().toISOString(),
-                possibleCauses: [
-                  'RLSポリシーが正しく設定されていない',
-                  '外部キー制約違反（selected_instrument_idが存在しないinstruments.idを参照）',
-                  'カラムが存在しない',
-                  'データ型が合わない',
-                  '必須フィールドが欠けている',
-                  'リクエストボディが不正'
-                ]
-              });
-            } catch (logError) {
-              // ログ出力エラーは無視
-              logger.debug('400エラーの詳細取得に失敗:', logError);
+          clearTimeout(timeoutId);
+          
+          // 400エラーの詳細をログ出力（user_profiles更新エラーのデバッグ用）
+          if (response.status === 400) {
+            const urlObj = new URL(url);
+            const pathname = urlObj.pathname;
+            
+            // user_profilesテーブルへのPATCHリクエストの場合、エラーの詳細を取得してログ出力
+            if (pathname.includes('/user_profiles') && (options?.method === 'PATCH' || options?.method === 'PUT')) {
+              try {
+                // エラーレスポンスのボディを取得（クローンして読み取る）
+                const responseClone = response.clone();
+                const errorBody = await responseClone.json().catch(() => null);
+                
+                logger.warn('user_profiles更新400エラー（詳細）:', {
+                  url: url,
+                  method: options?.method,
+                  pathname: pathname,
+                  status: response.status,
+                  statusText: response.statusText,
+                  errorBody: errorBody,
+                  requestBody: options?.body ? (typeof options.body === 'string' ? JSON.parse(options.body) : options.body) : null,
+                  headers: Object.fromEntries(response.headers.entries()),
+                  timestamp: new Date().toISOString(),
+                  possibleCauses: [
+                    'RLSポリシーが正しく設定されていない',
+                    '外部キー制約違反（selected_instrument_idが存在しないinstruments.idを参照）',
+                    'カラムが存在しない',
+                    'データ型が合わない',
+                    '必須フィールドが欠けている',
+                    'リクエストボディが不正'
+                  ]
+                });
+              } catch (logError) {
+                // ログ出力エラーは無視
+                logger.debug('400エラーの詳細取得に失敗:', logError);
+              }
             }
           }
-        }
-        
-        // 404エラーを静かに処理（フォールバック方法で処理されるため）
-        if (response.status === 404) {
-          const urlObj = new URL(url);
-          const pathname = urlObj.pathname;
           
-          // RPC関数の404エラーは、フォールバック方法で処理されるため無視
-          if (pathname.includes('/rpc/check_column_exists') || pathname.includes('/rpc/get_total_practice_time')) {
-            // エラーレスポンスをそのまま返す（呼び出し側で処理される）
-            return response;
+          // 404エラーを静かに処理（フォールバック方法で処理されるため）
+          if (response.status === 404) {
+            const urlObj = new URL(url);
+            const pathname = urlObj.pathname;
+            
+            // RPC関数の404エラーは、フォールバック方法で処理されるため無視
+            if (pathname.includes('/rpc/check_column_exists') || pathname.includes('/rpc/get_total_practice_time')) {
+              // エラーレスポンスをそのまま返す（呼び出し側で処理される）
+              return response;
+            }
+            
+            // representative_songsテーブルの404エラーは、フォールバックデータを使用するため無視
+            // コンソールにエラーを表示しないように、空のレスポンスを返す
+            if (pathname.includes('/representative_songs') || url.includes('representative_songs')) {
+              // 404エラーを完全に抑制するため、空のJSONレスポンスを返す
+              logger.debug('representative_songsテーブルの404エラー（フォールバックデータを使用）:', { url: pathname });
+              return new Response(JSON.stringify([]), {
+                status: 200,
+                statusText: 'OK',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+              });
+            }
           }
           
-          // representative_songsテーブルの404エラーは、フォールバックデータを使用するため無視
-          // コンソールにエラーを表示しないように、空のレスポンスを返す
-          if (pathname.includes('/representative_songs') || url.includes('representative_songs')) {
-            // 404エラーを完全に抑制するため、空のJSONレスポンスを返す
-            logger.debug('representative_songsテーブルの404エラー（フォールバックデータを使用）:', { url: pathname });
-            return new Response(JSON.stringify([]), {
-              status: 200,
-              statusText: 'OK',
-              headers: {
-                'Content-Type': 'application/json',
-              },
-            });
+          return response;
+        } catch (fetchError: any) {
+          clearTimeout(timeoutId);
+          
+          // AbortError（タイムアウト）の場合は、ネットワークエラーとして扱う
+          if (fetchError.name === 'AbortError' || controller.signal.aborted) {
+            logger.warn('リクエストがタイムアウトしました:', { url, method: options?.method });
+            // タイムアウトエラーを適切なエラーレスポンスとして返す
+            return new Response(
+              JSON.stringify({
+                message: 'リクエストがタイムアウトしました。ネットワーク接続を確認してください。',
+                code: 'TIMEOUT',
+              }),
+              {
+                status: 408,
+                statusText: 'Request Timeout',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
           }
+          
+          // ネットワークエラーの場合、適切なエラーレスポンスを返す
+          if (
+            fetchError?.message?.includes('Failed to fetch') ||
+            fetchError?.message?.includes('ERR_INTERNET_DISCONNECTED') ||
+            fetchError?.message?.includes('internet disconnected') ||
+            fetchError?.message?.includes('NetworkError') ||
+            fetchError?.message === 'NETWORK_ERROR'
+          ) {
+            logger.warn('ネットワークエラーが発生しました:', { url, method: options?.method, error: fetchError.message });
+            // ネットワークエラーを適切なエラーレスポンスとして返す
+            return new Response(
+              JSON.stringify({
+                message: 'ネットワークエラーが発生しました。接続を確認してください。',
+                code: 'NETWORK_ERROR',
+              }),
+              {
+                status: 503,
+                statusText: 'Service Unavailable',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+              }
+            );
+          }
+          
+          // その他のエラーは再スロー
+          throw fetchError;
         }
-        
-        return response;
       } catch (error: any) {
-        // ネットワークエラーの場合、エラーを再スローせずに適切に処理
-        if (
-          error?.message?.includes('Failed to fetch') ||
-          error?.message?.includes('ERR_INTERNET_DISCONNECTED') ||
-          error?.message?.includes('internet disconnected') ||
-          error?.message?.includes('NetworkError')
-        ) {
-          // ネットワークエラーは、オフライン時の正常な動作として扱う
-          // エラーを再スローせずに、適切なエラーレスポンスを返す
-          throw new Error('NETWORK_ERROR');
-        }
+        // 予期しないエラーは再スロー
+        logger.error('customFetchで予期しないエラー:', { url, method: options?.method, error });
         throw error;
       }
     };

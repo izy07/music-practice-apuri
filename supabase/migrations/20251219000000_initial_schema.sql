@@ -149,7 +149,61 @@ CREATE INDEX IF NOT EXISTS idx_recordings_recording_type ON public.recordings(re
 CREATE INDEX IF NOT EXISTS idx_recordings_played_at ON public.recordings(played_at);
 
 -- ============================================
--- 4. goals テーブル（instrumentsに依存）
+-- 4. my_songs テーブル（instrumentsに依存）
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.my_songs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  instrument_id uuid REFERENCES public.instruments(id) ON DELETE SET NULL,
+  title text NOT NULL,
+  artist text NOT NULL DEFAULT '',
+  genre text,
+  difficulty text CHECK (difficulty IN ('beginner', 'intermediate', 'advanced')) DEFAULT 'beginner',
+  status text CHECK (status IN ('want_to_play', 'learning', 'played', 'mastered')) DEFAULT 'want_to_play',
+  notes text,
+  target_date date,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- RLSの有効化
+ALTER TABLE public.my_songs ENABLE ROW LEVEL SECURITY;
+
+-- RLSポリシー
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'my_songs' AND policyname = 'Users can read own songs') THEN
+    CREATE POLICY "Users can read own songs" ON public.my_songs
+      FOR SELECT USING (auth.uid() = user_id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'my_songs' AND policyname = 'Users can insert own songs') THEN
+    CREATE POLICY "Users can insert own songs" ON public.my_songs
+      FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'my_songs' AND policyname = 'Users can update own songs') THEN
+    CREATE POLICY "Users can update own songs" ON public.my_songs
+      FOR UPDATE USING (auth.uid() = user_id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'my_songs' AND policyname = 'Users can delete own songs') THEN
+    CREATE POLICY "Users can delete own songs" ON public.my_songs
+      FOR DELETE USING (auth.uid() = user_id);
+  END IF;
+END $$;
+
+-- インデックス
+CREATE INDEX IF NOT EXISTS idx_my_songs_user_id ON public.my_songs(user_id);
+CREATE INDEX IF NOT EXISTS idx_my_songs_instrument_id ON public.my_songs(instrument_id);
+CREATE INDEX IF NOT EXISTS idx_my_songs_status ON public.my_songs(status);
+CREATE INDEX IF NOT EXISTS idx_my_songs_difficulty ON public.my_songs(difficulty);
+
+-- コメント
+COMMENT ON COLUMN public.my_songs.instrument_id IS '楽器ID（楽器ごとに曲を分けて管理）';
+
+-- ============================================
+-- 5. goals テーブル（instrumentsに依存）
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.goals (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -204,7 +258,7 @@ CREATE INDEX IF NOT EXISTS idx_goals_instrument_id ON public.goals(instrument_id
 CREATE INDEX IF NOT EXISTS idx_goals_show_on_calendar ON public.goals(show_on_calendar) WHERE show_on_calendar = true;
 
 -- ============================================
--- 5. practice_sessions テーブル（instrumentsに依存）
+-- 6. practice_sessions テーブル（instrumentsに依存）
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.practice_sessions (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -251,7 +305,45 @@ CREATE INDEX IF NOT EXISTS idx_practice_sessions_instrument_id ON public.practic
 CREATE INDEX IF NOT EXISTS idx_practice_sessions_practice_date ON public.practice_sessions(practice_date);
 
 -- ============================================
--- 7. organizations テーブル
+-- 7. tutorial_progress テーブル
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.tutorial_progress (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  is_completed boolean DEFAULT false,
+  completed_at timestamptz,
+  current_step integer DEFAULT 0,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- RLSの有効化
+ALTER TABLE public.tutorial_progress ENABLE ROW LEVEL SECURITY;
+
+-- RLSポリシー
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'tutorial_progress' AND policyname = 'Users can read own tutorial progress') THEN
+    CREATE POLICY "Users can read own tutorial progress" ON public.tutorial_progress
+      FOR SELECT USING (auth.uid() = user_id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'tutorial_progress' AND policyname = 'Users can insert own tutorial progress') THEN
+    CREATE POLICY "Users can insert own tutorial progress" ON public.tutorial_progress
+      FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'tutorial_progress' AND policyname = 'Users can update own tutorial progress') THEN
+    CREATE POLICY "Users can update own tutorial progress" ON public.tutorial_progress
+      FOR UPDATE USING (auth.uid() = user_id);
+  END IF;
+END $$;
+
+-- インデックス
+CREATE INDEX IF NOT EXISTS idx_tutorial_progress_user_id ON public.tutorial_progress(user_id);
+
+-- ============================================
+-- 8. organizations テーブル
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.organizations (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -293,7 +385,7 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_organizations_created_by ON public.organizations(created_by);
 
 -- ============================================
--- 8. user_group_memberships テーブル（organizationsに依存）
+-- 9. user_group_memberships テーブル（organizationsに依存）
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.user_group_memberships (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -347,7 +439,7 @@ CREATE INDEX IF NOT EXISTS idx_user_group_memberships_user_id ON public.user_gro
 CREATE INDEX IF NOT EXISTS idx_user_group_memberships_organization_id ON public.user_group_memberships(organization_id);
 
 -- ============================================
--- 9. practice_schedules テーブル（organizationsに依存）
+-- 10. practice_schedules テーブル（organizationsに依存）
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.practice_schedules (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -412,7 +504,7 @@ CREATE INDEX IF NOT EXISTS idx_practice_schedules_org_date ON public.practice_sc
 CREATE INDEX IF NOT EXISTS idx_practice_schedules_created_by ON public.practice_schedules(created_by);
 
 -- ============================================
--- 10. tasks テーブル（organizationsに依存）
+-- 11. tasks テーブル（organizationsに依存）
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.tasks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -482,7 +574,7 @@ CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON public.tasks(due_date);
 CREATE INDEX IF NOT EXISTS idx_tasks_org_status ON public.tasks(organization_id, status);
 
 -- ============================================
--- 11. attendance_records テーブル（practice_schedulesに依存）
+-- 12. attendance_records テーブル（practice_schedulesに依存）
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.attendance_records (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -525,7 +617,7 @@ CREATE INDEX IF NOT EXISTS idx_attendance_records_user_id ON public.attendance_r
 CREATE INDEX IF NOT EXISTS idx_attendance_records_registered_at ON public.attendance_records(registered_at);
 
 -- ============================================
--- 12. events テーブル（practice_schedulesに依存）
+-- 13. events テーブル（practice_schedulesに依存）
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -577,7 +669,148 @@ CREATE INDEX IF NOT EXISTS idx_events_practice_schedule_id ON public.events(prac
 CREATE INDEX IF NOT EXISTS idx_events_instrument_id ON public.events(instrument_id);
 
 -- ============================================
--- 13. music_terms テーブル
+-- 14. user_settings テーブル（ユーザーごとの設定）
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.user_settings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL UNIQUE,
+  language text CHECK (language IN ('ja', 'en')) DEFAULT 'ja',
+  theme text CHECK (theme IN ('light', 'dark', 'auto')) DEFAULT 'auto',
+  notifications_enabled boolean DEFAULT true,
+  practice_reminder_enabled boolean DEFAULT false,
+  practice_reminder_time text,
+  tuner_settings jsonb DEFAULT NULL,
+  metronome_settings jsonb DEFAULT NULL,
+  notification_settings jsonb DEFAULT '{
+    "practice_reminders": true,
+    "goal_reminders": true,
+    "daily_practice": true,
+    "weekly_summary": false,
+    "achievement_notifications": true,
+    "sound_notifications": true,
+    "vibration_notifications": true,
+    "quiet_hours_enabled": false,
+    "quiet_hours_start": "22:00",
+    "quiet_hours_end": "08:00"
+  }'::jsonb,
+  instrument_specific_settings jsonb DEFAULT '{}'::jsonb,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- RLSの有効化
+ALTER TABLE public.user_settings ENABLE ROW LEVEL SECURITY;
+
+-- RLSポリシー
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'user_settings' AND policyname = 'Users can read own settings') THEN
+    CREATE POLICY "Users can read own settings" ON public.user_settings
+      FOR SELECT USING (auth.uid() = user_id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'user_settings' AND policyname = 'Users can insert own settings') THEN
+    CREATE POLICY "Users can insert own settings" ON public.user_settings
+      FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'user_settings' AND policyname = 'Users can update own settings') THEN
+    CREATE POLICY "Users can update own settings" ON public.user_settings
+      FOR UPDATE USING (auth.uid() = user_id);
+  END IF;
+END $$;
+
+-- インデックス
+CREATE INDEX IF NOT EXISTS idx_user_settings_user_id ON public.user_settings(user_id);
+
+-- コメント
+COMMENT ON COLUMN public.user_settings.language IS '言語設定（ja: 日本語, en: 英語）';
+COMMENT ON COLUMN public.user_settings.theme IS 'テーマ設定（light: ライト, dark: ダーク, auto: 自動）';
+COMMENT ON COLUMN public.user_settings.tuner_settings IS 'チューナー設定（JSONB形式）';
+COMMENT ON COLUMN public.user_settings.metronome_settings IS 'メトロノーム設定（JSONB形式）';
+COMMENT ON COLUMN public.user_settings.notification_settings IS '通知設定（JSONB形式、practice_reminders, goal_reminders等）';
+COMMENT ON COLUMN public.user_settings.instrument_specific_settings IS '楽器ごとの設定（JSONB形式、楽器IDをキーとする）';
+
+-- ============================================
+-- 15. user_instrument_profiles テーブル（楽器ごとのユーザープロフィール）
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.user_instrument_profiles (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  instrument_id uuid REFERENCES public.instruments(id) ON DELETE CASCADE NOT NULL,
+  practice_level text CHECK (practice_level IN ('beginner', 'intermediate', 'advanced')) DEFAULT 'beginner',
+  level_selected_at timestamptz,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now(),
+  UNIQUE(user_id, instrument_id)
+);
+
+-- RLSの有効化
+ALTER TABLE public.user_instrument_profiles ENABLE ROW LEVEL SECURITY;
+
+-- RLSポリシー
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'user_instrument_profiles' AND policyname = 'Users can read own instrument profiles') THEN
+    CREATE POLICY "Users can read own instrument profiles" ON public.user_instrument_profiles
+      FOR SELECT USING (auth.uid() = user_id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'user_instrument_profiles' AND policyname = 'Users can insert own instrument profiles') THEN
+    CREATE POLICY "Users can insert own instrument profiles" ON public.user_instrument_profiles
+      FOR INSERT WITH CHECK (auth.uid() = user_id);
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'user_instrument_profiles' AND policyname = 'Users can update own instrument profiles') THEN
+    CREATE POLICY "Users can update own instrument profiles" ON public.user_instrument_profiles
+      FOR UPDATE USING (auth.uid() = user_id);
+  END IF;
+END $$;
+
+-- インデックス
+CREATE INDEX IF NOT EXISTS idx_user_instrument_profiles_user_id ON public.user_instrument_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_instrument_profiles_instrument_id ON public.user_instrument_profiles(instrument_id);
+CREATE INDEX IF NOT EXISTS idx_user_instrument_profiles_user_instrument ON public.user_instrument_profiles(user_id, instrument_id);
+
+-- ============================================
+-- 16. practice_menus テーブル（基礎練メニュー）
+-- ============================================
+CREATE TABLE IF NOT EXISTS public.practice_menus (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  instrument_id uuid REFERENCES public.instruments(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  description text,
+  difficulty text CHECK (difficulty IN ('beginner', 'intermediate', 'advanced')) NOT NULL,
+  points jsonb DEFAULT '[]'::jsonb,
+  how_to_practice jsonb DEFAULT '[]'::jsonb,
+  recommended_tempo text,
+  duration text,
+  tips jsonb DEFAULT '[]'::jsonb,
+  video_url text,
+  display_order integer DEFAULT 0,
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- RLSの有効化
+ALTER TABLE public.practice_menus ENABLE ROW LEVEL SECURITY;
+
+-- RLSポリシー
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = 'practice_menus' AND policyname = 'Anyone can view practice menus') THEN
+    CREATE POLICY "Anyone can view practice menus" ON public.practice_menus
+      FOR SELECT USING (true);
+  END IF;
+END $$;
+
+-- インデックス
+CREATE INDEX IF NOT EXISTS idx_practice_menus_instrument_id ON public.practice_menus(instrument_id);
+CREATE INDEX IF NOT EXISTS idx_practice_menus_difficulty ON public.practice_menus(difficulty);
+CREATE INDEX IF NOT EXISTS idx_practice_menus_display_order ON public.practice_menus(display_order);
+
+-- ============================================
+-- 17. music_terms テーブル
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.music_terms (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -603,7 +836,7 @@ CREATE POLICY "Anyone can read music terms" ON public.music_terms
 CREATE INDEX IF NOT EXISTS idx_music_terms_category ON public.music_terms(category);
 
 -- ============================================
--- 14. ai_chat_history テーブル
+-- 18. ai_chat_history テーブル
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.ai_chat_history (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -645,7 +878,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_chat_history_user_id ON public.ai_chat_history
 CREATE INDEX IF NOT EXISTS idx_ai_chat_history_created_at ON public.ai_chat_history(created_at);
 
 -- ============================================
--- 15. representative_songs テーブル（instrumentsに依存）
+-- 19. representative_songs テーブル（instrumentsに依存）
 -- ============================================
 CREATE TABLE IF NOT EXISTS public.representative_songs (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -682,7 +915,7 @@ CREATE INDEX IF NOT EXISTS idx_representative_songs_display_order ON public.repr
 CREATE INDEX IF NOT EXISTS idx_representative_songs_is_popular ON public.representative_songs(is_popular);
 
 -- ============================================
--- 16. 更新日時を自動更新するトリガー関数
+-- 17. 更新日時を自動更新するトリガー関数
 -- ============================================
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
@@ -717,6 +950,36 @@ CREATE TRIGGER update_events_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_user_settings_updated_at ON public.user_settings;
+CREATE TRIGGER update_user_settings_updated_at
+  BEFORE UPDATE ON public.user_settings
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_my_songs_updated_at ON public.my_songs;
+CREATE TRIGGER update_my_songs_updated_at
+  BEFORE UPDATE ON public.my_songs
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_tutorial_progress_updated_at ON public.tutorial_progress;
+CREATE TRIGGER update_tutorial_progress_updated_at
+  BEFORE UPDATE ON public.tutorial_progress
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_user_instrument_profiles_updated_at ON public.user_instrument_profiles;
+CREATE TRIGGER update_user_instrument_profiles_updated_at
+  BEFORE UPDATE ON public.user_instrument_profiles
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_practice_menus_updated_at ON public.practice_menus;
+CREATE TRIGGER update_practice_menus_updated_at
+  BEFORE UPDATE ON public.practice_menus
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column();
+
 DROP TRIGGER IF EXISTS update_organizations_updated_at ON public.organizations;
 CREATE TRIGGER update_organizations_updated_at
   BEFORE UPDATE ON public.organizations
@@ -741,12 +1004,6 @@ CREATE TRIGGER update_attendance_records_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_updated_at_column();
 
-DROP TRIGGER IF EXISTS update_events_updated_at ON public.events;
-CREATE TRIGGER update_events_updated_at
-  BEFORE UPDATE ON public.events
-  FOR EACH ROW
-  EXECUTE FUNCTION update_updated_at_column();
-
 DROP TRIGGER IF EXISTS update_representative_songs_updated_at ON public.representative_songs;
 CREATE TRIGGER update_representative_songs_updated_at
   BEFORE UPDATE ON public.representative_songs
@@ -754,7 +1011,7 @@ CREATE TRIGGER update_representative_songs_updated_at
   EXECUTE FUNCTION update_updated_at_column();
 
 -- ============================================
--- 17. get_total_practice_time RPC関数（パフォーマンス最適化用）
+-- 20. get_total_practice_time RPC関数（パフォーマンス最適化用）
 -- ============================================
 CREATE OR REPLACE FUNCTION public.get_total_practice_time(
   p_user_id uuid,
@@ -786,7 +1043,7 @@ GRANT EXECUTE ON FUNCTION public.get_total_practice_time(uuid, uuid) TO anon, au
 COMMENT ON FUNCTION public.get_total_practice_time(uuid, uuid) IS 'ユーザーの総練習時間を取得するRPC関数（分単位）。パフォーマンス最適化のためデータベース側で集計。';
 
 -- ============================================
--- 18. instruments テーブルの初期データ
+-- 21. instruments テーブルの初期データ
 -- ============================================
 INSERT INTO public.instruments (
   id, name, name_en, color_primary, color_secondary, color_accent, 

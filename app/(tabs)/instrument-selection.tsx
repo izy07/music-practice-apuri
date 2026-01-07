@@ -18,7 +18,7 @@ interface Instrument {
 export default function InstrumentSelectionScreen() {
   const router = useRouter();
   const { setSelectedInstrument, currentTheme, selectedInstrument, syncStatus } = useInstrumentTheme();
-  const { user } = useAuthAdvanced();
+  const { user, fetchUserProfile } = useAuthAdvanced();
 
   const [selectedInstrumentId, setSelectedInstrumentId] = useState<string>('');
   const [customInstrumentName, setCustomInstrumentName] = useState<string>('');
@@ -88,6 +88,16 @@ export default function InstrumentSelectionScreen() {
       
       // 楽器の更新が完了するまで少し待つ（Contextの更新を待つ）
       await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // 認証状態を更新（user.selected_instrument_idを最新の状態に更新）
+      // これにより、_layout.tsxのhasInstrumentSelected()が正しく動作する
+      try {
+        await fetchUserProfile();
+        logger.debug('認証状態を更新しました（楽器選択後）');
+      } catch (profileError) {
+        logger.warn('認証状態の更新に失敗しましたが、続行します:', profileError);
+        // エラーが発生しても続行（楽器は既に保存されている）
+      }
       
       // 成功メッセージを表示せず、直接カレンダー画面に遷移
       const instrumentName = instruments.find(i => i.id === selectedInstrumentId)?.name || '楽器';

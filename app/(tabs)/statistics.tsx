@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Alert } from 'react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
@@ -224,6 +224,7 @@ export default function StatisticsScreen() {
   useEffect(() => {
     fetchPracticeRecords();
   }, [user, selectedInstrument, fetchPracticeRecords]);
+
 
   // 画面に戻ってきたときにデータを再読み込み
   useFocusEffect(
@@ -814,7 +815,7 @@ export default function StatisticsScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: Background }]} >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => router.replace('/(tabs)/index')} style={styles.backBtn}>
             <ArrowLeft size={22} color={TextColor} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: TextColor }]}>統計・分析</Text>

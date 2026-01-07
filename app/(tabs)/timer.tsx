@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Play, Pause, Square, RotateCcw, Plus, Minus, Timer as TimerIcon, Clock, X } from 'lucide-react-native';
 import { Modal } from 'react-native';
 import { Svg, Circle } from 'react-native-svg';
+import { useRouter } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
@@ -19,6 +20,7 @@ import { supabase } from '@/lib/supabase';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import Stopwatch from '@/components/timer/Stopwatch';
 import { styles } from '@/lib/tabs/timer/styles';
+import { setCurrentRoute } from '@/lib/navigationHistory';
 
 const { width } = Dimensions.get('window');
 
@@ -276,10 +278,19 @@ const settingsReducer = (state: SettingsState, action: SettingsAction): Settings
 };
 
 export default function TimerScreen() {
+  const router = useRouter();
   const { isAuthenticated, isLoading, user } = useAuthAdvanced();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const { t } = useLanguage();
   const [mode, setMode] = useState<'timer' | 'stopwatch'>('timer');
+  
+  // 現在のルートを記録（マウント時）
+  useEffect(() => {
+    setCurrentRoute('/(tabs)/timer');
+    return () => {
+      // アンマウント時はクリアしない（他の画面に遷移する際に使用するため）
+    };
+  }, []);
   
   // カスタム時間の状態（useReducerで集約）
   const [customTime, dispatchCustomTime] = useReducer(customTimeReducer, { hours: 0, minutes: 0, seconds: 0 });
@@ -1394,6 +1405,7 @@ export default function TimerScreen() {
       completedPracticeTimeRef.current = null;
     }
   }, [timerSeconds, isTimerRunning, mode]);
+
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >

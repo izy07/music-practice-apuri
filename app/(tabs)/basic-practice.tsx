@@ -3,7 +3,7 @@
  * 練習メニューの表示と管理
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft } from 'lucide-react-native';
@@ -24,6 +24,7 @@ import { PracticeDetailModal } from '@/lib/tabs/basic-practice/components/Practi
 import { getInstrumentKey, getInstrumentName } from '@/lib/tabs/basic-practice/utils';
 import { styles } from '@/lib/tabs/basic-practice/styles';
 import { safeGoBack } from '@/lib/navigationUtils';
+import logger from '@/lib/logger';
 
 export default function BasicPracticeScreen() {
   const router = useRouter();
@@ -67,8 +68,9 @@ export default function BasicPracticeScreen() {
 
   // 戻るボタン
   const goBack = () => {
-    safeGoBack('/(tabs)/settings');
+    router.replace('/(tabs)/index');
   };
+
 
   return (
     <SafeAreaView style={styles.container} >

@@ -6,7 +6,6 @@ import { Platform } from 'react-native';
 import { useRouter, useSegments } from 'expo-router'; // ルーティング関連のフック
 import { useFrameworkReady } from '@/hooks/useFrameworkReady'; // フレームワーク準備状態の管理
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced'; // 認証フック（統一版）
-import { useIdleTimeout } from '@/hooks/useIdleTimeout'; // アイドルタイムアウト機能
 import { LanguageProvider } from '@/components/LanguageContext'; // 多言語対応の管理
 import { InstrumentThemeProvider } from '@/components/InstrumentThemeContext'; // 楽器別テーマの管理
 import LoadingSkeleton from '@/components/LoadingSkeleton'; // ローディング表示コンポーネント
@@ -16,7 +15,8 @@ import { TIMEOUT } from '@/lib/constants'; // タイムアウト定数
 import logger from '@/lib/logger'; // ロガー
 import { ErrorHandler } from '@/lib/errorHandler'; // エラーハンドラー
 import { getBasePath, navigateWithBasePath } from '@/lib/navigationUtils'; // ベースパス取得関数とナビゲーション関数
-import { checkDatabaseSchema } from '@/lib/databaseSchemaChecker'; // データベーススキーマチェック
+// データベーススキーマチェックは削除（初期スキーマに含まれているため、不要）
+// import { checkDatabaseSchema } from '@/lib/databaseSchemaChecker';
 import { initializeGoalRepository } from '@/repositories/goalRepository'; // 目標リポジトリの初期化
 import audioResourceManager from '@/lib/audioResourceManager'; // オーディオリソース管理
 
@@ -109,21 +109,10 @@ function RootLayoutContent() {
     hasInstrumentSelected,
     needsTutorial,
     canAccessMainApp,
-    signOut 
+    signOut,
+    user
   } = useAuthAdvanced();
 
-  // アイドルタイムアウト機能（1時間操作なしで自動ログアウト）
-  // useAuthAdvancedのsignOutはPromise<void>を返すため、そのまま使用可能
-  const handleSignOut = React.useCallback(async (): Promise<void> => {
-    await signOut();
-  }, [signOut]);
-  
-  useIdleTimeout({
-    isAuthenticated,
-    onLogout: handleSignOut,
-    timeoutMs: TIMEOUT.IDLE_MS,
-    enabled: isAuthenticated && !isLoading && isInitialized, // 認証済みで初期化完了時のみ有効
-  });
 
   // アプリのライフサイクル管理：バックグラウンド移行時にオーディオリソースを解放
   React.useEffect(() => {
@@ -518,6 +507,7 @@ function RootLayoutContent() {
     const isInAuthGroup = firstSegment === 'auth';
     const isInTabsGroup = firstSegment === '(tabs)';
     const isInOrgGroup = firstSegment === 'organization-dashboard' || firstSegment === 'organization-settings';
+    const isNotFoundScreen = firstSegment === '+not-found';
     const currentTab = isInTabsGroup && currentSegments.length > 1 ? currentSegments[1] : null;
     const isAtRoot = currentSegments.length === 0;
     
@@ -644,8 +634,13 @@ function RootLayoutContent() {
     
     // 楽器未選択の場合の処理
     if (!hasInstrumentSelected()) {
-      // チュートリアル画面または楽器選択画面にいる場合は許可（遷移をブロックしない）
-      if (currentTab === 'tutorial' || currentTab === 'instrument-selection') {
+      // チュートリアル画面にいる場合は許可（遷移をブロックしない）
+      if (currentTab === 'tutorial') {
+        return; // 遷移を許可
+      }
+      
+      // 楽器選択画面にいる場合は許可（遷移をブロックしない）
+      if (currentTab === 'instrument-selection') {
         return; // 遷移を許可
       }
       
@@ -656,15 +651,15 @@ function RootLayoutContent() {
         return;
       }
       // チュートリアル完了後は楽器選択画面にリダイレクト
-      logger.debug('楽器未選択のため、楽器選択画面にリダイレクト');
-      router.replace('/(tabs)/instrument-selection');
+        logger.debug('楽器未選択のため、楽器選択画面にリダイレクト');
+        router.replace('/(tabs)/instrument-selection');
       return;
     }
 
     // 認証済み + 楽器選択済み
-    // チュートリアル画面にいる場合はカレンダー画面に遷移
-    if (currentTab === 'tutorial') {
-      logger.debug('楽器選択済みのため、チュートリアル画面からカレンダー画面にリダイレクト');
+    // チュートリアル画面または楽器選択画面にいる場合はカレンダー画面に遷移
+    if (currentTab === 'tutorial' || currentTab === 'instrument-selection') {
+      logger.debug('楽器選択済みのため、チュートリアル画面または楽器選択画面からカレンダー画面にリダイレクト');
       router.replace('/(tabs)/index');
       return;
     }

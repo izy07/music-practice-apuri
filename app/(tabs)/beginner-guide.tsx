@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Linking, Alert, Platform, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, BookOpen, Music, Target, Heart, History, Star, Play, Wrench, Lightbulb, Youtube, Image as ImageIcon, Camera } from 'lucide-react-native';
@@ -331,7 +331,7 @@ export default function BeginnerGuideScreen() {
   
 
   const goBack = () => {
-    router.back();
+    router.replace('/(tabs)/index');
   };
 
   const openVideo = async (url: string) => {
@@ -360,6 +360,7 @@ export default function BeginnerGuideScreen() {
   const openCameraForPostureCheck = () => {
     setShowCameraModal(true);
   };
+
 
   const renderSection = () => {
     // ローディング中

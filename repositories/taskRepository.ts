@@ -12,6 +12,7 @@ import type { RepositoryResult } from '@/lib/database/interfaces';
 import { safeExecute, isSupabaseTableNotFoundError } from '@/lib/database/baseRepository';
 import { isTaskArray } from '@/lib/validation';
 import logger from '@/lib/logger';
+import { applyInstrumentFilter } from './common/instrumentFilter';
 
 /**
  * タスクリポジトリ
@@ -27,13 +28,9 @@ export const taskRepository = {
         .select('*')
         .eq('organization_id', organizationId);
       
-      // 楽器ごとにフィルタリング
+      // 楽器ごとにフィルタリング（統一関数を使用、既存nullデータも含める）
       if (instrumentId !== undefined) {
-        if (instrumentId) {
-          query = query.eq('instrument_id', instrumentId);
-        } else {
-          query = query.is('instrument_id', null);
-        }
+        query = await applyInstrumentFilter(query, instrumentId, true);
       }
       
       const { data, error } = await query.order('created_at', { ascending: false });

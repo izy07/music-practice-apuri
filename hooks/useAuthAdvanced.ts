@@ -95,6 +95,9 @@ const globalProcessingPromises = new Map<string, Promise<AuthUser | null>>();
 // ログイン処理中のフラグ（ログインボタンを押した時は、updateAuthStateのブロックを無効化する）
 let isLoginInProgress = false;
 
+// 新規登録処理中のフラグ（新規登録ボタンを押した時は、updateAuthStateのブロックを無効化する）
+let isSignupInProgress = false;
+
 // 現在の画面がログイン画面または新規登録画面かどうかを確認するヘルパー関数
 const isInLoginOrSignupScreen = (): boolean => {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -123,13 +126,14 @@ const updateAuthState = (newState: Partial<AuthState>) => {
   
   // 根本的な修正: ログイン画面または新規登録画面にいる場合は、
   // isAuthenticated: trueへの更新をブロックする
-  // ただし、ログインボタンを押した時（isLoginInProgress === true）は、ブロックを無効化する
+  // ただし、ログインボタンまたは新規登録ボタンを押した時（isLoginInProgress === true または isSignupInProgress === true）はブロックを無効化する
   // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぎつつ、
-  // ログインボタンを押した時は正常に認証状態を更新できる
-  if (newState.isAuthenticated === true && isInLoginOrSignupScreen() && !isLoginInProgress) {
+  // ログインボタンまたは新規登録ボタンを押した時は正常に認証状態を更新できる
+  if (newState.isAuthenticated === true && isInLoginOrSignupScreen() && !isLoginInProgress && !isSignupInProgress) {
     logger.debug('[updateAuthState] ログイン画面または新規登録画面にいるため、isAuthenticated: trueへの更新をブロックします', {
       currentPath: Platform.OS === 'web' && typeof window !== 'undefined' ? window.location.pathname : 'N/A',
-      isLoginInProgress
+      isLoginInProgress,
+      isSignupInProgress
     });
     // isAuthenticated: trueへの更新をブロック（他の状態更新は許可）
     const { isAuthenticated, ...restState } = newState;
@@ -472,11 +476,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           if (isInLoginScreen || isInSignupScreen) {
             // ログイン画面または新規登録画面にいる場合は、handleAuthenticatedUserを呼ばない
             // ユーザーがログインボタンを押した時に、SIGNED_INイベントで処理される
-            logger.debug('[useAuthAdvanced] ログイン画面または新規登録画面にいるため、handleAuthenticatedUserをスキップします', {
-              segments,
-              isInLoginScreen,
-              isInSignupScreen
-            });
+            // ログ出力は削減（頻繁に出力されるため）
             updateAuthState({
               isLoading: false,
               isInitialized: true,
@@ -582,6 +582,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
   // サイレントリフレッシュ（失効前に更新）
   useEffect(() => {
     let timer: any;
+    let lastRefreshTime = 0; // 最後のリフレッシュ時刻を記録（レート制限対策）
+    const MIN_REFRESH_INTERVAL = 5 * 60 * 1000; // 最低5分間隔でリフレッシュ（レート制限対策）
+    
     const setup = async () => {
       try {
         const { data } = await supabase.auth.getSession();
@@ -592,8 +595,30 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         if (diffMs > 0) {
           timer = setTimeout(async () => {
             try {
+              // レート制限対策: 最後のリフレッシュから5分以上経過している場合のみ実行
+              const timeSinceLastRefresh = Date.now() - lastRefreshTime;
+              if (timeSinceLastRefresh < MIN_REFRESH_INTERVAL) {
+                logger.debug('セッションリフレッシュをスキップ（レート制限対策）:', {
+                  timeSinceLastRefresh,
+                  minInterval: MIN_REFRESH_INTERVAL
+                });
+                // 次のリフレッシュタイミングを再計算
+                const remainingTime = MIN_REFRESH_INTERVAL - timeSinceLastRefresh;
+                timer = setTimeout(() => setup(), remainingTime);
+                return;
+              }
+              
               const { error } = await supabase.auth.refreshSession();
               if (error) {
+                // 429エラー（レート制限）の場合は、ログアウトせずにリトライ間隔を長くする
+                if (error.status === 429 || error.code === 'over_request_rate_limit' || error.message?.includes('Too Many Requests')) {
+                  logger.warn('セッションリフレッシュのレート制限に達しました。5分後に再試行します。', error);
+                  lastRefreshTime = Date.now();
+                  // 5分後に再試行
+                  timer = setTimeout(() => setup(), MIN_REFRESH_INTERVAL);
+                  return;
+                }
+                
                 // リフレッシュトークンが無効な場合
                 if (
                   error.message?.includes('Invalid Refresh Token') ||
@@ -611,11 +636,27 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                     router.replace('/auth/login');
                   }
                 } else {
-                  // その他のエラーはログに記録
+                  // その他のエラーはログに記録（ログアウトしない）
                   logger.debug('セッションリフレッシュエラー:', error);
+                  // エラーが発生した場合も、一定時間後に再試行
+                  lastRefreshTime = Date.now();
+                  timer = setTimeout(() => setup(), MIN_REFRESH_INTERVAL);
                 }
+              } else {
+                // リフレッシュ成功
+                lastRefreshTime = Date.now();
+                // 次のリフレッシュタイミングを再計算
+                setup();
               }
             } catch (e: any) {
+              // 429エラーの場合
+              if (e?.status === 429 || e?.code === 'over_request_rate_limit' || e?.message?.includes('Too Many Requests')) {
+                logger.warn('セッションリフレッシュのレート制限に達しました（例外）。5分後に再試行します。', e);
+                lastRefreshTime = Date.now();
+                timer = setTimeout(() => setup(), MIN_REFRESH_INTERVAL);
+                return;
+              }
+              
               // 予期しないエラーの場合
               if (
                 e?.message?.includes('Invalid Refresh Token') ||
@@ -633,6 +674,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                 }
               } else {
                 logger.debug('セッションリフレッシュ例外:', e);
+                // エラーが発生した場合も、一定時間後に再試行
+                lastRefreshTime = Date.now();
+                timer = setTimeout(() => setup(), MIN_REFRESH_INTERVAL);
               }
             }
           }, diffMs);
@@ -640,41 +684,13 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       } catch {}
     };
     setup();
-    const onVisible = () => {
-      // 復帰時にセッションを軽く更新
-      supabase.auth.getSession().then((res: any) => {
-        const exp = res.data.session?.expires_at;
-        const nowSec = Math.floor(Date.now() / 1000);
-        if (exp && exp - nowSec < TIMEOUT.SESSION_EXPIRY_WARNING_SEC) {
-          supabase.auth.refreshSession().catch(async (error: any) => {
-            // リフレッシュトークンが無効な場合
-            if (
-              error?.message?.includes('Invalid Refresh Token') ||
-              error?.message?.includes('Refresh Token Not Found') ||
-              error?.message?.includes('refresh_token_not_found')
-            ) {
-              logger.warn('リフレッシュトークンが無効です。セッションをクリアします。', error);
-              if (signOutRef.current) {
-                await signOutRef.current();
-              } else {
-                await supabase.auth.signOut();
-              }
-              if (typeof router !== 'undefined') {
-                router.replace('/auth/login');
-              }
-            }
-          });
-        }
-      });
-    };
-    if (typeof document !== 'undefined') {
-      document.addEventListener('visibilitychange', onVisible);
-    }
+    
+    // 根本的な解決: visibilitychangeイベントでのセッションリフレッシュを削除
+    // これにより、タブが表示されるたびにリフレッシュされることを防ぎ、レート制限を回避
+    // セッションリフレッシュは、タイマーベースの自動リフレッシュのみに依存する
+    
     return () => {
       if (timer) clearTimeout(timer);
-      if (typeof document !== 'undefined') {
-        document.removeEventListener('visibilitychange', onVisible);
-      }
     };
   }, [router]);
 
@@ -822,6 +838,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           }
           
           // すぐにフォールバックユーザーを作成して認証状態を更新
+          // プロフィール取得がタイムアウトした場合でも、ログインは成功している可能性があるため
+          // フォールバックユーザーを作成して認証状態を更新し、後でプロフィールを取得する
           const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
           const fallbackUser: AuthUser = {
             id: userId,
@@ -831,10 +849,11 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             created_at: user.created_at || new Date().toISOString(),
             last_sign_in_at: user.last_sign_in_at,
             selected_instrument_id: fallbackInstrumentId,
-            tutorial_completed: false,
+            tutorial_completed: false, // プロフィール取得後に正しい値が設定される
             onboarding_completed: false,
           };
           
+          // セッションが有効な場合は、isAuthenticated: trueを設定する
           updateAuthState({
             user: fallbackUser,
             isAuthenticated: true,
@@ -843,7 +862,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             error: null,
           });
           
-          logger.debug('タイムアウト時フォールバックユーザーを作成しました:', { 
+          logger.debug('プロフィール取得タイムアウト時フォールバックユーザーを作成しました:', { 
             userId: fallbackUser.id, 
             email: fallbackUser.email,
             selected_instrument_id: fallbackUser.selected_instrument_id
@@ -1327,23 +1346,21 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     // ただし、1回だけ実行する（複数回実行を防ぐ）
     // また、ログイン画面にいる場合はスキップ（ユーザーがログインボタンを押すまで待機）
     if (!sessionCheckDoneRef.current) {
+      // 現在の画面を確認（ログイン画面または新規登録画面の場合は、セッション再処理をスキップ）
+      const isInAuthGroup = segments.length > 0 && segments[0] === 'auth';
+      const authChild = segments.length > 1 ? segments[1] : undefined;
+      const isInLoginScreen = isInAuthGroup && authChild === 'login';
+      const isInSignupScreen = isInAuthGroup && authChild === 'signup';
+      
+      // ログイン画面または新規登録画面にいる場合は、セッション再処理をスキップ
+      if (isInLoginScreen || isInSignupScreen) {
+        sessionCheckDoneRef.current = true; // フラグを設定して、再実行を防ぐ
+        return;
+      }
+      
       sessionCheckDoneRef.current = true;
       const checkAndProcessSession = async () => {
         try {
-          // 現在の画面を確認（ログイン画面または新規登録画面の場合はスキップ）
-          const isInAuthGroup = segments.length > 0 && segments[0] === 'auth';
-          const authChild = segments.length > 1 ? segments[1] : undefined;
-          const isInLoginScreen = isInAuthGroup && authChild === 'login';
-          const isInSignupScreen = isInAuthGroup && authChild === 'signup';
-          
-          if (isInLoginScreen || isInSignupScreen) {
-            logger.debug('handleAuthenticatedUser初期化後、ログイン画面または新規登録画面にいるため、セッション再処理をスキップします', {
-              segments,
-              isInLoginScreen,
-              isInSignupScreen
-            });
-            return;
-          }
           
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user && !globalAuthState.isAuthenticated) {
@@ -1404,24 +1421,20 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             isInSignupScreen = false;
           }
           
-          // ログインボタンを押した時は、ログイン画面にいても認証状態を更新する
-          if ((isInLoginScreen || isInSignupScreen) && !isLoginInProgress) {
-            logger.debug('[useAuthAdvanced] onAuthStateChange: ログイン画面または新規登録画面にいるため、handleAuthenticatedUserをスキップします', {
-              event,
-              isInLoginScreen,
-              isInSignupScreen,
-              userId: session.user.id,
-              isLoginInProgress
-            });
+          // ログインボタンまたは新規登録ボタンを押した時は、ログイン画面または新規登録画面にいても認証状態を更新する
+          if ((isInLoginScreen || isInSignupScreen) && !isLoginInProgress && !isSignupInProgress) {
+            // ログイン画面または新規登録画面にいる場合は、handleAuthenticatedUserをスキップ
+            // ログ出力は削減（頻繁に出力されるため）
             return;
           }
           
-          // ログインボタンを押した時は、ログイン画面にいても認証状態を更新する
-          if (isLoginInProgress) {
-            logger.debug('[useAuthAdvanced] onAuthStateChange: ログイン処理中なので、handleAuthenticatedUserを実行します', {
+          // ログインボタンまたは新規登録ボタンを押した時は、ログイン画面または新規登録画面にいても認証状態を更新する
+          if (isLoginInProgress || isSignupInProgress) {
+            logger.debug('[useAuthAdvanced] onAuthStateChange: ログインまたは新規登録処理中なので、handleAuthenticatedUserを実行します', {
               event,
               userId: session.user.id,
-              isLoginInProgress
+              isLoginInProgress,
+              isSignupInProgress
             });
           }
           
@@ -1457,9 +1470,10 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           // globalHandleAuthenticatedUserRefを使用して、常に最新の関数を呼び出す
           if (globalHandleAuthenticatedUserRef) {
             await globalHandleAuthenticatedUserRef(session.user);
-            // ログイン処理が完了したので、フラグをリセット
+            // ログイン処理または新規登録処理が完了したので、フラグをリセット
             isLoginInProgress = false;
-            logger.debug('[onAuthStateChange] ログイン処理フラグをリセットしました');
+            isSignupInProgress = false;
+            logger.debug('[onAuthStateChange] ログイン/新規登録処理フラグをリセットしました');
           }
         } else if (event === 'SIGNED_OUT') {
           // ログアウト時に認証状態をクリア
@@ -1783,6 +1797,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     try {
       logger.debug('新規登録処理開始:', formData.email);
       
+      // 新規登録処理フラグを設定（onAuthStateChangeで認証状態を更新できるようにする）
+      isSignupInProgress = true;
+      
       // 新規登録前に既存のセッションをクリア
       try {
         await supabase.auth.signOut();
@@ -1812,6 +1829,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       if (error) {
         ErrorHandler.handle(error, '新規登録', false);
         updateAuthState({ isLoading: false, error: getAuthErrorMessage(error) });
+        isSignupInProgress = false; // エラー時もフラグをリセット
         return false;
       }
 
@@ -1822,15 +1840,18 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         // 新規登録成功後はonAuthStateChangeのSIGNED_INイベントでhandleAuthenticatedUserが呼ばれるため、
         // ここでは直接呼び出さない（重複実行を防ぐ）
         // 外観設定のクリアはログアウト時に行う
+        // フラグはonAuthStateChangeでリセットされる
         
         return true;
       }
 
       updateAuthState({ isLoading: false, error: '新規登録に失敗しました' });
+      isSignupInProgress = false; // エラー時もフラグをリセット
       return false;
     } catch (error) {
       ErrorHandler.handle(error, '新規登録処理', false);
       updateAuthState({ isLoading: false, error: error instanceof Error ? error.message : '新規登録に失敗しました' });
+      isSignupInProgress = false; // エラー時もフラグをリセット
       return false;
     }
   }, [handleAuthenticatedUser, clearInstrumentThemeLocal]);

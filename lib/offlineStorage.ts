@@ -116,16 +116,30 @@ export class OfflineStorage {
     }
   }
 
-  // 目標の取得
-  static async getGoals() {
+  // 目標の取得（楽器IDでフィルタリング可能）
+  static async getGoals(instrumentId?: string | null) {
     try {
       const keys = await AsyncStorage.getAllKeys();
       const goalKeys = keys.filter((key: string) => key.startsWith('goal_'));
       const records = await AsyncStorage.multiGet(goalKeys);
-      return records
+      const allGoals = records
         .map(([key, value]: [string, string | null]) => value ? JSON.parse(value) : null)
-        .filter((record: any) => record !== null)
-        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        .filter((record: any) => record !== null);
+      
+      // instrument_idでフィルタリング（指定された場合のみ）
+      if (instrumentId !== undefined) {
+        const filteredGoals = allGoals.filter((goal: any) => {
+          const goalInstrumentId = goal.instrument_id;
+          if (instrumentId === null) {
+            return goalInstrumentId === null || goalInstrumentId === undefined;
+          } else {
+            return goalInstrumentId === instrumentId;
+          }
+        });
+        return filteredGoals.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      }
+      
+      return allGoals.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     } catch (error) {
       ErrorHandler.handle(error, 'ローカル目標取得', false);
       return [];

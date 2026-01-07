@@ -111,8 +111,11 @@ export default function LoginScreen() {
       logger.debug('認証状態更新完了 - 画面遷移を実行');
       
       // 適切な画面に遷移（router.pushを使用して_layout.tsxのスキップを回避）
-      if (canAccessMainApp()) {
-        logger.debug('カレンダー画面に遷移');
+      // タイムアウト時のフォールバックユーザーの場合、selected_instrument_idがnullでも
+      // 楽器選択画面に遷移せず、カレンダー画面に遷移する（実際のユーザーデータが取得された後、正しい画面に遷移）
+      const isTimeoutFallback = user && !user.selected_instrument_id && user.tutorial_completed === true;
+      if (canAccessMainApp() || isTimeoutFallback) {
+        logger.debug('カレンダー画面に遷移', { isTimeoutFallback });
         router.push('/(tabs)/index');
       } else if (needsTutorial()) {
         logger.debug('チュートリアル画面に遷移');

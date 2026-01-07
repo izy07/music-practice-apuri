@@ -91,6 +91,28 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
 
   // コンポーネントの初期化とクリーンアップ
   useEffect(() => {
+    // 根本的な解決: マウント時に既存のメトロノーム状態をリセット
+    // リロード時にメトロノームが再生中だった場合、状態を確実にリセットする
+    setIsMetronomePlaying(false);
+    setCurrentBeat(0);
+    
+    // 既存のインターバルをクリア（念のため）
+    if (metronomeIntervalRef.current) {
+      clearInterval(metronomeIntervalRef.current);
+      metronomeIntervalRef.current = null;
+    }
+    
+    // 既存のオシレーターを停止（念のため）
+    activeOscillatorsRef.current.forEach(osc => {
+      try {
+        osc.stop();
+        osc.disconnect();
+      } catch (error) {
+        // 既に停止している場合は無視
+      }
+    });
+    activeOscillatorsRef.current = [];
+    
     // audioContextRefが既に設定されている場合はそれを使用、そうでない場合は取得
     const initializeAudioContext = async () => {
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
@@ -342,12 +364,25 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
 
   // メトロノームの開始
   const startMetronome = (resetBeatCount = true) => {
-    // 既存のインターバルをクリア
+    // 根本的な解決: 既存のインターバルとオシレーターを確実にクリーンアップ
+    // これにより、二重再生を防ぐ
     if (metronomeIntervalRef.current) {
       clearInterval(metronomeIntervalRef.current);
       metronomeIntervalRef.current = null;
     }
     
+    // 既存のオシレーターを停止（念のため）
+    activeOscillatorsRef.current.forEach(osc => {
+      try {
+        osc.stop();
+        osc.disconnect();
+      } catch (error) {
+        // 既に停止している場合は無視
+      }
+    });
+    activeOscillatorsRef.current = [];
+    
+    // 状態を更新
     setIsMetronomePlaying(true);
     setCurrentBeat(0);
     
@@ -372,12 +407,26 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
 
   // メトロノームの停止
   const stopMetronome = () => {
+    // 根本的な解決: 状態を先に更新してから、リソースをクリーンアップ
     setIsMetronomePlaying(false);
     setCurrentBeat(0);
+    
+    // インターバルをクリア
     if (metronomeIntervalRef.current) {
       clearInterval(metronomeIntervalRef.current);
       metronomeIntervalRef.current = null;
     }
+    
+    // アクティブなオシレーターを停止
+    activeOscillatorsRef.current.forEach(osc => {
+      try {
+        osc.stop();
+        osc.disconnect();
+      } catch (error) {
+        // 既に停止している場合は無視
+      }
+    });
+    activeOscillatorsRef.current = [];
   };
 
   // BPMを直接設定（即座に反映）
