@@ -451,14 +451,25 @@ export default function StatisticsScreen() {
 
   // 年別（月ごとの棒グラフ）
   // 仕様:
+  // - 選択した年（anchorDateの年）の月別データを表示
   // - 記録が12ヶ月未満の間は「初めて記録した月（初月）」を左端にし、初月〜最新記録月までを時系列で表示
   // - 記録が12ヶ月以上になったら、常に「記録のある月のうち直近12ヶ月」を表示（右端が最新記録月）
   const yearlyData = useMemo<DayData[]>(() => {
     const arr: DayData[] = [];
     
+    // anchorDateの年を取得
+    const targetYear = anchorDate.getFullYear();
+    const targetYearStr = String(targetYear);
+    
+    // 選択した年の練習記録のみをフィルタリング
+    const filteredRecords = practiceRecords.filter(record => {
+      const recordYear = record.practice_date.substring(0, 4); // YYYY
+      return recordYear === targetYearStr;
+    });
+    
     // 練習記録を月でマップ化（O(1)アクセス）
     const recordsByMonth = new Map<string, number>();
-    practiceRecords.forEach(record => {
+    filteredRecords.forEach(record => {
       const monthKey = record.practice_date.substring(0, 7); // YYYY-MM
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = record.duration_minutes ?? 0;
@@ -469,7 +480,7 @@ export default function StatisticsScreen() {
     });
     
     // 記録がない場合は空配列
-    if (practiceRecords.length === 0 || recordsByMonth.size === 0) {
+    if (filteredRecords.length === 0 || recordsByMonth.size === 0) {
       return arr;
     }
     
