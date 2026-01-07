@@ -608,7 +608,7 @@ export default function RecordingsLibraryScreen() {
               </Text>
               <Text style={[styles.subtitle, { color: currentTheme.textSecondary }]}>
                 {sortedRecordings.length}件の録音
-                {(timeFilter !== 'all' || searchQuery.trim()) && ` (全${recordings.length}件)`}
+                {(timeFilter !== 'all' || searchQuery.trim()) ? ` (全${recordings.length}件)` : ''}
               </Text>
             </View>
           </View>
