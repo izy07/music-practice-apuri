@@ -1158,40 +1158,42 @@ export default function TunerScreen() {
           )}
         </View>
 
-        {/* A4基準周波数設定 */}
-        <View style={[styles.settingsPanel, { backgroundColor: currentTheme.surface, borderColor: currentTheme.secondary, borderWidth: 1 }]}>
-          <Text style={[styles.settingsTitle, { color: currentTheme.text }]}>
-            チューニングの基準周波数
-          </Text>
-          <Text style={[styles.settingDescription, { color: currentTheme.textSecondary }]}>
-            チューニングの基準となるA4の周波数を設定します（標準は440Hz）
-          </Text>
-          <View style={styles.frequencyAdjuster}>
-            <TouchableOpacity
-              style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
-              onPress={() => {
-                const newFreq = Math.max(440, a4Frequency - 1);
-                setA4Frequency(newFreq);
-                saveA4Frequency(newFreq);
-              }}
-            >
-              <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>-</Text>
-            </TouchableOpacity>
-            <View style={[styles.frequencyDisplay, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary }]}>
-              <Text style={[styles.frequencyValue, { color: currentTheme.primary, marginBottom: 0 }]}>{a4Frequency} Hz</Text>
+        {/* A4基準周波数設定（チューナーモードのみ表示） */}
+        {mode === 'tuner' && (
+          <View style={[styles.settingsPanel, { backgroundColor: currentTheme.surface, borderColor: currentTheme.secondary, borderWidth: 1 }]}>
+            <Text style={[styles.settingsTitle, { color: currentTheme.text }]}>
+              チューニングの基準周波数
+            </Text>
+            <Text style={[styles.settingDescription, { color: currentTheme.textSecondary }]}>
+              チューニングの基準となるA4の周波数を設定します（標準は440Hz）
+            </Text>
+            <View style={styles.frequencyAdjuster}>
+              <TouchableOpacity
+                style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
+                onPress={() => {
+                  const newFreq = Math.max(440, a4Frequency - 1);
+                  setA4Frequency(newFreq);
+                  saveA4Frequency(newFreq);
+                }}
+              >
+                <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>-</Text>
+              </TouchableOpacity>
+              <View style={[styles.frequencyDisplay, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary }]}>
+                <Text style={[styles.frequencyValue, { color: currentTheme.primary, marginBottom: 0 }]}>{a4Frequency} Hz</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
+                onPress={() => {
+                  const newFreq = Math.min(450, a4Frequency + 1);
+                  setA4Frequency(newFreq);
+                  saveA4Frequency(newFreq);
+                }}
+              >
+                <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>+</Text>
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
-              onPress={() => {
-                const newFreq = Math.min(450, a4Frequency + 1);
-                setA4Frequency(newFreq);
-                saveA4Frequency(newFreq);
-              }}
-            >
-              <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>+</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        )}
       </ScrollView>
 
     </SafeAreaView>
