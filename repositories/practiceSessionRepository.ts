@@ -713,16 +713,85 @@ export const getPracticeSessionsByDateRange = async (
     // フィルタリング後にorderとlimitを適用
     query = query.order('practice_date', { ascending: false }).limit(limit);
     
-    const { data, error } = await query;
+    let { data, error } = await query;
     
     if (error) {
-      // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDateRange`, false);
+      // エラー内容を詳細にログ出力して診断しやすくする
+      logger.error('[practiceSessionRepository.getPracticeSessionsByDateRange] クエリエラー', {
+        userId,
+        startDate,
+        endDate,
+        instrumentId,
+        limit,
+        code: (error as any)?.code,
+        message: (error as any)?.message,
+        details: (error as any)?.details,
+        hint: (error as any)?.hint,
+      });
+      
+      // instrument_id 周りのエラーや 400 Bad Request の場合は、
+      // 楽器フィルタを外してフォールバッククエリを一度だけ試行する
+      const message: string = (error as any)?.message || '';
+      const code: string | undefined = (error as any)?.code;
+      const isInstrumentFilterError =
+        code === '400' ||
+        code === '42703' ||
+        message.includes('instrument_id') ||
+        message.includes('column') && message.includes('instrument');
+      
+      if (isInstrumentFilterError) {
+        logger.warn('[practiceSessionRepository.getPracticeSessionsByDateRange] 楽器フィルタでエラーが発生したため、楽器フィルタなしで再試行します');
+        
+        let fallbackQuery = supabase
+          .from('practice_sessions')
+          .select(`
+            id,
+            practice_date,
+            duration_minutes,
+            input_method,
+            content,
+            created_at
+          `)
+          .eq('user_id', userId)
+          .gte('practice_date', startDate);
+        
+        if (endDate) {
+          fallbackQuery = fallbackQuery.lte('practice_date', endDate);
+        }
+        
+        fallbackQuery = fallbackQuery.order('practice_date', { ascending: false }).limit(limit);
+        const fallbackResult = await fallbackQuery;
+        
+        if (fallbackResult.error) {
+          logger.error('[practiceSessionRepository.getPracticeSessionsByDateRange] フォールバッククエリも失敗しました', {
+            code: (fallbackResult.error as any)?.code,
+            message: (fallbackResult.error as any)?.message,
+            details: (fallbackResult.error as any)?.details,
+          });
+          return { data: null, error: fallbackResult.error as SupabaseError };
+        }
+        
+        logger.debug('[practiceSessionRepository.getPracticeSessionsByDateRange] フォールバッククエリでデータ取得に成功しました', {
+          count: fallbackResult.data?.length || 0,
+        });
+        return { data: fallbackResult.data as PracticeSession[] | null, error: null as any };
+      }
+      
+      // フォールバック条件に当てはまらない場合は、そのままエラーを返す
       return { data: null, error };
     }
     
-    return { data, error: null };
+    return { data: data as PracticeSession[] | null, error: null as any };
   } catch (error) {
-    // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDateRange:exception`, false);
+    // 例外も詳細にログ出力
+    logger.error('[practiceSessionRepository.getPracticeSessionsByDateRange] 例外が発生しました', {
+      userId,
+      startDate,
+      endDate,
+      instrumentId,
+      limit,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return { data: null, error: error as SupabaseError };
   }
 };
