@@ -711,6 +711,68 @@ export const getPracticeSessionsByDateRange = async (
     // 楽器IDでフィルタリング（統一関数を使用）
     query = await applyInstrumentFilter(query, instrumentId, true, 'practice_sessions');
     
+    // applyInstrumentFilter 後のクエリが正しいビルダーか確認（order メソッドの有無）
+    const hasOrder = query && typeof (query as any).order === 'function';
+    if (!hasOrder) {
+      logger.warn('[practiceSessionRepository.getPracticeSessionsByDateRange] フィルタリング後のクエリに order メソッドが存在しません。フォールバッククエリを実行します。', {
+        userId,
+        startDate,
+        endDate,
+        instrumentId,
+        limit,
+        queryType: typeof query,
+      });
+      
+      // SQL 上の楽器フィルタは外してフォールバック（TypeScript 側で楽器ごとに絞り込み）
+      let fallbackQuery = supabase
+        .from('practice_sessions')
+        .select(`
+          id,
+          practice_date,
+          duration_minutes,
+          input_method,
+          content,
+          created_at,
+          instrument_id
+        `)
+        .eq('user_id', userId)
+        .gte('practice_date', startDate);
+      
+      if (endDate) {
+        fallbackQuery = fallbackQuery.lte('practice_date', endDate);
+      }
+      
+      fallbackQuery = fallbackQuery.order('practice_date', { ascending: false }).limit(limit);
+      const fallbackResult = await fallbackQuery;
+      
+      if (fallbackResult.error) {
+        logger.error('[practiceSessionRepository.getPracticeSessionsByDateRange] フォールバッククエリも失敗しました', {
+          code: (fallbackResult.error as any)?.code,
+          message: (fallbackResult.error as any)?.message,
+          details: (fallbackResult.error as any)?.details,
+        });
+        return { data: null, error: fallbackResult.error as SupabaseError };
+      }
+      
+      let filtered = (fallbackResult.data || []) as any[];
+      if (instrumentId) {
+        // 選択された楽器 + 既存のnullデータ（後方互換性）
+        filtered = filtered.filter(row =>
+          row.instrument_id === instrumentId || row.instrument_id == null
+        );
+      } else {
+        // 楽器未選択の場合は null のみ
+        filtered = filtered.filter(row => row.instrument_id == null);
+      }
+      
+      logger.debug('[practiceSessionRepository.getPracticeSessionsByDateRange] フォールバッククエリでデータ取得に成功しました（order なしクエリ対応、楽器ごとに絞り込み済み）', {
+        rawCount: fallbackResult.data?.length || 0,
+        filteredCount: filtered.length,
+        instrumentId,
+      });
+      return { data: filtered as PracticeSession[] | null, error: null as any };
+    }
+    
     // フィルタリング後にorderとlimitを適用
     query = query.order('practice_date', { ascending: false }).limit(limit);
     
