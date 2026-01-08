@@ -143,6 +143,14 @@ export default function InstrumentSelectionScreen() {
         <View style={styles.placeholder} />
       </View>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {/* フリープラン用の楽器数制限メッセージ（テキストのみ） */}
+        {!entitlement.isEntitled && user && (
+          <View style={[styles.freePlanInfoBanner, { backgroundColor: currentTheme.surface, borderColor: currentTheme.secondary }]}>
+            <Text style={[styles.freePlanInfoText, { color: currentTheme.text }]}>
+              ⚠️ Freeプランでは楽器は2個まで使用できます
+            </Text>
+          </View>
+        )}
         
         <View style={styles.instrumentGrid}>
           {instruments.map((instrument) => (
@@ -381,29 +389,11 @@ const styles = StyleSheet.create({
     }),
     elevation: 3,
   },
-  freePlanInfoContent: {
-    marginBottom: 12,
-  },
-  freePlanInfoTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-    marginBottom: 8,
-    lineHeight: 22,
-  },
-  freePlanInfoSubtitle: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  freePlanInfoButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  freePlanInfoButtonText: {
+  freePlanInfoText: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#FFFFFF',
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   sameInstrumentMessage: {
     paddingVertical: 16,
