@@ -8,6 +8,11 @@ import { safeExecute, createResult, RepositoryResult } from '@/lib/database/base
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { instrumentService } from '@/services';
+import { Platform } from 'react-native';
+
+// Web環境（GitHub Pages等）では直接インポートを使用（動的インポートが動作しない場合があるため）
+// モバイル環境では動的インポートで遅延読み込み（軽量化）
+import { ensureInstrumentExists as staticEnsureInstrumentExists } from '@/lib/instrumentValidation';
 
 const REPOSITORY_CONTEXT = 'userRepository';
 
@@ -190,8 +195,14 @@ export const updateSelectedInstrument = async (
       
       // instrument_idが存在するか確認し、存在しない場合は作成を試みる（共通ユーティリティ関数を使用）
       if (instrumentId) {
-        const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
-        await ensureInstrumentExists(instrumentId);
+        // Web環境では直接インポートを使用、モバイル環境では動的インポートを使用
+        const isWeb = Platform.OS === 'web' || (typeof window !== 'undefined' && typeof document !== 'undefined');
+        if (isWeb) {
+          await staticEnsureInstrumentExists(instrumentId);
+        } else {
+          const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
+          await ensureInstrumentExists(instrumentId);
+        }
       }
       
       // まずレコードの存在確認
@@ -285,8 +296,14 @@ export const updateSelectedInstrument = async (
           // 楽器が存在しない場合は、再度作成を試みる（外部キー制約違反の場合）
           // 共通ユーティリティ関数を使用して楽器作成ロジックを統一
           if (isForeignKeyError && instrumentId) {
-            const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
-            await ensureInstrumentExists(instrumentId);
+            // Web環境では直接インポートを使用、モバイル環境では動的インポートを使用
+            const isWeb = Platform.OS === 'web' || (typeof window !== 'undefined' && typeof document !== 'undefined');
+            if (isWeb) {
+              await staticEnsureInstrumentExists(instrumentId);
+            } else {
+              const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
+              await ensureInstrumentExists(instrumentId);
+            }
             
             // 楽器作成後に少し待機（データベースの反映を待つ）
             await new Promise(resolve => setTimeout(resolve, 300));
