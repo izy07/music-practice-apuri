@@ -389,9 +389,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
     ...createShadowStyle({
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
@@ -402,8 +399,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   freePlanInfoContent: {
-    flex: 1,
-    marginRight: 12,
+    width: '100%',
   },
   freePlanInfoTitle: {
     fontSize: 14,
