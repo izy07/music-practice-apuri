@@ -7,7 +7,6 @@ import { useRouter } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
-import { supabase } from '@/lib/supabase';
 import { COMMON_STYLES } from '@/lib/styles';
 import logger from '@/lib/logger';
 import { styles } from '@/lib/tabs/goals/styles';
@@ -23,8 +22,24 @@ import { setCurrentRoute } from '@/lib/navigationHistory';
 import { useSubscription } from '@/hooks/useSubscription';
 import { checkGoalLimit, canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 
-// アップグレードバナーコンポーネント
-const UpgradeBanner = ({ currentTheme, router }: { currentTheme: any; router: any }) => (
+/**
+ * アップグレードバナーコンポーネント
+ * 
+ * フリープランユーザーにプレミアムへのアップグレードを促すバナー
+ * 目標数制限（2個まで）を表示し、プレミアムプランへの遷移を提供
+ */
+interface UpgradeBannerProps {
+  currentTheme: {
+    surface: string;
+    primary: string;
+    text: string;
+    textSecondary: string;
+  };
+  router: {
+    push: (path: string) => void;
+  };
+}
+const UpgradeBanner: React.FC<UpgradeBannerProps> = ({ currentTheme, router }) => (
   <View style={[upgradeBannerStyles.container, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
     <View style={upgradeBannerStyles.textContainer}>
       <Text style={[upgradeBannerStyles.title, { color: currentTheme.text }]}>
@@ -178,9 +193,24 @@ export default function GoalsScreen() {
   // リクエスト重複防止用のref
   const loadingRef = useRef(false);
   
-  // データ読み込み関数を先に定義（useEffectで使用するため）
+  /**
+   * 目標一覧を読み込む
+   * 
+   * 処理フロー:
+   * 1. ローディング状態を確認（重複読み込みを防止）
+   * 2. 認証状態を確認（既に取得済みのuserを使用）
+   * 3. 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
+   * 4. オフライン時はキャッシュから読み込み
+   * 5. オンライン時またはキャッシュがない場合はDBから取得（goalRepository経由）
+   * 6. クライアント側でもフィルタリング（instrument_idカラムが存在しない場合でも対応）
+   * 7. オフラインで保存された目標も追加（未同期のもののみ）
+   * 8. フリープランの場合、最新の2個だけを表示（サブスクリプション制限）
+   * 9. キャッシュに保存（オフライン対応）
+   * 
+   * 注意: 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
+   */
   const loadGoals = useCallback(async () => {
-    // リクエスト重複防止
+    // ローディング状態を確認（重複読み込みを防止）
     if (loadingRef.current) {
       return;
     }
@@ -188,20 +218,20 @@ export default function GoalsScreen() {
     loadingRef.current = true;
     
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
+      if (!user) {
         loadingRef.current = false;
         return;
       }
 
       // 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
       // 有効な楽器IDを取得（統一的なフォールバック処理）
-      const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+      const instrumentId = getEffectiveInstrumentId(selectedInstrument, user.selected_instrument_id);
 
-      // オフライン時はキャッシュから読み込み
+      // オフライン時はキャッシュから読み込み（フォールバック処理）
       if (!isOnline()) {
         try {
-          const cacheKey = `goals_cache_${authUser.id}_${instrumentId || 'all'}`;
+          const cacheKey = `goals_cache_${user.id}_${instrumentId || 'all'}`;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
@@ -230,21 +260,23 @@ export default function GoalsScreen() {
         }
       }
 
-      // オンライン時またはキャッシュがない場合はデータベースから取得
+      // オンライン時またはキャッシュがない場合はデータベースから取得（goalRepository経由）
       // デバッグ: instrumentIdが正しく取得されているか確認
       logger.debug('[goals.tsx] loadGoals開始:', {
-        userId: authUser.id,
+        userId: user.id,
         selectedInstrument,
-        userSelectedInstrumentId: user?.selected_instrument_id,
+        userSelectedInstrumentId: user.selected_instrument_id,
         instrumentId,
       });
       
-      const goalsData = await goalRepository.getGoals(authUser.id, instrumentId);
+      // 目標データを取得（サービスレイヤー経由ではなく、リポジトリ層から直接取得）
+      // 理由: キャッシュ処理やオフライン処理などのUI層固有のロジックがあるため
+      const goalsData = await goalRepository.getGoals(user.id, instrumentId);
       
       logger.debug('目標データ取得結果:', {
         goalsCount: goalsData.length,
         instrumentId,
-        goals: goalsData.map((g: any) => ({
+        goals: goalsData.map((g: GoalFromDB) => ({
           id: g.id,
           title: g.title,
           instrument_id: g.instrument_id,
@@ -253,7 +285,8 @@ export default function GoalsScreen() {
       
       // クライアント側でもフィルタリングを実行（instrument_idカラムが存在しない場合でも対応）
       // データベース側でフィルタリングされているが、念のためクライアント側でも確認
-      const filteredGoalsData = goalsData.filter((g: any) => {
+      // 注意: GoalFromDB型を使用してany型を回避
+      const filteredGoalsData = goalsData.filter((g: GoalFromDB) => {
         const goalInstrumentId = g.instrument_id;
         // instrument_idフィールドが存在しない場合（カラムが存在しない場合）はすべて表示
         if (goalInstrumentId === undefined) {
@@ -274,7 +307,8 @@ export default function GoalsScreen() {
         instrumentId,
       });
       
-      const goalsWithShowOnCalendar = filteredGoalsData.map((g: any) => ({
+      // GoalFromDB型をGoal型にマッピング（show_on_calendarを明示的にbooleanに変換）
+      const goalsWithShowOnCalendar = filteredGoalsData.map((g: GoalFromDB): Goal => ({
         ...g,
         show_on_calendar: g.show_on_calendar ?? false,
       }));
@@ -284,11 +318,29 @@ export default function GoalsScreen() {
       try {
         // 修正: instrumentIdを渡してフィルタリング（OfflineStorage.getGoalsで処理される）
         const offlineGoals = await OfflineStorage.getGoals(instrumentId);
-        const unsyncedGoals = offlineGoals.filter((g: any) => !g.is_synced && g.user_id === authUser.id);
+        // 未同期かつ現在のユーザーの目標のみをフィルタリング（型安全性のため明示的に型を指定）
+        interface OfflineGoalForFilter {
+          id: string;
+          user_id: string;
+          is_synced: boolean;
+        }
+        const unsyncedGoals = offlineGoals.filter((g: OfflineGoalForFilter) => !g.is_synced && g.user_id === user.id);
         // フィルタリングは既にOfflineStorage.getGoalsで行われているため、ここでのフィルタリングは不要
         const filteredOfflineGoals = unsyncedGoals;
         
-        const offlineGoalsFormatted: Goal[] = filteredOfflineGoals.map((g: any) => ({
+        // オフライン目標をGoal型にマッピング（型安全性のため明示的に型を指定）
+        interface OfflineGoalForMapping {
+          id: string;
+          title: string;
+          description?: string;
+          target_date?: string;
+          progress_percentage?: number;
+          goal_type: 'personal_short' | 'personal_long' | 'group';
+          is_active?: boolean;
+          is_completed?: boolean;
+          show_on_calendar?: boolean;
+        }
+        const offlineGoalsFormatted: Goal[] = filteredOfflineGoals.map((g: OfflineGoalForMapping): Goal => ({
           id: g.id,
           title: g.title,
           description: g.description,
@@ -315,15 +367,17 @@ export default function GoalsScreen() {
         logger.debug('オフライン目標読み込みエラー（無視）:', offlineError);
       }
       
-      // フリープランの場合、最新の2個だけを表示
+      // フリープランの場合、最新の2個だけを表示（サブスクリプション制限）
+      // 注意: 各楽器ごとに2個までの制限を適用（instrumentIdごとに個別に制限）
       if (!entitlement?.isEntitled) {
-        // created_atでソート（新しい順）
+        // created_atでソート（新しい順 - FIFO: First In, First Out）
+        // 最新に作成した目標から優先的に表示（重要度や進捗は考慮しない）
         const sortedGoals = [...allGoals].sort((a, b) => {
           const dateA = new Date(a.created_at || 0).getTime();
           const dateB = new Date(b.created_at || 0).getTime();
           return dateB - dateA; // 降順（新しい順）
         });
-        // 最新の2個だけを取得
+        // 最新の2個だけを取得（FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT = 2）
         allGoals = sortedGoals.slice(0, 2);
         
         logger.debug('フリープラン: 最新2個のみ表示', {
@@ -335,17 +389,18 @@ export default function GoalsScreen() {
       
       setGoals(allGoals);
       
-      // キャッシュに保存（オフライン対応）
+      // キャッシュに保存（オフライン対応 - 次回のオフライン時に使用）
       try {
-        const cacheKey = `goals_cache_${authUser.id}_${instrumentId || 'all'}`;
+        const cacheKey = `goals_cache_${user.id}_${instrumentId || 'all'}`;
         await AsyncStorage.setItem(cacheKey, JSON.stringify(allGoals));
         logger.debug('目標データをキャッシュに保存しました');
       } catch (saveError) {
         logger.debug('キャッシュ保存エラー（無視）:', saveError);
       }
     } catch (error) {
-      // エラーの詳細を明示的にログに記録
-      let errorDetails: Record<string, any> = {};
+      // エラーの詳細を明示的にログに記録（型安全性のためunknown型を使用）
+      // 注意: any型を避け、unknown型を使用して型ガードで処理
+      let errorDetails: Record<string, unknown> = {};
       
       if (error instanceof Error) {
         errorDetails = {
@@ -354,7 +409,8 @@ export default function GoalsScreen() {
           stack: error.stack?.split('\n').slice(0, 5).join('\n'), // スタックトレースの最初の5行のみ
         };
       } else if (typeof error === 'object' && error !== null) {
-        const err = error as any;
+        // 型ガード: errorがオブジェクトの場合、プロパティを安全に取得
+        const err = error as Record<string, unknown>;
         errorDetails = {
           code: err.code ?? undefined,
           message: err.message ?? undefined,
@@ -379,12 +435,12 @@ export default function GoalsScreen() {
       );
       
       logger.error('Error loading goals:', Object.keys(filteredDetails).length > 0 ? filteredDetails : { error: 'Unknown error', rawError: String(error) });
-      // エラー時もキャッシュから読み込みを試行
-        try {
-          const { data: { user: errorAuthUser } } = await supabase.auth.getUser();
-          if (errorAuthUser) {
-            const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
-            const cacheKey = `goals_cache_${errorAuthUser.id}_${errorInstrumentId || 'all'}`;
+      // エラー時もキャッシュから読み込みを試行（フォールバック処理）
+      // 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
+      try {
+        if (user) {
+            const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, user.selected_instrument_id);
+            const cacheKey = `goals_cache_${user.id}_${errorInstrumentId || 'all'}`;
             const cachedData = await AsyncStorage.getItem(cacheKey);
             if (cachedData) {
               const parsed = JSON.parse(cachedData);
@@ -411,25 +467,36 @@ export default function GoalsScreen() {
           // キャッシュ読み込みエラーは無視
         }
     } finally {
+      // ローディング状態をリセット（エラー時も確実にリセット）
       loadingRef.current = false;
     }
-  }, [selectedInstrument, user?.selected_instrument_id, entitlement]);
+  }, [selectedInstrument, user?.selected_instrument_id, entitlement, user]);
 
+  /**
+   * 達成済み目標を読み込む
+   * 
+   * 処理フロー:
+   * 1. 認証状態を確認（既に取得済みのuserを使用）
+   * 2. 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
+   * 3. オフライン時はキャッシュから読み込み、オンライン時はDBから取得
+   * 4. 楽器IDでフィルタリング（クライアント側でも追加のフィルタリング）
+   * 5. キャッシュに保存（オフライン対応）
+   */
   const loadCompletedGoals = useCallback(async () => {
     try {
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      if (!authUser) {
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
+      if (!user) {
         return;
       }
 
       // 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
       // 有効な楽器IDを取得（統一的なフォールバック処理）
-      const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+      const instrumentId = getEffectiveInstrumentId(selectedInstrument, user.selected_instrument_id);
 
       // オフライン時はキャッシュから読み込み
       if (!isOnline()) {
         try {
-          const cacheKey = `completed_goals_cache_${authUser.id}_${instrumentId || 'all'}`;
+          const cacheKey = `completed_goals_cache_${user.id}_${instrumentId || 'all'}`;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
@@ -442,11 +509,12 @@ export default function GoalsScreen() {
         }
       }
 
-      const completedGoalsData = await goalRepository.getCompletedGoals(authUser.id, instrumentId);
+      const completedGoalsData = await goalRepository.getCompletedGoals(user.id, instrumentId);
       
       // 楽器IDでフィルタリング（クライアント側でも追加のフィルタリング）
       // データベース側でフィルタリングされているが、念のためクライアント側でも確認
-      const filteredCompletedGoals = completedGoalsData.filter((g: any) => {
+      // 注意: GoalFromDB型を使用してany型を回避
+      const filteredCompletedGoals = completedGoalsData.filter((g: GoalFromDB) => {
         const goalInstrumentId = g.instrument_id;
         if (instrumentId) {
           // 楽器が選択されている場合: その楽器の目標のみ表示（instrument_idがnullの目標は除外）
@@ -457,11 +525,16 @@ export default function GoalsScreen() {
         }
       });
       
-      setCompletedGoals(filteredCompletedGoals as any);
+      // 型アサーションを削減: GoalFromDBをGoal型にマッピング
+      const completedGoals: Goal[] = filteredCompletedGoals.map((g: GoalFromDB) => ({
+        ...g,
+        show_on_calendar: g.show_on_calendar ?? false,
+      }));
+      setCompletedGoals(completedGoals);
       
       // キャッシュに保存（オフライン対応）
       try {
-        const cacheKey = `completed_goals_cache_${authUser.id}_${instrumentId || 'all'}`;
+        const cacheKey = `completed_goals_cache_${user.id}_${instrumentId || 'all'}`;
         await AsyncStorage.setItem(cacheKey, JSON.stringify(completedGoalsData));
         logger.debug('達成済み目標データをキャッシュに保存しました');
       } catch (saveError) {
@@ -469,12 +542,12 @@ export default function GoalsScreen() {
       }
     } catch (error) {
       logger.error('Error loading completed goals:', error);
-      // エラー時もキャッシュから読み込みを試行
+      // エラー時もキャッシュから読み込みを試行（フォールバック処理）
+      // 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
       try {
-        const { data: { user: errorAuthUser } } = await supabase.auth.getUser();
-        if (errorAuthUser) {
-          const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
-          const cacheKey = `completed_goals_cache_${errorAuthUser.id}_${errorInstrumentId || 'all'}`;
+        if (user) {
+          const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, user.selected_instrument_id);
+          const cacheKey = `completed_goals_cache_${user.id}_${errorInstrumentId || 'all'}`;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
@@ -483,25 +556,50 @@ export default function GoalsScreen() {
           }
         }
       } catch (cacheError) {
-        // キャッシュ読み込みエラーは無視
+        // キャッシュ読み込みエラーは無視（フォールバック処理のため）
       }
     }
-  }, [selectedInstrument, user?.selected_instrument_id]);
+  }, [selectedInstrument, user?.selected_instrument_id, user]);
 
-  // 未同期の目標を同期する処理
+  /**
+   * 未同期の目標を同期する処理
+   * 
+   * 処理フロー:
+   * 1. オンライン状態を確認
+   * 2. 認証状態を確認（既に取得済みのuserを使用）
+   * 3. オフライン保存された目標を取得
+   * 4. 各目標について制限チェック（楽器数制限、目標数制限）
+   * 5. 制限をクリアした目標のみ同期（goalRepository.createGoal経由）
+   * 6. 同期済みとしてマーク（OfflineStorage.markAsSynced）
+   * 7. ローカル状態から削除
+   * 8. 目標リストを再読み込み
+   * 
+   * 注意: 制限に達している目標は同期をスキップ（削除はしない）
+   */
   const syncOfflineGoals = useCallback(async () => {
     if (!isOnline()) {
       return;
     }
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
       if (!user) {
         return;
       }
 
       const offlineGoals = await OfflineStorage.getGoals();
-      const unsyncedGoals = offlineGoals.filter((g: any) => !g.is_synced);
+      // 未同期の目標のみをフィルタリング（型安全性のため明示的に型を指定）
+      interface OfflineGoal {
+        id: string;
+        user_id: string;
+        title: string;
+        description?: string;
+        target_date?: string;
+        goal_type: 'personal_short' | 'personal_long' | 'group';
+        instrument_id?: string | null;
+        is_synced: boolean;
+      }
+      const unsyncedGoals = offlineGoals.filter((g: OfflineGoal) => !g.is_synced);
 
       if (unsyncedGoals.length === 0) {
         return;
@@ -509,9 +607,11 @@ export default function GoalsScreen() {
 
       logger.debug(`未同期の目標を同期します: ${unsyncedGoals.length}件`);
 
+      // 各オフライン目標を順次同期処理（並列処理は制限チェックの正確性のため避ける）
       for (const offlineGoal of unsyncedGoals) {
         try {
           // オフライン保存された目標を同期する際に、楽器数制限をチェック
+          // 注意: 制限チェックは同期時に実行（作成時と同期時で制限状態が変わる可能性があるため）
           const { canSaveDataForInstrument, checkGoalLimit } = await import('@/lib/subscriptionLimits');
           const canSaveCheck = await canSaveDataForInstrument(user.id, offlineGoal.instrument_id || null, entitlement);
           if (!canSaveCheck.canSave) {
@@ -561,9 +661,21 @@ export default function GoalsScreen() {
     }
   }, [loadGoals]);
 
+  /**
+   * ユーザープロフィールを読み込む
+   * 
+   * 処理フロー:
+   * 1. 認証状態を確認
+   * 2. ニックネームを取得（優先順位: user.name > user.user_metadata.name/display_name > デフォルト）
+   * 3. ユーザープロフィールを取得（getUserProfile経由）
+   * 4. 組織情報を取得（プロフィールに含まれる場合）
+   * 5. ユーザープロフィール状態を更新
+   * 
+   * 注意: 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
+   */
   const loadUserProfile = useCallback(async () => {
     // 認証状態を確認
-      if (!isAuthenticated || !user) {
+    if (!isAuthenticated || !user) {
       setUserProfile({
         nickname: 'ユーザー',
         organization: undefined
@@ -572,18 +684,16 @@ export default function GoalsScreen() {
     }
     
     try {
-      // まずuser_metadataからニックネームを取得（新規登録時に保存された値）
+      // まずuser.nameからニックネームを取得（新規登録時に保存された値）
+      // 注意: useAuthAdvancedから取得できるuser.nameを優先（直接Supabase呼び出しを回避）
       let nickname = 'ユーザー';
       if (user.name && String(user.name).trim().length > 0) {
         nickname = String(user.name).trim();
-      } else {
-        // useAuthAdvancedから取得できない場合は、直接Supabaseから取得
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-        if (authUser?.user_metadata) {
-          const metadataName = authUser.user_metadata.name || authUser.user_metadata.display_name;
-          if (metadataName && String(metadataName).trim().length > 0) {
-            nickname = String(metadataName).trim();
-          }
+      } else if (user.user_metadata) {
+        // user_metadataから取得（userオブジェクトに含まれる場合）
+        const metadataName = user.user_metadata.name || user.user_metadata.display_name;
+        if (metadataName && String(metadataName).trim().length > 0) {
+          nickname = String(metadataName).trim();
         }
       }
       
@@ -618,20 +728,15 @@ export default function GoalsScreen() {
       if (error instanceof Error && error.name !== 'AbortError') {
         ErrorHandler.handle(error, 'プロフィール読み込み', false);
         // エラーが発生してもuser_metadataの値を使用
+        // 注意: 既に取得済みのuserオブジェクトを使用（直接Supabase呼び出しを回避）
         let nickname = 'ユーザー';
         if (user?.name && String(user.name).trim().length > 0) {
           nickname = String(user.name).trim();
-        } else {
-          try {
-            const { data: { user: authUser } } = await supabase.auth.getUser();
-            if (authUser?.user_metadata) {
-              const metadataName = authUser.user_metadata.name || authUser.user_metadata.display_name;
-              if (metadataName && String(metadataName).trim().length > 0) {
-                nickname = String(metadataName).trim();
-              }
-            }
-          } catch (e) {
-            // エラーは無視
+        } else if (user?.user_metadata) {
+          // user_metadataから取得（userオブジェクトに含まれる場合）
+          const metadataName = user.user_metadata.name || user.user_metadata.display_name;
+          if (metadataName && String(metadataName).trim().length > 0) {
+            nickname = String(metadataName).trim();
           }
         }
         setUserProfile({
@@ -749,10 +854,10 @@ export default function GoalsScreen() {
     try {
       setIsSaving(true);
       
-      // ユーザーを取得（既存の認証状態を使用、セッション確認は最小限に）
-      const { data: { user } } = await supabase.auth.getUser();
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
       if (!user) {
         Alert.alert('エラー', 'ユーザーが認証されていません。再度ログインしてください。');
+        setIsSaving(false);
         return;
       }
 
@@ -767,7 +872,7 @@ export default function GoalsScreen() {
       }
 
       // selectedInstrumentが空の場合は、user.selected_instrument_idをフォールバックとして使用
-      const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+      const instrumentId = getEffectiveInstrumentId(selectedInstrument, user.selected_instrument_id);
       
       // Freeプランの場合、新しい楽器でデータを保存できるかチェック
       const canSaveCheck = await canSaveDataForInstrument(user.id, instrumentId, entitlement);
@@ -787,12 +892,13 @@ export default function GoalsScreen() {
       // Freeプランの場合、目標設定数をチェック（各楽器ごとに2個まで）
       const limitCheck = await checkGoalLimit(user.id, instrumentId, entitlement);
       if (!limitCheck.canCreate) {
-        // 楽器名を取得
+        // 楽器名を取得（エラーメッセージ表示用）
         const { getEffectiveInstrumentId } = require('@/lib/instrumentUtils');
-        const effectiveInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+        const effectiveInstrumentId = getEffectiveInstrumentId(selectedInstrument, user.selected_instrument_id);
         const { instrumentService } = require('@/services');
         const defaultInstruments = instrumentService.getDefaultInstruments();
-        const instrument = defaultInstruments.find((i: any) => i.id === instrumentId || i.id === effectiveInstrumentId);
+        // 型安全性のためany型を回避（Instrument型を推論させる）
+        const instrument = defaultInstruments.find((i: { id: string; name: string }) => i.id === instrumentId || i.id === effectiveInstrumentId);
         const instrumentName = instrument?.name || 'この楽器';
         
         Alert.alert(
@@ -898,11 +1004,11 @@ export default function GoalsScreen() {
       setShowAddGoalForm(false);
     } catch (error) {
       logger.error('目標保存エラー:', error);
-      // エラー時もオフライン保存を試行
+      // エラー時もオフライン保存を試行（フォールバック処理）
+      // 注意: 既に取得済みのuserオブジェクトを使用（直接Supabase呼び出しを回避）
       try {
-        const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+          const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, user.selected_instrument_id);
           const tempId = `temp_goal_${Date.now()}`;
           const offlineGoal = {
             id: tempId,
@@ -959,7 +1065,7 @@ export default function GoalsScreen() {
     const goalInstrumentId = currentGoal?.instrument_id || null;
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
       if (!user) {
         Alert.alert('エラー', '認証が必要です');
         return;
@@ -1052,9 +1158,21 @@ export default function GoalsScreen() {
     }
   };
 
+  /**
+   * 目標を達成としてマークする
+   * 
+   * 処理フロー:
+   * 1. 認証状態を確認（既に取得済みのuserを使用）
+   * 2. 達成前のカレンダー表示状態と楽器IDを保存
+   * 3. 目標を達成としてマーク（goalRepository.completeGoal経由）
+   * 4. サーバーから再読み込みして状態を同期
+   * 5. カレンダーに表示されていた場合は、次の目標を自動表示
+   * 
+   * 注意: 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
+   */
   const completeGoal = async (goalId: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
       if (!user) {
         Alert.alert('エラー', '認証が必要です');
         return;
@@ -1107,9 +1225,20 @@ export default function GoalsScreen() {
     }
   };
 
+  /**
+   * 達成済み目標を未達成に戻す
+   * 
+   * 処理フロー:
+   * 1. 認証状態を確認（既に取得済みのuserを使用）
+   * 2. 楽観的更新: UIを即座に更新（進捗を90%に戻す）
+   * 3. 目標を未達成に戻す（goalRepository.uncompleteGoal経由）
+   * 4. サーバーから再読み込みして状態を同期
+   * 
+   * 注意: 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
+   */
   const uncompleteGoal = async (goalId: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
       if (!user) {
         Alert.alert('エラー', '認証が必要です');
         return;
@@ -1147,9 +1276,22 @@ export default function GoalsScreen() {
     }
   };
 
+  /**
+   * 目標のカレンダー表示を更新する
+   * 
+   * 処理フロー:
+   * 1. 認証状態を確認（既に取得済みのuserを使用）
+   * 2. 現在の目標情報を取得（エラー時に元に戻すため）
+   * 3. 楽観的更新: UIを即座に更新（同じ楽器の他の目標はfalseにする）
+   * 4. カレンダー表示を更新（goalService.updateShowOnCalendar経由）
+   * 5. カレンダー表示更新イベントを発火
+   * 
+   * 注意: 各楽器ごとにカレンダーに1つだけ表示できる（newValueがtrueの場合、同じ楽器の他の目標はfalseになる）
+   * 注意: 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
+   */
   const setShowOnCalendar = async (goalId: string, newValue: boolean) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
       if (!user) {
         Alert.alert('エラー', '認証が必要です');
         return;
@@ -1318,9 +1460,9 @@ export default function GoalsScreen() {
     logger.debug('削除処理を開始します', targetGoalId);
     
     try {
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      if (authError || !user) {
-        logger.error('認証エラー', authError);
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
+      if (!user) {
+        logger.error('認証エラー: ユーザーが認証されていません');
         if (Platform.OS === 'web') {
           window.alert('認証が必要です');
         } else {

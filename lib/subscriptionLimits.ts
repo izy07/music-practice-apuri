@@ -32,6 +32,15 @@ export const FREE_PLAN_LIMITS = {
 /**
  * 指定された楽器IDで記録が1個でもあるかをチェック
  * 
+ * 処理フロー:
+ * 1. 楽器IDがnullの場合はfalseを返す
+ * 2. 複数のテーブルから楽器IDの存在を並列チェック（count: 'exact', head: true）
+ * 3. いずれかのテーブルに記録があればtrueを返す
+ * 4. すべてのテーブルに記録がなければfalseを返す
+ * 
+ * 注意: 1個でも記録があれば「使用中」として扱う
+ * 注意: エラー時はfalseを返す（安全側に倒す）
+ * 
  * @param userId ユーザーID
  * @param instrumentId チェックする楽器ID
  * @returns 記録があるかどうか
@@ -43,6 +52,8 @@ const hasRecordForInstrument = async (userId: string, instrumentId: string | nul
 
   try {
     // recordings, goals, my_songs, practice_sessions, eventsのいずれかに記録があるかチェック
+    // 並列処理でパフォーマンスを向上（Promise.allを使用）
+    // 注意: count: 'exact', head: true でレコードデータは取得せず、カウントのみを取得（効率的）
     const [recordingsResult, goalsResult, mySongsResult, practiceSessionsResult, eventsResult] = await Promise.all([
       supabase
         .from('recordings')
@@ -98,12 +109,21 @@ const hasRecordForInstrument = async (userId: string, instrumentId: string | nul
 /**
  * ユーザーが使用している楽器の数を取得（記録が1個でもある楽器の数）
  * 
+ * 処理フロー:
+ * 1. 複数のテーブルから楽器IDを並列取得（recordings, goals, my_songs, practice_sessions, events）
+ * 2. すべての楽器IDを収集（重複を排除 - Setを使用）
+ * 3. 一意の楽器ID数を返す
+ * 
+ * 注意: 記録が1個でもある楽器を「使用中」として扱う
+ * 注意: 楽器IDがnullのレコードは除外（有効な楽器IDのみを取得）
+ * 注意: エラー時は1個として扱う（フォールバック）
+ * 
  * @param userId ユーザーID
  * @returns 楽器の数（実際の数、制限なし）
  */
 export const getUserInstrumentCount = async (userId: string): Promise<number> => {
   try {
-    // すべての楽器IDを取得（重複を排除）
+    // すべての楽器IDを取得（重複を排除 - 並列処理でパフォーマンスを向上）
     const [recordingsResult, goalsResult, mySongsResult, practiceSessionsResult, eventsResult] = await Promise.all([
       supabase
         .from('recordings')
@@ -132,13 +152,27 @@ export const getUserInstrumentCount = async (userId: string): Promise<number> =>
         .not('instrument_id', 'is', null),
     ]);
 
-    // すべての楽器IDを収集（重複を排除）
+    // すべての楽器IDを収集（重複を排除 - Setを使用）
+    // 型安全性のため明示的に型を指定（any型を回避）
+    interface RecordWithInstrumentId {
+      instrument_id: string;
+    }
     const instrumentIds = new Set<string>();
     
-    [recordingsResult.data, goalsResult.data, mySongsResult.data, practiceSessionsResult.data, eventsResult.data].forEach(data => {
-      if (data) {
-        data.forEach((item: any) => {
-          if (item.instrument_id) {
+    // 各テーブルの結果を処理（楽器IDを収集）
+    const allResults: (RecordWithInstrumentId[] | null)[] = [
+      recordingsResult.data,
+      goalsResult.data,
+      mySongsResult.data,
+      practiceSessionsResult.data,
+      eventsResult.data
+    ];
+    
+    allResults.forEach(data => {
+      if (data && Array.isArray(data)) {
+        data.forEach((item: RecordWithInstrumentId) => {
+          // instrument_idが存在し、nullでない場合のみ追加
+          if (item.instrument_id && typeof item.instrument_id === 'string') {
             instrumentIds.add(item.instrument_id);
           }
         });
@@ -409,11 +443,20 @@ export const checkGoalLimit = async (
 };
 
 /**
- * プレミアム解約時の目標調整（最新順FIFO）
+ * プレミアム解約時の目標調整（最新順FIFO - First In, First Out）
  * 
  * 解約時に目標数を制限数に合わせて調整する
- * - 最新に作成した目標を優先的に保持
- * - 制限を超える古い目標のshow_on_calendarをfalseにする
+ * 処理フロー:
+ * 1. Premiumユーザーは調整不要（早期リターン）
+ * 2. 全目標を取得（楽器IDでフィルタリングしない）
+ * 3. 達成済み目標と未達成目標を分離（制限は未達成目標のみに適用）
+ * 4. 楽器IDごとにグループ化
+ * 5. 各楽器ごとに最新2個を保持、それ以外は非表示（show_on_calendar = false）
+ * 6. 各楽器ごとに最新の目標のshow_on_calendarをtrueにする
+ * 7. カレンダー更新イベントを発火
+ * 
+ * 注意: データは削除しない（show_on_calendarをfalseにするだけ）
+ * 注意: 各楽器ごとに2個までの制限を適用（楽器数を掛け算しない）
  * 
  * @param userId ユーザーID
  * @param entitlement エンタイトルメント情報
@@ -421,6 +464,14 @@ export const checkGoalLimit = async (
  */
 /**
  * 使用中の楽器IDリストを取得（記録が1個でもある楽器）
+ * 
+ * 処理フロー:
+ * 1. 複数のテーブルから楽器IDを並列取得（recordings, goals, my_songs, practice_sessions, events）
+ * 2. すべての楽器IDを収集（重複を排除 - Setを使用）
+ * 3. 一意の楽器IDリストを返す
+ * 
+ * 注意: 記録が1個でもある楽器を「使用中」として扱う
+ * 注意: 楽器IDがnullのレコードは除外（有効な楽器IDのみを取得）
  * 
  * @param userId ユーザーID
  * @returns 使用中の楽器IDの配列
@@ -461,13 +512,27 @@ export const getActiveInstrumentIds = async (userId: string): Promise<string[]> 
         .not('instrument_id', 'is', null),
     ]);
 
-    // すべての楽器IDを収集（重複を排除）
+    // すべての楽器IDを収集（重複を排除 - Setを使用）
+    // 型安全性のため明示的に型を指定（any型を回避）
+    interface RecordWithInstrumentId {
+      instrument_id: string;
+    }
     const instrumentIds = new Set<string>();
     
-    [recordingsResult.data, goalsResult.data, mySongsResult.data, practiceSessionsResult.data, eventsResult.data].forEach(data => {
-      if (data) {
-        data.forEach((item: any) => {
-          if (item.instrument_id) {
+    // 各テーブルの結果を処理（楽器IDを収集）
+    const allResults: (RecordWithInstrumentId[] | null)[] = [
+      recordingsResult.data,
+      goalsResult.data,
+      mySongsResult.data,
+      practiceSessionsResult.data,
+      eventsResult.data
+    ];
+    
+    allResults.forEach(data => {
+      if (data && Array.isArray(data)) {
+        data.forEach((item: RecordWithInstrumentId) => {
+          // instrument_idが存在し、nullでない場合のみ追加
+          if (item.instrument_id && typeof item.instrument_id === 'string') {
             instrumentIds.add(item.instrument_id);
           }
         });
@@ -511,8 +576,17 @@ export const adjustGoalsOnDowngrade = async (
     const allGoals = await goalRepository.getGoals(userId, undefined);
     
     // 達成済み目標と未達成目標を分離
-    const activeGoals = allGoals.filter((g: any) => 
-      !g.is_completed && g.progress_percentage < 100
+    // 注意: 達成済み目標は制限の対象外（制限は未達成目標のみに適用）
+    // 型安全性のため明示的に型を指定（any型を回避）
+    interface GoalForAdjustment {
+      id: string;
+      instrument_id?: string | null;
+      is_completed?: boolean;
+      progress_percentage?: number;
+      created_at?: string;
+    }
+    const activeGoals = allGoals.filter((g: GoalForAdjustment) => 
+      !g.is_completed && (g.progress_percentage ?? 0) < 100
     );
     
     logger.debug('解約時の目標調整開始（各楽器ごとに2個まで）:', {
@@ -522,8 +596,9 @@ export const adjustGoalsOnDowngrade = async (
       activeGoals: activeGoals.length
     });
 
-    // 楽器IDごとにグループ化
-    const goalsByInstrument = new Map<string | null, any[]>();
+    // 楽器IDごとにグループ化（Mapを使用して効率的に管理）
+    // 楽器IDがnullの目標も1つのグループとして扱う（レガシーデータ対応）
+    const goalsByInstrument = new Map<string | null, GoalForAdjustment[]>();
     
     for (const goal of activeGoals) {
       const instrumentId = goal.instrument_id || null;
@@ -534,18 +609,22 @@ export const adjustGoalsOnDowngrade = async (
     }
 
     // 各楽器ごとに最新2個を保持、それ以外は非表示にする
-    const goalsToKeep: any[] = [];
-    const goalsToHide: any[] = [];
+    // FIFO (First In, First Out) アプローチ: 最新に作成した目標を優先的に保持
+    const goalsToKeep: GoalForAdjustment[] = [];
+    const goalsToHide: GoalForAdjustment[] = [];
 
+    // 各楽器グループについて、制限を適用
     for (const [instrumentId, instrumentGoals] of goalsByInstrument) {
-      // created_atでソート（最新順）
-      const sorted = [...instrumentGoals].sort((a: any, b: any) => {
+      // created_atでソート（最新順 - FIFOアプローチ）
+      // 注意: created_atがnullの場合は0として扱う（古い目標として扱う）
+      const sorted = [...instrumentGoals].sort((a: GoalForAdjustment, b: GoalForAdjustment) => {
         const dateA = new Date(a.created_at || 0).getTime();
         const dateB = new Date(b.created_at || 0).getTime();
         return dateB - dateA; // 降順（新しい順）
       });
 
-      // 各楽器ごとに最新2個を保持
+      // 各楽器ごとに最新2個を保持（limitPerInstrument = 2）
+      // 残りは非表示にする（削除はしない - データは保持）
       const instrumentGoalsToKeep = sorted.slice(0, limitPerInstrument);
       const instrumentGoalsToHide = sorted.slice(limitPerInstrument);
 
@@ -634,16 +713,36 @@ export const adjustGoalsOnDowngrade = async (
 /**
  * 各楽器ごとに最新の目標のshow_on_calendarをtrueにする（1つだけ）
  * 
+ * 処理フロー:
+ * 1. 目標を楽器IDごとにグループ化
+ * 2. 各グループでcreated_atが最新の目標を1つ選択
+ * 3. 選択された目標のshow_on_calendarをtrueに設定
+ * 4. 他の目標のshow_on_calendarはfalseのまま（既存の状態を保持）
+ * 
+ * 注意: カレンダー表示は各楽器ごとに1つだけ表示される
+ * 
  * @param userId ユーザーID
- * @param goals 目標の配列
+ * @param goals 目標の配列（型安全性のため明示的に型を指定）
  */
 async function ensureOneGoalPerInstrumentVisible(
   userId: string,
-  goals: any[]
+  goals: Array<{
+    id: string;
+    instrument_id?: string | null;
+    created_at?: string;
+    show_on_calendar?: boolean;
+  }>
 ): Promise<void> {
   try {
-    // 楽器IDごとにグループ化
-    const goalsByInstrument = new Map<string | null, any[]>();
+    // 楽器IDごとにグループ化（Mapを使用して効率的に管理）
+    // 型安全性のため明示的に型を指定（any型を回避）
+    interface GoalForCalendar {
+      id: string;
+      instrument_id?: string | null;
+      created_at?: string;
+      show_on_calendar?: boolean;
+    }
+    const goalsByInstrument = new Map<string | null, GoalForCalendar[]>();
     
     for (const goal of goals) {
       const instrumentId = goal.instrument_id || null;
@@ -654,15 +753,18 @@ async function ensureOneGoalPerInstrumentVisible(
     }
 
     // 各楽器ごとに最新の目標のshow_on_calendarをtrueにする
+    // 注意: 各楽器ごとに1つだけカレンダーに表示される
     for (const [instrumentId, instrumentGoals] of goalsByInstrument) {
-      // created_atでソート（最新順）
-      const sorted = [...instrumentGoals].sort((a: any, b: any) => {
+      // created_atでソート（最新順 - FIFOアプローチ）
+      // 注意: created_atがnullの場合は0として扱う（古い目標として扱う）
+      const sorted = [...instrumentGoals].sort((a: GoalForCalendar, b: GoalForCalendar) => {
         const dateA = new Date(a.created_at || 0).getTime();
         const dateB = new Date(b.created_at || 0).getTime();
         return dateB - dateA; // 降順（新しい順）
       });
 
       // 最新の目標のshow_on_calendarをtrueにする（既にtrueの場合はスキップ）
+      // 注意: 最新の目標のみがカレンダーに表示される（他の目標はfalseのまま）
       const latestGoal = sorted[0];
       if (latestGoal && !latestGoal.show_on_calendar) {
         try {
@@ -693,6 +795,16 @@ async function ensureOneGoalPerInstrumentVisible(
 
 /**
  * マイライブラリの曲数をチェック（楽器ごとに）
+ * 
+ * 処理フロー:
+ * 1. Premiumユーザーは無制限（早期リターン）
+ * 2. 既存の曲数を取得（楽器IDでフィルタリング）
+ * 3. instrument_idカラムが存在しない場合、カラムなしで再試行（レガシーデータ対応）
+ * 4. TypeScript側で楽器IDでフィルタリング（データベース側でフィルタリングできない場合のフォールバック）
+ * 5. 制限値をチェック（各楽器ごとに6個まで）
+ * 
+ * 注意: 各楽器ごとに6個までの制限を適用（楽器数を掛け算しない）
+ * 注意: instrument_idカラムが存在しない場合は、すべての曲をカウント（レガシーデータ対応）
  * 
  * @param userId ユーザーID
  * @param entitlement エンタイトルメント情報
@@ -775,17 +887,23 @@ export const checkMyLibraryLimit = async (
       return { canAdd: true, currentCount: 0, limit };
     }
 
-    // TypeScript側で楽器IDでフィルタリング
-    let filteredSongs = allSongs || [];
+    // TypeScript側で楽器IDでフィルタリング（データベース側でフィルタリングできない場合のフォールバック）
+    // 型安全性のため明示的に型を指定（any型を回避）
+    interface SongWithInstrumentId {
+      id: string;
+      instrument_id?: string | null;
+    }
+    let filteredSongs: SongWithInstrumentId[] = (allSongs as SongWithInstrumentId[]) || [];
+    
     if (instrumentId !== undefined && instrumentId !== null) {
       // 楽器IDが指定されている場合、その楽器IDに一致する曲のみをカウント
       // instrument_idがnullの曲は含めない（楽器が選択されている場合は、その楽器の曲のみをカウント）
-      filteredSongs = filteredSongs.filter((song: any) => 
+      filteredSongs = filteredSongs.filter((song: SongWithInstrumentId) => 
         song.instrument_id === instrumentId
       );
     } else if (instrumentId === null) {
-      // instrumentIdがnullの場合は、instrument_idがnullの曲のみをカウント
-      filteredSongs = filteredSongs.filter((song: any) => song.instrument_id === null);
+      // instrumentIdがnullの場合は、instrument_idがnullの曲のみをカウント（レガシーデータ対応）
+      filteredSongs = filteredSongs.filter((song: SongWithInstrumentId) => song.instrument_id === null);
     }
     // instrumentIdがundefinedの場合は、すべての曲をカウント（楽器が選択されていない場合）
 
