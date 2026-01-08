@@ -134,7 +134,7 @@ export default function InstrumentSelectionScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/(tabs)/settings')}>
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
