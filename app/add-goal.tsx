@@ -96,15 +96,9 @@ export default function AddGoalScreen() {
         logger.debug('キャッシュクリアエラー（無視）:', cacheError);
       }
       
-      Alert.alert('成功', '目標が保存されました', [
-        {
-          text: 'OK',
-          onPress: () => {
-            // 保存成功後、前の画面に戻る（安全な戻る処理）
-            safeGoBack(router, '/(tabs)/goals', true);
-          }
-        }
-      ]);
+      // 保存成功後、直接画面遷移（Alertは表示しない）
+      logger.debug('目標保存成功、目標画面に戻ります');
+      safeGoBack(router, '/(tabs)/goals', true);
     } catch (error) {
       ErrorHandler.handle(error, '目標保存', true);
       Alert.alert('エラー', '目標の保存に失敗しました');
