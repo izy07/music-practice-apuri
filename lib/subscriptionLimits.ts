@@ -360,10 +360,10 @@ export const checkMonthlyRecordingLimit = async (
 };
 
 /**
- * 目標設定数をチェック
+ * 目標設定数をチェック（各楽器ごとに2個まで）
  * 
  * @param userId ユーザーID
- * @param instrumentId 楽器ID（オプション）
+ * @param instrumentId 楽器ID（指定された楽器の目標数のみをチェック）
  * @param entitlement エンタイトルメント情報
  * @returns 目標設定可能かどうか
  */
@@ -378,19 +378,17 @@ export const checkGoalLimit = async (
       return { canCreate: true, currentCount: 0, limit: Infinity };
     }
 
-    // 楽器数を取得して制限値を計算
-    const instrumentCount = await getUserInstrumentCount(userId);
-    const limit = FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT * instrumentCount;
+    // 各楽器ごとに2個まで（楽器数を掛け算しない）
+    const limit = FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT;
 
-    // 既存の目標数を取得（楽器IDでフィルタリングしない、全楽器の目標数を取得）
-    const existingCount = await goalRepository.getExistingGoalsCount(userId, null);
+    // 指定された楽器IDの目標数のみを取得（各楽器ごとにチェック）
+    const existingCount = await goalRepository.getExistingGoalsCount(userId, instrumentId || null);
 
     const canCreate = existingCount < limit;
 
-    logger.debug('目標設定制限チェック:', {
+    logger.debug('目標設定制限チェック（各楽器ごと）:', {
       userId,
       instrumentId,
-      instrumentCount,
       currentCount: existingCount,
       limit,
       canCreate

@@ -80,12 +80,13 @@ export default function AddGoalScreen() {
         return;
       }
       
-      // Freeプランの場合、目標設定数をチェック
+      // Freeプランの場合、目標設定数をチェック（各楽器ごとに2個まで）
       const limitCheck = await checkGoalLimit(user.id, instrumentId, entitlement);
       if (!limitCheck.canCreate) {
+        const instrumentName = instruments.find(i => i.id === instrumentId)?.name || 'この楽器';
         Alert.alert(
           '上限に達しました',
-          `Freeプランでは目標を2つまで設定できます。\n現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
+          `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
           [
             { text: 'キャンセル', style: 'cancel' },
             { text: 'アップグレードしましょう', onPress: () => router.push('/(tabs)/pricing-plans') }

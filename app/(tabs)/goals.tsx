@@ -744,12 +744,20 @@ export default function GoalsScreen() {
         return;
       }
       
-      // Freeプランの場合、目標設定数をチェック
+      // Freeプランの場合、目標設定数をチェック（各楽器ごとに2個まで）
       const limitCheck = await checkGoalLimit(user.id, instrumentId, entitlement);
       if (!limitCheck.canCreate) {
+        // 楽器名を取得
+        const { getEffectiveInstrumentId } = require('@/lib/instrumentUtils');
+        const effectiveInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+        const { instrumentService } = require('@/services');
+        const defaultInstruments = instrumentService.getDefaultInstruments();
+        const instrument = defaultInstruments.find((i: any) => i.id === instrumentId || i.id === effectiveInstrumentId);
+        const instrumentName = instrument?.name || 'この楽器';
+        
         Alert.alert(
           '上限に達しました',
-          `Freeプランでは目標を2つまで設定できます。\n現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
+          `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
           [
             { text: 'キャンセル', style: 'cancel' },
             { text: 'アップグレードしましょう', onPress: () => router.push('/(tabs)/pricing-plans') }
