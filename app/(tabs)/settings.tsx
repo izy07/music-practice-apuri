@@ -120,20 +120,20 @@ export default function SettingsScreen() {
       onPress: () => router.push('/(tabs)/main-settings' as any)
     },
     {
-      id: 'pricing',
-      title: '料金プラン',
-      subtitle: 'プレミアム・年額プラン',
-      icon: Crown,
-      color: '#FFD700',
-      onPress: () => router.push('/(tabs)/pricing-plans' as any)
-    },
-    {
       id: 'tutorial',
       title: t('tutorial'),
       subtitle: t('tutorialSubtitle'),
       icon: GraduationCap,
       color: '#9C27B0',
       onPress: () => router.push('/(tabs)/app-guide' as any)
+    },
+    {
+      id: 'pricing',
+      title: '料金プラン',
+      subtitle: 'プレミアム・年額プラン',
+      icon: Crown,
+      color: '#FFD700',
+      onPress: () => router.push('/(tabs)/pricing-plans' as any)
     },
     {
       id: 'notifications',
