@@ -147,7 +147,7 @@ export default function InstrumentSelectionScreen() {
         {!entitlement.isEntitled && user && (
           <View style={[styles.freePlanInfoBanner, { backgroundColor: currentTheme.surface, borderColor: currentTheme.secondary }]}>
             <Text style={[styles.freePlanInfoText, { color: currentTheme.text }]}>
-              ⚠️ Freeプランでは楽器は2個まで使用できます
+              フリープランの方は二個まで楽器使用可能です。
             </Text>
           </View>
         )}
