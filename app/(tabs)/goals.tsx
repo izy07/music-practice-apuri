@@ -749,7 +749,7 @@ export default function GoalsScreen() {
       if (!limitCheck.canCreate) {
         Alert.alert(
           '制限に達しました',
-          `Freeプランでは目標を${limitCheck.limit}つまで設定できます。\n現在の設定数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に設定できます。`,
+          `Freeプランでは目標を2つまで設定できます。\n現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
           [
             { text: 'キャンセル', style: 'cancel' },
             { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
