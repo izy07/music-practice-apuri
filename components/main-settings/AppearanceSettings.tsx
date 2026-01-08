@@ -120,19 +120,6 @@ interface AppearanceSettingsProps {
 
 const presetPalettes: PresetPalette[] = [
   {
-    id: 'dark',
-    name: 'ダーク',
-    colors: {
-      background: '#1E1E1E',
-      surface: '#2C2C2E',
-      primary: '#0A84FF',
-      secondary: '#3A3A3C',
-      accent: '#5AC8FA',
-      text: '#FFFFFF',
-      textSecondary: '#B0B0B5',
-    }
-  },
-  {
     id: 'classic',
     name: 'クラシック',
     colors: {
@@ -143,19 +130,6 @@ const presetPalettes: PresetPalette[] = [
       accent: '#2D3748',
       text: '#1A202C',
       textSecondary: '#718096',
-    }
-  },
-  {
-    id: 'blue',
-    name: 'ブルー',
-    colors: {
-      background: '#E3F2FD',
-      surface: '#FFFFFF',
-      primary: '#2196F3',
-      secondary: '#BBDEFB',
-      accent: '#1976D2',
-      text: '#0D47A1',
-      textSecondary: '#1565C0',
     }
   },
   {
@@ -195,19 +169,6 @@ const presetPalettes: PresetPalette[] = [
       accent: '#7B1FA2',
       text: '#4A148C',
       textSecondary: '#6A1B9A',
-    }
-  },
-  {
-    id: 'midnight',
-    name: 'ミッドナイト',
-    colors: {
-      background: '#2A1F2A',
-      surface: '#3A2F3A',
-      primary: '#9D4EDD',
-      secondary: '#4A3F4A',
-      accent: '#7B2CBF',
-      text: '#F3E6F3',
-      textSecondary: '#C4B9C4',
     }
   },
   {
@@ -263,146 +224,16 @@ const presetPalettes: PresetPalette[] = [
     }
   },
   {
-    id: 'flute-pink',
-    name: 'フルートピンク',
-    colors: {
-      background: '#FFF0F8',
-      surface: '#FFFFFF',
-      primary: '#FFB6D9',
-      secondary: '#FFE6F5',
-      accent: '#FF91C7',
-      text: '#4F2F4F',
-      textSecondary: '#8B5A8B',
-    }
-  },
-  {
-    id: 'flute-yellow',
-    name: 'フルートイエロー',
-    colors: {
-      background: '#FFFDE7',
-      surface: '#FFFFFF',
-      primary: '#FFC107',
-      secondary: '#FFF59D',
-      accent: '#FF8F00',
-      text: '#5D4037',
-      textSecondary: '#8D6E63',
-    }
-  },
-  {
-    id: 'orange-blue',
-    name: 'オレンジ×ブルー',
-    colors: {
-      background: '#FFF3E0',
-      surface: '#FFFFFF',
-      primary: '#FF6F00',
-      secondary: '#E3F2FD',
-      accent: '#1976D2',
-      text: '#E65100',
-      textSecondary: '#1565C0',
-    }
-  },
-  {
-    id: 'peach-mint',
-    name: 'ピーチ×ミント',
-    colors: {
-      background: '#FFF5F0',
-      surface: '#FFFFFF',
-      primary: '#FF8A65',
-      secondary: '#E0F2F1',
-      accent: '#4DB6AC',
-      text: '#BF360C',
-      textSecondary: '#00796B',
-    }
-  },
-  {
-    id: 'lavender-sage',
-    name: 'ラベンダー×セージ',
-    colors: {
-      background: '#F3E5F5',
-      surface: '#FFFFFF',
-      primary: '#BA68C8',
-      secondary: '#E8F5E9',
-      accent: '#66BB6A',
-      text: '#6A1B9A',
-      textSecondary: '#2E7D32',
-    }
-  },
-  {
-    id: 'emerald-gold',
-    name: 'エメラルド×ゴールド',
-    colors: {
-      background: '#E8F5E9',
-      surface: '#FFFFFF',
-      primary: '#26A69A',
-      secondary: '#FFF9C4',
-      accent: '#F9A825',
-      text: '#00695C',
-      textSecondary: '#F57F17',
-    }
-  },
-  {
-    id: 'coral-teal',
-    name: 'コーラル×ティール',
-    colors: {
-      background: '#FFEBEE',
-      surface: '#FFFFFF',
-      primary: '#FF7043',
-      secondary: '#B2DFDB',
-      accent: '#00897B',
-      text: '#C62828',
-      textSecondary: '#00695C',
-    }
-  },
-  {
-    id: 'apricot-sky',
-    name: 'アプリコット×スカイ',
-    colors: {
-      background: '#FFF8E1',
-      surface: '#FFFFFF',
-      primary: '#FFB74D',
-      secondary: '#B3E5FC',
-      accent: '#0288D1',
-      text: '#E65100',
-      textSecondary: '#01579B',
-    }
-  },
-  {
-    id: 'rose-dust',
-    name: 'ローズ×ダスト',
-    colors: {
-      background: '#FCE4EC',
-      surface: '#FFFFFF',
-      primary: '#EC407A',
-      secondary: '#F5F5F5',
-      accent: '#9E9E9E',
-      text: '#880E4F',
-      textSecondary: '#616161',
-    }
-  },
-  {
-    id: 'forest-cream',
-    name: 'フォレスト×クリーム',
+    id: 'moss',
+    name: 'モス',
     colors: {
       background: '#F1F8E9',
       surface: '#FFFFFF',
-      primary: '#558B2F',
-      secondary: '#FFF9C4',
-      accent: '#827717',
+      primary: '#7CB342',
+      secondary: '#DCEDC8',
+      accent: '#689F38',
       text: '#33691E',
-      textSecondary: '#F9A825',
-    }
-  },
-  {
-    id: 'plum-amber',
-    name: 'プラム×アンバー',
-    colors: {
-      background: '#EDE7F6',
-      surface: '#FFFFFF',
-      primary: '#7B1FA2',
-      secondary: '#FFE082',
-      accent: '#FF6F00',
-      text: '#4A148C',
-      textSecondary: '#E65100',
+      textSecondary: '#558B2F',
     }
   }
 ];
