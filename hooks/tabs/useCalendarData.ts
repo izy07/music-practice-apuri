@@ -819,7 +819,7 @@ export function useCalendarData(currentDate: Date) {
       // 統一関数を使用してフィルタリング（テーブル名を指定して自動作成を試みる）
       query = await applyInstrumentFilter(query, currentInstrumentId, true, 'recordings');
       
-      const { data: recordings, error } = await query;
+      const { data: rawRecordings, error } = await query;
 
       if (error) {
         if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
@@ -833,8 +833,21 @@ export function useCalendarData(currentDate: Date) {
         return;
       }
 
+      // メモリ側で楽器IDフィルタリングを適用（applyInstrumentFilterがSQL側で正しく動作しない場合のフォールバック）
+      const { filterByInstrumentIdInMemory } = await import('@/repositories/common/instrumentFilter');
+      
+      // 型安全性のため明示的に型を指定（any型を回避）
+      interface RecordingData {
+        recorded_at: string;
+        instrument_id?: string | null;
+      }
+      
+      const recordings = filterByInstrumentIdInMemory<RecordingData>(rawRecordings || [], currentInstrumentId, true);
+
       logger.debug('📊 取得した録音データ:', {
-        count: recordings?.length || 0,
+        rawCount: rawRecordings?.length || 0,
+        filteredCount: recordings?.length || 0,
+        currentInstrumentId,
         recordings: recordings?.map((rec: RecordingData) => ({
           recorded_at: rec.recorded_at,
           instrument_id: rec.instrument_id,
@@ -847,11 +860,6 @@ export function useCalendarData(currentDate: Date) {
         const targetYear = currentDate.getFullYear();
         const targetMonth = currentDate.getMonth();
         
-        // 型安全性のため明示的に型を指定（any型を回避）
-        interface RecordingData {
-          recorded_at: string;
-          instrument_id?: string | null;
-        }
         recordings.forEach((recording: RecordingData) => {
           if (!recording.recorded_at) return; // recorded_atがnullの場合はスキップ
           
@@ -1059,18 +1067,19 @@ export function useCalendarData(currentDate: Date) {
       }
 
       if (goals && goals.length > 0) {
+        // 型安全性のため明示的に型を指定（any型を回避）
+        type GoalForMapping = {
+          title: string;
+          target_date?: string;
+          show_on_calendar?: boolean;
+          is_completed?: boolean;
+          progress_percentage?: number;
+          goal_type?: string;
+          instrument_id?: string | null;
+        };
+        
         logger.debug('[loadShortTermGoal] 取得した目標:', {
           goalsCount: goals.length,
-          // 型安全性のため明示的に型を指定（any型を回避）
-          interface GoalForMapping {
-            title: string;
-            target_date?: string;
-            show_on_calendar?: boolean;
-            is_completed?: boolean;
-            progress_percentage?: number;
-            goal_type?: string;
-            instrument_id?: string | null;
-          }
           goals: goals.map((g: GoalForMapping) => ({
             title: g.title,
             show_on_calendar: g.show_on_calendar,

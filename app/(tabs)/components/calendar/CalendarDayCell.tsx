@@ -1,5 +1,6 @@
 import React, { memo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { getEventColorCode, EventColor } from '@/lib/eventColors';
 
 // テーマの型定義
 interface InstrumentTheme {
@@ -18,13 +19,13 @@ interface CalendarDayCellProps {
   hasPracticeRecord: boolean; // 練習時間が記録されたか（タイマー、クイック、手動入力など）
   hasBasicPractice: boolean; // 基礎練（input_method: 'preset'）があるか
   hasRecording: boolean;
-  dayEvents: Array<{id: string, title: string, description?: string}>;
+  dayEvents: Array<{id: string, title: string, description?: string, color?: EventColor | string | null}>;
   isToday: boolean;
   isSunday: boolean;
   isSaturday: boolean;
   currentTheme: InstrumentTheme;
   onDatePress: (date: Date) => void;
-  onEventPress: (event: {id: string, title: string, description?: string}) => void;
+  onEventPress: (event: {id: string, title: string, description?: string, color?: EventColor | string | null}) => void;
 }
 
 const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement => {
@@ -65,6 +66,9 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
         isToday && styles.todayCell,
       ]}
       onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel={`${currentDate.getFullYear()}年${currentDate.getMonth() + 1}月${day}日${isToday ? '、今日' : ''}${hasPracticeRecord ? '、練習記録あり' : ''}${hasRecording ? '、録音あり' : ''}${hasBasicPractice ? '、基礎練あり' : ''}${dayEvents.length > 0 ? `、イベント: ${dayEvents[0].title}` : ''}`}
+      accessibilityHint={dayEvents.length > 0 ? "イベントをタップして詳細を表示します" : "日付をタップして練習記録を追加します"}
     >
       <Text style={[
         styles.dayText,
@@ -90,17 +94,36 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
         )}
       </View>
       
-      {dayEvents && dayEvents.length > 0 && (
-        <TouchableOpacity
-          style={styles.eventIndicator}
-          onPress={handleEventPress}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.eventIndicatorText} numberOfLines={1}>
-            {dayEvents[0].title}
-          </Text>
-        </TouchableOpacity>
-      )}
+      {dayEvents && dayEvents.length > 0 && (() => {
+        const event = dayEvents[0];
+        const eventColor = getEventColorCode(event.color);
+        return (
+          <TouchableOpacity
+            style={[
+              styles.eventIndicator,
+              {
+                backgroundColor: `${eventColor}20`,
+                borderColor: eventColor,
+              },
+            ]}
+            onPress={handleEventPress}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={`イベント: ${event.title}`}
+            accessibilityHint="イベントの詳細を表示します"
+          >
+            <Text 
+              style={[
+                styles.eventIndicatorText,
+                { color: eventColor },
+              ]} 
+              numberOfLines={1}
+            >
+              {event.title}
+            </Text>
+          </TouchableOpacity>
+        );
+      })()}
       
       {/* 基礎練メニューで「練習した！」ボタンが押された場合、✅マークを表示 */}
       {hasBasicPractice && (

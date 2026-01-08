@@ -141,3 +141,67 @@ export const getEffectiveInstrumentId = (
   // 優先順位3: null
   return null;
 };
+
+/**
+ * 楽器区分の型定義
+ */
+export type InstrumentCategory = 'string' | 'wind' | 'keyboard' | 'percussion' | 'other';
+
+/**
+ * 楽器キーから楽器区分を取得
+ * @param instrumentKey 楽器キー
+ * @returns 楽器区分
+ */
+export const getInstrumentCategory = (instrumentKey: string): InstrumentCategory => {
+  // 弦楽器
+  const stringInstruments = ['violin', 'viola', 'cello', 'contrabass', 'guitar', 'harp', 'koto'];
+  if (stringInstruments.includes(instrumentKey)) {
+    return 'string';
+  }
+  
+  // 管楽器
+  const windInstruments = ['flute', 'clarinet', 'oboe', 'bassoon', 'saxophone', 'trumpet', 'trombone', 'horn'];
+  if (windInstruments.includes(instrumentKey)) {
+    return 'wind';
+  }
+  
+  // 鍵盤楽器
+  const keyboardInstruments = ['piano', 'synthesizer'];
+  if (keyboardInstruments.includes(instrumentKey)) {
+    return 'keyboard';
+  }
+  
+  // 打楽器
+  const percussionInstruments = ['drums', 'taiko'];
+  if (percussionInstruments.includes(instrumentKey)) {
+    return 'percussion';
+  }
+  
+  return 'other';
+};
+
+/**
+ * 楽器IDから楽器区分を取得
+ * @param instrumentId 楽器ID（UUID）
+ * @returns 楽器区分
+ */
+export const getInstrumentCategoryFromId = (instrumentId: string | null | undefined): InstrumentCategory => {
+  if (!instrumentId) return 'other';
+  const instrumentKey = getInstrumentKeyFromId(instrumentId);
+  return getInstrumentCategory(instrumentKey);
+};
+
+/**
+ * シンコペーションを含めるべき楽器かどうかを判定
+ * ギター、ベース、ドラム、管楽器、鍵盤楽器系にはシンコペーションを追加
+ * @param instrumentKey 楽器キー
+ * @returns シンコペーションを含めるべきかどうか
+ */
+export const shouldIncludeSyncopation = (instrumentKey: string): boolean => {
+  const syncopationInstruments = [
+    'guitar', 'contrabass', 'drums', 'taiko',
+    'flute', 'clarinet', 'oboe', 'bassoon', 'saxophone', 'trumpet', 'trombone', 'horn',
+    'piano', 'synthesizer'
+  ];
+  return syncopationInstruments.includes(instrumentKey);
+};

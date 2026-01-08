@@ -18,8 +18,6 @@ import {
   Star, 
   MessageSquare, 
   Twitter, 
-  Instagram,
-  Facebook,
   ChevronRight
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -76,34 +74,14 @@ export default function SupportScreen() {
     }
   };
 
-  const handleSNSShare = (platform: string) => {
+  const handleSNSShare = () => {
     const message = encodeURIComponent('楽器練習記録アプリで毎日の練習を記録しています！音楽の上達を実感できる素晴らしいアプリです。');
     const url = encodeURIComponent('https://music-practice.app');
+    const shareUrl = `https://twitter.com/intent/tweet?text=${message}&url=${url}`;
     
-    let shareUrl = '';
-    
-    switch (platform) {
-      case 'twitter':
-        shareUrl = `https://twitter.com/intent/tweet?text=${message}&url=${url}`;
-        break;
-      case 'facebook':
-        shareUrl = `https://www.facebook.com/sharer/sharer.php?u=${url}`;
-        break;
-      case 'instagram':
-        // Instagramは直接リンクできないため、コピー機能を使用
-        const instagramText = `楽器練習記録アプリで毎日の練習を記録しています！\n${url}`;
-        if (Platform.OS === 'web' && navigator.clipboard) {
-          navigator.clipboard.writeText(instagramText);
-          Alert.alert('コピー完了', 'Instagramに投稿する内容をクリップボードにコピーしました');
-        }
-        return;
-    }
-    
-    if (shareUrl) {
-      Linking.openURL(shareUrl).catch(() => {
-        Alert.alert('エラー', `${platform}を開けませんでした`);
-      });
-    }
+    Linking.openURL(shareUrl).catch(() => {
+      Alert.alert('エラー', 'Twitterを開けませんでした');
+    });
   };
 
   return (
@@ -176,31 +154,13 @@ export default function SupportScreen() {
             <ChevronRight size={20} color={currentTheme?.textSecondary || '#999999'} />
           </TouchableOpacity>
 
-          <View style={styles.snsButtons}>
-            <TouchableOpacity
-              style={[styles.snsButton, { backgroundColor: '#1DA1F2' }]}
-              onPress={() => handleSNSShare('twitter')}
-            >
-              <Twitter size={20} color="#FFFFFF" />
-              <Text style={styles.snsButtonText}>Twitter</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.snsButton, { backgroundColor: '#4267B2' }]}
-              onPress={() => handleSNSShare('facebook')}
-            >
-              <Facebook size={20} color="#FFFFFF" />
-              <Text style={styles.snsButtonText}>Facebook</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.snsButton, { backgroundColor: '#E4405F' }]}
-              onPress={() => handleSNSShare('instagram')}
-            >
-              <Instagram size={20} color="#FFFFFF" />
-              <Text style={styles.snsButtonText}>Instagram</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={[styles.snsButton, { backgroundColor: '#1DA1F2' }]}
+            onPress={handleSNSShare}
+          >
+            <Twitter size={20} color="#FFFFFF" />
+            <Text style={styles.snsButtonText}>Twitter</Text>
+          </TouchableOpacity>
         </View>
 
         {/* レビュー・ランキング */}
@@ -326,14 +286,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
   },
-  snsButtons: {
-    flexDirection: 'row',
-    padding: 16,
-    paddingTop: 8,
-    gap: 12,
-  },
   snsButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -341,6 +294,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     gap: 8,
+    margin: 16,
+    marginTop: 8,
   },
   snsButtonText: {
     color: '#FFFFFF',

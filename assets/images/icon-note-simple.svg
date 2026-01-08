@@ -1,0 +1,30 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景（円形、グラデーション） -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1976D2;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1565C0;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <circle cx="512" cy="512" r="512" fill="url(#bgGradient)"/>
+  
+  <!-- 音符（シンプルなデザイン） -->
+  <g transform="translate(512, 512)">
+    <!-- 音符の頭（楕円、少し傾斜） -->
+    <ellipse cx="0" cy="-100" rx="140" ry="90" fill="#FFFFFF" transform="rotate(-25)"/>
+    
+    <!-- 音符の幹（縦線） -->
+    <rect x="-10" y="-100" width="20" height="350" fill="#FFFFFF" rx="10"/>
+    
+    <!-- 音符の旗（曲線） -->
+    <path d="M 10 -100 
+             C 150 -120, 280 -50, 300 80
+             C 310 150, 250 220, 180 250" 
+          stroke="#FFFFFF" 
+          stroke-width="28" 
+          fill="none" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"/>
+  </g>
+</svg>
+

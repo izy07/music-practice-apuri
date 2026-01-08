@@ -24,7 +24,8 @@ import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { safeGoBack } from '@/lib/navigationUtils';
 import { createShadowStyle } from '@/lib/shadowStyles';
-import { getInstrumentId } from '@/lib/instrumentUtils';
+import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 
 const { width } = Dimensions.get('window');
 
@@ -45,6 +46,7 @@ type TimeFilter = 'all' | '1week' | '1month' | '3months' | '6months' | '1year';
 export default function RecordingsLibraryScreen() {
   const router = useRouter();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
+  const { user } = useAuthAdvanced();
   const { entitlement, loading: entitlementLoading, error: subscriptionError, errorMessage: subscriptionErrorMessage, refresh: refreshSubscription } = useSubscription();
   const [recordings, setRecordings] = useState<Recording[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,9 +112,9 @@ export default function RecordingsLibraryScreen() {
       }
       
       if (user) {
-        // コンテキストから楽器IDを取得（DBアクセス不要）
-        const instrumentId = getInstrumentId(selectedInstrument) || null;
-        logger.debug('録音データ取得開始', { userId: user.id, instrumentId, selectedInstrument });
+        // 統一的な楽器ID取得（selectedInstrumentとuser.selected_instrument_idの両方を考慮）
+        const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+        logger.debug('録音データ取得開始', { userId: user.id, instrumentId, selectedInstrument, userSelectedInstrumentId: user?.selected_instrument_id });
         
         const { data, error } = await listAllRecordings(user.id, instrumentId, undefined, recordingTypeFilter === 'all' ? null : recordingTypeFilter);
         if (error) {

@@ -179,7 +179,7 @@ export default function InstrumentSelectionScreen() {
                 ⚠️ Freeプランでは楽器を2個まで使用できます
               </Text>
               <Text style={[styles.freePlanInfoSubtitle, { color: currentTheme.textSecondary }]}>
-                3個目以降の楽器を追加するには、プレミアムへアップグレードしてください。既存の楽器（2個まで）は自由に切り替えできます。
+                3個目以降はプレミアムへアップグレードが必要です
               </Text>
             </View>
           </View>

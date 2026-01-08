@@ -16,6 +16,7 @@ export interface Event {
   title: string;
   date: string; // YYYY-MM-DD形式
   description?: string | null;
+  color?: string | null; // イベントの色（red, green, blue, orange, purple, yellow）
   practice_schedule_id?: string | null; // 練習日程との連携用
   instrument_id?: string | null; // 楽器ID（楽器ごとにイベントを分けて管理）
   created_at?: string;
@@ -35,6 +36,7 @@ export const createEvent = async (
       title: event.title,
       date: event.date,
       description: event.description || null,
+      color: event.color || null,
       created_at: new Date().toISOString(),
     };
     
@@ -149,6 +151,7 @@ export const updateEvent = async (
       payload.event_date = updates.date; // event_dateも同じ値に設定
     }
     if (updates.description !== undefined) payload.description = updates.description;
+    if (updates.color !== undefined) payload.color = updates.color;
     if (updates.practice_schedule_id !== undefined) {
       // practice_schedule_idがnullでない場合のみ追加
       if (updates.practice_schedule_id !== null) {
@@ -170,7 +173,7 @@ export const updateEvent = async (
     
     // カラムが存在しないエラーの場合、該当カラムを除外して再試行
     if (error && isColumnNotFoundError(error)) {
-      const optionalColumns = ['instrument_id', 'event_date', 'practice_schedule_id'];
+      const optionalColumns = ['instrument_id', 'event_date', 'practice_schedule_id', 'color'];
       const handled = handleColumnError(error, payload, optionalColumns);
       
       if (handled) {
@@ -286,8 +289,8 @@ export const getEventsByUserId = async (
     
     // SELECT句を構築（instrument_idカラムが存在する場合のみ含める）
     const selectColumns = hasInstrumentId
-      ? 'id,user_id,title,date,description,practice_schedule_id,instrument_id,is_completed,completed_at,created_at,updated_at'
-      : 'id,user_id,title,date,description,practice_schedule_id,is_completed,completed_at,created_at,updated_at';
+      ? 'id,user_id,title,date,description,color,practice_schedule_id,instrument_id,is_completed,completed_at,created_at,updated_at'
+      : 'id,user_id,title,date,description,color,practice_schedule_id,is_completed,completed_at,created_at,updated_at';
     
     let query = supabase
       .from('events')

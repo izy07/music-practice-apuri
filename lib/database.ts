@@ -422,9 +422,11 @@ export const getRecordingsByDate = async (
       .gte('recorded_at', startOfDay.toISOString())
       .lte('recorded_at', endOfDay.toISOString());
     
-    // 楽器IDでフィルタリング
+    // 楽器IDでフィルタリング（レガシーデータ対応）
+    // instrumentIdが指定されている場合: そのIDまたはnull（レガシー）の録音を取得
+    // instrumentIdがnullの場合: null（レガシー）の録音のみを取得
     if (instrumentId) {
-      query = query.eq('instrument_id', instrumentId);
+      query = query.or(`instrument_id.eq.${instrumentId},instrument_id.is.null`);
     } else {
       query = query.is('instrument_id', null);
     }
@@ -684,18 +686,29 @@ export const saveRecording = async (record: {
 export const listRecordingsByMonth = async (
   userId: string,
   year: number,
-  month: number
+  month: number,
+  instrumentId?: string | null
 ) => {
   try {
     const start = new Date(year, month - 1, 1);
     const end = new Date(year, month, 0);
-    const { data, error } = await supabase
+    let query = supabase
       .from('recordings')
       .select('*')
       .eq('user_id', userId)
       .gte('recorded_at', start.toISOString())
-      .lte('recorded_at', new Date(end.getTime() + 24 * 60 * 60 * 1000 - 1).toISOString())
-      .order('recorded_at', { ascending: false });
+      .lte('recorded_at', new Date(end.getTime() + 24 * 60 * 60 * 1000 - 1).toISOString());
+    
+    // 楽器IDでフィルタリング（レガシーデータ対応）
+    // instrumentIdが指定されている場合: そのIDまたはnull（レガシー）の録音を取得
+    // instrumentIdがnullの場合: null（レガシー）の録音のみを取得
+    if (instrumentId) {
+      query = query.or(`instrument_id.eq.${instrumentId},instrument_id.is.null`);
+    } else {
+      query = query.is('instrument_id', null);
+    }
+    
+    const { data, error } = await query.order('recorded_at', { ascending: false });
     if (error) throw error;
     return { data: data || [], error: null };
   } catch (error) {
@@ -717,9 +730,13 @@ export const listAllRecordings = async (
       .select('*')
       .eq('user_id', userId);
     
-    // 楽器IDが指定されている場合はフィルタリング
+    // 楽器IDでフィルタリング（レガシーデータ対応）
+    // instrumentIdが指定されている場合: そのIDまたはnull（レガシー）の録音を取得
+    // instrumentIdがnullの場合: null（レガシー）の録音のみを取得
     if (instrumentId) {
-      query = query.eq('instrument_id', instrumentId);
+      query = query.or(`instrument_id.eq.${instrumentId},instrument_id.is.null`);
+    } else {
+      query = query.is('instrument_id', null);
     }
     
     // 録音種類が指定されている場合はフィルタリング

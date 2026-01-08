@@ -1,10 +1,11 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
-import { Calendar, Plus, Edit3, Trash2 } from 'lucide-react-native';
+import React, { useState, useMemo } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import { Calendar, Plus, Edit3, Trash2, Filter } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { logger } from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { supabase } from '@/lib/supabase';
+import { EVENT_COLORS, EventColor, getEventColorCode, getEventColorOption } from '@/lib/eventColors';
 
 // テーマの型定義
 interface InstrumentTheme {
@@ -22,6 +23,7 @@ interface Event {
   title: string;
   description?: string;
   date?: string;
+  color?: EventColor | string | null;
 }
 
 interface EventManagementSectionProps {
@@ -51,6 +53,7 @@ export default function EventManagementSection({
   onEventDeleted,
 }: EventManagementSectionProps) {
   const router = useRouter();
+  const [selectedColorFilter, setSelectedColorFilter] = useState<EventColor | 'all'>('all');
   
   // currentThemeがundefinedまたはnullの場合はデフォルトテーマを使用
   const theme = currentTheme || defaultTheme;
@@ -87,7 +90,33 @@ export default function EventManagementSection({
   };
 
   const allEvents = events ? Object.values(events).flat() : [];
-  const displayEvents = allEvents.slice(0, 5);
+  
+  // 色でフィルタリング
+  const filteredEvents = useMemo(() => {
+    if (selectedColorFilter === 'all') {
+      return allEvents;
+    }
+    return allEvents.filter(event => {
+      const eventColor = (event.color as EventColor) || 'yellow';
+      return eventColor === selectedColorFilter;
+    });
+  }, [allEvents, selectedColorFilter]);
+  
+  // メンテナンスイベントを取得（最新のもの）
+  const lastMaintenanceEvent = useMemo(() => {
+    const maintenanceEvents = allEvents
+      .filter(event => {
+        const eventColor = (event.color as EventColor) || 'yellow';
+        return eventColor === 'green';
+      })
+      .sort((a, b) => {
+        if (!a.date || !b.date) return 0;
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      });
+    return maintenanceEvents[0] || null;
+  }, [allEvents]);
+  
+  const displayEvents = filteredEvents.slice(0, 5);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.surface }]}>
@@ -104,26 +133,123 @@ export default function EventManagementSection({
         <Text style={styles.addButtonText}>イベントを登録</Text>
       </TouchableOpacity>
 
-      {allEvents.length === 0 ? (
+      {/* 前回メンテナンス表示 */}
+      {lastMaintenanceEvent && (
+        <View style={[styles.maintenanceInfo, { backgroundColor: theme.background, borderColor: getEventColorCode('green') }]}>
+          <Text style={[styles.maintenanceLabel, { color: theme.text }]}>
+            🔧 前回メンテナンス
+          </Text>
+          <Text style={[styles.maintenanceDate, { color: theme.textSecondary }]}>
+            {lastMaintenanceEvent.date 
+              ? new Date(lastMaintenanceEvent.date).toLocaleDateString('ja-JP', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric',
+                })
+              : '日付不明'}
+          </Text>
+          {lastMaintenanceEvent.title && (
+            <Text style={[styles.maintenanceTitle, { color: theme.text }]}>
+              {lastMaintenanceEvent.title}
+            </Text>
+          )}
+        </View>
+      )}
+
+      {/* 色フィルタ */}
+      {allEvents.length > 0 && (
+        <View style={styles.filterContainer}>
+          <Filter size={14} color={theme.textSecondary} />
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            style={styles.filterScroll}
+            contentContainerStyle={styles.filterContent}
+          >
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                {
+                  backgroundColor: selectedColorFilter === 'all' ? theme.primary : theme.background,
+                  borderColor: theme.secondary,
+                },
+              ]}
+              onPress={() => setSelectedColorFilter('all')}
+            >
+              <Text
+                style={[
+                  styles.filterButtonText,
+                  {
+                    color: selectedColorFilter === 'all' ? theme.surface : theme.text,
+                  },
+                ]}
+              >
+                すべて
+              </Text>
+            </TouchableOpacity>
+            {Object.values(EVENT_COLORS).map((colorOption) => {
+              const count = allEvents.filter(event => {
+                const eventColor = (event.color as EventColor) || 'yellow';
+                return eventColor === colorOption.value;
+              }).length;
+              
+              if (count === 0) return null;
+              
+              return (
+                <TouchableOpacity
+                  key={colorOption.value}
+                  style={[
+                    styles.filterButton,
+                    {
+                      backgroundColor: selectedColorFilter === colorOption.value ? colorOption.color : theme.background,
+                      borderColor: colorOption.color,
+                    },
+                  ]}
+                  onPress={() => setSelectedColorFilter(colorOption.value)}
+                >
+                  <View style={[styles.filterColorDot, { backgroundColor: colorOption.color }]} />
+                  <Text
+                    style={[
+                      styles.filterButtonText,
+                      {
+                        color: selectedColorFilter === colorOption.value ? '#FFFFFF' : theme.text,
+                      },
+                    ]}
+                  >
+                    {colorOption.label} ({count})
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      {filteredEvents.length === 0 ? (
         <Text style={[styles.emptyText, { color: theme.textSecondary }]}>
           まだ登録されたイベントはありません
         </Text>
       ) : (
-        displayEvents.map((event, index) => (
-          <View key={`event-${event.id}-${index}`} style={styles.eventCard}>
-            <View style={styles.eventHeader}>
-              <View style={styles.eventTitleContainer}>
-                <Text style={[styles.eventTitle, { color: theme.text }]}>{event.title}</Text>
-                {event.date && (
-                  <Text style={[styles.eventDate, { color: theme.textSecondary }]}>
-                    {new Date(event.date).toLocaleDateString('ja-JP', { 
-                      month: 'numeric', 
-                      day: 'numeric',
-                      weekday: 'short'
-                    })}
-                  </Text>
-                )}
-              </View>
+        displayEvents.map((event, index) => {
+          const eventColor = (event.color as EventColor) || 'yellow';
+          const colorCode = getEventColorCode(eventColor);
+          
+          return (
+            <View key={`event-${event.id}-${index}`} style={[styles.eventCard, { borderLeftColor: colorCode, borderLeftWidth: 4 }]}>
+              <View style={styles.eventHeader}>
+                <View style={styles.eventTitleContainer}>
+                  <View style={[styles.eventColorDot, { backgroundColor: colorCode }]} />
+                  <Text style={[styles.eventTitle, { color: theme.text }]}>{event.title}</Text>
+                  {event.date && (
+                    <Text style={[styles.eventDate, { color: theme.textSecondary }]}>
+                      {new Date(event.date).toLocaleDateString('ja-JP', { 
+                        month: 'numeric', 
+                        day: 'numeric',
+                        weekday: 'short'
+                      })}
+                    </Text>
+                  )}
+                </View>
               <View style={styles.eventActions}>
                 <TouchableOpacity
                   style={[styles.actionButton, { backgroundColor: theme.secondary }]}
@@ -145,10 +271,11 @@ export default function EventManagementSection({
               </Text>
             )}
           </View>
-        ))
+          );
+        })
       )}
       
-      {allEvents.length > 5 && (
+      {filteredEvents.length > 5 && (
         <TouchableOpacity
           style={[styles.viewAllButton, { backgroundColor: theme.secondary }]}
           onPress={() => router.push('/(tabs)/goals')}
@@ -252,6 +379,62 @@ const styles = StyleSheet.create({
   viewAllButtonText: {
     color: '#FFFFFF',
     fontSize: 13,
+  },
+  maintenanceInfo: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  maintenanceLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  maintenanceDate: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  maintenanceTitle: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  filterScroll: {
+    flex: 1,
+  },
+  filterContent: {
+    gap: 6,
+  },
+  filterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    gap: 4,
+  },
+  filterButtonText: {
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  filterColorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  eventColorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
   },
 });
 

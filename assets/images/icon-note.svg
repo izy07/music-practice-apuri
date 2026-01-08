@@ -1,0 +1,22 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景（円形） -->
+  <circle cx="512" cy="512" r="512" fill="#1976D2"/>
+  
+  <!-- 音符（クォーターノート） -->
+  <g transform="translate(512, 512)">
+    <!-- 音符の頭（楕円） -->
+    <ellipse cx="0" cy="-80" rx="120" ry="80" fill="#FFFFFF" transform="rotate(-20)"/>
+    
+    <!-- 音符の幹（縦線） -->
+    <rect x="-8" y="-80" width="16" height="320" fill="#FFFFFF" rx="8"/>
+    
+    <!-- 音符の旗（装飾） -->
+    <path d="M 8 -80 Q 200 -100 250 50 Q 280 150 200 200" 
+          stroke="#FFFFFF" 
+          stroke-width="24" 
+          fill="none" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"/>
+  </g>
+</svg>
+

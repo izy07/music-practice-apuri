@@ -6,8 +6,6 @@ import { CheckCircle2, Crown, ChevronRight } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useSubscription } from '@/hooks/useSubscription';
 import { purchaseSubscription } from '@/lib/subscriptionService';
-import { getUserInstrumentCount, FREE_PLAN_LIMITS } from '@/lib/subscriptionLimits';
-import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 
@@ -15,19 +13,6 @@ export default function PricingPlansScreen() {
   const router = useRouter();
   const { currentTheme } = useInstrumentTheme();
   const { entitlement } = useSubscription();
-  const { user } = useAuthAdvanced();
-  const [instrumentCount, setInstrumentCount] = React.useState(1);
-  
-  // 楽器数を取得
-  React.useEffect(() => {
-    if (user?.id) {
-      getUserInstrumentCount(user.id).then(count => {
-        setInstrumentCount(count);
-      }).catch(() => {
-        setInstrumentCount(1); // エラー時は1個として扱う
-      });
-    }
-  }, [user?.id]);
   
   const handlePurchase = async (plan: 'premium_monthly' | 'premium_yearly') => {
     try {
@@ -101,10 +86,10 @@ export default function PricingPlansScreen() {
             </Text>
             <View style={styles.featureList}>
               {[
-                `演奏録音機能（月${FREE_PLAN_LIMITS.RECORDINGS_PER_MONTH_PER_INSTRUMENT * instrumentCount}回まで）`,
+                '演奏録音機能（各楽器ごとに月5回まで）',
                 '楽器データ（2個まで使用可能）',
-                'マイライブラリ（6曲まで）',
-                `目標設定（${FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT * instrumentCount}つまで）`,
+                'マイライブラリ（各楽器ごとに6曲まで）',
+                '目標設定（各楽器ごとに3つまで）',
               ].map((f) => (
                 <View key={f} style={styles.featureItem}>
                   <CheckCircle2 size={16} color={currentTheme.primary} />

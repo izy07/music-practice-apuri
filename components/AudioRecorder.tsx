@@ -18,6 +18,7 @@ import { uploadRecordingBlob, saveRecording } from '@/lib/database';
 import { useRouter } from 'expo-router';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { checkMonthlyRecordingLimit, isCurrentMonth, canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 import logger from '@/lib/logger';
 import audioResourceManager from '@/lib/audioResourceManager';
@@ -46,6 +47,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const { currentTheme } = useInstrumentTheme();
   const router = useRouter();
   const { entitlement } = useSubscription();
+  const { user } = useAuthAdvanced();
   const OWNER_NAME = 'AudioRecorder';
   const [isRecording, setIsRecording] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -61,6 +63,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const [songs, setSongs] = useState<Array<{id: string, title: string, artist: string}>>([]);
   const [showSongSelector, setShowSongSelector] = useState(false);
   const [recordingType, setRecordingType] = useState<'performance' | 'lesson'>('performance'); // 録音種類
+  const [recordingLimitStatus, setRecordingLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
   
   // Web Audio API用の参照
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -156,6 +159,27 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
     }
   }, [visible]);
 
+  // 画面表示時に録音数の制限を事前チェック
+  useEffect(() => {
+    const checkLimitOnMount = async () => {
+      if (!user?.id || entitlement?.isEntitled) {
+        setRecordingLimitStatus(null); // プレミアムユーザーはチェック不要
+        return;
+      }
+
+      try {
+        const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined);
+        setRecordingLimitStatus(limitCheck);
+      } catch (error) {
+        logger.error('録音制限チェックエラー:', error);
+      }
+    };
+
+    if (visible) {
+      checkLimitOnMount();
+    }
+  }, [user?.id, entitlement, selectedDate, visible]);
+
   // 楽曲リストを読み込む
   const loadSongs = async () => {
     try {
@@ -182,6 +206,27 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const startRecording = async () => {
     try {
       logger.debug('録音開始ボタンが押されました');
+      
+      // Freeプランの場合、録音数の制限をチェック
+      if (!entitlement?.isEntitled && user?.id) {
+        const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined);
+        setRecordingLimitStatus(limitCheck);
+        
+        if (!limitCheck.canRecord) {
+          Alert.alert(
+            '録音上限に達しました',
+            `Freeプランでは月に${limitCheck.limit}回まで録音できます。\n現在の録音数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
+            [
+              { text: 'キャンセル', style: 'cancel' },
+              { text: 'プレミアムを見る', onPress: () => {
+                onClose();
+                router.push('/(tabs)/pricing-plans');
+              }}
+            ]
+          );
+          return;
+        }
+      }
       
       // Freeプランの場合、選択された日付が今月であることを確認
       if (!entitlement?.isEntitled && selectedDate && !isCurrentMonth(selectedDate)) {
@@ -1015,15 +1060,39 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
             <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
               録音コントロール
             </Text>
+
+            {/* 録音数制限の表示（フリープランの場合） */}
+            {!entitlement?.isEntitled && recordingLimitStatus && (
+              <View style={[styles.limitInfoContainer, { backgroundColor: currentTheme.surface, borderColor: recordingLimitStatus.canRecord ? currentTheme.primary : '#FF4444', marginBottom: 16 }]}>
+                <Text style={[styles.limitInfoText, { color: currentTheme.text }]}>
+                  {recordingLimitStatus.canRecord 
+                    ? `録音数: ${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}（あと${recordingLimitStatus.limit - recordingLimitStatus.currentCount}回録音可能）`
+                    : `上限に達しています: ${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}`
+                  }
+                </Text>
+                {!recordingLimitStatus.canRecord && (
+                  <Text style={[styles.limitInfoSubText, { color: currentTheme.textSecondary }]}>
+                    プレミアムで無制限に録音できます
+                  </Text>
+                )}
+              </View>
+            )}
             
             <View style={styles.recordingControls}>
               {!isRecording ? (
                 <TouchableOpacity
-                  style={[styles.recordButton, { backgroundColor: currentTheme.primary }]}
+                  style={[
+                    styles.recordButton, 
+                    { 
+                      backgroundColor: (recordingLimitStatus !== null && !recordingLimitStatus.canRecord) ? currentTheme.textSecondary : currentTheme.primary,
+                      opacity: (recordingLimitStatus !== null && !recordingLimitStatus.canRecord) ? 0.6 : 1
+                    }
+                  ]}
                   onPress={() => {
                     logger.debug('録音ボタンがタップされました');
                     startRecording();
                   }}
+                  disabled={recordingLimitStatus !== null && !recordingLimitStatus.canRecord}
                   activeOpacity={0.8}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
@@ -1461,5 +1530,21 @@ const styles = StyleSheet.create({
   recordingTypeButtonText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  limitInfoContainer: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 16,
+  },
+  limitInfoText: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  limitInfoSubText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
   },
 });

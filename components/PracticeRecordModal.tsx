@@ -18,12 +18,14 @@ import { formatLocalDate, formatMinutesToHours } from '@/lib/dateUtils';
 import { uploadRecordingBlob, saveRecording, deletePracticeSession, deleteRecording, getRecordingsByDate } from '@/lib/database';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import { useSubscription } from '@/hooks/useSubscription';
 import { getPracticeSessionsByDate } from '@/repositories/practiceSessionRepository';
 import { cleanContentFromTimeDetails } from '@/lib/utils/contentCleaner';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
 import { getInstrumentId } from '@/lib/instrumentUtils';
+import { checkMonthlyRecordingLimit } from '@/lib/subscriptionLimits';
 
 // ドラムロール風のボタンベースピッカー（Web環境対応）
 function WheelPicker({ value, onChange, max, highlightColor }: { value: number; onChange: (v: number) => void; max: number; highlightColor: string }) {
@@ -156,11 +158,13 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   const router = useRouter();
   const { selectedInstrument, currentTheme } = useInstrumentTheme();
   const { user } = useAuthAdvanced();
+  const { entitlement } = useSubscription();
   const [minutes, setMinutes] = useState('');
   const [content, setContent] = useState('');
   const [audioUrl, setAudioUrl] = useState('');
   const [videoUrl, setVideoUrl] = useState('');
   const [showAudioRecorder, setShowAudioRecorder] = useState(false);
+  const [recordingLimitStatus, setRecordingLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
   const [audioTitle, setAudioTitle] = useState('');
   const [audioMemo, setAudioMemo] = useState('');
   const [isAudioFavorite, setIsAudioFavorite] = useState(false);
@@ -281,6 +285,25 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   useEffect(() => {
     isRecordingJustSavedRef.current = isRecordingJustSaved;
   }, [isRecordingJustSaved]);
+
+  // 画面表示時に録音数の制限を事前チェック
+  useEffect(() => {
+    const checkLimitOnMount = async () => {
+      if (!user?.id || entitlement?.isEntitled || !visible) {
+        setRecordingLimitStatus(null); // プレミアムユーザーはチェック不要
+        return;
+      }
+
+      try {
+        const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined);
+        setRecordingLimitStatus(limitCheck);
+      } catch (error) {
+        logger.error('録音制限チェックエラー:', error);
+      }
+    };
+
+    checkLimitOnMount();
+  }, [user?.id, entitlement, selectedDate, visible]);
 
   // Audio要素のクリーンアップ（メモリリーク防止）
   useEffect(() => {
@@ -1957,18 +1980,51 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             ) : (
               // 録音済み情報がない場合：2つの録音ボタンと動画URL入力
               <View style={styles.mediaSelectionContainer}>
+                {/* 録音数制限の表示（フリープランの場合） */}
+                {!entitlement?.isEntitled && recordingLimitStatus && (
+                  <View style={[styles.limitInfoContainer, { backgroundColor: currentTheme.surface, borderColor: recordingLimitStatus.canRecord ? currentTheme.primary : '#FF4444', marginBottom: 12 }]}>
+                    <Text style={[styles.limitInfoText, { color: currentTheme.text }]}>
+                      {recordingLimitStatus.canRecord 
+                        ? `録音数: ${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}（あと${recordingLimitStatus.limit - recordingLimitStatus.currentCount}回録音可能）`
+                        : `上限に達しています: ${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}`
+                      }
+                    </Text>
+                    {!recordingLimitStatus.canRecord && (
+                      <Text style={[styles.limitInfoSubText, { color: currentTheme.textSecondary }]}>
+                        プレミアムで無制限に録音できます
+                      </Text>
+                    )}
+                  </View>
+                )}
+
                 {/* 2つの録音ボタン */}
                 <View style={styles.recordingButtonsContainer}>
                   {[0, 1].map((slotIndex) => {
                     const existingRec = existingRecordings[slotIndex];
+                    const isDisabled = recordingLimitStatus !== null && !recordingLimitStatus.canRecord && !existingRec;
                     return (
                       <TouchableOpacity
                         key={slotIndex}
                         style={[
                           styles.mediaOptionButton,
-                          existingRec && styles.mediaOptionButtonFilled
+                          existingRec && styles.mediaOptionButtonFilled,
+                          isDisabled && { opacity: 0.6 }
                         ]}
                         onPress={() => {
+                          if (isDisabled) {
+                            Alert.alert(
+                              '録音上限に達しました',
+                              `Freeプランでは月に${recordingLimitStatus?.limit}回まで録音できます。\n現在の録音数: ${recordingLimitStatus?.currentCount}/${recordingLimitStatus?.limit}\n\nプレミアムで無制限に録音できます。`,
+                              [
+                                { text: 'キャンセル', style: 'cancel' },
+                                { text: 'プレミアムを見る', onPress: () => {
+                                  onClose();
+                                  router.push('/(tabs)/pricing-plans');
+                                }}
+                              ]
+                            );
+                            return;
+                          }
                           // 録音画面に移動する前に、現在のフォーム状態と録音状態を保存
                           setFormStateBeforeRecording({
                             minutes: minutes,
@@ -1978,9 +2034,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                           setSelectedRecordingSlot(slotIndex);
                           setShowAudioRecorder(true);
                         }}
+                        disabled={isDisabled}
                       >
-                        <Mic size={24} color="#8B4513" />
-                        <Text style={styles.mediaOptionText}>
+                        <Mic size={24} color={isDisabled ? currentTheme.textSecondary : "#8B4513"} />
+                        <Text style={[styles.mediaOptionText, isDisabled && { color: currentTheme.textSecondary }]}>
                           録音{slotIndex + 1}で記録
                         </Text>
                         {existingRec ? (
@@ -3068,6 +3125,22 @@ const styles = StyleSheet.create({
   eventEditButtonText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  limitInfoContainer: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  limitInfoText: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  limitInfoSubText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
   },
 });
 

@@ -54,7 +54,7 @@ interface UIState {
   showQuickRecord: boolean;
   showPracticeRecord: boolean;
   showEventModal: boolean;
-  selectedEvent: {id: string, title: string, description?: string} | null;
+  selectedEvent: {id: string, title: string, description?: string, color?: string | null} | null;
   successMessage: string;
   selectedDate: Date | null;
 }
@@ -64,7 +64,7 @@ type UIAction =
   | { type: 'SHOW_QUICK_RECORD'; payload: boolean }
   | { type: 'SHOW_PRACTICE_RECORD'; payload: boolean }
   | { type: 'SHOW_EVENT_MODAL'; payload: boolean }
-  | { type: 'SET_SELECTED_EVENT'; payload: {id: string, title: string, description?: string} | null }
+  | { type: 'SET_SELECTED_EVENT'; payload: {id: string, title: string, description?: string, color?: string | null} | null }
   | { type: 'SET_SUCCESS_MESSAGE'; payload: string }
   | { type: 'SET_SELECTED_DATE'; payload: Date | null }
   | { type: 'CLOSE_ALL_MODALS' };
@@ -927,13 +927,13 @@ export default function CalendarScreen() {
   }, [setSelectedDate, setShowPracticeRecord]);
 
   // 選択された日付のイベントを取得
-  const getEventsForDate = useCallback((date: Date | null): Array<{id: string, title: string, description?: string}> => {
+  const getEventsForDate = useCallback((date: Date | null): Array<{id: string, title: string, description?: string, color?: string | null}> => {
     if (!date) return [];
     const dateStr = formatLocalDate(date);
     return events[dateStr] || [];
   }, [events]);
 
-  const handleEventSelection = useCallback((event: {id: string, title: string, description?: string}) => {
+  const handleEventSelection = useCallback((event: {id: string, title: string, description?: string, color?: string | null}) => {
     setSelectedEvent(event);
     setShowEventModal(true);
   }, [setSelectedEvent, setShowEventModal]);
@@ -994,7 +994,7 @@ export default function CalendarScreen() {
         const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const dayData = practiceData[dateStr];
         const dayRecordings = recordingsData[dateStr]; // 日付文字列をキーとして使用
-        const dayEvents: Array<{id: string, title: string, description?: string}> = events[dateStr] || []; // 日付文字列をキーとして使用
+        const dayEvents: Array<{id: string, title: string, description?: string, color?: string | null}> = events[dateStr] || []; // 日付文字列をキーとして使用
         const hasPracticeRecord = dayData?.hasRecord || false; // 練習時間が記録されたか（タイマー、クイック、手動入力など）
         const hasBasicPractice = dayData?.hasBasicPractice || false; // 基礎練（input_method: 'preset'）があるか
         const hasRecording = dayRecordings?.hasRecording || false;

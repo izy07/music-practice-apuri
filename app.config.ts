@@ -2,7 +2,7 @@ import type { ExpoConfig } from 'expo/config';
 
 // Minimal, env-driven config to set EAS projectId and keep current app.json values.
 const config: ExpoConfig = {
-  name: 'Music Practice',
+  name: '楽器練習アプリ',
   slug: 'music-practice',
   scheme: 'music-practice',
   orientation: 'portrait',
@@ -10,7 +10,7 @@ const config: ExpoConfig = {
   ios: {
     supportsTablet: true,
     bundleIdentifier: 'com.musicpractice.app',
-    displayName: '楽器練習記録アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
+    displayName: '楽器練習アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
     infoPlist: {
       // 年齢制限: 12+（録音機能があるため）
       // App Store Connectで設定する必要がありますが、ここでも明示
@@ -20,10 +20,10 @@ const config: ExpoConfig = {
   android: {
     adaptiveIcon: {
       foregroundImage: './assets/images/icon.png', // PNG形式を使用（jimp-compactがWebPをサポートしていないため）
-      backgroundColor: '#FFFFFF',
+      backgroundColor: '#FFFFFF', // 白背景
     },
     package: 'com.musicpractice.app',
-    label: '楽器練習記録アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
+    label: '楽器練習アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
     // 年齢制限: 12+（録音機能があるため）
     // Google Play Consoleで設定する必要がありますが、ここでも明示
   },

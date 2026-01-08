@@ -1,0 +1,25 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景（白） -->
+  <rect width="1024" height="1024" fill="#FFFFFF"/>
+  
+  <!-- 音符（モダンなデザイン、青系の色） -->
+  <g transform="translate(512, 512)">
+    <!-- 音符の頭（楕円、傾斜） -->
+    <ellipse cx="0" cy="-90" rx="130" ry="85" fill="#1976D2" transform="rotate(-30)"/>
+    
+    <!-- 音符の幹（縦線、少し太め） -->
+    <rect x="-12" y="-90" width="24" height="360" fill="#1976D2" rx="12"/>
+    
+    <!-- 音符の旗（流れるような曲線） -->
+    <path d="M 12 -90 
+             C 120 -110, 240 -60, 280 40
+             C 300 100, 260 180, 200 230
+             C 150 270, 80 280, 40 260" 
+          stroke="#1976D2" 
+          stroke-width="30" 
+          fill="none" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"/>
+  </g>
+</svg>
+

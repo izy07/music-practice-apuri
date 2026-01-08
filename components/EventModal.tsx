@@ -21,6 +21,7 @@ import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { disableBackgroundFocus, enableBackgroundFocus, focusFirstElement, blurActiveElement } from '@/lib/modalFocusManager';
 import { isColumnNotFoundError, handleColumnError } from '@/lib/columnErrorHandler';
+import { EVENT_COLORS, DEFAULT_EVENT_COLOR, EventColor, getEventColorOption } from '@/lib/eventColors';
 
 interface Event {
   id: string;
@@ -28,6 +29,7 @@ interface Event {
   date: string;
   description?: string;
   is_completed: boolean;
+  color?: EventColor | string | null;
 }
 
 interface EventModalProps {
@@ -49,6 +51,7 @@ export default function EventModal({
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
   const [description, setDescription] = useState('');
+  const [eventColor, setEventColor] = useState<EventColor>(DEFAULT_EVENT_COLOR);
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const modalContentRef = useRef<View>(null);
@@ -58,15 +61,18 @@ export default function EventModal({
       setTitle(event.title);
       setDate(event.date);
       setDescription(event.description || '');
+      setEventColor((event.color as EventColor) || DEFAULT_EVENT_COLOR);
     } else if (selectedDate) {
       setTitle('');
       setDate(formatLocalDate(selectedDate));
       setDescription('');
+      setEventColor(DEFAULT_EVENT_COLOR);
     } else if (visible && !event && !selectedDate) {
       // 新規イベント作成時でselectedDateがない場合は、今日の日付を初期値として設定
       setTitle('');
       setDate(formatLocalDate(new Date()));
       setDescription('');
+      setEventColor(DEFAULT_EVENT_COLOR);
     }
   }, [event, selectedDate, visible]);
 
@@ -126,6 +132,7 @@ export default function EventModal({
           title: title.trim(),
           date,
           description: description.trim() || null,
+          color: eventColor,
           updated_at: new Date().toISOString(),
         };
         
@@ -152,7 +159,7 @@ export default function EventModal({
 
         // カラムが存在しないエラーの場合、該当カラムを除外して再試行
         if (error && isColumnNotFoundError(error)) {
-          const optionalColumns = ['instrument_id', 'event_date'];
+          const optionalColumns = ['instrument_id', 'event_date', 'color'];
           const handled = handleColumnError(error, updateData, optionalColumns);
           
           if (handled) {
@@ -201,6 +208,7 @@ export default function EventModal({
           title: title.trim(),
           date,
           description: description.trim() || null,
+          color: eventColor,
         };
         
         // event_dateカラムが存在する場合は、dateと同じ値を設定
@@ -220,7 +228,7 @@ export default function EventModal({
 
         // カラムが存在しないエラーの場合、該当カラムを除外して再試行
         if (error && isColumnNotFoundError(error)) {
-          const optionalColumns = ['instrument_id', 'event_date'];
+          const optionalColumns = ['instrument_id', 'event_date', 'color'];
           const handled = handleColumnError(error, insertData, optionalColumns);
           
           if (handled) {
@@ -337,6 +345,7 @@ export default function EventModal({
     setTitle('');
     setDate('');
     setDescription('');
+    setEventColor(DEFAULT_EVENT_COLOR);
   };
 
   const handleClose = () => {
@@ -455,6 +464,52 @@ export default function EventModal({
                   numberOfLines={4}
                   maxLength={200}
                 />
+              </View>
+
+              {/* 色選択 */}
+              <View style={styles.inputContainer}>
+                <Text style={[styles.label, { color: currentTheme.text }]}>
+                  イベントの色 *
+                </Text>
+                <Text style={[styles.colorDescription, { color: currentTheme.textSecondary }]}>
+                  {getEventColorOption(eventColor).description}
+                </Text>
+                <View style={styles.colorPicker}>
+                  {Object.values(EVENT_COLORS).map((colorOption) => (
+                    <TouchableOpacity
+                      key={colorOption.value}
+                      style={[
+                        styles.colorOption,
+                        {
+                          backgroundColor: colorOption.color,
+                          borderColor: eventColor === colorOption.value ? currentTheme.text : 'transparent',
+                          borderWidth: eventColor === colorOption.value ? 3 : 1,
+                        },
+                      ]}
+                      onPress={() => setEventColor(colorOption.value)}
+                    >
+                      {eventColor === colorOption.value && (
+                        <Text style={styles.colorCheckmark}>✓</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <View style={styles.colorLabels}>
+                  {Object.values(EVENT_COLORS).map((colorOption) => (
+                    <Text
+                      key={colorOption.value}
+                      style={[
+                        styles.colorLabel,
+                        {
+                          color: eventColor === colorOption.value ? currentTheme.primary : currentTheme.textSecondary,
+                          fontWeight: eventColor === colorOption.value ? '600' : '400',
+                        },
+                      ]}
+                    >
+                      {colorOption.label}
+                    </Text>
+                  ))}
+                </View>
               </View>
 
               {/* ボタン */}
@@ -654,5 +709,40 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  colorDescription: {
+    fontSize: 12,
+    marginBottom: 12,
+  },
+  colorPicker: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
+  },
+  colorOption: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  colorCheckmark: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  colorLabels: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  colorLabel: {
+    fontSize: 11,
+    textAlign: 'center',
+    flex: 1,
+    minWidth: 50,
   },
 });

@@ -44,6 +44,7 @@ export default function MyLibraryScreen() {
   const [isSaving, setIsSaving] = useState(false); // 保存中の二重クリック防止
   const [showStatusModal, setShowStatusModal] = useState(false);
   const [statusModalSong, setStatusModalSong] = useState<Song | null>(null);
+  const [libraryLimitStatus, setLibraryLimitStatus] = useState<{ canAdd: boolean; currentCount: number; limit: number } | null>(null);
   
   // 新規追加・編集用の状態
   const [formData, setFormData] = useState({
@@ -59,6 +60,33 @@ export default function MyLibraryScreen() {
   useEffect(() => {
     loadSongs();
   }, [entitlement.isEntitled, selectedInstrument]);
+
+  // 画面表示時に楽曲数の制限を事前チェック
+  useEffect(() => {
+    const checkLimitOnMount = async () => {
+      if (!entitlement || entitlement.isEntitled) {
+        setLibraryLimitStatus(null); // プレミアムユーザーはチェック不要
+        return;
+      }
+
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          return;
+        }
+
+        const { getInstrumentId } = await import('@/lib/instrumentUtils');
+        const instrumentId = getInstrumentId(selectedInstrument);
+        
+        const limitCheck = await checkMyLibraryLimit(user.id, entitlement, instrumentId);
+        setLibraryLimitStatus(limitCheck);
+      } catch (error) {
+        logger.error('楽曲制限チェックエラー:', error);
+      }
+    };
+
+    checkLimitOnMount();
+  }, [entitlement, selectedInstrument]);
 
   // モーダルの開閉に応じてフォーカス管理（aria-hidden警告を根本的に解決）
   useEffect(() => {
@@ -217,9 +245,6 @@ export default function MyLibraryScreen() {
 
       logger.debug('認証成功:', user.id);
 
-      // statusの値を検証（許可されている値のみ）
-      const validStatuses = ['want_to_play', 'learning', 'played', 'mastered'] as const;
-      
       // formData.statusを文字列として正規化（配列やnull/undefinedの場合に対処）
       // ステータス値の型安全性を確保（any型を回避）
       type SongStatus = 'want_to_play' | 'learning' | 'played' | 'mastered';
@@ -384,6 +409,9 @@ export default function MyLibraryScreen() {
         }
         
         const limitCheck = await checkMyLibraryLimit(user.id, entitlement, currentInstrumentId);
+        // 制限状態を更新
+        setLibraryLimitStatus(limitCheck);
+        
         if (!limitCheck.canAdd) {
           Alert.alert(
             '制限に達しました',
@@ -519,6 +547,10 @@ export default function MyLibraryScreen() {
         
         // リストを再読み込み（モーダルを閉じる前に実行してデータを確実に取得）
         await loadSongs();
+        
+        // 制限状態を再チェック
+        const updatedLimitCheck = await checkMyLibraryLimit(user.id, entitlement, currentInstrumentId);
+        setLibraryLimitStatus(updatedLimitCheck);
         
         // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
         if (Platform.OS === 'web') {
@@ -852,8 +884,15 @@ export default function MyLibraryScreen() {
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
           マイライブラリ
         </Text>
-        <TouchableOpacity onPress={startAdding} style={styles.addButton}>
-          <Plus size={24} color={currentTheme.primary} />
+        <TouchableOpacity 
+          onPress={startAdding} 
+          style={styles.addButton}
+          disabled={libraryLimitStatus !== null && !libraryLimitStatus.canAdd}
+        >
+          <Plus 
+            size={24} 
+            color={(libraryLimitStatus !== null && !libraryLimitStatus.canAdd) ? currentTheme.textSecondary : currentTheme.primary} 
+          />
         </TouchableOpacity>
       </View>
 
@@ -870,6 +909,23 @@ export default function MyLibraryScreen() {
             >
               <Text style={styles.upgradeBannerButtonText}>プレミアムへ</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {/* 楽曲数制限の表示（フリープランの場合） */}
+        {!entitlement.isEntitled && libraryLimitStatus && (
+          <View style={[styles.limitInfoContainer, { backgroundColor: currentTheme.surface, borderColor: libraryLimitStatus.canAdd ? currentTheme.primary : '#FF4444' }]}>
+            <Text style={[styles.limitInfoText, { color: currentTheme.text }]}>
+              {libraryLimitStatus.canAdd 
+                ? `楽曲数: ${libraryLimitStatus.currentCount}/${libraryLimitStatus.limit}（あと${libraryLimitStatus.limit - libraryLimitStatus.currentCount}曲追加可能）`
+                : `上限に達しています: ${libraryLimitStatus.currentCount}/${libraryLimitStatus.limit}`
+              }
+            </Text>
+            {!libraryLimitStatus.canAdd && (
+              <Text style={[styles.limitInfoSubText, { color: currentTheme.textSecondary }]}>
+                プレミアムで無制限に追加できます
+              </Text>
+            )}
           </View>
         )}
         
@@ -917,8 +973,15 @@ export default function MyLibraryScreen() {
                 弾きたい曲を追加してみましょう！
               </Text>
               <TouchableOpacity
-                style={[styles.emptyAddButton, { backgroundColor: currentTheme.primary }]}
+                style={[
+                  styles.emptyAddButton, 
+                  { 
+                    backgroundColor: (libraryLimitStatus !== null && !libraryLimitStatus.canAdd) ? currentTheme.textSecondary : currentTheme.primary,
+                    opacity: (libraryLimitStatus !== null && !libraryLimitStatus.canAdd) ? 0.6 : 1
+                  }
+                ]}
                 onPress={startAdding}
+                disabled={libraryLimitStatus !== null && !libraryLimitStatus.canAdd}
               >
                 <Plus size={20} color="#FFFFFF" />
                 <Text style={styles.emptyAddButtonText}>曲を追加</Text>
@@ -1281,16 +1344,33 @@ export default function MyLibraryScreen() {
                 />
               </View>
 
+              {/* 楽曲数制限の表示（フリープランの場合、新規追加時のみ） */}
+              {!entitlement.isEntitled && !editingSong && libraryLimitStatus && (
+                <View style={[styles.limitInfoContainer, { backgroundColor: currentTheme.surface, borderColor: libraryLimitStatus.canAdd ? currentTheme.primary : '#FF4444', marginBottom: 12 }]}>
+                  <Text style={[styles.limitInfoText, { color: currentTheme.text }]}>
+                    {libraryLimitStatus.canAdd 
+                      ? `楽曲数: ${libraryLimitStatus.currentCount}/${libraryLimitStatus.limit}（あと${libraryLimitStatus.limit - libraryLimitStatus.currentCount}曲追加可能）`
+                      : `上限に達しています: ${libraryLimitStatus.currentCount}/${libraryLimitStatus.limit}`
+                    }
+                  </Text>
+                  {!libraryLimitStatus.canAdd && (
+                    <Text style={[styles.limitInfoSubText, { color: currentTheme.textSecondary }]}>
+                      プレミアムで無制限に追加できます
+                    </Text>
+                  )}
+                </View>
+              )}
+
               {/* 保存ボタン */}
               <View style={styles.saveButtonContainer}>
                 <TouchableOpacity 
                   onPress={saveSong}
-                  disabled={isSaving}
+                  disabled={isSaving || (!editingSong && libraryLimitStatus !== null && !libraryLimitStatus.canAdd)}
                   style={[
                     styles.modalSaveButton, 
                     { 
-                      backgroundColor: currentTheme.primary,
-                      opacity: isSaving ? 0.6 : 1
+                      backgroundColor: (isSaving || (!editingSong && libraryLimitStatus !== null && !libraryLimitStatus.canAdd)) ? currentTheme.textSecondary : currentTheme.primary,
+                      opacity: (isSaving || (!editingSong && libraryLimitStatus !== null && !libraryLimitStatus.canAdd)) ? 0.6 : 1
                     }
                   ]}
                 >
@@ -1724,5 +1804,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  limitInfoContainer: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  limitInfoText: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  limitInfoSubText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
   },
 });

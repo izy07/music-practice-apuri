@@ -145,4 +145,107 @@ export const getMusicTermCategories = async (): Promise<{ data: string[] | null;
   }
 };
 
+/**
+ * 音楽用語を追加
+ */
+export const createMusicTerm = async (
+  term: Omit<MusicTerm, 'id' | 'created_at' | 'updated_at' | 'display_order'>
+): Promise<{ data: MusicTerm | null; error: any }> => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return { data: null, error: new Error('ユーザーが認証されていません') };
+    }
+
+    // display_orderを取得（最大値+1）
+    const { data: maxOrderData } = await supabase
+      .from('music_terms')
+      .select('display_order')
+      .order('display_order', { ascending: false })
+      .limit(1)
+      .single();
+
+    const displayOrder = maxOrderData?.display_order ? maxOrderData.display_order + 1 : 0;
+
+    const { data, error } = await supabase
+      .from('music_terms')
+      .insert({
+        ...term,
+        display_order: displayOrder,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      logger.error(`[${REPOSITORY_CONTEXT}] createMusicTerm:error`, { error });
+      return { data: null, error };
+    }
+
+    // キャッシュをクリア
+    practiceDataCache.clear();
+
+    return { data, error: null };
+  } catch (error) {
+    logger.error(`[${REPOSITORY_CONTEXT}] createMusicTerm:exception`, { error });
+    return { data: null, error };
+  }
+};
+
+/**
+ * 音楽用語を更新
+ */
+export const updateMusicTerm = async (
+  termId: string,
+  updates: Partial<Omit<MusicTerm, 'id' | 'created_at' | 'updated_at'>>
+): Promise<{ data: MusicTerm | null; error: any }> => {
+  try {
+    const { data, error } = await supabase
+      .from('music_terms')
+      .update(updates)
+      .eq('id', termId)
+      .select()
+      .single();
+
+    if (error) {
+      logger.error(`[${REPOSITORY_CONTEXT}] updateMusicTerm:error`, { error });
+      return { data: null, error };
+    }
+
+    // キャッシュをクリア
+    practiceDataCache.clear();
+
+    return { data, error: null };
+  } catch (error) {
+    logger.error(`[${REPOSITORY_CONTEXT}] updateMusicTerm:exception`, { error });
+    return { data: null, error };
+  }
+};
+
+/**
+ * 音楽用語を削除
+ */
+export const deleteMusicTerm = async (
+  termId: string
+): Promise<{ error: any }> => {
+  try {
+    const { error } = await supabase
+      .from('music_terms')
+      .delete()
+      .eq('id', termId);
+
+    if (error) {
+      logger.error(`[${REPOSITORY_CONTEXT}] deleteMusicTerm:error`, { error });
+      return { error };
+    }
+
+    // キャッシュをクリア
+    practiceDataCache.clear();
+
+    return { error: null };
+  } catch (error) {
+    logger.error(`[${REPOSITORY_CONTEXT}] deleteMusicTerm:exception`, { error });
+    return { error };
+  }
+};
+
 

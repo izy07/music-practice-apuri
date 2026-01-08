@@ -500,23 +500,6 @@ export default function InstrumentHeader() {
                 </Text>
               </TouchableOpacity>
               
-              <TouchableOpacity
-                style={styles.toolItem}
-                onPress={() => {
-                  setShowLearningTools(false);
-                  Alert.alert(
-                    language === 'en' ? 'Note Training' : '音符トレーニング',
-                    language === 'en' ? 'This feature is currently under development' : 'この機能は現在開発中です',
-                    [{ text: 'OK' }]
-                  );
-                }}
-              >
-                <Music size={24} color="#4CAF50" />
-                <Text style={[styles.toolText, { color: currentTheme.text }]}>
-                  {language === 'en' ? 'Note Game (Not Implemented)' : '音符ゲーム(未実装)'}
-                </Text>
-              </TouchableOpacity>
-              
               <TouchableOpacity 
                 style={styles.toolItem}
                 onPress={() => {
