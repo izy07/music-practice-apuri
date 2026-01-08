@@ -86,10 +86,10 @@ export default function PricingPlansScreen() {
             </Text>
             <View style={styles.featureList}>
               {[
-                '演奏録音機能（各楽器ごとに月5回まで）',
+                '演奏録音機能（各楽器月3回まで）',
                 '楽器データ（2個まで使用可能）',
                 'マイライブラリ（各楽器ごとに6曲まで）',
-                '目標設定（各楽器ごとに3つまで）',
+                '目標設定（各楽器ごとに2つまで）',
               ].map((f) => (
                 <View key={f} style={styles.featureItem}>
                   <CheckCircle2 size={16} color={currentTheme.primary} />
