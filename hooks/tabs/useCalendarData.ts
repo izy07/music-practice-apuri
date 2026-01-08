@@ -1119,7 +1119,7 @@ export function useCalendarData(currentDate: Date) {
         // 現在選択されている楽器の目標のみを表示（既に楽器IDでフィルタリング済み）
         if (visibleGoals.length > 0) {
           // 目標リストを作成（既に現在選択されている楽器の目標のみが含まれている）
-          const goalsList = visibleGoals.map((goal: any) => ({
+          const goalsList = visibleGoals.map((goal: GoalForMapping) => ({
             title: goal.title,
             target_date: goal.target_date || undefined
           }));
