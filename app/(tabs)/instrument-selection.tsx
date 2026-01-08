@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
@@ -10,7 +10,6 @@ import logger from '@/lib/logger';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { useSubscription } from '@/hooks/useSubscription';
 import { canSaveDataForInstrument, getActiveInstrumentIds } from '@/lib/subscriptionLimits';
-import { safeGoBack } from '@/lib/navigationUtils';
 
 interface Instrument {
   id: string;
@@ -45,19 +44,19 @@ export default function InstrumentSelectionScreen() {
     { id: '550e8400-e29b-41d4-a716-446655440010', name: 'トロンボーン', nameEn: 'Trombone', emoji: '🎺' },
     { id: '550e8400-e29b-41d4-a716-446655440015', name: 'コントラバス', nameEn: 'Contrabass', emoji: '🎻' },
     { id: '550e8400-e29b-41d4-a716-446655440012', name: 'ファゴット', nameEn: 'Bassoon', emoji: '🎵' },
-    // TODO: 実装完了後にコメントアウトを解除
-    // { id: '550e8400-e29b-41d4-a716-446655440014', name: 'ハープ', nameEn: 'Harp', emoji: '🎶' },
-    // { id: '550e8400-e29b-41d4-a716-446655440020', name: 'シンセサイザー', nameEn: 'Synthesizer', emoji: '🎹' },
-    // { id: '550e8400-e29b-41d4-a716-446655440021', name: '太鼓', nameEn: 'Taiko', emoji: '🥁' },
-    // { id: '550e8400-e29b-41d4-a716-446655440019', name: '琴', nameEn: 'Koto', emoji: '🎵' },
+    // TODO: 将来的に追加予定の楽器: ハープ、シンセサイザー、太鼓、琴
     { id: '550e8400-e29b-41d4-a716-446655440016', name: 'その他', nameEn: 'Other', emoji: '❓' },
   ];
 
+  // 現在の楽器IDを計算（useMemoで重複計算を防止）
+  const currentInstrumentId = useMemo(() => {
+    return getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id) || '';
+  }, [selectedInstrument, user?.selected_instrument_id]);
+
   // 現在の楽器をContextから取得（単一のデータソース）
   useEffect(() => {
-    const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id) || '';
     setSelectedInstrumentId(currentInstrumentId);
-  }, [selectedInstrument, user?.selected_instrument_id]);
+  }, [currentInstrumentId]);
 
   // 使用中の楽器IDリストを取得
   useEffect(() => {
@@ -96,7 +95,6 @@ export default function InstrumentSelectionScreen() {
 
     // 現在の楽器と同じ場合は、カレンダー画面に遷移するだけ
     // ただし、新規登録ユーザー（楽器未選択）の場合はこのチェックをスキップ
-    const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id) || '';
     if (currentInstrumentId && currentInstrumentId !== '' && selectedInstrumentId === currentInstrumentId) {
       // 既に同じ楽器が選択されている場合は、カレンダー画面に遷移
       router.replace('/(tabs)/index');
@@ -242,28 +240,27 @@ export default function InstrumentSelectionScreen() {
         {selectedInstrumentId ? (
           <View style={styles.completionSection}>
             {(() => {
-              const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id) || '';
               const isSameInstrument = currentInstrumentId && currentInstrumentId !== '' && selectedInstrumentId === currentInstrumentId;
               const isLoading = syncStatus === 'syncing';
 
               return (
-              <TouchableOpacity
-                style={[styles.completionButton, { backgroundColor: currentTheme.primary }]}
-                onPress={handleSaveInstrument}
-                disabled={isLoading}
-                activeOpacity={0.8}
-              >
-                {isLoading ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                    <Text style={[styles.completionButtonText, { marginLeft: 8 }]}>保存中...</Text>
-                  </View>
-                ) : (
-                  <Text style={styles.completionButtonText}>
-                    {isSameInstrument ? 'カレンダー画面に戻る' : (currentInstrumentId && currentInstrumentId !== '' ? '楽器を変更' : '楽器選択を保存')}
-                  </Text>
-                )}
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.completionButton, { backgroundColor: currentTheme.primary }]}
+                  onPress={handleSaveInstrument}
+                  disabled={isLoading}
+                  activeOpacity={0.8}
+                >
+                  {isLoading ? (
+                    <View style={styles.loadingContainer}>
+                      <ActivityIndicator size="small" color="#FFFFFF" />
+                      <Text style={[styles.completionButtonText, { marginLeft: 8 }]}>保存中...</Text>
+                    </View>
+                  ) : (
+                    <Text style={styles.completionButtonText}>
+                      {isSameInstrument ? 'カレンダー画面に戻る' : (currentInstrumentId && currentInstrumentId !== '' ? '楽器を変更' : '楽器選択を保存')}
+                    </Text>
+                  )}
+                </TouchableOpacity>
               );
             })()}
           </View>
@@ -447,34 +444,6 @@ const styles = StyleSheet.create({
   freePlanInfoSubtitle: {
     fontSize: 12,
     lineHeight: 18,
-  },
-  freePlanInfoButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  freePlanInfoButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  freePlanInfoText: {
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
-  sameInstrumentMessage: {
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.05)',
-    marginTop: 12,
-  },
-  sameInstrumentText: {
-    fontSize: 14,
-    textAlign: 'center',
-    fontStyle: 'italic',
   },
   activeInstrumentsSection: {
     marginTop: 20,
