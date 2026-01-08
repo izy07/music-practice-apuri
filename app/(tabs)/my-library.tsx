@@ -828,19 +828,14 @@ export default function MyLibraryScreen() {
         {/* フリープラン用アップグレードバナー */}
         {!entitlement.isEntitled && (
           <View style={[styles.upgradeBanner, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
-            <View style={styles.upgradeBannerContent}>
-              <Text style={[styles.upgradeBannerTitle, { color: currentTheme.text }]}>
-                各楽器ごとに6曲まで追加可能
-              </Text>
-              <Text style={[styles.upgradeBannerSubtitle, { color: currentTheme.textSecondary }]}>
-                無制限にするにはプレミアムへアップグレード
-              </Text>
-            </View>
+            <Text style={[styles.upgradeBannerTitle, { color: currentTheme.text }]}>
+              各楽器ごとに6曲まで追加可能
+            </Text>
             <TouchableOpacity
               style={[styles.upgradeBannerButton, { backgroundColor: currentTheme.primary }]}
               onPress={() => router.push('/(tabs)/pricing-plans')}
             >
-              <Text style={styles.upgradeBannerButtonText}>アップグレード</Text>
+              <Text style={styles.upgradeBannerButtonText}>プレミアムへ</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -1652,10 +1647,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   upgradeBanner: {
-    margin: 16,
-    marginBottom: 12,
-    padding: 16,
-    borderRadius: 12,
+    margin: 12,
+    marginBottom: 8,
+    padding: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1671,25 +1667,19 @@ const styles = StyleSheet.create({
         }
     ),
   },
-  upgradeBannerContent: {
-    flex: 1,
-    marginRight: 12,
-  },
   upgradeBannerTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  upgradeBannerSubtitle: {
     fontSize: 12,
+    fontWeight: '600',
+    flex: 1,
+    marginRight: 8,
   },
   upgradeBannerButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
   },
   upgradeBannerButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: '#FFFFFF',
   },
