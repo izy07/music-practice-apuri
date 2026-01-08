@@ -25,12 +25,15 @@ import { createShadowStyle } from '@/lib/shadowStyles';
 import { supabase } from '@/lib/supabase';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import logger from '@/lib/logger';
+import { getActiveInstrumentIds } from '@/lib/subscriptionLimits';
 
 export default function PrivacySettingsScreen() {
   const router = useRouter();
   const { currentTheme } = useInstrumentTheme();
-  const { signOut } = useAuthAdvanced();
+  const { signOut, user } = useAuthAdvanced();
   const [isDeleting, setIsDeleting] = useState(false);
+  const [activeInstrumentIds, setActiveInstrumentIds] = useState<string[]>([]);
+  const [isDeletingInstrument, setIsDeletingInstrument] = useState<string | null>(null);
 
   const goBack = () => {
     safeGoBack(router, '/(tabs)/settings', true); // 確実にsettings画面に戻る
@@ -42,6 +45,154 @@ export default function PrivacySettingsScreen() {
 
   const handleTermsOfService = () => {
     router.push('/(tabs)/terms-of-service');
+  };
+
+  // 使用中の楽器IDリストを取得
+  React.useEffect(() => {
+    const loadActiveInstruments = async () => {
+      if (!user?.id) return;
+      try {
+        const activeIds = await getActiveInstrumentIds(user.id);
+        setActiveInstrumentIds(activeIds);
+      } catch (error) {
+        logger.error('使用中楽器IDの取得に失敗しました:', error);
+      }
+    };
+    loadActiveInstruments();
+  }, [user?.id]);
+
+  const handleDeleteInstrumentData = (instrumentId: string) => {
+    // 楽器名を取得（デフォルト楽器リストから）
+    const defaultInstruments = [
+      { id: '550e8400-e29b-41d4-a716-446655440001', name: 'ピアノ', emoji: '🎹' },
+      { id: '550e8400-e29b-41d4-a716-446655440002', name: 'ギター', emoji: '🎸' },
+      { id: '550e8400-e29b-41d4-a716-446655440003', name: 'バイオリン', emoji: '🎻' },
+      { id: '550e8400-e29b-41d4-a716-446655440004', name: 'フルート', emoji: '🪈' },
+      { id: '550e8400-e29b-41d4-a716-446655440005', name: 'トランペット', emoji: '🎺' },
+      { id: '550e8400-e29b-41d4-a716-446655440009', name: 'クラリネット', emoji: '🎵' },
+      { id: '550e8400-e29b-41d4-a716-446655440011', name: 'チェロ', emoji: '🎻' },
+      { id: '550e8400-e29b-41d4-a716-446655440007', name: 'サックス', emoji: '🎷' },
+      { id: '550e8400-e29b-41d4-a716-446655440018', name: 'ヴィオラ', emoji: '🎻' },
+      { id: '550e8400-e29b-41d4-a716-446655440008', name: 'ホルン', emoji: '📯' },
+      { id: '550e8400-e29b-41d4-a716-446655440006', name: 'ドラム', emoji: '🥁' },
+      { id: '550e8400-e29b-41d4-a716-446655440013', name: 'オーボエ', emoji: '🎵' },
+      { id: '550e8400-e29b-41d4-a716-446655440010', name: 'トロンボーン', emoji: '🎺' },
+      { id: '550e8400-e29b-41d4-a716-446655440015', name: 'コントラバス', emoji: '🎻' },
+      { id: '550e8400-e29b-41d4-a716-446655440012', name: 'ファゴット', emoji: '🎵' },
+      { id: '550e8400-e29b-41d4-a716-446655440016', name: 'その他', emoji: '❓' },
+    ];
+    const instrument = defaultInstruments.find(i => i.id === instrumentId);
+    const instrumentName = instrument?.name || '楽器';
+
+    Alert.alert(
+      '楽器データの削除',
+      `「${instrumentName}」のすべてのデータを削除しますか？\n\nこの操作は取り消すことができません。\n\n削除されるデータ:\n• 録音データ\n• 練習記録\n• 目標\n• マイライブラリ\n• イベント`,
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '削除する',
+          style: 'destructive',
+          onPress: () => performInstrumentDataDeletion(instrumentId)
+        }
+      ]
+    );
+  };
+
+  const performInstrumentDataDeletion = async (instrumentId: string) => {
+    if (!user?.id) return;
+    if (isDeletingInstrument) return;
+
+    setIsDeletingInstrument(instrumentId);
+
+    try {
+      logger.info('[PrivacySettings] 楽器データ削除処理を開始:', { instrumentId, userId: user.id });
+
+      // 各テーブルから楽器のデータを削除
+      const deletePromises = [
+        supabase
+          .from('recordings')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('instrument_id', instrumentId),
+        supabase
+          .from('goals')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('instrument_id', instrumentId),
+        supabase
+          .from('my_songs')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('instrument_id', instrumentId),
+        supabase
+          .from('practice_sessions')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('instrument_id', instrumentId),
+        supabase
+          .from('events')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('instrument_id', instrumentId),
+      ];
+
+      const results = await Promise.all(deletePromises);
+      const errors = results.filter(r => r.error);
+
+      if (errors.length > 0) {
+        logger.error('[PrivacySettings] 楽器データ削除エラー:', errors);
+        Alert.alert(
+          'エラー',
+          '楽器データの削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。',
+          [{ text: 'OK' }]
+        );
+        setIsDeletingInstrument(null);
+        return;
+      }
+
+      logger.info('[PrivacySettings] 楽器データの削除が完了:', { instrumentId });
+
+      // 使用中楽器リストを更新
+      const activeIds = await getActiveInstrumentIds(user.id);
+      setActiveInstrumentIds(activeIds);
+
+      // 楽器名を取得（デフォルト楽器リストから）
+      const defaultInstruments = [
+        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'ピアノ', emoji: '🎹' },
+        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'ギター', emoji: '🎸' },
+        { id: '550e8400-e29b-41d4-a716-446655440003', name: 'バイオリン', emoji: '🎻' },
+        { id: '550e8400-e29b-41d4-a716-446655440004', name: 'フルート', emoji: '🪈' },
+        { id: '550e8400-e29b-41d4-a716-446655440005', name: 'トランペット', emoji: '🎺' },
+        { id: '550e8400-e29b-41d4-a716-446655440009', name: 'クラリネット', emoji: '🎵' },
+        { id: '550e8400-e29b-41d4-a716-446655440011', name: 'チェロ', emoji: '🎻' },
+        { id: '550e8400-e29b-41d4-a716-446655440007', name: 'サックス', emoji: '🎷' },
+        { id: '550e8400-e29b-41d4-a716-446655440018', name: 'ヴィオラ', emoji: '🎻' },
+        { id: '550e8400-e29b-41d4-a716-446655440008', name: 'ホルン', emoji: '📯' },
+        { id: '550e8400-e29b-41d4-a716-446655440006', name: 'ドラム', emoji: '🥁' },
+        { id: '550e8400-e29b-41d4-a716-446655440013', name: 'オーボエ', emoji: '🎵' },
+        { id: '550e8400-e29b-41d4-a716-446655440010', name: 'トロンボーン', emoji: '🎺' },
+        { id: '550e8400-e29b-41d4-a716-446655440015', name: 'コントラバス', emoji: '🎻' },
+        { id: '550e8400-e29b-41d4-a716-446655440012', name: 'ファゴット', emoji: '🎵' },
+        { id: '550e8400-e29b-41d4-a716-446655440016', name: 'その他', emoji: '❓' },
+      ];
+      const instrument = defaultInstruments.find(i => i.id === instrumentId);
+      const instrumentName = instrument?.name || '楽器';
+
+      Alert.alert(
+        '削除完了',
+        `「${instrumentName}」のデータを削除しました。`,
+        [{ text: 'OK' }]
+      );
+    } catch (error: any) {
+      logger.error('[PrivacySettings] 楽器データ削除例外:', error);
+      Alert.alert(
+        'エラー',
+        '楽器データの削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsDeletingInstrument(null);
+    }
   };
 
   const handleContactPrivacyManager = () => {
@@ -273,38 +424,106 @@ export default function PrivacySettingsScreen() {
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>データの管理</Text>
           
-          <TouchableOpacity
-            style={[
-              styles.actionButton, 
-              { 
-                backgroundColor: isDeleting ? '#999999' : '#F44336',
-                opacity: isDeleting ? 0.6 : 1
-              }
-            ]}
-            onPress={() => {
-              logger.info('[PrivacySettings] アカウント削除ボタンがタップされました');
-              handleDeleteAccount();
-            }}
-            disabled={isDeleting}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            {isDeleting ? (
-              <>
-                <ActivityIndicator size="small" color="#FFFFFF" />
-                <Text style={styles.actionButtonText}>削除中...</Text>
-              </>
-            ) : (
-              <>
-                <Trash2 size={16} color="#FFFFFF" />
-                <Text style={styles.actionButtonText}>アカウントを削除</Text>
-              </>
-            )}
-          </TouchableOpacity>
-          
-          <Text style={[styles.sectionDescription, { color: currentTheme.textSecondary, marginTop: 12 }]}>
-            アカウントを削除すると、すべてのデータが永久に削除されます。個人情報の開示・訂正・削除に関するご要望は、お問い合わせ先までご連絡ください。
-          </Text>
+          {/* 楽器データの削除 */}
+          {activeInstrumentIds.length > 0 && (
+            <View style={styles.instrumentDataSection}>
+              <Text style={[styles.instrumentDataTitle, { color: currentTheme.text }]}>
+                楽器データの削除
+              </Text>
+              <Text style={[styles.sectionDescription, { color: currentTheme.textSecondary, marginBottom: 12 }]}>
+                使用中の楽器のデータを個別に削除できます。
+              </Text>
+              {activeInstrumentIds.map((instrumentId) => {
+                // 楽器名を取得（デフォルト楽器リストから）
+                const defaultInstruments = [
+                  { id: '550e8400-e29b-41d4-a716-446655440001', name: 'ピアノ', emoji: '🎹' },
+                  { id: '550e8400-e29b-41d4-a716-446655440002', name: 'ギター', emoji: '🎸' },
+                  { id: '550e8400-e29b-41d4-a716-446655440003', name: 'バイオリン', emoji: '🎻' },
+                  { id: '550e8400-e29b-41d4-a716-446655440004', name: 'フルート', emoji: '🪈' },
+                  { id: '550e8400-e29b-41d4-a716-446655440005', name: 'トランペット', emoji: '🎺' },
+                  { id: '550e8400-e29b-41d4-a716-446655440009', name: 'クラリネット', emoji: '🎵' },
+                  { id: '550e8400-e29b-41d4-a716-446655440011', name: 'チェロ', emoji: '🎻' },
+                  { id: '550e8400-e29b-41d4-a716-446655440007', name: 'サックス', emoji: '🎷' },
+                  { id: '550e8400-e29b-41d4-a716-446655440018', name: 'ヴィオラ', emoji: '🎻' },
+                  { id: '550e8400-e29b-41d4-a716-446655440008', name: 'ホルン', emoji: '📯' },
+                  { id: '550e8400-e29b-41d4-a716-446655440006', name: 'ドラム', emoji: '🥁' },
+                  { id: '550e8400-e29b-41d4-a716-446655440013', name: 'オーボエ', emoji: '🎵' },
+                  { id: '550e8400-e29b-41d4-a716-446655440010', name: 'トロンボーン', emoji: '🎺' },
+                  { id: '550e8400-e29b-41d4-a716-446655440015', name: 'コントラバス', emoji: '🎻' },
+                  { id: '550e8400-e29b-41d4-a716-446655440012', name: 'ファゴット', emoji: '🎵' },
+                  { id: '550e8400-e29b-41d4-a716-446655440016', name: 'その他', emoji: '❓' },
+                ];
+                const instrument = defaultInstruments.find(i => i.id === instrumentId);
+                if (!instrument) return null;
+                const isDeletingThis = isDeletingInstrument === instrumentId;
+                return (
+                  <TouchableOpacity
+                    key={instrumentId}
+                    style={[
+                      styles.instrumentDeleteButton,
+                      {
+                        backgroundColor: isDeletingThis ? '#999999' : '#FF9800',
+                        opacity: isDeletingThis ? 0.6 : 1,
+                        borderColor: currentTheme.secondary,
+                      }
+                    ]}
+                    onPress={() => handleDeleteInstrumentData(instrumentId)}
+                    disabled={isDeletingThis || isDeleting}
+                    activeOpacity={0.7}
+                  >
+                    {isDeletingThis ? (
+                      <>
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                        <Text style={styles.instrumentDeleteButtonText}>削除中...</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={styles.instrumentDeleteEmoji}>{instrument.emoji}</Text>
+                        <Text style={styles.instrumentDeleteButtonText}>
+                          {instrument.name}のデータを削除
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          <View style={styles.accountDeleteSection}>
+            <TouchableOpacity
+              style={[
+                styles.actionButton, 
+                { 
+                  backgroundColor: isDeleting ? '#999999' : '#F44336',
+                  opacity: isDeleting ? 0.6 : 1
+                }
+              ]}
+              onPress={() => {
+                logger.info('[PrivacySettings] アカウント削除ボタンがタップされました');
+                handleDeleteAccount();
+              }}
+              disabled={isDeleting}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              {isDeleting ? (
+                <>
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                  <Text style={styles.actionButtonText}>削除中...</Text>
+                </>
+              ) : (
+                <>
+                  <Trash2 size={16} color="#FFFFFF" />
+                  <Text style={styles.actionButtonText}>アカウントを削除</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            
+            <Text style={[styles.sectionDescription, { color: currentTheme.textSecondary, marginTop: 12 }]}>
+              アカウントを削除すると、すべてのデータが永久に削除されます。個人情報の開示・訂正・削除に関するご要望は、お問い合わせ先までご連絡ください。
+            </Text>
+          </View>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -397,5 +616,38 @@ const styles = StyleSheet.create({
   linkButtonDescription: {
     fontSize: 14,
     lineHeight: 18,
+  },
+  instrumentDataSection: {
+    marginBottom: 24,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  instrumentDataTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  instrumentDeleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    gap: 8,
+  },
+  instrumentDeleteEmoji: {
+    fontSize: 18,
+  },
+  instrumentDeleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  accountDeleteSection: {
+    marginTop: 0,
   },
 });

@@ -30,33 +30,127 @@ export const FREE_PLAN_LIMITS = {
 } as const;
 
 /**
- * ユーザーが使用している楽器の数を取得
+ * 指定された楽器IDで記録が1個でもあるかをチェック
+ * 
+ * @param userId ユーザーID
+ * @param instrumentId チェックする楽器ID
+ * @returns 記録があるかどうか
+ */
+const hasRecordForInstrument = async (userId: string, instrumentId: string | null): Promise<boolean> => {
+  if (!instrumentId) {
+    return false;
+  }
+
+  try {
+    // recordings, goals, my_songs, practice_sessions, eventsのいずれかに記録があるかチェック
+    const [recordingsResult, goalsResult, mySongsResult, practiceSessionsResult, eventsResult] = await Promise.all([
+      supabase
+        .from('recordings')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('instrument_id', instrumentId)
+        .limit(1),
+      supabase
+        .from('goals')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('instrument_id', instrumentId)
+        .limit(1),
+      supabase
+        .from('my_songs')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('instrument_id', instrumentId)
+        .limit(1),
+      supabase
+        .from('practice_sessions')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('instrument_id', instrumentId)
+        .limit(1),
+      supabase
+        .from('events')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId)
+        .eq('instrument_id', instrumentId)
+        .limit(1),
+    ]);
+
+    const hasRecord = 
+      (recordingsResult.count && recordingsResult.count > 0) ||
+      (goalsResult.count && goalsResult.count > 0) ||
+      (mySongsResult.count && mySongsResult.count > 0) ||
+      (practiceSessionsResult.count && practiceSessionsResult.count > 0) ||
+      (eventsResult.count && eventsResult.count > 0);
+
+    return hasRecord;
+  } catch (error) {
+    logger.error('楽器記録チェック中にエラーが発生しました:', {
+      error,
+      userId,
+      instrumentId
+    });
+    // エラー時はfalseを返す（安全側に倒す）
+    return false;
+  }
+};
+
+/**
+ * ユーザーが使用している楽器の数を取得（記録が1個でもある楽器の数）
  * 
  * @param userId ユーザーID
  * @returns 楽器の数（実際の数、制限なし）
  */
 export const getUserInstrumentCount = async (userId: string): Promise<number> => {
   try {
-    const { data, error } = await supabase
-      .from('user_profiles')
-      .select('instrument_specific_data')
-      .eq('user_id', userId)
-      .maybeSingle();
+    // すべての楽器IDを取得（重複を排除）
+    const [recordingsResult, goalsResult, mySongsResult, practiceSessionsResult, eventsResult] = await Promise.all([
+      supabase
+        .from('recordings')
+        .select('instrument_id')
+        .eq('user_id', userId)
+        .not('instrument_id', 'is', null),
+      supabase
+        .from('goals')
+        .select('instrument_id')
+        .eq('user_id', userId)
+        .not('instrument_id', 'is', null),
+      supabase
+        .from('my_songs')
+        .select('instrument_id')
+        .eq('user_id', userId)
+        .not('instrument_id', 'is', null),
+      supabase
+        .from('practice_sessions')
+        .select('instrument_id')
+        .eq('user_id', userId)
+        .not('instrument_id', 'is', null),
+      supabase
+        .from('events')
+        .select('instrument_id')
+        .eq('user_id', userId)
+        .not('instrument_id', 'is', null),
+    ]);
 
-    if (error) {
-      logger.warn('楽器数の取得に失敗しました。デフォルト値1を使用します。', {
-        error,
-        userId
-      });
-      return 1; // エラー時は1個として扱う（フォールバック）
-    }
-
-    const instrumentData = data?.instrument_specific_data || {};
-    const instrumentCount = Object.keys(instrumentData).length;
+    // すべての楽器IDを収集（重複を排除）
+    const instrumentIds = new Set<string>();
     
-    logger.debug('楽器数取得:', {
+    [recordingsResult.data, goalsResult.data, mySongsResult.data, practiceSessionsResult.data, eventsResult.data].forEach(data => {
+      if (data) {
+        data.forEach((item: any) => {
+          if (item.instrument_id) {
+            instrumentIds.add(item.instrument_id);
+          }
+        });
+      }
+    });
+
+    const instrumentCount = instrumentIds.size;
+    
+    logger.debug('楽器数取得（記録ベース）:', {
       userId,
-      instrumentCount
+      instrumentCount,
+      instrumentIds: Array.from(instrumentIds)
     });
 
     return instrumentCount || 1; // 楽器データがない場合は1個として扱う
@@ -72,6 +166,7 @@ export const getUserInstrumentCount = async (userId: string): Promise<number> =>
 
 /**
  * 指定された楽器IDが既存の楽器データに含まれているかチェック
+ * （記録が1個でもある楽器を既存として扱う）
  * 
  * @param userId ユーザーID
  * @param instrumentId チェックする楽器ID
@@ -83,32 +178,15 @@ export const isExistingInstrument = async (userId: string, instrumentId: string 
   }
 
   try {
-    const { data, error } = await supabase
-      .from('user_profiles')
-      .select('instrument_specific_data')
-      .eq('user_id', userId)
-      .maybeSingle();
-
-    if (error) {
-      logger.warn('楽器データの取得に失敗しました。既存として扱います。', {
-        error,
-        userId,
-        instrumentId
-      });
-      return true; // エラー時は既存として扱う（フォールバック）
-    }
-
-    const instrumentData = data?.instrument_specific_data || {};
-    const isExisting = instrumentId in instrumentData;
+    const hasRecord = await hasRecordForInstrument(userId, instrumentId);
     
-    logger.debug('既存楽器チェック:', {
+    logger.debug('既存楽器チェック（記録ベース）:', {
       userId,
       instrumentId,
-      isExisting,
-      existingInstruments: Object.keys(instrumentData)
+      isExisting: hasRecord
     });
 
-    return isExisting;
+    return hasRecord;
   } catch (error) {
     logger.error('既存楽器チェック中にエラーが発生しました:', {
       error,
@@ -343,6 +421,80 @@ export const checkGoalLimit = async (
  * @param entitlement エンタイトルメント情報
  * @returns 調整された目標数
  */
+/**
+ * 使用中の楽器IDリストを取得（記録が1個でもある楽器）
+ * 
+ * @param userId ユーザーID
+ * @returns 使用中の楽器IDの配列
+ */
+export const getActiveInstrumentIds = async (userId: string): Promise<string[]> => {
+  try {
+    const instrumentCount = await getUserInstrumentCount(userId);
+    if (instrumentCount === 0) {
+      return [];
+    }
+
+    // すべての楽器IDを取得（重複を排除）
+    const [recordingsResult, goalsResult, mySongsResult, practiceSessionsResult, eventsResult] = await Promise.all([
+      supabase
+        .from('recordings')
+        .select('instrument_id')
+        .eq('user_id', userId)
+        .not('instrument_id', 'is', null),
+      supabase
+        .from('goals')
+        .select('instrument_id')
+        .eq('user_id', userId)
+        .not('instrument_id', 'is', null),
+      supabase
+        .from('my_songs')
+        .select('instrument_id')
+        .eq('user_id', userId)
+        .not('instrument_id', 'is', null),
+      supabase
+        .from('practice_sessions')
+        .select('instrument_id')
+        .eq('user_id', userId)
+        .not('instrument_id', 'is', null),
+      supabase
+        .from('events')
+        .select('instrument_id')
+        .eq('user_id', userId)
+        .not('instrument_id', 'is', null),
+    ]);
+
+    // すべての楽器IDを収集（重複を排除）
+    const instrumentIds = new Set<string>();
+    
+    [recordingsResult.data, goalsResult.data, mySongsResult.data, practiceSessionsResult.data, eventsResult.data].forEach(data => {
+      if (data) {
+        data.forEach((item: any) => {
+          if (item.instrument_id) {
+            instrumentIds.add(item.instrument_id);
+          }
+        });
+      }
+    });
+
+    const activeInstrumentIds = Array.from(instrumentIds);
+    
+    logger.debug('使用中楽器ID取得:', {
+      userId,
+      count: activeInstrumentIds.length,
+      instrumentIds: activeInstrumentIds
+    });
+
+    return activeInstrumentIds;
+  } catch (error) {
+    logger.error('使用中楽器ID取得中にエラーが発生しました:', {
+      error,
+      userId
+    });
+    ErrorHandler.handle(error, '使用中楽器ID取得', false);
+    return [];
+  }
+};
+
 export const adjustGoalsOnDowngrade = async (
   userId: string,
   entitlement: Entitlement | null | undefined

@@ -9,7 +9,7 @@ import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
 import logger from '@/lib/logger';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { useSubscription } from '@/hooks/useSubscription';
-import { canSaveDataForInstrument } from '@/lib/subscriptionLimits';
+import { canSaveDataForInstrument, getActiveInstrumentIds } from '@/lib/subscriptionLimits';
 import { safeGoBack } from '@/lib/navigationUtils';
 
 interface Instrument {
@@ -27,6 +27,7 @@ export default function InstrumentSelectionScreen() {
 
   const [selectedInstrumentId, setSelectedInstrumentId] = useState<string>('');
   const [customInstrumentName, setCustomInstrumentName] = useState<string>('');
+  const [activeInstrumentIds, setActiveInstrumentIds] = useState<string[]>([]);
 
   const instruments: Instrument[] = [
     { id: '550e8400-e29b-41d4-a716-446655440001', name: 'ピアノ', nameEn: 'Piano', emoji: '🎹' },
@@ -57,6 +58,20 @@ export default function InstrumentSelectionScreen() {
     const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id) || '';
     setSelectedInstrumentId(currentInstrumentId);
   }, [selectedInstrument, user?.selected_instrument_id]);
+
+  // 使用中の楽器IDリストを取得
+  useEffect(() => {
+    const loadActiveInstruments = async () => {
+      if (!user?.id) return;
+      try {
+        const activeIds = await getActiveInstrumentIds(user.id);
+        setActiveInstrumentIds(activeIds);
+      } catch (error) {
+        logger.error('使用中楽器IDの取得に失敗しました:', error);
+      }
+    };
+    loadActiveInstruments();
+  }, [user?.id]);
 
   const handleInstrumentSelection = (instrumentId: string) => {
     setSelectedInstrumentId(instrumentId);
@@ -253,6 +268,29 @@ export default function InstrumentSelectionScreen() {
             })()}
           </View>
         ) : null}
+
+        {/* 現在使用中の楽器リスト */}
+        {activeInstrumentIds.length > 0 && (
+          <View style={[styles.activeInstrumentsSection, { backgroundColor: currentTheme.surface, borderColor: currentTheme.secondary }]}>
+            <Text style={[styles.activeInstrumentsTitle, { color: currentTheme.text }]}>
+              現在使用中の楽器
+            </Text>
+            <View style={styles.activeInstrumentsList}>
+              {activeInstrumentIds.map((instrumentId) => {
+                const instrument = instruments.find(i => i.id === instrumentId);
+                if (!instrument) return null;
+                return (
+                  <View key={instrumentId} style={[styles.activeInstrumentItem, { backgroundColor: currentTheme.background, borderColor: currentTheme.primary }]}>
+                    <Text style={styles.activeInstrumentEmoji}>{instrument.emoji}</Text>
+                    <Text style={[styles.activeInstrumentName, { color: currentTheme.text }]}>
+                      {instrument.name}
+                    </Text>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -437,5 +475,46 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  activeInstrumentsSection: {
+    marginTop: 20,
+    marginBottom: 20,
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    }),
+    elevation: 3,
+  },
+  activeInstrumentsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  activeInstrumentsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  activeInstrumentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
+  },
+  activeInstrumentEmoji: {
+    fontSize: 18,
+  },
+  activeInstrumentName: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 });
