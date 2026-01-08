@@ -158,12 +158,6 @@ export default function InstrumentSelectionScreen() {
                 3個目以降の楽器を追加するには、プレミアムにアップグレードしてください。既存の楽器（2個まで）は自由に切り替えできます。
               </Text>
             </View>
-            <TouchableOpacity
-              style={[styles.freePlanInfoButton, { backgroundColor: currentTheme.primary }]}
-              onPress={() => router.push('/(tabs)/pricing-plans')}
-            >
-              <Text style={styles.freePlanInfoButtonText}>プレミアムを見る</Text>
-            </TouchableOpacity>
           </View>
         )}
         
