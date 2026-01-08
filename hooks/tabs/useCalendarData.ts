@@ -1092,11 +1092,7 @@ export function useCalendarData(currentDate: Date) {
         
         // 達成済みでない目標をフィルタリング
         // 型安全性のため明示的に型を指定（any型を回避）
-        type GoalForFilter = {
-          is_completed?: boolean;
-          progress_percentage?: number;
-        };
-        const activeGoals = goals.filter((goal: GoalForFilter) => {
+        const activeGoals = goals.filter((goal: GoalForMapping) => {
           const isCompleted = goal.is_completed === true || goal.progress_percentage === 100;
           return !isCompleted;
         });
@@ -1109,9 +1105,9 @@ export function useCalendarData(currentDate: Date) {
             instrument_id: g.instrument_id
           }))
         });
-
+        
         // show_on_calendarがtrueの目標のみを表示（クエリで既にフィルタリング済みだが、念のためクライアント側でも確認）
-        const visibleGoals = activeGoals.filter((goal: GoalForFilter) => {
+        const visibleGoals = activeGoals.filter((goal: GoalForMapping) => {
           return goal.show_on_calendar === true;
         });
 
