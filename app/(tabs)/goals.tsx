@@ -413,7 +413,7 @@ export default function GoalsScreen() {
     } finally {
       loadingRef.current = false;
     }
-  }, [selectedInstrument, user?.selected_instrument_id]);
+  }, [selectedInstrument, user?.selected_instrument_id, entitlement]);
 
   const loadCompletedGoals = useCallback(async () => {
     try {
