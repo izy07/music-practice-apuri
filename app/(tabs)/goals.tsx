@@ -24,11 +24,16 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { checkGoalLimit, canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 
 // アップグレードバナーコンポーネント
-const UpgradeBanner = ({ currentTheme, router, limitText }: { currentTheme: any; router: any; limitText: string }) => (
+const UpgradeBanner = ({ currentTheme, router }: { currentTheme: any; router: any }) => (
   <View style={[upgradeBannerStyles.container, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
-    <Text style={[upgradeBannerStyles.title, { color: currentTheme.text }]}>
-      {limitText}
-    </Text>
+    <View style={upgradeBannerStyles.textContainer}>
+      <Text style={[upgradeBannerStyles.title, { color: currentTheme.text }]}>
+        2個まで設定可能
+      </Text>
+      <Text style={[upgradeBannerStyles.subtitle, { color: currentTheme.textSecondary }]}>
+        無制限にするにはプレミアムへアップグレード
+      </Text>
+    </View>
     <TouchableOpacity
       style={[upgradeBannerStyles.button, { backgroundColor: currentTheme.primary }]}
       onPress={() => router.push('/(tabs)/pricing-plans')}
@@ -60,11 +65,17 @@ const upgradeBannerStyles = {
         }
     ),
   },
+  textContainer: {
+    flex: 1,
+    marginRight: 8,
+  },
   title: {
     fontSize: 12,
     fontWeight: '600' as const,
-    flex: 1,
-    marginRight: 8,
+    marginBottom: 2,
+  },
+  subtitle: {
+    fontSize: 11,
   },
   button: {
     paddingVertical: 6,
@@ -1588,7 +1599,6 @@ export default function GoalsScreen() {
           <UpgradeBanner
             currentTheme={currentTheme}
             router={router}
-            limitText="楽器数×2個まで設定可能"
           />
         )}
 
