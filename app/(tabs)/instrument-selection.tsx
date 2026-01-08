@@ -10,6 +10,8 @@ import logger from '@/lib/logger';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { useSubscription } from '@/hooks/useSubscription';
 import { canSaveDataForInstrument, getActiveInstrumentIds } from '@/lib/subscriptionLimits';
+import { safeGoBack } from '@/lib/navigationUtils';
+import { safeGoBack } from '@/lib/navigationUtils';
 
 interface Instrument {
   id: string;
@@ -27,6 +29,7 @@ export default function InstrumentSelectionScreen() {
   const [selectedInstrumentId, setSelectedInstrumentId] = useState<string>('');
   const [customInstrumentName, setCustomInstrumentName] = useState<string>('');
   const [activeInstrumentIds, setActiveInstrumentIds] = useState<string[]>([]);
+  const [canSaveNewInstrument, setCanSaveNewInstrument] = useState<{ canSave: boolean; reason?: string } | null>(null);
 
   const instruments: Instrument[] = [
     { id: '550e8400-e29b-41d4-a716-446655440001', name: 'ピアノ', nameEn: 'Piano', emoji: '🎹' },
@@ -72,12 +75,21 @@ export default function InstrumentSelectionScreen() {
     loadActiveInstruments();
   }, [user?.id]);
 
-  const handleInstrumentSelection = (instrumentId: string) => {
+  const handleInstrumentSelection = async (instrumentId: string) => {
     setSelectedInstrumentId(instrumentId);
     
     // その他以外の楽器を選択した場合はカスタム楽器名をクリア
     if (instrumentId !== '550e8400-e29b-41d4-a716-446655440016') {
       setCustomInstrumentName('');
+    }
+
+    // 新しい楽器を選択した場合、保存可能かチェック
+    if (user && instrumentId !== currentInstrumentId) {
+      const canSaveCheck = await canSaveDataForInstrument(user.id, instrumentId, entitlement);
+      setCanSaveNewInstrument(canSaveCheck);
+    } else {
+      // 既存の楽器を選択した場合は制限なし
+      setCanSaveNewInstrument({ canSave: true });
     }
   };
 
@@ -242,25 +254,47 @@ export default function InstrumentSelectionScreen() {
             {(() => {
               const isSameInstrument = currentInstrumentId && currentInstrumentId !== '' && selectedInstrumentId === currentInstrumentId;
               const isLoading = syncStatus === 'syncing';
+              const isNewInstrument = selectedInstrumentId !== currentInstrumentId;
+              const isDisabled = isLoading || (isNewInstrument && canSaveNewInstrument !== null && !canSaveNewInstrument.canSave);
 
               return (
-                <TouchableOpacity
-                  style={[styles.completionButton, { backgroundColor: currentTheme.primary }]}
-                  onPress={handleSaveInstrument}
-                  disabled={isLoading}
-                  activeOpacity={0.8}
-                >
-                  {isLoading ? (
-                    <View style={styles.loadingContainer}>
-                      <ActivityIndicator size="small" color="#FFFFFF" />
-                      <Text style={[styles.completionButtonText, { marginLeft: 8 }]}>保存中...</Text>
+                <>
+                  {/* 制限情報の表示（新しい楽器を選択した場合のみ） */}
+                  {!entitlement.isEntitled && isNewInstrument && canSaveNewInstrument && !canSaveNewInstrument.canSave && (
+                    <View style={[styles.limitInfoContainer, { backgroundColor: currentTheme.surface, borderColor: '#FF4444', marginBottom: 12 }]}>
+                      <Text style={[styles.limitInfoText, { color: currentTheme.text }]}>
+                        上限に達しています
+                      </Text>
+                      <Text style={[styles.limitInfoSubText, { color: currentTheme.textSecondary }]}>
+                        {canSaveNewInstrument.reason || 'Freeプランでは楽器を2個まで使用できます。プレミアムで無制限に使用できます。'}
+                      </Text>
                     </View>
-                  ) : (
-                    <Text style={styles.completionButtonText}>
-                      {isSameInstrument ? 'カレンダー画面に戻る' : (currentInstrumentId && currentInstrumentId !== '' ? '楽器を変更' : '楽器選択を保存')}
-                    </Text>
                   )}
-                </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[
+                      styles.completionButton, 
+                      { 
+                        backgroundColor: isDisabled ? currentTheme.textSecondary : currentTheme.primary,
+                        opacity: isDisabled ? 0.6 : 1
+                      }
+                    ]}
+                    onPress={handleSaveInstrument}
+                    disabled={isDisabled}
+                    activeOpacity={0.8}
+                  >
+                    {isLoading ? (
+                      <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                        <Text style={[styles.completionButtonText, { marginLeft: 8 }]}>保存中...</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.completionButtonText}>
+                        {isSameInstrument ? 'カレンダー画面に戻る' : (currentInstrumentId && currentInstrumentId !== '' ? '楽器を変更' : '楽器選択を保存')}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </>
               );
             })()}
           </View>
@@ -445,6 +479,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
+  freePlanInfoButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  freePlanInfoButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  freePlanInfoText: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  sameInstrumentMessage: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    marginTop: 12,
+  },
+  sameInstrumentText: {
+    fontSize: 14,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
   activeInstrumentsSection: {
     marginTop: 20,
     marginBottom: 20,
@@ -485,5 +547,21 @@ const styles = StyleSheet.create({
   activeInstrumentName: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  limitInfoContainer: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  limitInfoText: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  limitInfoSubText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
   },
 });
