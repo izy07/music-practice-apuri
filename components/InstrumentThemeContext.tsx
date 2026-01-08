@@ -378,12 +378,22 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       
       if (!cancelled) {
         setSelectedInstrumentState('');
+        // 以前のユーザーの楽器情報をクリアし、デフォルトテーマに戻す
+        setCurrentThemeState(defaultInstruments[0] || defaultTheme);
+        setIsCustomTheme(false);
+        setCustomThemeState(null);
+        // 初期化フラグをリセットして、新しいユーザーで初期化を再実行
+        initializeDoneRef.current = false;
       }
     }
     
     // ユーザーIDを更新
     if (!cancelled && currentUserId !== newUserId) {
       setCurrentUserId(newUserId);
+      // 新しいユーザーの場合、初期化を再実行
+      if (!initializeDoneRef.current) {
+        initialize();
+      }
     }
 
     return () => {

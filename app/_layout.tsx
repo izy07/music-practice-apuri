@@ -643,22 +643,25 @@ function RootLayoutContent() {
         return; // 遷移を許可
       }
       
-      if (needsTutorial()) {
-        // チュートリアルが必要な場合（新規登録直後など）
+      // チュートリアルが必要な場合のみチュートリアル画面にリダイレクト
+      // ただし、楽器が選択されている場合はカレンダー画面に遷移（タイムアウト時の誤った遷移を防ぐ）
+      if (needsTutorial() && !hasInstrumentSelected()) {
+        // チュートリアルが必要な場合（新規登録直後など）かつ楽器が未選択の場合
         logger.debug('新規登録直後のため、チュートリアル画面にリダイレクト');
         router.replace('/(tabs)/tutorial');
         return;
       }
-      // チュートリアル完了後は楽器選択画面にリダイレクト
-        logger.debug('楽器未選択のため、楽器選択画面にリダイレクト');
-        router.replace('/(tabs)/instrument-selection');
+      // チュートリアル完了後または楽器未選択の場合は楽器選択画面にリダイレクト
+      logger.debug('楽器未選択のため、楽器選択画面にリダイレクト');
+      router.replace('/(tabs)/instrument-selection');
       return;
     }
 
     // 認証済み + 楽器選択済み
-    // チュートリアル画面または楽器選択画面にいる場合はカレンダー画面に遷移
-    if (currentTab === 'tutorial' || currentTab === 'instrument-selection') {
-      logger.debug('楽器選択済みのため、チュートリアル画面または楽器選択画面からカレンダー画面にリダイレクト');
+    // チュートリアル画面にいる場合はカレンダー画面に遷移
+    // ただし、楽器選択画面にいる場合は、楽器選択を完了するまで遷移しない
+    if (currentTab === 'tutorial' && hasInstrumentSelected()) {
+      logger.debug('楽器選択済みのため、チュートリアル画面からカレンダー画面にリダイレクト');
       router.replace('/(tabs)/index');
       return;
     }

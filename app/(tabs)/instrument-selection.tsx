@@ -79,6 +79,7 @@ export default function InstrumentSelectionScreen() {
     }
 
     // 現在の楽器と同じ場合は、カレンダー画面に遷移するだけ
+    // ただし、新規登録ユーザー（楽器未選択）の場合はこのチェックをスキップ
     const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id) || '';
     if (currentInstrumentId && currentInstrumentId !== '' && selectedInstrumentId === currentInstrumentId) {
       // 既に同じ楽器が選択されている場合は、カレンダー画面に遷移
@@ -94,8 +95,7 @@ export default function InstrumentSelectionScreen() {
           'アップグレードが必要です',
           canSaveCheck.reason || 'Freeプランでは楽器を2個まで記録できます。3個目以降の楽器を追加するには、プレミアムにアップグレードしてください。',
           [
-            { text: 'キャンセル', style: 'cancel' },
-            { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
+            { text: '了解', style: 'cancel' }
           ]
         );
         return;
@@ -143,25 +143,6 @@ export default function InstrumentSelectionScreen() {
         <View style={styles.placeholder} />
       </View>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* フリープラン用の楽器数制限メッセージ */}
-        {!entitlement.isEntitled && user && (
-          <View style={[styles.freePlanInfoBanner, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
-            <View style={styles.freePlanInfoContent}>
-              <Text style={[styles.freePlanInfoTitle, { color: currentTheme.text }]}>
-                ⚠️ Freeプランでは楽器を2個まで使用できます
-              </Text>
-              <Text style={[styles.freePlanInfoSubtitle, { color: currentTheme.textSecondary }]}>
-                3個目以降の楽器を追加するには、プレミアムにアップグレードしてください。既存の楽器（2個まで）は自由に切り替えできます。
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={[styles.freePlanInfoButton, { backgroundColor: currentTheme.primary }]}
-              onPress={() => router.push('/(tabs)/pricing-plans')}
-            >
-              <Text style={styles.freePlanInfoButtonText}>プレミアムを見る</Text>
-            </TouchableOpacity>
-          </View>
-        )}
         
         <View style={styles.instrumentGrid}>
           {instruments.map((instrument) => (

@@ -58,12 +58,6 @@ export default function TutorialScreen() {
       gradientColors: ['#f093fb', '#f5576c'],
     },
     {
-      icon: '👥',
-      title: '連絡が埋もれない',
-      description: '• 練習日程を一元管理\n• 出欠管理で連絡漏れ防止\n• 課題をまとめて共有\n• LINEに頼らない快適な活動',
-      gradientColors: ['#4facfe', '#00f2fe'],
-    },
-    {
       icon: '🎯',
       title: '上達の土台は「基礎」から。',
       description: '• 楽器別・レベル別の基礎練習メニュー\n• 効率的なスキルアップ\n• 「練習済み！」でカレンダーに✅表示\n• 日々の努力が継続の力に',

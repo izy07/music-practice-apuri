@@ -714,7 +714,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
               .order('updated_at', { ascending: false })
               .limit(1);
             
-            // 3秒でタイムアウト（プロフィール取得より短く設定）
+            // 10秒でタイムアウト（プロフィール取得と同じ時間を設定）
+            // 既存ユーザーの楽器情報を確実に取得するため、タイムアウト時間を延長
             const instrumentTimeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
               setTimeout(() => {
                 resolve({
@@ -724,7 +725,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                     message: '楽器取得がタイムアウトしました',
                   },
                 });
-              }, 3000);
+              }, 10000); // 10秒に延長（プロフィール取得と同じ）
             });
             
             const instrumentResult = await Promise.race([instrumentQueryPromise, instrumentTimeoutPromise]);
@@ -794,12 +795,31 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           
           // 既存ユーザーの場合、チュートリアル完了とみなす
           // これにより、ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ
-          const fallbackTutorialCompleted = !isNewSignup;
+          // 特に、last_sign_in_atとcreated_atを比較して既存ユーザーと判定した場合は確実にtrueにする
+          // 楽器が選択されている場合も既存ユーザーとみなしてチュートリアル完了にする
+          const fallbackTutorialCompleted = !isNewSignup || isExistingUserBySignIn || (hoursSinceCreation > 24) || (fallbackInstrumentId !== null);
           
           // プロフィール取得タイムアウト時は、newSignupFlagStateも更新する
-          // 既存ユーザーの場合、フラグをfalseに設定
+          // 既存ユーザーの場合、フラグを確実にfalseに設定
           // これにより、needsTutorial()が正しくfalseを返すようになる
-          newSignupFlagState = isNewSignup;
+          // 楽器が選択されている場合、以前にログインしたことがある場合、24時間以上前に作成された場合は既存ユーザーとみなす
+          const isExistingUser = fallbackInstrumentId !== null || isExistingUserBySignIn || hoursSinceCreation > 24;
+          if (isExistingUser) {
+            newSignupFlagState = false;
+            // ストレージからもフラグを削除（確実性を高める）
+            try {
+              if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+                localStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
+              } else {
+                await AsyncStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
+              }
+              logger.debug('既存ユーザーと判定したため、新規登録フラグを削除しました（タイムアウト時）');
+            } catch (flagError) {
+              logger.warn('新規登録フラグの削除エラー（無視）:', flagError);
+            }
+          } else {
+            newSignupFlagState = isNewSignup;
+          }
           
           logger.debug('プロフィール取得タイムアウト時フォールバックユーザーを作成しました:', {
             userId,
@@ -1084,6 +1104,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
               
               // フォールバックユーザーを作成（最新の楽器を使用）
               const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
+              // 楽器が選択されている場合は既存ユーザーとみなしてチュートリアル完了にする
               const authUser: AuthUser = {
                 id: userId,
                 email: user?.email || '',
@@ -1092,7 +1113,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                 created_at: user.created_at,
                 last_sign_in_at: user.last_sign_in_at,
                 selected_instrument_id: latestInstrumentId,
-                tutorial_completed: false,
+                tutorial_completed: true, // 楽器が選択されている場合は既存ユーザーとみなす
                 onboarding_completed: false,
               };
               
@@ -1207,7 +1228,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         created_at: user.created_at,
         last_sign_in_at: user.last_sign_in_at,
         selected_instrument_id: fallbackInstrumentId,
-        tutorial_completed: false,
+        // 楽器が選択されている場合は既存ユーザーとみなしてチュートリアル完了にする
+        tutorial_completed: fallbackInstrumentId !== null,
         onboarding_completed: false,
       };
       
@@ -1222,7 +1244,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       logger.debug('フォールバックユーザーを作成しました:', { 
         userId: authUser.id, 
         email: authUser.email,
-        selected_instrument_id: authUser.selected_instrument_id
+        selected_instrument_id: authUser.selected_instrument_id,
+        tutorial_completed: authUser.tutorial_completed
       });
       
       return authUser;
@@ -1263,7 +1286,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           created_at: user?.created_at || new Date().toISOString(),
           last_sign_in_at: user?.last_sign_in_at,
           selected_instrument_id: fallbackInstrumentId,
-          tutorial_completed: false,
+          // 楽器が選択されている場合は既存ユーザーとみなしてチュートリアル完了にする
+          tutorial_completed: fallbackInstrumentId !== null,
           onboarding_completed: false,
         };
         
@@ -1278,7 +1302,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         logger.debug('フォールバックユーザーを作成しました:', { 
           userId: fallbackUser.id, 
           email: fallbackUser.email,
-          selected_instrument_id: fallbackUser.selected_instrument_id
+          selected_instrument_id: fallbackUser.selected_instrument_id,
+          tutorial_completed: fallbackUser.tutorial_completed
         });
         return fallbackUser;
       }
@@ -2073,28 +2098,70 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     }
   }, [authState.isInitialized]);
   
-  // チュートリアル必要状態のチェック（新規登録時のみ）
-  // 新規登録フラグが存在する場合のみチュートリアルを表示
+  // チュートリアル必要状態のチェック（データベースの状態を最優先）
+  // フラグベースの判定を削除し、データベースの状態（tutorial_completed、selected_instrument_id）と
+  // ユーザーの作成・ログイン履歴のみに依存することで、タイムアウト時でも確実に動作する
   const needsTutorial = useCallback((): boolean => {
-    if (!authState.isAuthenticated) {
+    // 未認証の場合はチュートリアル不要
+    if (!authState.isAuthenticated || !authState.user) {
       return false;
     }
-    // チュートリアルが既に完了している場合は、チュートリアルをスキップ
-    if (authState.user?.tutorial_completed === true) {
+    
+    // 【最優先】チュートリアルが既に完了している場合は、必ずスキップ
+    if (authState.user.tutorial_completed === true) {
       return false;
     }
-    // 楽器が選択されている場合は、既存ユーザーとみなしてチュートリアルをスキップ
+    
+    // 【最優先】楽器が選択されている場合は、既存ユーザーとみなして必ずスキップ
+    // これにより、タイムアウト時に楽器が選択されていてもチュートリアルに遷移しない
     if (hasInstrumentSelected()) {
       return false;
     }
-    // 新規登録フラグが存在する場合のみチュートリアルが必要
-    // メモリ上の状態をチェック（初期化時に更新される）
-    if (!newSignupFlagState) {
+    
+    // 【安全性チェック1】last_sign_in_atが存在し、created_atと異なる場合、既存ユーザーとみなす
+    // 以前にログインしたことがあるユーザーは既存ユーザー
+    if (authState.user.last_sign_in_at && authState.user.created_at) {
+      const userCreatedAt = new Date(authState.user.created_at);
+      const lastSignInAt = new Date(authState.user.last_sign_in_at);
+      // 作成から1分以上経過後にログインしている場合は既存ユーザー（タイムアウト時でも確実）
+      if (lastSignInAt.getTime() > userCreatedAt.getTime() + (1000 * 60)) {
+        return false;
+      }
+    }
+    
+    // 【安全性チェック2】ユーザーが24時間以上前に作成された場合、既存ユーザーとみなす
+    // これにより、タイムアウト時に既存ユーザーが誤ってチュートリアルに遷移するのを防ぐ
+    if (authState.user.created_at) {
+      const userCreatedAt = new Date(authState.user.created_at);
+      const hoursSinceCreation = (Date.now() - userCreatedAt.getTime()) / (1000 * 60 * 60);
+      if (hoursSinceCreation > 24) {
+        return false; // 24時間以上前に作成されたユーザーは既存ユーザーとみなす
+      }
+    }
+    
+    // 上記の条件をすべて満たさない場合のみ、新規登録ユーザーとみなしてチュートリアルを表示
+    // ただし、新規登録フラグもチェック（二重の安全性確保）
+    // フラグが存在しない場合、またはエラー時は既存ユーザーとみなす（安全側に倒す）
+    try {
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+        const flag = localStorage.getItem(NEW_SIGNUP_FLAG_KEY);
+        if (flag !== 'true') {
+          return false; // フラグが存在しない場合は既存ユーザーとみなす
+        }
+      } else {
+        // 非同期チェックは避け、メモリ上の状態を参照
+        if (!newSignupFlagState) {
+          return false; // メモリ上のフラグがfalseの場合は既存ユーザーとみなす
+        }
+      }
+    } catch (error) {
+      // エラー時は既存ユーザーとみなす（安全側に倒す）
       return false;
     }
-    // 新規登録フラグが存在し、チュートリアル未完了、楽器未選択の場合のみチュートリアルが必要
+    
+    // すべての安全性チェックを通過し、新規登録フラグも存在する場合のみ、チュートリアルを表示
     return true;
-  }, [authState.isAuthenticated, authState.user?.tutorial_completed, hasInstrumentSelected]);
+  }, [authState.isAuthenticated, authState.user?.tutorial_completed, authState.user?.selected_instrument_id, authState.user?.created_at, authState.user?.last_sign_in_at, hasInstrumentSelected]);
 
   // メインアプリアクセス可能状態のチェック
   const canAccessMainApp = useCallback((): boolean => {
