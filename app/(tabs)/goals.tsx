@@ -205,10 +205,21 @@ export default function GoalsScreen() {
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
             const parsed = JSON.parse(cachedData);
-            const goalsWithShowOnCalendar = parsed.map((g: GoalFromDB) => ({
+            let goalsWithShowOnCalendar = parsed.map((g: GoalFromDB) => ({
               ...g,
               show_on_calendar: g.show_on_calendar ?? false,
             }));
+            
+            // フリープランの場合、最新の2個だけを表示
+            if (!entitlement?.isEntitled) {
+              const sortedGoals = [...goalsWithShowOnCalendar].sort((a, b) => {
+                const dateA = new Date(a.created_at || 0).getTime();
+                const dateB = new Date(b.created_at || 0).getTime();
+                return dateB - dateA; // 降順（新しい順）
+              });
+              goalsWithShowOnCalendar = sortedGoals.slice(0, 2);
+            }
+            
             setGoals(goalsWithShowOnCalendar);
             logger.debug('目標データをキャッシュから読み込みました（オフライン）');
             loadingRef.current = false;
@@ -304,6 +315,24 @@ export default function GoalsScreen() {
         logger.debug('オフライン目標読み込みエラー（無視）:', offlineError);
       }
       
+      // フリープランの場合、最新の2個だけを表示
+      if (!entitlement?.isEntitled) {
+        // created_atでソート（新しい順）
+        const sortedGoals = [...allGoals].sort((a, b) => {
+          const dateA = new Date(a.created_at || 0).getTime();
+          const dateB = new Date(b.created_at || 0).getTime();
+          return dateB - dateA; // 降順（新しい順）
+        });
+        // 最新の2個だけを取得
+        allGoals = sortedGoals.slice(0, 2);
+        
+        logger.debug('フリープラン: 最新2個のみ表示', {
+          totalCount: sortedGoals.length,
+          displayedCount: allGoals.length,
+          instrumentId
+        });
+      }
+      
       setGoals(allGoals);
       
       // キャッシュに保存（オフライン対応）
@@ -351,25 +380,36 @@ export default function GoalsScreen() {
       
       logger.error('Error loading goals:', Object.keys(filteredDetails).length > 0 ? filteredDetails : { error: 'Unknown error', rawError: String(error) });
       // エラー時もキャッシュから読み込みを試行
-      try {
-        const { data: { user: errorAuthUser } } = await supabase.auth.getUser();
-        if (errorAuthUser) {
-          const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
-          const cacheKey = `goals_cache_${errorAuthUser.id}_${errorInstrumentId || 'all'}`;
-          const cachedData = await AsyncStorage.getItem(cacheKey);
-          if (cachedData) {
-            const parsed = JSON.parse(cachedData);
-            const goalsWithShowOnCalendar = parsed.map((g: GoalFromDB) => ({
-              ...g,
-              show_on_calendar: g.show_on_calendar ?? false,
-            }));
-            setGoals(goalsWithShowOnCalendar);
-            logger.debug('エラー時、目標データをキャッシュから読み込みました');
+        try {
+          const { data: { user: errorAuthUser } } = await supabase.auth.getUser();
+          if (errorAuthUser) {
+            const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+            const cacheKey = `goals_cache_${errorAuthUser.id}_${errorInstrumentId || 'all'}`;
+            const cachedData = await AsyncStorage.getItem(cacheKey);
+            if (cachedData) {
+              const parsed = JSON.parse(cachedData);
+              let goalsWithShowOnCalendar = parsed.map((g: GoalFromDB) => ({
+                ...g,
+                show_on_calendar: g.show_on_calendar ?? false,
+              }));
+              
+              // フリープランの場合、最新の2個だけを表示
+              if (!entitlement?.isEntitled) {
+                const sortedGoals = [...goalsWithShowOnCalendar].sort((a, b) => {
+                  const dateA = new Date(a.created_at || 0).getTime();
+                  const dateB = new Date(b.created_at || 0).getTime();
+                  return dateB - dateA; // 降順（新しい順）
+                });
+                goalsWithShowOnCalendar = sortedGoals.slice(0, 2);
+              }
+              
+              setGoals(goalsWithShowOnCalendar);
+              logger.debug('エラー時、目標データをキャッシュから読み込みました');
+            }
           }
+        } catch (cacheError) {
+          // キャッシュ読み込みエラーは無視
         }
-      } catch (cacheError) {
-        // キャッシュ読み込みエラーは無視
-      }
     } finally {
       loadingRef.current = false;
     }
