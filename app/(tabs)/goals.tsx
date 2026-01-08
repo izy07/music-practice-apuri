@@ -316,23 +316,40 @@ export default function GoalsScreen() {
       }
     } catch (error) {
       // エラーの詳細を明示的にログに記録
-      const errorDetails = error instanceof Error 
-        ? { 
-            message: error.message, 
-            stack: error.stack,
-            name: error.name 
-          }
-        : typeof error === 'object' && error !== null
-        ? { 
-            code: (error as any).code,
-            message: (error as any).message,
-            details: (error as any).details,
-            hint: (error as any).hint,
-            error: String(error)
-          }
-        : { error: String(error) };
+      let errorDetails: Record<string, any> = {};
       
-      logger.error('Error loading goals:', errorDetails);
+      if (error instanceof Error) {
+        errorDetails = {
+          name: error.name,
+          message: error.message,
+          stack: error.stack?.split('\n').slice(0, 5).join('\n'), // スタックトレースの最初の5行のみ
+        };
+      } else if (typeof error === 'object' && error !== null) {
+        const err = error as any;
+        errorDetails = {
+          code: err.code ?? undefined,
+          message: err.message ?? undefined,
+          details: err.details ?? undefined,
+          hint: err.hint ?? undefined,
+          status: err.status ?? undefined,
+          statusCode: err.statusCode ?? undefined,
+          originalError: err.originalError ? String(err.originalError) : undefined,
+          errorType: err.constructor?.name ?? typeof error,
+          errorString: String(error),
+        };
+      } else {
+        errorDetails = {
+          error: String(error),
+          errorType: typeof error,
+        };
+      }
+      
+      // 空でないプロパティのみを含む
+      const filteredDetails = Object.fromEntries(
+        Object.entries(errorDetails).filter(([_, value]) => value !== undefined && value !== null)
+      );
+      
+      logger.error('Error loading goals:', Object.keys(filteredDetails).length > 0 ? filteredDetails : { error: 'Unknown error', rawError: String(error) });
       // エラー時もキャッシュから読み込みを試行
       try {
         const { data: { user: errorAuthUser } } = await supabase.auth.getUser();
