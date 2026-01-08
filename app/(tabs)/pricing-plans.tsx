@@ -102,8 +102,8 @@ export default function PricingPlansScreen() {
             <View style={styles.featureList}>
               {[
                 `演奏録音機能（月${FREE_PLAN_LIMITS.RECORDINGS_PER_MONTH_PER_INSTRUMENT * instrumentCount}回まで）`,
-                `楽器データ（${FREE_PLAN_LIMITS.MAX_INSTRUMENTS}個まで楽器データ使用可能）`,
-                `マイライブラリ（各楽器ごとに${FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT}曲まで）`,
+                '楽器データ（2個まで使用可能）',
+                'マイライブラリ（6曲まで）',
                 `目標設定（${FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT * instrumentCount}つまで）`,
               ].map((f) => (
                 <View key={f} style={styles.featureItem}>
