@@ -26,6 +26,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import logger from '@/lib/logger';
 import { getActiveInstrumentIds } from '@/lib/subscriptionLimits';
+import { instrumentService } from '@/services';
 
 export default function PrivacySettingsScreen() {
   const router = useRouter();
@@ -63,24 +64,7 @@ export default function PrivacySettingsScreen() {
 
   const handleDeleteInstrumentData = (instrumentId: string) => {
     // 楽器名を取得（デフォルト楽器リストから）
-    const defaultInstruments = [
-      { id: '550e8400-e29b-41d4-a716-446655440001', name: 'ピアノ', emoji: '🎹' },
-      { id: '550e8400-e29b-41d4-a716-446655440002', name: 'ギター', emoji: '🎸' },
-      { id: '550e8400-e29b-41d4-a716-446655440003', name: 'バイオリン', emoji: '🎻' },
-      { id: '550e8400-e29b-41d4-a716-446655440004', name: 'フルート', emoji: '🪈' },
-      { id: '550e8400-e29b-41d4-a716-446655440005', name: 'トランペット', emoji: '🎺' },
-      { id: '550e8400-e29b-41d4-a716-446655440009', name: 'クラリネット', emoji: '🎵' },
-      { id: '550e8400-e29b-41d4-a716-446655440011', name: 'チェロ', emoji: '🎻' },
-      { id: '550e8400-e29b-41d4-a716-446655440007', name: 'サックス', emoji: '🎷' },
-      { id: '550e8400-e29b-41d4-a716-446655440018', name: 'ヴィオラ', emoji: '🎻' },
-      { id: '550e8400-e29b-41d4-a716-446655440008', name: 'ホルン', emoji: '📯' },
-      { id: '550e8400-e29b-41d4-a716-446655440006', name: 'ドラム', emoji: '🥁' },
-      { id: '550e8400-e29b-41d4-a716-446655440013', name: 'オーボエ', emoji: '🎵' },
-      { id: '550e8400-e29b-41d4-a716-446655440010', name: 'トロンボーン', emoji: '🎺' },
-      { id: '550e8400-e29b-41d4-a716-446655440015', name: 'コントラバス', emoji: '🎻' },
-      { id: '550e8400-e29b-41d4-a716-446655440012', name: 'ファゴット', emoji: '🎵' },
-      { id: '550e8400-e29b-41d4-a716-446655440016', name: 'その他', emoji: '❓' },
-    ];
+    const defaultInstruments = instrumentService.getDefaultInstruments();
     const instrument = defaultInstruments.find(i => i.id === instrumentId);
     const instrumentName = instrument?.name || '楽器';
 
@@ -157,24 +141,7 @@ export default function PrivacySettingsScreen() {
       setActiveInstrumentIds(activeIds);
 
       // 楽器名を取得（デフォルト楽器リストから）
-      const defaultInstruments = [
-        { id: '550e8400-e29b-41d4-a716-446655440001', name: 'ピアノ', emoji: '🎹' },
-        { id: '550e8400-e29b-41d4-a716-446655440002', name: 'ギター', emoji: '🎸' },
-        { id: '550e8400-e29b-41d4-a716-446655440003', name: 'バイオリン', emoji: '🎻' },
-        { id: '550e8400-e29b-41d4-a716-446655440004', name: 'フルート', emoji: '🪈' },
-        { id: '550e8400-e29b-41d4-a716-446655440005', name: 'トランペット', emoji: '🎺' },
-        { id: '550e8400-e29b-41d4-a716-446655440009', name: 'クラリネット', emoji: '🎵' },
-        { id: '550e8400-e29b-41d4-a716-446655440011', name: 'チェロ', emoji: '🎻' },
-        { id: '550e8400-e29b-41d4-a716-446655440007', name: 'サックス', emoji: '🎷' },
-        { id: '550e8400-e29b-41d4-a716-446655440018', name: 'ヴィオラ', emoji: '🎻' },
-        { id: '550e8400-e29b-41d4-a716-446655440008', name: 'ホルン', emoji: '📯' },
-        { id: '550e8400-e29b-41d4-a716-446655440006', name: 'ドラム', emoji: '🥁' },
-        { id: '550e8400-e29b-41d4-a716-446655440013', name: 'オーボエ', emoji: '🎵' },
-        { id: '550e8400-e29b-41d4-a716-446655440010', name: 'トロンボーン', emoji: '🎺' },
-        { id: '550e8400-e29b-41d4-a716-446655440015', name: 'コントラバス', emoji: '🎻' },
-        { id: '550e8400-e29b-41d4-a716-446655440012', name: 'ファゴット', emoji: '🎵' },
-        { id: '550e8400-e29b-41d4-a716-446655440016', name: 'その他', emoji: '❓' },
-      ];
+      const defaultInstruments = instrumentService.getDefaultInstruments();
       const instrument = defaultInstruments.find(i => i.id === instrumentId);
       const instrumentName = instrument?.name || '楽器';
 
@@ -435,26 +402,30 @@ export default function PrivacySettingsScreen() {
               </Text>
               {activeInstrumentIds.map((instrumentId) => {
                 // 楽器名を取得（デフォルト楽器リストから）
-                const defaultInstruments = [
-                  { id: '550e8400-e29b-41d4-a716-446655440001', name: 'ピアノ', emoji: '🎹' },
-                  { id: '550e8400-e29b-41d4-a716-446655440002', name: 'ギター', emoji: '🎸' },
-                  { id: '550e8400-e29b-41d4-a716-446655440003', name: 'バイオリン', emoji: '🎻' },
-                  { id: '550e8400-e29b-41d4-a716-446655440004', name: 'フルート', emoji: '🪈' },
-                  { id: '550e8400-e29b-41d4-a716-446655440005', name: 'トランペット', emoji: '🎺' },
-                  { id: '550e8400-e29b-41d4-a716-446655440009', name: 'クラリネット', emoji: '🎵' },
-                  { id: '550e8400-e29b-41d4-a716-446655440011', name: 'チェロ', emoji: '🎻' },
-                  { id: '550e8400-e29b-41d4-a716-446655440007', name: 'サックス', emoji: '🎷' },
-                  { id: '550e8400-e29b-41d4-a716-446655440018', name: 'ヴィオラ', emoji: '🎻' },
-                  { id: '550e8400-e29b-41d4-a716-446655440008', name: 'ホルン', emoji: '📯' },
-                  { id: '550e8400-e29b-41d4-a716-446655440006', name: 'ドラム', emoji: '🥁' },
-                  { id: '550e8400-e29b-41d4-a716-446655440013', name: 'オーボエ', emoji: '🎵' },
-                  { id: '550e8400-e29b-41d4-a716-446655440010', name: 'トロンボーン', emoji: '🎺' },
-                  { id: '550e8400-e29b-41d4-a716-446655440015', name: 'コントラバス', emoji: '🎻' },
-                  { id: '550e8400-e29b-41d4-a716-446655440012', name: 'ファゴット', emoji: '🎵' },
-                  { id: '550e8400-e29b-41d4-a716-446655440016', name: 'その他', emoji: '❓' },
-                ];
+                const defaultInstruments = instrumentService.getDefaultInstruments();
                 const instrument = defaultInstruments.find(i => i.id === instrumentId);
                 if (!instrument) return null;
+                
+                // 絵文字を取得（デフォルト楽器リストから取得できない場合は、instrument-selection.tsxと同じリストを使用）
+                const instrumentEmojiMap: { [key: string]: string } = {
+                  '550e8400-e29b-41d4-a716-446655440001': '🎹',
+                  '550e8400-e29b-41d4-a716-446655440002': '🎸',
+                  '550e8400-e29b-41d4-a716-446655440003': '🎻',
+                  '550e8400-e29b-41d4-a716-446655440004': '🪈',
+                  '550e8400-e29b-41d4-a716-446655440005': '🎺',
+                  '550e8400-e29b-41d4-a716-446655440009': '🎵',
+                  '550e8400-e29b-41d4-a716-446655440011': '🎻',
+                  '550e8400-e29b-41d4-a716-446655440007': '🎷',
+                  '550e8400-e29b-41d4-a716-446655440018': '🎻',
+                  '550e8400-e29b-41d4-a716-446655440008': '📯',
+                  '550e8400-e29b-41d4-a716-446655440006': '🥁',
+                  '550e8400-e29b-41d4-a716-446655440013': '🎵',
+                  '550e8400-e29b-41d4-a716-446655440010': '🎺',
+                  '550e8400-e29b-41d4-a716-446655440015': '🎻',
+                  '550e8400-e29b-41d4-a716-446655440012': '🎵',
+                  '550e8400-e29b-41d4-a716-446655440016': '❓',
+                };
+                const emoji = instrumentEmojiMap[instrumentId] || '🎵';
                 const isDeletingThis = isDeletingInstrument === instrumentId;
                 return (
                   <TouchableOpacity
@@ -478,7 +449,7 @@ export default function PrivacySettingsScreen() {
                       </>
                     ) : (
                       <>
-                        <Text style={styles.instrumentDeleteEmoji}>{instrument.emoji}</Text>
+                        <Text style={styles.instrumentDeleteEmoji}>{emoji}</Text>
                         <Text style={styles.instrumentDeleteButtonText}>
                           {instrument.name}のデータを削除
                         </Text>
