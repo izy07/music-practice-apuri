@@ -864,8 +864,13 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         loadExistingRecord();
       } else {
         // 通常のモーダルオープン時はリセット
+        // ただし、録音保存直後の場合は、録音情報を保持してからデータを再読み込み
+        const currentIsRecordingJustSaved = isRecordingJustSavedRef.current;
         setExistingRecord(null);
-        setExistingRecordings([]);
+        // 録音保存直後の場合は、録音情報をクリアしない（録音済みUIを表示するため）
+        if (!currentIsRecordingJustSaved) {
+          setExistingRecordings([]);
+        }
         setMinutes('');
         setContent('');
         setAudioUrl('');

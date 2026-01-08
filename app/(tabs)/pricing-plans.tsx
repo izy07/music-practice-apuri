@@ -112,10 +112,6 @@ export default function PricingPlansScreen() {
                 </View>
               ))}
             </View>
-            <View style={[styles.ctaButton, { backgroundColor: currentTheme.secondary }]}>
-              <Text style={[styles.ctaText, { color: currentTheme.primary }]}>無料で利用中</Text>
-              <ChevronRight size={18} color={currentTheme.primary} />
-            </View>
           </View>
 
           {/* Premium */}

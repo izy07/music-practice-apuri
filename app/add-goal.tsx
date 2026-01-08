@@ -11,6 +11,9 @@ import EventCalendar from '../components/EventCalendar';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { goalService } from '@/services/goalService';
+import { checkGoalLimit, canSaveDataForInstrument } from '@/lib/subscriptionLimits';
+import { useSubscription } from '@/hooks/useSubscription';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 
 interface NewGoal {
   title: string;
@@ -22,6 +25,8 @@ interface NewGoal {
 export default function AddGoalScreen() {
   const router = useRouter();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
+  const { entitlement } = useSubscription();
+  const { user } = useAuthAdvanced();
   
   const [newGoal, setNewGoal] = useState<NewGoal>({
     title: '',
@@ -59,6 +64,36 @@ export default function AddGoalScreen() {
 
       const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
       const instrumentId = getInstrumentId(selectedInstrument);
+      
+      // Freeプランの場合、新しい楽器でデータを保存できるかチェック
+      const canSaveCheck = await canSaveDataForInstrument(user.id, instrumentId, entitlement);
+      if (!canSaveCheck.canSave) {
+        Alert.alert(
+          'アップグレードが必要です',
+          canSaveCheck.reason || '新しい楽器で目標を追加するには、プレミアムへアップグレードしてください。',
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
+          ]
+        );
+        setIsLoading(false);
+        return;
+      }
+      
+      // Freeプランの場合、目標設定数をチェック
+      const limitCheck = await checkGoalLimit(user.id, instrumentId, entitlement);
+      if (!limitCheck.canCreate) {
+        Alert.alert(
+          '目標設定の制限',
+          `Freeプランでは目標を2つまで設定できます。\n現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
+          ]
+        );
+        setIsLoading(false);
+        return;
+      }
       
       const result = await goalService.createGoal(user.id, {
         title: newGoal.title.trim(),
