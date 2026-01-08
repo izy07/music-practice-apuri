@@ -591,6 +591,15 @@ export const goalRepository = {
         .select('id', { count: 'exact', head: true })
         .eq('user_id', userId);
       
+      // 達成済み目標を除外（is_completedがfalse、またはprogress_percentage < 100）
+      // 制限チェックでは未達成目標のみをカウント
+      if (supportsIsCompleted) {
+        query = query.eq('is_completed', false);
+      } else {
+        // is_completedカラムが存在しない場合は、progress_percentage < 100でフィルタリング
+        query = query.lt('progress_percentage', 100);
+      }
+      
       // 楽器IDでフィルタリング（カラムが存在する場合のみ）
       if (supportsInstrumentId) {
         if (instrumentId) {

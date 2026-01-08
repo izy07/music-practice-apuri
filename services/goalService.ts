@@ -101,6 +101,10 @@ export class GoalService {
       };
     }
 
+    // 注意: 制限チェックはUI層（add-goal.tsx, goals.tsx）で実行されるため、
+    // サービス層では制限チェックを行わない（UI層でのチェックを信頼）
+    // ただし、サーバー側でも制限チェックを実装したい場合は、ここでチェックを追加可能
+
     return safeServiceExecute(
       async () => {
         logger.debug(`[${SERVICE_CONTEXT}] createGoal:start`, { userId, params });

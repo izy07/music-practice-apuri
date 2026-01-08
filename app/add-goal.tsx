@@ -84,11 +84,11 @@ export default function AddGoalScreen() {
       const limitCheck = await checkGoalLimit(user.id, instrumentId, entitlement);
       if (!limitCheck.canCreate) {
         Alert.alert(
-          '目標設定の制限',
+          '上限に達しました',
           `Freeプランでは目標を2つまで設定できます。\n現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
           [
             { text: 'キャンセル', style: 'cancel' },
-            { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
+            { text: 'アップグレードしましょう', onPress: () => router.push('/(tabs)/pricing-plans') }
           ]
         );
         setIsLoading(false);
