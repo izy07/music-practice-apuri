@@ -563,112 +563,119 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
       <View style={styles.customSection}>
           <Text style={[styles.customTitle, { color: currentTheme?.text || '#2D3748' }]}>カスタムカラー設定</Text>
           
-          <ColorPicker 
-            label="背景色" 
-            color={customColors.background} 
-            colorType="background" 
-            currentTheme={currentTheme} 
-            onColorChange={async (color) => {
-              try {
-                const updatedColors = { ...customColors, background: color };
-                setCustomColors(updatedColors);
-                // 即座に反映
-                await setCustomTheme(updatedColors);
-              } catch (error) {
-                console.error('背景色の更新エラー:', error);
-              }
-            }} 
-          />
-          <ColorPicker 
-            label="表面色" 
-            color={customColors.surface} 
-            colorType="surface" 
-            currentTheme={currentTheme} 
-            onColorChange={async (color) => {
-              try {
-                const updatedColors = { ...customColors, surface: color };
-                setCustomColors(updatedColors);
-                await setCustomTheme(updatedColors);
-              } catch (error) {
-                console.error('表面色の更新エラー:', error);
-              }
-            }} 
-          />
-          <ColorPicker 
-            label="プライマリ色" 
-            color={customColors.primary} 
-            colorType="primary" 
-            currentTheme={currentTheme} 
-            onColorChange={async (color) => {
-              try {
-                const updatedColors = { ...customColors, primary: color };
-                setCustomColors(updatedColors);
-                await setCustomTheme(updatedColors);
-              } catch (error) {
-                console.error('プライマリ色の更新エラー:', error);
-              }
-            }} 
-          />
-          <ColorPicker 
-            label="セカンダリ色" 
-            color={customColors.secondary} 
-            colorType="secondary" 
-            currentTheme={currentTheme} 
-            onColorChange={async (color) => {
-              try {
-                const updatedColors = { ...customColors, secondary: color };
-                setCustomColors(updatedColors);
-                await setCustomTheme(updatedColors);
-              } catch (error) {
-                console.error('セカンダリ色の更新エラー:', error);
-              }
-            }} 
-          />
-          <ColorPicker 
-            label="アクセント色" 
-            color={customColors.accent} 
-            colorType="accent" 
-            currentTheme={currentTheme} 
-            onColorChange={async (color) => {
-              try {
-                const updatedColors = { ...customColors, accent: color };
-                setCustomColors(updatedColors);
-                await setCustomTheme(updatedColors);
-              } catch (error) {
-                console.error('アクセント色の更新エラー:', error);
-              }
-            }} 
-          />
-          <ColorPicker 
-            label="テキスト色" 
-            color={customColors.text} 
-            colorType="text" 
-            currentTheme={currentTheme} 
-            onColorChange={async (color) => {
-              try {
-                const updatedColors = { ...customColors, text: color };
-                setCustomColors(updatedColors);
-                await setCustomTheme(updatedColors);
-              } catch (error) {
-                console.error('テキスト色の更新エラー:', error);
-              }
-            }} 
-          />
-          <ColorPicker 
-            label="サブテキスト色" 
-            color={customColors.textSecondary} 
-            colorType="textSecondary" 
-            currentTheme={currentTheme} 
-            onColorChange={async (color) => {
-              try {
-                const updatedColors = { ...customColors, textSecondary: color };
-                setCustomColors(updatedColors);
-                await setCustomTheme(updatedColors);
-              } catch (error) {
-                console.error('サブテキスト色の更新エラー:', error);
-              }
-            }} 
-          />
+          <View style={styles.colorPickerGrid}>
+            <View style={styles.colorPickerColumn}>
+              <ColorPicker 
+                label="背景色" 
+                color={customColors.background} 
+                colorType="background" 
+                currentTheme={currentTheme} 
+                onColorChange={async (color) => {
+                  try {
+                    const updatedColors = { ...customColors, background: color };
+                    setCustomColors(updatedColors);
+                    // 即座に反映
+                    await setCustomTheme(updatedColors);
+                  } catch (error) {
+                    console.error('背景色の更新エラー:', error);
+                  }
+                }} 
+              />
+              <ColorPicker 
+                label="プライマリ色" 
+                color={customColors.primary} 
+                colorType="primary" 
+                currentTheme={currentTheme} 
+                onColorChange={async (color) => {
+                  try {
+                    const updatedColors = { ...customColors, primary: color };
+                    setCustomColors(updatedColors);
+                    await setCustomTheme(updatedColors);
+                  } catch (error) {
+                    console.error('プライマリ色の更新エラー:', error);
+                  }
+                }} 
+              />
+              <ColorPicker 
+                label="アクセント色" 
+                color={customColors.accent} 
+                colorType="accent" 
+                currentTheme={currentTheme} 
+                onColorChange={async (color) => {
+                  try {
+                    const updatedColors = { ...customColors, accent: color };
+                    setCustomColors(updatedColors);
+                    await setCustomTheme(updatedColors);
+                  } catch (error) {
+                    console.error('アクセント色の更新エラー:', error);
+                  }
+                }} 
+              />
+              <ColorPicker 
+                label="テキスト色" 
+                color={customColors.text} 
+                colorType="text" 
+                currentTheme={currentTheme} 
+                onColorChange={async (color) => {
+                  try {
+                    const updatedColors = { ...customColors, text: color };
+                    setCustomColors(updatedColors);
+                    await setCustomTheme(updatedColors);
+                  } catch (error) {
+                    console.error('テキスト色の更新エラー:', error);
+                  }
+                }} 
+              />
+            </View>
+            
+            <View style={styles.colorPickerColumn}>
+              <ColorPicker 
+                label="表面色" 
+                color={customColors.surface} 
+                colorType="surface" 
+                currentTheme={currentTheme} 
+                onColorChange={async (color) => {
+                  try {
+                    const updatedColors = { ...customColors, surface: color };
+                    setCustomColors(updatedColors);
+                    await setCustomTheme(updatedColors);
+                  } catch (error) {
+                    console.error('表面色の更新エラー:', error);
+                  }
+                }} 
+              />
+              <ColorPicker 
+                label="セカンダリ色" 
+                color={customColors.secondary} 
+                colorType="secondary" 
+                currentTheme={currentTheme} 
+                onColorChange={async (color) => {
+                  try {
+                    const updatedColors = { ...customColors, secondary: color };
+                    setCustomColors(updatedColors);
+                    await setCustomTheme(updatedColors);
+                  } catch (error) {
+                    console.error('セカンダリ色の更新エラー:', error);
+                  }
+                }} 
+              />
+              <ColorPicker 
+                label="サブテキスト色" 
+                color={customColors.textSecondary} 
+                colorType="textSecondary" 
+                currentTheme={currentTheme} 
+                onColorChange={async (color) => {
+                  try {
+                    const updatedColors = { ...customColors, textSecondary: color };
+                    setCustomColors(updatedColors);
+                    await setCustomTheme(updatedColors);
+                  } catch (error) {
+                    console.error('サブテキスト色の更新エラー:', error);
+                  }
+                }} 
+              />
+            </View>
+          </View>
           
           <View style={styles.customActions}>
             <TouchableOpacity
@@ -796,7 +803,15 @@ const styles = StyleSheet.create({
   customTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 12,
+  },
+  colorPickerGrid: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  colorPickerColumn: {
+    flex: 1,
+    gap: 0,
   },
   colorPickerContainer: {
     marginBottom: 10,
