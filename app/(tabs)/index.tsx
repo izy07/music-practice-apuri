@@ -1084,6 +1084,9 @@ export default function CalendarScreen() {
             <TouchableOpacity 
               style={[styles.navButton, { backgroundColor: currentTheme.secondary }]}
               onPress={() => navigateMonth('prev')}
+              accessibilityRole="button"
+              accessibilityLabel="前の月"
+              accessibilityHint="前の月のカレンダーを表示します"
             >
               <ChevronLeft size={24} color={currentTheme.primary} />
             </TouchableOpacity>
@@ -1096,6 +1099,9 @@ export default function CalendarScreen() {
                 <TouchableOpacity 
                   style={[styles.todayButton, { position: 'absolute', right: 0, backgroundColor: currentTheme.primary }]}
                   onPress={goToToday}
+                  accessibilityRole="button"
+                  accessibilityLabel="今日の日付に戻る"
+                  accessibilityHint="カレンダーを今日の日付に移動します"
                 >
                   <Text style={[styles.todayButtonText, { color: currentTheme.surface, writingDirection: 'ltr' }]}>
                     今日
@@ -1107,6 +1113,9 @@ export default function CalendarScreen() {
             <TouchableOpacity 
               style={[styles.navButton, { backgroundColor: currentTheme.secondary }]}
               onPress={() => navigateMonth('next')}
+              accessibilityRole="button"
+              accessibilityLabel="次の月"
+              accessibilityHint="次の月のカレンダーを表示します"
             >
               <ChevronRight size={24} color={currentTheme.primary} />
             </TouchableOpacity>
@@ -1182,6 +1191,9 @@ export default function CalendarScreen() {
       <TouchableOpacity
         style={[styles.fab, { backgroundColor: currentTheme.primary }]}
         onPress={() => setShowQuickRecord(true)}
+        accessibilityRole="button"
+        accessibilityLabel="クイック記録"
+        accessibilityHint="音声を録音して練習記録を保存します"
       >
         <Text style={[styles.fabLabel, { color: currentTheme.surface }]}>クイック{'\n'}記録</Text>
       </TouchableOpacity>

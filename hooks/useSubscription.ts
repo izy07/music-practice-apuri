@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { computeEntitlement, ensureSubscription, getSubscription, UserSubscription } from '@/lib/subscriptionService';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
-import { adjustGoalsOnDowngrade } from '@/lib/subscriptionLimits';
+// adjustAllDataOnDowngradeは動的インポートで使用（解約検知時のみ）
 
 /**
  * サブスクリプション機能のフォールバック（エラー時でもアプリが動作するように）
@@ -50,14 +50,16 @@ export const useSubscription = () => {
       // 解約を検知（プレミアムからフリープランに変更された場合）
       const previousEntitlement = previousEntitlementRef.current;
       if (previousEntitlement?.isEntitled === true && computedEntitlement.isEntitled === false) {
-        logger.info('プレミアム解約を検知しました。目標を調整します。');
+        logger.info('プレミアム解約を検知しました。全データを調整します。');
         try {
-          // 解約時の目標調整を実行（非同期、エラーは無視）
-          adjustGoalsOnDowngrade(user.id, computedEntitlement).catch((adjustError) => {
-            logger.error('解約時の目標調整中にエラーが発生しました（続行）:', adjustError);
+          // 解約時の全データ調整を実行（非同期、エラーは無視）
+          // 目標、録音、楽曲を並列で調整
+          const { adjustAllDataOnDowngrade } = await import('@/lib/subscriptionLimits');
+          adjustAllDataOnDowngrade(user.id, computedEntitlement).catch((adjustError) => {
+            logger.error('解約時の全データ調整中にエラーが発生しました（続行）:', adjustError);
           });
         } catch (adjustError) {
-          logger.error('解約時の目標調整の呼び出し中にエラーが発生しました（続行）:', adjustError);
+          logger.error('解約時の全データ調整の呼び出し中にエラーが発生しました（続行）:', adjustError);
         }
       }
       

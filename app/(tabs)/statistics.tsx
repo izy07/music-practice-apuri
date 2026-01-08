@@ -785,7 +785,13 @@ export default function StatisticsScreen() {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: Background }]} >
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.replace('/(tabs)/index')} style={styles.backBtn}>
+          <TouchableOpacity 
+            onPress={() => router.replace('/(tabs)/index')} 
+            style={styles.backBtn}
+            accessibilityRole="button"
+            accessibilityLabel="カレンダー画面に戻る"
+            accessibilityHint="統計画面からカレンダー画面に戻ります"
+          >
             <ArrowLeft size={22} color={TextColor} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: TextColor }]}>統計・分析</Text>
@@ -802,9 +808,15 @@ export default function StatisticsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: Background }]} > 
         <View style={styles.header}>
         {/* 統計・分析画面から戻るときも、他の画面と同様に常にカレンダー画面に戻る */}
-        <TouchableOpacity onPress={() => router.replace('/(tabs)/index')} style={styles.backBtn}>
+        <TouchableOpacity 
+          onPress={() => router.replace('/(tabs)/index')} 
+          style={styles.backBtn}
+          accessibilityRole="button"
+          accessibilityLabel="カレンダー画面に戻る"
+          accessibilityHint="統計画面からカレンダー画面に戻ります"
+        >
           <ArrowLeft size={22} color={TextColor} />
-          </TouchableOpacity>
+        </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: TextColor }]}>統計・分析</Text>
         <View style={{ width: 44 }} />
         </View>
@@ -818,6 +830,10 @@ export default function StatisticsScreen() {
             key={t.key}
             style={[styles.tabItem, span === t.key && { borderBottomColor: Primary, borderBottomWidth: 3 }]}
             onPress={() => setSpan(t.key)}
+            accessibilityRole="tab"
+            accessibilityLabel={`${t.label}タブ`}
+            accessibilityState={{ selected: span === t.key }}
+            accessibilityHint={`${t.label}の統計を表示します`}
           >
             <Text style={[styles.tabText, { color: span === t.key ? Primary : SecondaryText }]}>
               {t.label}
@@ -843,6 +859,10 @@ export default function StatisticsScreen() {
                   statsMode === 'monthly' && { backgroundColor: Primary }
                 ]}
                 onPress={() => setStatsMode('monthly')}
+                accessibilityRole="button"
+                accessibilityLabel="週別統計"
+                accessibilityState={{ selected: statsMode === 'monthly' }}
+                accessibilityHint="週別の統計を表示します"
               >
                 <Text style={[
                   styles.segmentedButtonText,
@@ -856,6 +876,10 @@ export default function StatisticsScreen() {
                   statsMode === 'yearly' && { backgroundColor: Primary }
                 ]}
                 onPress={() => setStatsMode('yearly')}
+                accessibilityRole="button"
+                accessibilityLabel="月別統計"
+                accessibilityState={{ selected: statsMode === 'yearly' }}
+                accessibilityHint="月別の統計を表示します"
               >
                 <Text style={[
                   styles.segmentedButtonText,
@@ -868,14 +892,26 @@ export default function StatisticsScreen() {
 
         {/* 期間表示 + ナビゲーション */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 16 }}>
-          <TouchableOpacity onPress={() => shiftPeriod(-1)} activeOpacity={0.7}>
+          <TouchableOpacity 
+            onPress={() => shiftPeriod(-1)} 
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="前の期間"
+            accessibilityHint="前の週または月の統計を表示します"
+          >
             <ChevronLeft size={24} color={SecondaryText} />
           </TouchableOpacity>
           <View style={{ alignItems: 'center', paddingVertical: 4 }}>
             <Text style={{ color: TextColor, fontSize: 20, fontWeight: '800' }}>{periodTitle.main}</Text>
             <Text style={{ color: SecondaryText, fontSize: 16, fontWeight: '700', marginTop: 2 }}>{periodTitle.sub}</Text>
           </View>
-          <TouchableOpacity onPress={() => shiftPeriod(1)} activeOpacity={0.7}>
+          <TouchableOpacity 
+            onPress={() => shiftPeriod(1)} 
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="次の期間"
+            accessibilityHint="次の週または月の統計を表示します"
+          >
             <ChevronRight size={24} color={SecondaryText} />
           </TouchableOpacity>
         </View>

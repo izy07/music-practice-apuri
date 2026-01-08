@@ -558,6 +558,80 @@ export const getActiveInstrumentIds = async (userId: string): Promise<string[]> 
   }
 };
 
+/**
+ * プレミアム解約時の全データ調整（目標、録音、楽曲）
+ * 
+ * 処理フロー:
+ * 1. Premiumユーザーは調整不要（早期リターン）
+ * 2. 目標、録音、楽曲を並列で調整
+ * 3. 各調整の結果を集約して返す
+ * 
+ * @param userId ユーザーID
+ * @param entitlement エンタイトルメント情報
+ * @returns 調整結果の集約
+ */
+export const adjustAllDataOnDowngrade = async (
+  userId: string,
+  entitlement: Entitlement | null | undefined
+): Promise<{
+  goals: { adjusted: boolean; totalGoals: number; keptGoals: number };
+  recordings: { adjusted: boolean; totalRecordings: number; keptRecordings: number };
+  songs: { adjusted: boolean; totalSongs: number; keptSongs: number };
+}> => {
+  try {
+    // Premiumユーザーは調整不要
+    if (entitlement?.isEntitled) {
+      logger.debug('プレミアムユーザーのため、全データ調整をスキップします');
+      return {
+        goals: { adjusted: false, totalGoals: 0, keptGoals: 0 },
+        recordings: { adjusted: false, totalRecordings: 0, keptRecordings: 0 },
+        songs: { adjusted: false, totalSongs: 0, keptSongs: 0 },
+      };
+    }
+
+    logger.info('解約時の全データ調整を開始します:', { userId });
+
+    // 目標、録音、楽曲を並列で調整
+    const [goalsResult, recordingsResult, songsResult] = await Promise.all([
+      adjustGoalsOnDowngrade(userId, entitlement).catch((error) => {
+        logger.error('目標調整エラー（続行）:', error);
+        return { adjusted: false, totalGoals: 0, keptGoals: 0 };
+      }),
+      adjustRecordingsOnDowngrade(userId, entitlement).catch((error) => {
+        logger.error('録音調整エラー（続行）:', error);
+        return { adjusted: false, totalRecordings: 0, keptRecordings: 0 };
+      }),
+      adjustMyLibrarySongsOnDowngrade(userId, entitlement).catch((error) => {
+        logger.error('楽曲調整エラー（続行）:', error);
+        return { adjusted: false, totalSongs: 0, keptSongs: 0 };
+      }),
+    ]);
+
+    logger.info('解約時の全データ調整が完了しました:', {
+      goals: goalsResult,
+      recordings: recordingsResult,
+      songs: songsResult,
+    });
+
+    return {
+      goals: goalsResult,
+      recordings: recordingsResult,
+      songs: songsResult,
+    };
+  } catch (error) {
+    logger.error('解約時の全データ調整中にエラーが発生しました:', {
+      error,
+      userId
+    });
+    ErrorHandler.handle(error, 'adjustAllDataOnDowngrade', false);
+    return {
+      goals: { adjusted: false, totalGoals: 0, keptGoals: 0 },
+      recordings: { adjusted: false, totalRecordings: 0, keptRecordings: 0 },
+      songs: { adjusted: false, totalSongs: 0, keptSongs: 0 },
+    };
+  }
+};
+
 export const adjustGoalsOnDowngrade = async (
   userId: string,
   entitlement: Entitlement | null | undefined
@@ -707,6 +781,261 @@ export const adjustGoalsOnDowngrade = async (
     ErrorHandler.handle(error, 'adjustGoalsOnDowngrade', false);
     // エラー時も処理は続行（フォールバック）
     return { adjusted: false, totalGoals: 0, keptGoals: 0 };
+  }
+};
+
+/**
+ * プレミアム解約時の録音数調整（各楽器ごとに月3回まで）
+ * 
+ * 処理フロー:
+ * 1. Premiumユーザーは調整不要（早期リターン）
+ * 2. 現在の月の録音を各楽器ごとに取得
+ * 3. 各楽器ごとに最新3個を保持、それ以外は削除
+ * 
+ * @param userId ユーザーID
+ * @param entitlement エンタイトルメント情報
+ * @returns 調整された録音数
+ */
+export const adjustRecordingsOnDowngrade = async (
+  userId: string,
+  entitlement: Entitlement | null | undefined
+): Promise<{ adjusted: boolean; totalRecordings: number; keptRecordings: number }> => {
+  try {
+    // Premiumユーザーは調整不要
+    if (entitlement?.isEntitled) {
+      logger.debug('プレミアムユーザーのため、録音調整をスキップします');
+      return { adjusted: false, totalRecordings: 0, keptRecordings: 0 };
+    }
+
+    const limitPerInstrument = FREE_PLAN_LIMITS.RECORDINGS_PER_MONTH_PER_INSTRUMENT;
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    // 現在の月の録音を取得
+    const { data: recordings, error } = await supabase
+      .from('recordings')
+      .select('id, instrument_id, created_at')
+      .eq('user_id', userId)
+      .gte('created_at', startOfMonth.toISOString())
+      .lte('created_at', endOfMonth.toISOString())
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      logger.error('録音取得エラー:', error);
+      ErrorHandler.handle(error, '録音取得', false);
+      return { adjusted: false, totalRecordings: 0, keptRecordings: 0 };
+    }
+
+    if (!recordings || recordings.length === 0) {
+      logger.debug('録音が存在しないため、調整不要です');
+      return { adjusted: false, totalRecordings: 0, keptRecordings: 0 };
+    }
+
+    // 楽器IDごとにグループ化
+    const recordingsByInstrument = new Map<string | null, typeof recordings>();
+    for (const recording of recordings) {
+      const instrumentId = recording.instrument_id || null;
+      if (!recordingsByInstrument.has(instrumentId)) {
+        recordingsByInstrument.set(instrumentId, []);
+      }
+      recordingsByInstrument.get(instrumentId)!.push(recording);
+    }
+
+    // 各楽器ごとに最新3個を保持、それ以外は削除
+    const recordingsToDelete: string[] = [];
+    let totalKept = 0;
+
+    for (const [instrumentId, instrumentRecordings] of recordingsByInstrument) {
+      // created_atでソート（最新順）
+      const sorted = [...instrumentRecordings].sort((a, b) => {
+        const dateA = new Date(a.created_at || 0).getTime();
+        const dateB = new Date(b.created_at || 0).getTime();
+        return dateB - dateA; // 降順（新しい順）
+      });
+
+      // 各楽器ごとに最新3個を保持
+      const recordingsToKeep = sorted.slice(0, limitPerInstrument);
+      const recordingsToRemove = sorted.slice(limitPerInstrument);
+
+      totalKept += recordingsToKeep.length;
+      recordingsToDelete.push(...recordingsToRemove.map(r => r.id));
+
+      logger.debug(`楽器ごとの録音調整 (instrumentId: ${instrumentId || 'null'}):`, {
+        total: sorted.length,
+        kept: recordingsToKeep.length,
+        removed: recordingsToRemove.length
+      });
+    }
+
+    // 調整不要の場合は早期リターン
+    if (recordingsToDelete.length === 0) {
+      logger.debug('録音数が制限以内のため、調整不要です');
+      return { 
+        adjusted: false, 
+        totalRecordings: recordings.length, 
+        keptRecordings: recordings.length 
+      };
+    }
+
+    // 古い録音を削除
+    if (recordingsToDelete.length > 0) {
+      const { error: deleteError } = await supabase
+        .from('recordings')
+        .delete()
+        .in('id', recordingsToDelete);
+
+      if (deleteError) {
+        logger.error('録音削除エラー:', deleteError);
+        ErrorHandler.handle(deleteError, '録音削除', false);
+        return { adjusted: false, totalRecordings: recordings.length, keptRecordings: totalKept };
+      }
+    }
+
+    logger.info('解約時の録音調整が完了しました（各楽器ごとに月3回まで）:', {
+      totalRecordings: recordings.length,
+      keptRecordings: totalKept,
+      deletedRecordings: recordingsToDelete.length
+    });
+
+    return {
+      adjusted: true,
+      totalRecordings: recordings.length,
+      keptRecordings: totalKept
+    };
+  } catch (error) {
+    logger.error('解約時の録音調整中にエラーが発生しました:', {
+      error,
+      userId
+    });
+    ErrorHandler.handle(error, 'adjustRecordingsOnDowngrade', false);
+    return { adjusted: false, totalRecordings: 0, keptRecordings: 0 };
+  }
+};
+
+/**
+ * プレミアム解約時の楽曲数調整（各楽器ごとに6曲まで）
+ * 
+ * 処理フロー:
+ * 1. Premiumユーザーは調整不要（早期リターン）
+ * 2. 全楽曲を取得（楽器IDでフィルタリングしない）
+ * 3. 楽器IDごとにグループ化
+ * 4. 各楽器ごとに最新6個を保持、それ以外は削除
+ * 
+ * @param userId ユーザーID
+ * @param entitlement エンタイトルメント情報
+ * @returns 調整された楽曲数
+ */
+export const adjustMyLibrarySongsOnDowngrade = async (
+  userId: string,
+  entitlement: Entitlement | null | undefined
+): Promise<{ adjusted: boolean; totalSongs: number; keptSongs: number }> => {
+  try {
+    // Premiumユーザーは調整不要
+    if (entitlement?.isEntitled) {
+      logger.debug('プレミアムユーザーのため、楽曲調整をスキップします');
+      return { adjusted: false, totalSongs: 0, keptSongs: 0 };
+    }
+
+    const limitPerInstrument = FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT;
+
+    // 全楽曲を取得
+    const { data: songs, error } = await supabase
+      .from('my_songs')
+      .select('id, instrument_id, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      logger.error('楽曲取得エラー:', error);
+      ErrorHandler.handle(error, '楽曲取得', false);
+      return { adjusted: false, totalSongs: 0, keptSongs: 0 };
+    }
+
+    if (!songs || songs.length === 0) {
+      logger.debug('楽曲が存在しないため、調整不要です');
+      return { adjusted: false, totalSongs: 0, keptSongs: 0 };
+    }
+
+    // 楽器IDごとにグループ化
+    const songsByInstrument = new Map<string | null, typeof songs>();
+    for (const song of songs) {
+      const instrumentId = song.instrument_id || null;
+      if (!songsByInstrument.has(instrumentId)) {
+        songsByInstrument.set(instrumentId, []);
+      }
+      songsByInstrument.get(instrumentId)!.push(song);
+    }
+
+    // 各楽器ごとに最新6個を保持、それ以外は削除
+    const songsToDelete: string[] = [];
+    let totalKept = 0;
+
+    for (const [instrumentId, instrumentSongs] of songsByInstrument) {
+      // created_atでソート（最新順）
+      const sorted = [...instrumentSongs].sort((a, b) => {
+        const dateA = new Date(a.created_at || 0).getTime();
+        const dateB = new Date(b.created_at || 0).getTime();
+        return dateB - dateA; // 降順（新しい順）
+      });
+
+      // 各楽器ごとに最新6個を保持
+      const songsToKeep = sorted.slice(0, limitPerInstrument);
+      const songsToRemove = sorted.slice(limitPerInstrument);
+
+      totalKept += songsToKeep.length;
+      songsToDelete.push(...songsToRemove.map(s => s.id));
+
+      logger.debug(`楽器ごとの楽曲調整 (instrumentId: ${instrumentId || 'null'}):`, {
+        total: sorted.length,
+        kept: songsToKeep.length,
+        removed: songsToRemove.length
+      });
+    }
+
+    // 調整不要の場合は早期リターン
+    if (songsToDelete.length === 0) {
+      logger.debug('楽曲数が制限以内のため、調整不要です');
+      return { 
+        adjusted: false, 
+        totalSongs: songs.length, 
+        keptSongs: songs.length 
+      };
+    }
+
+    // 古い楽曲を削除
+    if (songsToDelete.length > 0) {
+      const { error: deleteError } = await supabase
+        .from('my_songs')
+        .delete()
+        .in('id', songsToDelete);
+
+      if (deleteError) {
+        logger.error('楽曲削除エラー:', deleteError);
+        ErrorHandler.handle(deleteError, '楽曲削除', false);
+        return { adjusted: false, totalSongs: songs.length, keptSongs: totalKept };
+      }
+    }
+
+    logger.info('解約時の楽曲調整が完了しました（各楽器ごとに6曲まで）:', {
+      totalSongs: songs.length,
+      keptSongs: totalKept,
+      deletedSongs: songsToDelete.length
+    });
+
+    return {
+      adjusted: true,
+      totalSongs: songs.length,
+      keptSongs: totalKept
+    };
+  } catch (error) {
+    logger.error('解約時の楽曲調整中にエラーが発生しました:', {
+      error,
+      userId
+    });
+    ErrorHandler.handle(error, 'adjustMyLibrarySongsOnDowngrade', false);
+    return { adjusted: false, totalSongs: 0, keptSongs: 0 };
   }
 };
 

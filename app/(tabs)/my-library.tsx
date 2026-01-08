@@ -149,8 +149,12 @@ export default function MyLibraryScreen() {
           }
         }
         
+        // 型安全性のため明示的に型を指定（any型を回避）
+        interface SongFromDB extends Song {
+          instrument_id?: string | null;
+        }
         const filteredData = filterByInstrumentIdInMemory(
-          (rawData || []) as any[],
+          (rawData || []) as SongFromDB[],
           currentInstrumentId,
           true // 既存のnullデータも含める
         );
@@ -160,7 +164,7 @@ export default function MyLibraryScreen() {
           filteredCount: filteredData.length,
           filteredByStatus: filterStatus,
           instrumentId: currentInstrumentId,
-          songs: filteredData.map((s: any) => ({ id: s.id, title: s.title, status: s.status }))
+          songs: filteredData.map((s: SongFromDB) => ({ id: s.id, title: s.title, status: s.status }))
         });
         
         // データを設定
@@ -217,22 +221,27 @@ export default function MyLibraryScreen() {
       const validStatuses = ['want_to_play', 'learning', 'played', 'mastered'] as const;
       
       // formData.statusを文字列として正規化（配列やnull/undefinedの場合に対処）
-      const normalizedStatus = typeof formData.status === 'string' 
+      // ステータス値の型安全性を確保（any型を回避）
+      type SongStatus = 'want_to_play' | 'learning' | 'played' | 'mastered';
+      const validStatuses: SongStatus[] = ['want_to_play', 'learning', 'played', 'mastered'];
+      
+      const normalizedStatus: string = typeof formData.status === 'string' 
         ? formData.status.trim() 
         : (Array.isArray(formData.status) ? formData.status[0] : 'want_to_play');
       
-      const statusValue = normalizedStatus && validStatuses.includes(normalizedStatus as any) 
-        ? normalizedStatus 
+      // 型ガード: 有効なステータス値かどうかを確認
+      const statusValue: SongStatus = (normalizedStatus && validStatuses.includes(normalizedStatus as SongStatus))
+        ? (normalizedStatus as SongStatus)
         : 'want_to_play'; // 無効な値の場合はデフォルト値を使用
       
       logger.debug('ステータス検証:', {
         originalStatus: formData.status,
         normalizedStatus: normalizedStatus,
         statusValue: statusValue,
-        isValid: validStatuses.includes(statusValue as any)
+        isValid: validStatuses.includes(statusValue)
       });
       
-      if (!validStatuses.includes(statusValue as any)) {
+      if (!validStatuses.includes(statusValue)) {
         logger.error('無効なstatus値:', { 
           received: formData.status,
           normalized: normalizedStatus,
@@ -245,8 +254,19 @@ export default function MyLibraryScreen() {
         // 編集
         // artistが空の場合は空文字列を設定（NOT NULL制約のため）
         // genreが空文字列の場合はnullに変換
+        // 型安全性のため明示的に型を指定（any型を回避）
+        type SongDifficulty = 'beginner' | 'intermediate' | 'advanced';
         const genreValue = formData.genre && formData.genre.trim() ? formData.genre.trim() : null;
-        const updateData: any = {
+        interface UpdateSongData {
+          title: string;
+          artist: string;
+          genre: string | null;
+          difficulty: SongDifficulty;
+          status: SongStatus;
+          notes: string | null;
+          instrument_id?: string;
+        }
+        const updateData: UpdateSongData = {
           title: formData.title.trim(),
           artist: formData.artist.trim() || '', // NOT NULL制約のため空文字列をデフォルトに
           genre: genreValue,
@@ -384,8 +404,21 @@ export default function MyLibraryScreen() {
         // 新規追加
         // artistが空の場合は空文字列を設定（NOT NULL制約のため）
         // genreが空文字列の場合はnullに変換
+        // 型安全性のため明示的に型を指定（any型を回避）
+        type SongDifficulty = 'beginner' | 'intermediate' | 'advanced';
+        type SongStatus = 'want_to_play' | 'learning' | 'played' | 'mastered';
         const genreValue = formData.genre && formData.genre.trim() ? formData.genre.trim() : null;
-        const songData: any = {
+        interface CreateSongData {
+          user_id: string;
+          title: string;
+          artist: string;
+          genre: string | null;
+          difficulty: SongDifficulty;
+          status: SongStatus;
+          notes: string | null;
+          instrument_id?: string;
+        }
+        const songData: CreateSongData = {
           user_id: user.id,
           title: formData.title.trim(),
           artist: formData.artist.trim() || '', // NOT NULL制約のため空文字列をデフォルトに
@@ -751,7 +784,7 @@ export default function MyLibraryScreen() {
       <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]}>
         <InstrumentHeader />
         <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}> 
-          <TouchableOpacity onPress={() => router.push('/(tabs)/settings' as any)} style={styles.backButton}>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/settings')} style={styles.backButton}>
             <Text style={{ color: currentTheme.text }}>← 戻る</Text>
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: currentTheme.text }]}>マイライブラリ</Text>
@@ -785,7 +818,7 @@ export default function MyLibraryScreen() {
       <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} > 
         <InstrumentHeader />
         <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}> 
-          <TouchableOpacity onPress={() => router.push('/(tabs)/settings' as any)} style={styles.backButton}>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/settings')} style={styles.backButton}>
             <Text style={{ color: currentTheme.text }}>← 戻る</Text>
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: currentTheme.text }]}>マイライブラリ</Text>
@@ -843,12 +876,12 @@ export default function MyLibraryScreen() {
         {/* フィルター */}
         <View style={styles.filterContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScrollContent}>
-            {[
-              { key: 'want_to_play', label: '弾きたい' },
-              { key: 'learning', label: '練習中' },
-              { key: 'played', label: '演奏済み' },
-              { key: 'mastered', label: 'マスター' }
-            ].map((filter, index) => (
+            {([
+              { key: 'want_to_play' as const, label: '弾きたい' },
+              { key: 'learning' as const, label: '練習中' },
+              { key: 'played' as const, label: '演奏済み' },
+              { key: 'mastered' as const, label: 'マスター' }
+            ] as const).map((filter, index) => (
               <TouchableOpacity
                 key={filter.key}
                 style={[
@@ -856,7 +889,10 @@ export default function MyLibraryScreen() {
                   filterStatus === filter.key && { backgroundColor: currentTheme.primary },
                   index === 0 && styles.firstFilterButton
                 ]}
-                onPress={() => setFilterStatus(filter.key as any)}
+                onPress={() => {
+                  type SongStatus = 'want_to_play' | 'learning' | 'played' | 'mastered';
+                  setFilterStatus(filter.key as SongStatus);
+                }}
               >
                 <Text style={[
                   styles.filterButtonText,
@@ -1184,7 +1220,10 @@ export default function MyLibraryScreen() {
                           styles.pickerOption,
                           formData.difficulty === difficulty && { backgroundColor: currentTheme.primary }
                         ]}
-                        onPress={() => setFormData(prev => ({ ...prev, difficulty: difficulty as any }))}
+                        onPress={() => {
+                          type SongDifficulty = 'beginner' | 'intermediate' | 'advanced';
+                          setFormData(prev => ({ ...prev, difficulty: difficulty as SongDifficulty }));
+                        }}
                       >
                         <Text style={[
                           styles.pickerOptionText,
@@ -1207,7 +1246,10 @@ export default function MyLibraryScreen() {
                           styles.pickerOption,
                           formData.status === status && { backgroundColor: currentTheme.primary }
                         ]}
-                        onPress={() => setFormData(prev => ({ ...prev, status: status as any }))}
+                        onPress={() => {
+                          type SongStatus = 'want_to_play' | 'learning' | 'played' | 'mastered';
+                          setFormData(prev => ({ ...prev, status: status as SongStatus }));
+                        }}
                       >
                         <Text style={[
                           styles.pickerOptionText,

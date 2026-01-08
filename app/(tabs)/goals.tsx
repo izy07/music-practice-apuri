@@ -1373,14 +1373,22 @@ export default function GoalsScreen() {
             }
           }));
         }
-      } catch (error: any) {
+      } catch (error: unknown) {
         // エラー時はUIを元に戻す
         setGoals(prevGoals =>
           prevGoals.map(goal =>
             goal.id === goalId ? { ...goal, show_on_calendar: currentValue } : goal
           )
         );
-        Alert.alert('エラー', `カレンダー表示設定の更新に失敗しました: ${error?.message || '不明なエラー'}`);
+        // 型安全性のためunknown型を使用して型ガードで処理
+        let errorMessage = '不明なエラー';
+        if (error instanceof Error) {
+          errorMessage = error.message;
+        } else if (typeof error === 'object' && error !== null) {
+          const err = error as Record<string, unknown>;
+          errorMessage = (err.message as string) || '不明なエラー';
+        }
+        Alert.alert('エラー', `カレンダー表示設定の更新に失敗しました: ${errorMessage}`);
       }
     } catch (error) {
       Alert.alert('エラー', 'カレンダー表示設定の更新に失敗しました');

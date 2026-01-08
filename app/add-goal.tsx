@@ -55,9 +55,9 @@ export default function AddGoalScreen() {
 
         // 既に上限に達している場合は警告を表示
         if (!limitCheck.canCreate) {
-          const { instrumentService } = require('@/services');
+          const { instrumentService, Instrument } = require('@/services/instrumentService');
           const defaultInstruments = instrumentService.getDefaultInstruments();
-          const instrument = defaultInstruments.find((i: any) => i.id === instrumentId);
+          const instrument = defaultInstruments.find((i: Instrument) => i.id === instrumentId);
           const instrumentName = instrument?.name || 'この楽器';
           
           Alert.alert(
@@ -130,9 +130,9 @@ export default function AddGoalScreen() {
       const limitCheck = await checkGoalLimit(user.id, instrumentId, entitlement);
       if (!limitCheck.canCreate) {
         // 楽器名を取得
-        const { instrumentService } = require('@/services');
+        const { instrumentService, Instrument } = require('@/services/instrumentService');
         const defaultInstruments = instrumentService.getDefaultInstruments();
-        const instrument = defaultInstruments.find((i: any) => i.id === instrumentId);
+        const instrument = defaultInstruments.find((i: Instrument) => i.id === instrumentId);
         const instrumentName = instrument?.name || 'この楽器';
         
         Alert.alert(
