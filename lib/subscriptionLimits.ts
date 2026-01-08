@@ -504,9 +504,8 @@ export const adjustGoalsOnDowngrade = async (
       return { adjusted: false, totalGoals: 0, keptGoals: 0 };
     }
 
-    // 楽器数を取得して制限値を計算
-    const instrumentCount = await getUserInstrumentCount(userId);
-    const limit = FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT * instrumentCount;
+    // 各楽器ごとに2個まで（楽器数を掛け算しない）
+    const limitPerInstrument = FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT;
 
     // 全目標を取得（楽器IDでフィルタリングしない）
     const allGoals = await goalRepository.getGoals(userId, undefined);
@@ -516,16 +515,52 @@ export const adjustGoalsOnDowngrade = async (
       !g.is_completed && g.progress_percentage < 100
     );
     
-    logger.debug('解約時の目標調整開始:', {
+    logger.debug('解約時の目標調整開始（各楽器ごとに2個まで）:', {
       userId,
-      instrumentCount,
-      limit,
+      limitPerInstrument,
       totalGoals: allGoals.length,
       activeGoals: activeGoals.length
     });
 
-    // 目標数が制限以内の場合は調整不要
-    if (activeGoals.length <= limit) {
+    // 楽器IDごとにグループ化
+    const goalsByInstrument = new Map<string | null, any[]>();
+    
+    for (const goal of activeGoals) {
+      const instrumentId = goal.instrument_id || null;
+      if (!goalsByInstrument.has(instrumentId)) {
+        goalsByInstrument.set(instrumentId, []);
+      }
+      goalsByInstrument.get(instrumentId)!.push(goal);
+    }
+
+    // 各楽器ごとに最新2個を保持、それ以外は非表示にする
+    const goalsToKeep: any[] = [];
+    const goalsToHide: any[] = [];
+
+    for (const [instrumentId, instrumentGoals] of goalsByInstrument) {
+      // created_atでソート（最新順）
+      const sorted = [...instrumentGoals].sort((a: any, b: any) => {
+        const dateA = new Date(a.created_at || 0).getTime();
+        const dateB = new Date(b.created_at || 0).getTime();
+        return dateB - dateA; // 降順（新しい順）
+      });
+
+      // 各楽器ごとに最新2個を保持
+      const instrumentGoalsToKeep = sorted.slice(0, limitPerInstrument);
+      const instrumentGoalsToHide = sorted.slice(limitPerInstrument);
+
+      goalsToKeep.push(...instrumentGoalsToKeep);
+      goalsToHide.push(...instrumentGoalsToHide);
+
+      logger.debug(`楽器ごとの目標調整 (instrumentId: ${instrumentId || 'null'}):`, {
+        total: sorted.length,
+        kept: instrumentGoalsToKeep.length,
+        hidden: instrumentGoalsToHide.length
+      });
+    }
+
+    // 調整不要の場合は早期リターン
+    if (goalsToHide.length === 0) {
       logger.debug('目標数が制限以内のため、調整不要です');
       
       // 各楽器ごとに最新の目標のshow_on_calendarをtrueにする
@@ -540,21 +575,10 @@ export const adjustGoalsOnDowngrade = async (
       };
     }
 
-    // 最新順（FIFO）でソート（created_atが新しい順）
-    const sortedGoals = [...activeGoals].sort((a: any, b: any) => {
-      const dateA = new Date(a.created_at || 0).getTime();
-      const dateB = new Date(b.created_at || 0).getTime();
-      return dateB - dateA; // 降順（新しい順）
-    });
-
-    // 制限数分を保持、それ以外は非表示にする
-    const goalsToKeep = sortedGoals.slice(0, limit);
-    const goalsToHide = sortedGoals.slice(limit);
-
-    logger.debug('目標調整:', {
+    logger.debug('目標調整（各楽器ごとに2個まで）:', {
+      totalGoals: activeGoals.length,
       keptGoals: goalsToKeep.length,
-      hiddenGoals: goalsToHide.length,
-      limit
+      hiddenGoals: goalsToHide.length
     });
 
     // 古い目標のshow_on_calendarをfalseにする
@@ -585,7 +609,7 @@ export const adjustGoalsOnDowngrade = async (
       window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
     }
 
-    logger.info('解約時の目標調整が完了しました:', {
+    logger.info('解約時の目標調整が完了しました（各楽器ごとに2個まで）:', {
       totalGoals: activeGoals.length,
       keptGoals: goalsToKeep.length,
       hiddenGoals: goalsToHide.length
