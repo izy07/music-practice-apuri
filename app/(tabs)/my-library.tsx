@@ -829,7 +829,7 @@ export default function MyLibraryScreen() {
         {!entitlement.isEntitled && (
           <View style={[styles.upgradeBanner, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
             <Text style={[styles.upgradeBannerTitle, { color: currentTheme.text }]}>
-              各楽器ごとに6曲まで追加可能
+              6曲まで追加可能
             </Text>
             <TouchableOpacity
               style={[styles.upgradeBannerButton, { backgroundColor: currentTheme.primary }]}
