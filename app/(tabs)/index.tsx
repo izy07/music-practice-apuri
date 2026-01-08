@@ -670,7 +670,7 @@ export default function CalendarScreen() {
       if (!canSaveCheck.canSave) {
         Alert.alert(
           'アップグレードが必要です',
-          canSaveCheck.reason || '新しい楽器でデータを追加するには、プレミアムにアップグレードしてください。',
+          canSaveCheck.reason || '新しい楽器でデータを追加するには、プレミアムへアップグレードしてください。',
           [
             { text: 'キャンセル', style: 'cancel' },
             { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }

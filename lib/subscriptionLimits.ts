@@ -161,7 +161,7 @@ export const canSaveDataForInstrument = async (
       });
       return {
         canSave: false,
-        reason: `Freeプランでは楽器を${FREE_PLAN_LIMITS.MAX_INSTRUMENTS}個まで記録できます。新しい楽器でデータを追加するには、プレミアムにアップグレードしてください。`
+        reason: `Freeプランでは楽器を${FREE_PLAN_LIMITS.MAX_INSTRUMENTS}個まで記録できます。新しい楽器でデータを追加するには、プレミアムへアップグレードしてください。`
       };
     }
 

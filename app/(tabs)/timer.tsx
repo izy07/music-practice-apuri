@@ -692,7 +692,7 @@ export default function TimerScreen() {
       if (!canSaveCheck.canSave) {
         Alert.alert(
           'アップグレードが必要です',
-          canSaveCheck.reason || '新しい楽器で練習記録を追加するには、プレミアムにアップグレードしてください。',
+          canSaveCheck.reason || '新しい楽器で練習記録を追加するには、プレミアムへアップグレードしてください。',
           [
             { text: 'キャンセル', style: 'cancel' },
             { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }

@@ -94,7 +94,7 @@ export default function InstrumentSelectionScreen() {
       if (!canSaveCheck.canSave) {
         Alert.alert(
           'アップグレードが必要です',
-          canSaveCheck.reason || 'Freeプランでは楽器を2個まで記録できます。3個目以降の楽器を追加するには、プレミアムにアップグレードしてください。',
+          canSaveCheck.reason || 'Freeプランでは楽器を2個まで記録できます。3個目以降の楽器を追加するには、プレミアムへアップグレードしてください。',
           [
             { text: '了解', style: 'cancel' }
           ]
@@ -155,7 +155,7 @@ export default function InstrumentSelectionScreen() {
                 ⚠️ Freeプランでは楽器を2個まで使用できます
               </Text>
               <Text style={[styles.freePlanInfoSubtitle, { color: currentTheme.textSecondary }]}>
-                3個目以降の楽器を追加するには、プレミアムにアップグレードしてください。既存の楽器（2個まで）は自由に切り替えできます。
+                3個目以降の楽器を追加するには、プレミアムへアップグレードしてください。既存の楽器（2個まで）は自由に切り替えできます。
               </Text>
             </View>
           </View>

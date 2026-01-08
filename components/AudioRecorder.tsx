@@ -187,7 +187,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       if (!entitlement?.isEntitled && selectedDate && !isCurrentMonth(selectedDate)) {
         Alert.alert(
           '録音できません',
-          'Freeプランでは当月のみ録音できます。\n\n過去の月や未来の月に録音するには、プレミアムにアップグレードしてください。',
+          'Freeプランでは当月のみ録音できます。\n\n過去の月や未来の月に録音するには、プレミアムへアップグレードしてください。',
           [
             { text: 'キャンセル', style: 'cancel' },
             { text: 'プレミアムを見る', onPress: () => {
@@ -805,7 +805,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       if (!canSaveCheck.canSave) {
         Alert.alert(
           'アップグレードが必要です',
-          canSaveCheck.reason || '新しい楽器で録音を追加するには、プレミアムにアップグレードしてください。',
+          canSaveCheck.reason || '新しい楽器で録音を追加するには、プレミアムへアップグレードしてください。',
           [
             { text: 'キャンセル', style: 'cancel', onPress: () => {
               setIsSaving(false);
@@ -828,7 +828,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       if (!entitlement?.isEntitled && !isCurrentMonth(recordedAt)) {
         Alert.alert(
           '録音できません',
-          'Freeプランでは当月のみ録音できます。\n\n過去の月や未来の月に録音するには、プレミアムにアップグレードしてください。',
+          'Freeプランでは当月のみ録音できます。\n\n過去の月や未来の月に録音するには、プレミアムへアップグレードしてください。',
           [
             { text: 'キャンセル', style: 'cancel', onPress: () => {
               setIsSaving(false);
@@ -851,7 +851,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         const reason = limitCheck.reason || '';
         Alert.alert(
           '制限に達しました',
-          reason || `Freeプランでは月${limitCheck.limit}回まで録音できます。\n現在の使用回数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムにアップグレードすると無制限で録音できます。`,
+          reason || `Freeプランでは月${limitCheck.limit}回まで録音できます。\n現在の使用回数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
           [
             { text: 'キャンセル', style: 'cancel', onPress: () => {
               setIsSaving(false);

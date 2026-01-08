@@ -68,7 +68,7 @@ export function PracticeDetailModal({
       if (!canSaveCheck.canSave) {
         Alert.alert(
           'アップグレードが必要です',
-          canSaveCheck.reason || '新しい楽器で基礎練を記録するには、プレミアムにアップグレードしてください。',
+          canSaveCheck.reason || '新しい楽器で基礎練を記録するには、プレミアムへアップグレードしてください。',
           [
             { text: 'キャンセル', style: 'cancel' },
             { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }

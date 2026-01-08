@@ -336,7 +336,7 @@ export default function MyLibraryScreen() {
         if (!canSaveCheck.canSave) {
           Alert.alert(
             'アップグレードが必要です',
-            canSaveCheck.reason || '新しい楽器で楽曲を追加するには、プレミアムにアップグレードしてください。',
+            canSaveCheck.reason || '新しい楽器で楽曲を追加するには、プレミアムへアップグレードしてください。',
             [
               { text: 'キャンセル', style: 'cancel', onPress: () => {
                 setIsSaving(false);
@@ -367,7 +367,7 @@ export default function MyLibraryScreen() {
         if (!limitCheck.canAdd) {
           Alert.alert(
             '制限に達しました',
-            `Freeプランでは各楽器ごとに楽曲を${limitCheck.limit}曲まで追加できます。\n現在の曲数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nこれ以上追加するには、プレミアムにアップグレードしてください。`,
+            `Freeプランでは各楽器ごとに楽曲を${limitCheck.limit}曲まで追加できます。\n現在の曲数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nこれ以上追加するには、プレミアムへアップグレードしてください。`,
             [
               { text: 'キャンセル', style: 'cancel', onPress: () => {
                 setIsSaving(false);
