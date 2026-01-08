@@ -188,12 +188,12 @@ export function useCalendarData(currentDate: Date) {
 
           // TypeScript側で楽器フィルタリングを実行（データベース側でフィルタリングできない場合のフォールバック）
           // 型安全性のため明示的に型を指定（any型を回避）
-          interface PracticeSession {
+          type PracticeSession = {
             practice_date?: string;
             duration_minutes?: number;
             input_method?: string;
             instrument_id?: string | null;
-          }
+          };
           const sessions = filterByInstrumentIdInMemory(
             (rawSessions || []) as PracticeSession[],
             currentInstrumentId,
@@ -573,14 +573,14 @@ export function useCalendarData(currentDate: Date) {
       
       // instrument_id カラムを含めたクエリ（楽器フィルタリング用）
       // 型安全性のため明示的に型を指定（any型を回避）
-      interface EventQueryBuilder {
+      type EventQueryBuilder = {
         from: (table: string) => EventQueryBuilder;
         select: (columns: string) => EventQueryBuilder;
         eq: (column: string, value: unknown) => EventQueryBuilder;
         gte: (column: string, value: string) => EventQueryBuilder;
         lte: (column: string, value: string) => EventQueryBuilder;
         order: (column: string, options: { ascending: boolean }) => EventQueryBuilder;
-      }
+      };
       const query = supabase
         .from('events')
         .select('id, title, description, date, instrument_id')
@@ -596,13 +596,13 @@ export function useCalendarData(currentDate: Date) {
       const { data: rawData, error } = await query;
       
       // 型安全性のため明示的に型を指定（any型を回避）
-      interface EventWithInstrumentId {
+      type EventWithInstrumentId = {
         id: string;
         title: string;
         description?: string;
         date: string;
         instrument_id?: string | null;
-      }
+      };
       let eventsData: Array<{ id: string; title: string; description?: string; date: string }> | null = null;
       
       if (error) {
@@ -837,10 +837,10 @@ export function useCalendarData(currentDate: Date) {
       const { filterByInstrumentIdInMemory } = await import('@/repositories/common/instrumentFilter');
       
       // 型安全性のため明示的に型を指定（any型を回避）
-      interface RecordingData {
+      type RecordingData = {
         recorded_at: string;
         instrument_id?: string | null;
-      }
+      };
       
       const recordings = filterByInstrumentIdInMemory<RecordingData>(rawRecordings || [], currentInstrumentId, true);
 
@@ -1092,10 +1092,10 @@ export function useCalendarData(currentDate: Date) {
         
         // 達成済みでない目標をフィルタリング
         // 型安全性のため明示的に型を指定（any型を回避）
-        interface GoalForFilter {
+        type GoalForFilter = {
           is_completed?: boolean;
           progress_percentage?: number;
-        }
+        };
         const activeGoals = goals.filter((goal: GoalForFilter) => {
           const isCompleted = goal.is_completed === true || goal.progress_percentage === 100;
           return !isCompleted;
