@@ -135,7 +135,10 @@ export default function InstrumentSelectionScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.replace('/(tabs)/settings')}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => safeGoBack(router, '/(tabs)/settings', true)}
+        >
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
@@ -392,6 +395,9 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     ...createShadowStyle({
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
@@ -400,6 +406,29 @@ const styles = StyleSheet.create({
       elevation: 3,
     }),
     elevation: 3,
+  },
+  freePlanInfoContent: {
+    flex: 1,
+    marginRight: 12,
+  },
+  freePlanInfoTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  freePlanInfoSubtitle: {
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  freePlanInfoButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  freePlanInfoButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
   },
   freePlanInfoText: {
     fontSize: 14,
