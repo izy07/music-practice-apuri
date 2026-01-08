@@ -612,6 +612,35 @@ export const goalRepository = {
       const { count, error } = await query;
       
       if (error) {
+        // 達成済みフィルタリングのエラーの場合、フィルタリングなしで再試行
+        const isCompletedError = (error.code === '400' || error.code === '42703') && 
+                                 (error.message?.includes('is_completed') || error.message?.includes('progress_percentage'));
+        
+        if (isCompletedError) {
+          // 達成済みフィルタリングなしで再試行
+          let fallbackQuery = supabase
+            .from('goals')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', userId);
+          
+          // 楽器IDでフィルタリング（カラムが存在する場合のみ）
+          if (supportsInstrumentId) {
+            if (instrumentId) {
+              fallbackQuery = fallbackQuery.eq('instrument_id', instrumentId);
+            } else {
+              fallbackQuery = fallbackQuery.is('instrument_id', null);
+            }
+          }
+          
+          const { count: fallbackCount, error: fbErr } = await fallbackQuery;
+          
+          if (fbErr) {
+            return 0;
+          }
+          
+          return fallbackCount || 0;
+        }
+        
         // instrument_idカラムのエラーの場合、フィルタリングなしで再試行
         if ((error.code === '400' || error.code === '42703') && error.message?.includes('instrument_id')) {
           supportsInstrumentId = false;
@@ -621,10 +650,19 @@ export const goalRepository = {
             }
           } catch {}
           
-          const { count: fallbackCount, error: fbErr } = await supabase
+          // 達成済みフィルタリングは再試行
+          let fallbackQuery = supabase
             .from('goals')
             .select('id', { count: 'exact', head: true })
             .eq('user_id', userId);
+          
+          if (supportsIsCompleted) {
+            fallbackQuery = fallbackQuery.eq('is_completed', false);
+          } else {
+            fallbackQuery = fallbackQuery.lt('progress_percentage', 100);
+          }
+          
+          const { count: fallbackCount, error: fbErr } = await fallbackQuery;
           
           if (fbErr) {
             return 0;
