@@ -253,11 +253,15 @@ const styles = StyleSheet.create({
   },
   featureItem: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
+    flex: 1,
   },
   featureText: {
+    flex: 1,
+    flexShrink: 1,
     fontSize: 14,
+    lineHeight: 20,
   },
   ctaButton: {
     marginTop: 4,
