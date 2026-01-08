@@ -333,6 +333,191 @@ export const checkGoalLimit = async (
 };
 
 /**
+ * プレミアム解約時の目標調整（最新順FIFO）
+ * 
+ * 解約時に目標数を制限数に合わせて調整する
+ * - 最新に作成した目標を優先的に保持
+ * - 制限を超える古い目標のshow_on_calendarをfalseにする
+ * 
+ * @param userId ユーザーID
+ * @param entitlement エンタイトルメント情報
+ * @returns 調整された目標数
+ */
+export const adjustGoalsOnDowngrade = async (
+  userId: string,
+  entitlement: Entitlement | null | undefined
+): Promise<{ adjusted: boolean; totalGoals: number; keptGoals: number }> => {
+  try {
+    // Premiumユーザーは調整不要
+    if (entitlement?.isEntitled) {
+      logger.debug('プレミアムユーザーのため、目標調整をスキップします');
+      return { adjusted: false, totalGoals: 0, keptGoals: 0 };
+    }
+
+    // 楽器数を取得して制限値を計算
+    const instrumentCount = await getUserInstrumentCount(userId);
+    const limit = FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT * instrumentCount;
+
+    // 全目標を取得（楽器IDでフィルタリングしない）
+    const allGoals = await goalRepository.getGoals(userId, undefined);
+    
+    // 達成済み目標と未達成目標を分離
+    const activeGoals = allGoals.filter((g: any) => 
+      !g.is_completed && g.progress_percentage < 100
+    );
+    
+    logger.debug('解約時の目標調整開始:', {
+      userId,
+      instrumentCount,
+      limit,
+      totalGoals: allGoals.length,
+      activeGoals: activeGoals.length
+    });
+
+    // 目標数が制限以内の場合は調整不要
+    if (activeGoals.length <= limit) {
+      logger.debug('目標数が制限以内のため、調整不要です');
+      
+      // 各楽器ごとに最新の目標のshow_on_calendarをtrueにする
+      if (activeGoals.length > 0) {
+        await ensureOneGoalPerInstrumentVisible(userId, activeGoals);
+      }
+      
+      return { 
+        adjusted: false, 
+        totalGoals: activeGoals.length, 
+        keptGoals: activeGoals.length 
+      };
+    }
+
+    // 最新順（FIFO）でソート（created_atが新しい順）
+    const sortedGoals = [...activeGoals].sort((a: any, b: any) => {
+      const dateA = new Date(a.created_at || 0).getTime();
+      const dateB = new Date(b.created_at || 0).getTime();
+      return dateB - dateA; // 降順（新しい順）
+    });
+
+    // 制限数分を保持、それ以外は非表示にする
+    const goalsToKeep = sortedGoals.slice(0, limit);
+    const goalsToHide = sortedGoals.slice(limit);
+
+    logger.debug('目標調整:', {
+      keptGoals: goalsToKeep.length,
+      hiddenGoals: goalsToHide.length,
+      limit
+    });
+
+    // 古い目標のshow_on_calendarをfalseにする
+    if (goalsToHide.length > 0) {
+      for (const goal of goalsToHide) {
+        try {
+          await goalRepository.updateShowOnCalendar(
+            goal.id,
+            false,
+            userId,
+            goal.instrument_id || null
+          );
+        } catch (error) {
+          logger.error('目標の非表示処理中にエラーが発生しました:', {
+            goalId: goal.id,
+            error
+          });
+          // 個別のエラーは無視して続行
+        }
+      }
+    }
+
+    // 保持する目標について、各楽器ごとに最新の目標のshow_on_calendarをtrueにする
+    await ensureOneGoalPerInstrumentVisible(userId, goalsToKeep);
+
+    // カレンダー更新イベントを発火
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
+    }
+
+    logger.info('解約時の目標調整が完了しました:', {
+      totalGoals: activeGoals.length,
+      keptGoals: goalsToKeep.length,
+      hiddenGoals: goalsToHide.length
+    });
+
+    return {
+      adjusted: true,
+      totalGoals: activeGoals.length,
+      keptGoals: goalsToKeep.length
+    };
+  } catch (error) {
+    logger.error('解約時の目標調整中にエラーが発生しました:', {
+      error,
+      userId
+    });
+    ErrorHandler.handle(error, 'adjustGoalsOnDowngrade', false);
+    // エラー時も処理は続行（フォールバック）
+    return { adjusted: false, totalGoals: 0, keptGoals: 0 };
+  }
+};
+
+/**
+ * 各楽器ごとに最新の目標のshow_on_calendarをtrueにする（1つだけ）
+ * 
+ * @param userId ユーザーID
+ * @param goals 目標の配列
+ */
+async function ensureOneGoalPerInstrumentVisible(
+  userId: string,
+  goals: any[]
+): Promise<void> {
+  try {
+    // 楽器IDごとにグループ化
+    const goalsByInstrument = new Map<string | null, any[]>();
+    
+    for (const goal of goals) {
+      const instrumentId = goal.instrument_id || null;
+      if (!goalsByInstrument.has(instrumentId)) {
+        goalsByInstrument.set(instrumentId, []);
+      }
+      goalsByInstrument.get(instrumentId)!.push(goal);
+    }
+
+    // 各楽器ごとに最新の目標のshow_on_calendarをtrueにする
+    for (const [instrumentId, instrumentGoals] of goalsByInstrument) {
+      // created_atでソート（最新順）
+      const sorted = [...instrumentGoals].sort((a: any, b: any) => {
+        const dateA = new Date(a.created_at || 0).getTime();
+        const dateB = new Date(b.created_at || 0).getTime();
+        return dateB - dateA; // 降順（新しい順）
+      });
+
+      // 最新の目標のshow_on_calendarをtrueにする（既にtrueの場合はスキップ）
+      const latestGoal = sorted[0];
+      if (latestGoal && !latestGoal.show_on_calendar) {
+        try {
+          await goalRepository.updateShowOnCalendar(
+            latestGoal.id,
+            true,
+            userId,
+            instrumentId
+          );
+        } catch (error) {
+          logger.error('目標のカレンダー表示設定中にエラーが発生しました:', {
+            goalId: latestGoal.id,
+            instrumentId,
+            error
+          });
+          // 個別のエラーは無視して続行
+        }
+      }
+    }
+  } catch (error) {
+    logger.error('ensureOneGoalPerInstrumentVisible中にエラーが発生しました:', {
+      error,
+      userId
+    });
+    // エラーは無視（フォールバック）
+  }
+}
+
+/**
  * マイライブラリの曲数をチェック（楽器ごとに）
  * 
  * @param userId ユーザーID

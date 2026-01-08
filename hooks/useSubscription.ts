@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { computeEntitlement, ensureSubscription, getSubscription, UserSubscription } from '@/lib/subscriptionService';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { adjustGoalsOnDowngrade } from '@/lib/subscriptionLimits';
 
 /**
  * サブスクリプション機能のフォールバック（エラー時でもアプリが動作するように）
@@ -22,6 +23,9 @@ export const useSubscription = () => {
   const [entitlement, setEntitlement] = useState({ isEntitled: false, isTrial: false, isPremiumActive: false, daysLeftOnTrial: 0 });
   const [error, setError] = useState<Error | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  
+  // 前回のentitlement状態を保持（解約検知用）
+  const previousEntitlementRef = useRef<{ isEntitled: boolean } | null>(null);
 
   const loadSubscription = useCallback(async () => {
     try {
@@ -42,6 +46,24 @@ export const useSubscription = () => {
       
       // エンタイトルメントを計算
       const computedEntitlement = await computeEntitlement(sub);
+      
+      // 解約を検知（プレミアムからフリープランに変更された場合）
+      const previousEntitlement = previousEntitlementRef.current;
+      if (previousEntitlement?.isEntitled === true && computedEntitlement.isEntitled === false) {
+        logger.info('プレミアム解約を検知しました。目標を調整します。');
+        try {
+          // 解約時の目標調整を実行（非同期、エラーは無視）
+          adjustGoalsOnDowngrade(user.id, computedEntitlement).catch((adjustError) => {
+            logger.error('解約時の目標調整中にエラーが発生しました（続行）:', adjustError);
+          });
+        } catch (adjustError) {
+          logger.error('解約時の目標調整の呼び出し中にエラーが発生しました（続行）:', adjustError);
+        }
+      }
+      
+      // 前回の状態を更新
+      previousEntitlementRef.current = { isEntitled: computedEntitlement.isEntitled };
+      
       setEntitlement(computedEntitlement);
     } catch (e: unknown) {
       // エラーを適切に記録し、ユーザーに表示する
