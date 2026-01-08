@@ -31,7 +31,7 @@ const UpgradeBanner = ({ currentTheme, router }: { currentTheme: any; router: an
         2個まで設定可能
       </Text>
       <Text style={[upgradeBannerStyles.subtitle, { color: currentTheme.textSecondary }]}>
-        無制限にするにはプレミアムへアップグレード
+        プレミアムで無制限に
       </Text>
     </View>
     <TouchableOpacity
