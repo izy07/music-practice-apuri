@@ -11,7 +11,6 @@ import { createShadowStyle } from '@/lib/shadowStyles';
 import { useSubscription } from '@/hooks/useSubscription';
 import { canSaveDataForInstrument, getActiveInstrumentIds } from '@/lib/subscriptionLimits';
 import { safeGoBack } from '@/lib/navigationUtils';
-import { safeGoBack } from '@/lib/navigationUtils';
 
 interface Instrument {
   id: string;
