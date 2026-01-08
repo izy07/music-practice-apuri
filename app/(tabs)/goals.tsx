@@ -214,7 +214,6 @@ export default function GoalsScreen() {
         userId: authUser.id,
         selectedInstrument,
         userSelectedInstrumentId: user?.selected_instrument_id,
-        effectiveInstrumentId,
         instrumentId,
       });
       
@@ -305,7 +304,24 @@ export default function GoalsScreen() {
         logger.debug('キャッシュ保存エラー（無視）:', saveError);
       }
     } catch (error) {
-      logger.error('Error loading goals:', error);
+      // エラーの詳細を明示的にログに記録
+      const errorDetails = error instanceof Error 
+        ? { 
+            message: error.message, 
+            stack: error.stack,
+            name: error.name 
+          }
+        : typeof error === 'object' && error !== null
+        ? { 
+            code: (error as any).code,
+            message: (error as any).message,
+            details: (error as any).details,
+            hint: (error as any).hint,
+            error: String(error)
+          }
+        : { error: String(error) };
+      
+      logger.error('Error loading goals:', errorDetails);
       // エラー時もキャッシュから読み込みを試行
       try {
         const { data: { user: errorAuthUser } } = await supabase.auth.getUser();
