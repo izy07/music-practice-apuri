@@ -96,9 +96,15 @@ export default function AddGoalScreen() {
         logger.debug('キャッシュクリアエラー（無視）:', cacheError);
       }
       
-      Alert.alert('成功', '目標が保存されました');
-      // 保存成功後、前の画面に戻る（安全な戻る処理）
-      safeGoBack('/(tabs)/goals');
+      Alert.alert('成功', '目標が保存されました', [
+        {
+          text: 'OK',
+          onPress: () => {
+            // 保存成功後、前の画面に戻る（安全な戻る処理）
+            safeGoBack(router, '/(tabs)/goals', true);
+          }
+        }
+      ]);
     } catch (error) {
       ErrorHandler.handle(error, '目標保存', true);
       Alert.alert('エラー', '目標の保存に失敗しました');
@@ -133,7 +139,7 @@ export default function AddGoalScreen() {
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => safeGoBack('/(tabs)/goals')}
+          onPress={() => safeGoBack(router, '/(tabs)/goals', true)}
         >
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
