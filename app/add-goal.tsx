@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Plus, Target, Calendar, ChevronLeft, ChevronRight } from 'lucide-react-native';
@@ -37,6 +37,52 @@ export default function AddGoalScreen() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
+  const [goalLimitStatus, setGoalLimitStatus] = useState<{ canCreate: boolean; currentCount: number; limit: number } | null>(null);
+
+  // 画面表示時に目標数の制限を事前チェック
+  useEffect(() => {
+    const checkLimitOnMount = async () => {
+      if (!user?.id || entitlement?.isEntitled) {
+        return; // プレミアムユーザーはチェック不要
+      }
+
+      try {
+        const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
+        const instrumentId = getInstrumentId(selectedInstrument);
+        
+        const limitCheck = await checkGoalLimit(user.id, instrumentId, entitlement);
+        setGoalLimitStatus(limitCheck);
+
+        // 既に上限に達している場合は警告を表示
+        if (!limitCheck.canCreate) {
+          const { instrumentService } = require('@/services');
+          const defaultInstruments = instrumentService.getDefaultInstruments();
+          const instrument = defaultInstruments.find((i: any) => i.id === instrumentId);
+          const instrumentName = instrument?.name || 'この楽器';
+          
+          Alert.alert(
+            '上限に達しています',
+            `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
+            [
+              { 
+                text: '戻る', 
+                style: 'cancel',
+                onPress: () => safeGoBack(router, '/(tabs)/goals', true)
+              },
+              { 
+                text: 'アップグレードしましょう', 
+                onPress: () => router.push('/(tabs)/pricing-plans') 
+              }
+            ]
+          );
+        }
+      } catch (error) {
+        logger.error('目標制限チェックエラー:', error);
+      }
+    };
+
+    checkLimitOnMount();
+  }, [user?.id, selectedInstrument, entitlement]);
 
 
   const saveGoal = async () => {
@@ -282,18 +328,35 @@ export default function AddGoalScreen() {
           </View>
         </View>
 
+        {/* 目標数制限の表示（フリープランの場合） */}
+        {!entitlement?.isEntitled && goalLimitStatus && (
+          <View style={[styles.limitInfoContainer, { backgroundColor: currentTheme.surface, borderColor: goalLimitStatus.canCreate ? currentTheme.primary : '#FF4444' }]}>
+            <Text style={[styles.limitInfoText, { color: currentTheme.text }]}>
+              {goalLimitStatus.canCreate 
+                ? `目標数: ${goalLimitStatus.currentCount}/${goalLimitStatus.limit}（あと${goalLimitStatus.limit - goalLimitStatus.currentCount}個追加可能）`
+                : `上限に達しています: ${goalLimitStatus.currentCount}/${goalLimitStatus.limit}`
+              }
+            </Text>
+            {!goalLimitStatus.canCreate && (
+              <Text style={[styles.limitInfoSubText, { color: currentTheme.textSecondary }]}>
+                プレミアムで無制限に設定できます
+              </Text>
+            )}
+          </View>
+        )}
+
         {/* 保存ボタン */}
         <View style={styles.saveButtonContainer}>
           <TouchableOpacity 
             style={[
               styles.saveButton, 
               { 
-                backgroundColor: isLoading ? currentTheme.textSecondary : currentTheme.primary,
-                opacity: isLoading ? 0.6 : 1
+                backgroundColor: (isLoading || (goalLimitStatus && !goalLimitStatus.canCreate)) ? currentTheme.textSecondary : currentTheme.primary,
+                opacity: (isLoading || (goalLimitStatus && !goalLimitStatus.canCreate)) ? 0.6 : 1
               }
             ]} 
             onPress={saveGoal}
-            disabled={isLoading}
+            disabled={isLoading || (goalLimitStatus !== null && !goalLimitStatus.canCreate)}
           >
             <Plus size={20} color="#FFFFFF" />
             <Text style={styles.saveButtonText}>
@@ -445,6 +508,23 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 122, 255, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  limitInfoContainer: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  limitInfoText: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  limitInfoSubText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
   },
   saveButtonContainer: {
     alignItems: 'center',
