@@ -83,7 +83,12 @@ export default function AddGoalScreen() {
       // Freeプランの場合、目標設定数をチェック（各楽器ごとに2個まで）
       const limitCheck = await checkGoalLimit(user.id, instrumentId, entitlement);
       if (!limitCheck.canCreate) {
-        const instrumentName = instruments.find(i => i.id === instrumentId)?.name || 'この楽器';
+        // 楽器名を取得
+        const { instrumentService } = require('@/services');
+        const defaultInstruments = instrumentService.getDefaultInstruments();
+        const instrument = defaultInstruments.find((i: any) => i.id === instrumentId);
+        const instrumentName = instrument?.name || 'この楽器';
+        
         Alert.alert(
           '上限に達しました',
           `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
