@@ -493,8 +493,8 @@ export default function TutorialScreen() {
             </Animated.View>
           )}
 
-          {/* 通知設定（ステップ5の場合のみ） */}
-          {currentStep === 5 && (
+          {/* 通知設定（ステップ4の場合のみ） */}
+          {currentStep === 4 && (
             <Animated.View
               style={[
                 styles.notificationCard,
