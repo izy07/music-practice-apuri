@@ -1,5 +1,4 @@
 import { useState, useCallback, useRef } from 'react';
-import { supabase } from '@/lib/supabase';
 import { formatLocalDate } from '@/lib/dateUtils';
 import { OfflineStorage, isOnline } from '@/lib/offlineStorage';
 import { logger } from '@/lib/logger';
@@ -37,8 +36,25 @@ interface ShortTermGoal {
   target_date?: string;
 }
 
+/**
+ * カレンダーデータ管理フック
+ * 
+ * 機能:
+ * - 練習記録データの読み込みとキャッシュ管理
+ * - 録音データの読み込み
+ * - イベントデータの読み込み
+ * - 目標データの読み込み
+ * - オフライン対応（キャッシュ機能）
+ * - 楽器切り替え時のキャッシュクリア
+ * - デバウンス処理による重複読み込み防止
+ * 
+ * 注意: 直接Supabase呼び出しを避け、useAuthAdvancedのuserを使用
+ * 
+ * @param currentDate 現在表示中の日付（月単位でデータを取得）
+ */
 export function useCalendarData(currentDate: Date) {
   const { selectedInstrument } = useInstrumentTheme();
+  // 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
   const { user } = useAuthAdvanced();
   const [practiceData, setPracticeData] = useState<PracticeData>({});
   const [recordingsData, setRecordingsData] = useState<RecordingsData>({});
@@ -51,15 +67,37 @@ export function useCalendarData(currentDate: Date) {
   const previousInstrumentIdRef = useRef<string | null>(null);
   const previousInstrumentIdForGoalsRef = useRef<string | null>(null);
 
+  /**
+   * 練習記録データを読み込む
+   * 
+   * 処理フロー:
+   * 1. 認証状態を確認（既に取得済みのuserを使用）
+   * 2. 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
+   * 3. 楽器が変わった場合、キャッシュをクリア（楽器切り替え時のデータ更新を確実にする）
+   * 4. オフライン時はキャッシュから読み込み（24時間以内のキャッシュのみ有効）
+   * 5. オンライン時はDBから取得（practice_sessionsテーブル、当月中のデータのみ）
+   * 6. TypeScript側で楽器フィルタリング（データベース側でフィルタリングできない場合のフォールバック）
+   * 7. 日別の練習時間を集計（dailyTotals、dailyHasRecord、dailyHasBasicPractice）
+   * 8. 基礎練のみの日も追加（時間が0だが基礎練がある日）
+   * 9. キャッシュに保存（オフライン対応）
+   * 
+   * 注意: 楽器切り替え時にキャッシュをクリアすることで、データの不整合を防ぐ
+   * 注意: 基礎練（input_method: 'preset'）は時間を加算しない
+   * 注意: 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
+   * 
+   * @param userParam オプション: ユーザー情報（テスト用、通常は未指定）
+   */
   const loadPracticeData = useCallback(async (userParam?: { id: string }) => {
     try {
-      const user = userParam ?? (await supabase.auth.getUser()).data.user;
-      if (!user) {
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
+      // 注意: userParamはテスト用（通常は未指定）
+      const currentUser = userParam ?? user;
+      if (!currentUser) {
         return;
       }
 
       // 有効な楽器IDを取得（統一的なフォールバック処理）
-      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, currentUser.selected_instrument_id);
       
       // 楽器が変わった場合のみ、キャッシュをクリア（楽器切り替え時のデータ更新を確実にする）
       const instrumentChanged = previousInstrumentIdRef.current !== currentInstrumentId && previousInstrumentIdRef.current !== null;
@@ -70,7 +108,7 @@ export function useCalendarData(currentDate: Date) {
         });
         try {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-          const cacheKeyPattern = `practice_data_cache_${user.id}_`;
+          const cacheKeyPattern = `practice_data_cache_${currentUser.id}_`;
           const allKeys = await AsyncStorage.getAllKeys();
           const practiceCacheKeys = allKeys.filter(key => key.startsWith(cacheKeyPattern));
           
@@ -86,10 +124,11 @@ export function useCalendarData(currentDate: Date) {
       // 現在の楽器IDを記録（データ取得前に更新して、次回の比較を正しく行う）
       previousInstrumentIdRef.current = currentInstrumentId || null;
       
-      // オフライン時はキャッシュから読み込み
+      // オフライン時はキャッシュから読み込み（フォールバック処理）
+      // 注意: 24時間以内のキャッシュのみ有効（古いキャッシュは無視）
       if (!isOnline()) {
         try {
-          const cacheKey = `practice_data_cache_${user.id}_${currentInstrumentId || 'all'}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+          const cacheKey = `practice_data_cache_${currentUser.id}_${currentInstrumentId || 'all'}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -107,20 +146,26 @@ export function useCalendarData(currentDate: Date) {
         }
       }
       
+      // オンライン時はデータベースから取得（practice_sessionsテーブル）
+      // 注意: 当月中のデータのみを取得（パフォーマンス向上）
       if (isOnline()) {
         try {
           const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
           const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
           
+          // 注意: 直接Supabase呼び出し（リポジトリ層への移行を検討）
+          // 理由: キャッシュ処理やオフライン処理などのUI層固有のロジックがあるため
+          const { supabase } = await import('@/lib/supabase');
           let query = supabase
             .from('practice_sessions')
             .select('practice_date, duration_minutes, input_method, instrument_id')
-            .eq('user_id', user.id)
+            .eq('user_id', currentUser.id)
             .gte('practice_date', formatLocalDate(startOfMonth))
             .lte('practice_date', formatLocalDate(endOfMonth));
           
           // 根本的な改善: applyInstrumentFilterは常に元のクエリを返すため、
           // 直接クエリを実行し、TypeScript側でフィルタリングする
+          // 注意: データベース側でフィルタリングできない場合のフォールバック処理
           logger.debug('[useCalendarData.loadPracticeData] 楽器フィルタリングを適用します', {
             currentInstrumentId,
             previousInstrumentId: previousInstrumentIdRef.current,
@@ -141,23 +186,35 @@ export function useCalendarData(currentDate: Date) {
             return;
           }
 
-          // TypeScript側で楽器フィルタリングを実行
+          // TypeScript側で楽器フィルタリングを実行（データベース側でフィルタリングできない場合のフォールバック）
+          // 型安全性のため明示的に型を指定（any型を回避）
+          interface PracticeSession {
+            practice_date?: string;
+            duration_minutes?: number;
+            input_method?: string;
+            instrument_id?: string | null;
+          }
           const sessions = filterByInstrumentIdInMemory(
-            (rawSessions || []) as any[],
+            (rawSessions || []) as PracticeSession[],
             currentInstrumentId,
             true
           );
 
           if (sessions && Array.isArray(sessions)) {
-            
+            // 日別の練習データを集計（日付文字列をキーに使用）
             const newPracticeData: PracticeData = {};
             let total = 0;
             
+            // 日別の合計練習時間を保持（日付文字列をキーに使用）
             const dailyTotals: { [date: string]: number } = {};
-            const dailyHasRecord: { [date: string]: boolean } = {}; // 練習時間が記録されたか（タイマー、クイック、手動入力など）
-            const dailyHasBasicPractice: { [date: string]: boolean } = {}; // 基礎練があるか
+            // 練習時間が記録されたか（タイマー、クイック、手動入力など - 基礎練以外）
+            const dailyHasRecord: { [date: string]: boolean } = {};
+            // 基礎練（input_method: 'preset'）があるか
+            const dailyHasBasicPractice: { [date: string]: boolean } = {};
             
-            sessions.forEach((session: { practice_date?: string; duration_minutes?: number; input_method?: string }) => {
+            // 各セッションを処理して日別に集計
+            // 型安全性のため明示的に型を指定（any型を回避）
+            sessions.forEach((session: PracticeSession) => {
               // Null/Undefinedチェック: 安全にアクセス
               const date = session?.practice_date;
               const minutes = session?.duration_minutes;
@@ -241,9 +298,9 @@ export function useCalendarData(currentDate: Date) {
             setMonthlyTotal(total);
             logger.debug(`[useCalendarData.loadPracticeData] setPracticeData完了`);
             
-            // キャッシュに保存（オフライン対応）
+            // キャッシュに保存（オフライン対応 - 次回のオフライン時に使用）
             try {
-              const cacheKey = `practice_data_cache_${user.id}_${currentInstrumentId || 'all'}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+              const cacheKey = `practice_data_cache_${currentUser.id}_${currentInstrumentId || 'all'}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
               const AsyncStorage = require('@react-native-async-storage/async-storage').default;
               await AsyncStorage.setItem(cacheKey, JSON.stringify({
                 practiceData: newPracticeData,
@@ -263,9 +320,10 @@ export function useCalendarData(currentDate: Date) {
             return;
           }
         } catch (error) {
-          // サーバー取得エラー、キャッシュから取得を試行
+          // サーバー取得エラー時、キャッシュから取得を試行（フォールバック処理）
+          // 注意: エラー時もキャッシュがあれば表示できるようにする
           try {
-            const cacheKey = `practice_data_cache_${user.id}_${currentInstrumentId || 'all'}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+            const cacheKey = `practice_data_cache_${currentUser.id}_${currentInstrumentId || 'all'}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
             const AsyncStorage = require('@react-native-async-storage/async-storage').default;
             const cachedData = await AsyncStorage.getItem(cacheKey);
             if (cachedData) {
@@ -346,17 +404,37 @@ export function useCalendarData(currentDate: Date) {
     }
   }, [currentDate, selectedInstrument]);
 
+  /**
+   * 総練習時間を読み込む
+   * 
+   * 処理フロー:
+   * 1. 認証状態を確認（既に取得済みのuserを使用）
+   * 2. 楽器IDを取得（DBフィルタリングで使用）
+   * 3. RPC関数を使用してデータベース側で集計（パフォーマンス最適化）
+   * 4. RPC関数が失敗した場合は、フォールバック方式でクエリを実行
+   * 
+   * 注意: 基礎練（input_method: 'preset'）は集計から除外
+   * 注意: 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
+   * 
+   * @param userParam オプション: ユーザー情報（テスト用、通常は未指定）
+   */
   const loadTotalPracticeTime = useCallback(async (userParam?: { id: string }) => {
     try {
-      const user = userParam ?? (await supabase.auth.getUser()).data.user;
-      if (!user) return;
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
+      // 注意: userParamはテスト用（通常は未指定）
+      const currentUser = userParam ?? user;
+      if (!currentUser) {
+        return;
+      }
 
-      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, currentUser.selected_instrument_id);
       
       // RPC関数を使用してデータベース側で集計（パフォーマンス最適化）
+      // 注意: 直接Supabase呼び出し（リポジトリ層への移行を検討）
+      const { supabase } = await import('@/lib/supabase');
       try {
         const { data: totalMinutes, error: rpcError } = await supabase.rpc('get_total_practice_time', {
-          p_user_id: user.id,
+          p_user_id: currentUser.id,
           p_instrument_id: currentInstrumentId || null
         });
 
@@ -365,10 +443,12 @@ export function useCalendarData(currentDate: Date) {
           if (rpcError.code === '42883' || rpcError.message?.includes('function') || rpcError.message?.includes('does not exist')) {
             logger.debug('RPC関数が存在しないため、フォールバック方式を使用');
       
-      let query = supabase
+      // 注意: 直接Supabase呼び出し（リポジトリ層への移行を検討）
+      const { supabase: supabaseClient } = await import('@/lib/supabase');
+      let query = supabaseClient
         .from('practice_sessions')
         .select('duration_minutes')
-              .eq('user_id', user.id)
+              .eq('user_id', currentUser.id)
               .neq('input_method', 'preset'); // 基礎練を除外
       
       if (currentInstrumentId) {
@@ -406,7 +486,7 @@ export function useCalendarData(currentDate: Date) {
         let query = supabase
           .from('practice_sessions')
           .select('duration_minutes')
-          .eq('user_id', user.id)
+          .eq('user_id', currentUser.id)
           .neq('input_method', 'preset'); // 基礎練を除外
         
         if (currentInstrumentId) {
@@ -428,10 +508,29 @@ export function useCalendarData(currentDate: Date) {
     }
   }, [selectedInstrument]);
 
+  /**
+   * イベントデータを読み込む
+   * 
+   * 処理フロー:
+   * 1. 認証状態を確認（既に取得済みのuserを使用）
+   * 2. 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
+   * 3. オフライン時はキャッシュから読み込み（24時間以内のキャッシュのみ有効）
+   * 4. オンライン時はDBから取得（eventsテーブル、当月中のデータのみ）
+   * 5. TypeScript側で楽器フィルタリング（データベース側でフィルタリングできない場合のフォールバック）
+   * 6. キャッシュに保存（オフライン対応）
+   * 
+   * 注意: 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
+   * 
+   * @param userParam オプション: ユーザー情報（テスト用、通常は未指定）
+   */
   const loadEvents = useCallback(async (userParam?: { id: string }) => {
     try {
-      const user = userParam ?? (await supabase.auth.getUser()).data.user;
-      if (!user) return;
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
+      // 注意: userParamはテスト用（通常は未指定）
+      const currentUser = userParam ?? user;
+      if (!currentUser) {
+        return;
+      }
 
       const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
       const endOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0);
@@ -439,7 +538,7 @@ export function useCalendarData(currentDate: Date) {
       // オフライン時はキャッシュから読み込み
       if (!isOnline()) {
         try {
-          const cacheKey = `events_cache_${user.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+          const cacheKey = `events_cache_${currentUser.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -457,22 +556,35 @@ export function useCalendarData(currentDate: Date) {
       }
       
       // 有効な楽器IDを取得（統一的なフォールバック処理）
-      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, currentUser.selected_instrument_id);
       
-      // ベースクエリ（instrument_id なし）
+      // 注意: 直接Supabase呼び出し（リポジトリ層への移行を検討）
+      // 理由: キャッシュ処理やオフライン処理などのUI層固有のロジックがあるため
+      const { supabase } = await import('@/lib/supabase');
+      
+      // ベースクエリ（instrument_id なし - レガシーデータ対応）
       const baseQuery = supabase
         .from('events')
         .select('id, title, description, date')
-        .eq('user_id', user.id)
+        .eq('user_id', currentUser.id)
         .eq('is_completed', false)
         .gte('date', formatLocalDate(startOfMonth))
         .lte('date', formatLocalDate(endOfMonth));
       
-      // instrument_id カラムを含めたクエリ
-      let query: any = supabase
+      // instrument_id カラムを含めたクエリ（楽器フィルタリング用）
+      // 型安全性のため明示的に型を指定（any型を回避）
+      interface EventQueryBuilder {
+        from: (table: string) => EventQueryBuilder;
+        select: (columns: string) => EventQueryBuilder;
+        eq: (column: string, value: unknown) => EventQueryBuilder;
+        gte: (column: string, value: string) => EventQueryBuilder;
+        lte: (column: string, value: string) => EventQueryBuilder;
+        order: (column: string, options: { ascending: boolean }) => EventQueryBuilder;
+      }
+      const query = supabase
         .from('events')
         .select('id, title, description, date, instrument_id')
-        .eq('user_id', user.id)
+        .eq('user_id', currentUser.id)
         .eq('is_completed', false)
         .gte('date', formatLocalDate(startOfMonth))
         .lte('date', formatLocalDate(endOfMonth))
@@ -480,22 +592,31 @@ export function useCalendarData(currentDate: Date) {
       
       // 根本的な改善: applyInstrumentFilterは常に元のクエリを返すため、
       // 直接クエリを実行し、TypeScript側でフィルタリングする
+      // 注意: データベース側でフィルタリングできない場合のフォールバック処理
       const { data: rawData, error } = await query;
       
-      let eventsData: any[] | null = null;
+      // 型安全性のため明示的に型を指定（any型を回避）
+      interface EventWithInstrumentId {
+        id: string;
+        title: string;
+        description?: string;
+        date: string;
+        instrument_id?: string | null;
+      }
+      let eventsData: Array<{ id: string; title: string; description?: string; date: string }> | null = null;
       
       if (error) {
         // エラー処理は後続のコードで行う
       } else {
-        // TypeScript側で楽器フィルタリングを実行
+        // TypeScript側で楽器フィルタリングを実行（データベース側でフィルタリングできない場合のフォールバック）
         const filtered = filterByInstrumentIdInMemory(
-          (rawData || []) as any[],
+          (rawData || []) as EventWithInstrumentId[],
           currentInstrumentId,
           true
         );
         
-        // instrument_id は以降使わないので落としておく
-        eventsData = filtered.map(row => ({
+        // instrument_id は以降使わないので落としておく（UI層で不要なデータを削除）
+        eventsData = filtered.map((row: EventWithInstrumentId) => ({
           id: row.id,
           title: row.title,
           description: row.description,
@@ -514,7 +635,7 @@ export function useCalendarData(currentDate: Date) {
           logger.info('eventsテーブルが存在しません。マイグレーションを実行してください。');
           // エラー時もキャッシュから読み込みを試行
           try {
-            const cacheKey = `events_cache_${user.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+            const cacheKey = `events_cache_${currentUser.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
             const AsyncStorage = require('@react-native-async-storage/async-storage').default;
             const cachedData = await AsyncStorage.getItem(cacheKey);
             if (cachedData) {
@@ -531,7 +652,7 @@ export function useCalendarData(currentDate: Date) {
         logger.error('イベント読み込みエラー:', error);
         // エラー時もキャッシュから読み込みを試行
         try {
-          const cacheKey = `events_cache_${user.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+          const cacheKey = `events_cache_${currentUser.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -571,7 +692,7 @@ export function useCalendarData(currentDate: Date) {
         
         // キャッシュに保存（オフライン対応）
         try {
-          const cacheKey = `events_cache_${user.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+          const cacheKey = `events_cache_${currentUser.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           await AsyncStorage.setItem(cacheKey, JSON.stringify({
             events: newEvents,
@@ -586,20 +707,30 @@ export function useCalendarData(currentDate: Date) {
         logger.debug('📅 イベントデータが空です');
         setEvents({});
       }
-    } catch (error: any) {
-      const errorMessage = error?.message || String(error);
-      const errorCode = error?.code;
+    } catch (error: unknown) {
+      // 型安全性のためunknown型を使用して型ガードで処理
+      // 注意: any型を避け、unknown型を使用
+      let errorMessage: string = String(error);
+      let errorCode: string | undefined;
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'object' && error !== null) {
+        const err = error as Record<string, unknown>;
+        errorMessage = (err.message as string) || String(error);
+        errorCode = err.code as string | undefined;
+      }
       ErrorHandler.handle(error, 'イベントデータの読み込み', false);
       logger.error('イベントデータの読み込みエラー:', {
         message: errorMessage,
         code: errorCode,
         error
       });
-      // エラー時もキャッシュから読み込みを試行
+      // エラー時もキャッシュから読み込みを試行（フォールバック処理）
+      // 注意: 既に取得済みのcurrentUserを使用（直接Supabase呼び出しを回避）
       try {
-        const user = userParam ?? (await supabase.auth.getUser()).data.user;
-        if (user) {
-          const cacheKey = `events_cache_${user.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
+        if (currentUser) {
+          const cacheKey = `events_cache_${currentUser.id}_${currentDate.getFullYear()}_${currentDate.getMonth()}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -613,12 +744,31 @@ export function useCalendarData(currentDate: Date) {
     }
   }, [currentDate]);
 
+  /**
+   * 録音データを読み込む
+   * 
+   * 処理フロー:
+   * 1. 認証状態を確認（既に取得済みのuserを使用）
+   * 2. 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
+   * 3. オフライン時はキャッシュから読み込み（24時間以内のキャッシュのみ有効）
+   * 4. オンライン時はDBから取得（recordingsテーブル、当月中のデータのみ）
+   * 5. TypeScript側で楽器フィルタリング（データベース側でフィルタリングできない場合のフォールバック）
+   * 6. キャッシュに保存（オフライン対応）
+   * 
+   * 注意: 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
+   * 
+   * @param userParam オプション: ユーザー情報（テスト用、通常は未指定）
+   */
   const loadRecordingsData = useCallback(async (userParam?: { id: string }) => {
     try {
-      const user = userParam ?? (await supabase.auth.getUser()).data.user;
-      if (!user) return;
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
+      // 注意: userParamはテスト用（通常は未指定）
+      const currentUser = userParam ?? user;
+      if (!currentUser) {
+        return;
+      }
 
-      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, currentUser.selected_instrument_id);
       
       // 月の開始日時（ローカルタイムゾーンで00:00:00）
       const startOfMonth = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1);
@@ -656,10 +806,12 @@ export function useCalendarData(currentDate: Date) {
       });
       
       // 楽器IDのフィルタリング（統一関数を使用、既存nullデータも含める）
+      // 注意: 直接Supabase呼び出し（リポジトリ層への移行を検討）
+      const { supabase } = await import('@/lib/supabase');
       let query = supabase
         .from('recordings')
         .select('recorded_at, instrument_id')
-        .eq('user_id', user.id)
+        .eq('user_id', currentUser.id)
         .gte('recorded_at', extendedStart.toISOString())
         .lte('recorded_at', extendedEnd.toISOString())
         .not('recorded_at', 'is', null); // recorded_atがnullのレコードを除外
@@ -683,7 +835,7 @@ export function useCalendarData(currentDate: Date) {
 
       logger.debug('📊 取得した録音データ:', {
         count: recordings?.length || 0,
-        recordings: recordings?.map((rec: { recorded_at: string; instrument_id?: string | null }) => ({
+        recordings: recordings?.map((rec: RecordingData) => ({
           recorded_at: rec.recorded_at,
           instrument_id: rec.instrument_id,
           localDate: rec.recorded_at ? formatLocalDate(new Date(rec.recorded_at)) : null
@@ -695,7 +847,12 @@ export function useCalendarData(currentDate: Date) {
         const targetYear = currentDate.getFullYear();
         const targetMonth = currentDate.getMonth();
         
-        recordings.forEach((recording: { recorded_at: string; instrument_id?: string | null }) => {
+        // 型安全性のため明示的に型を指定（any型を回避）
+        interface RecordingData {
+          recorded_at: string;
+          instrument_id?: string | null;
+        }
+        recordings.forEach((recording: RecordingData) => {
           if (!recording.recorded_at) return; // recorded_atがnullの場合はスキップ
           
           // recorded_atをローカル日付に変換
@@ -736,10 +893,28 @@ export function useCalendarData(currentDate: Date) {
     }
   }, [currentDate, selectedInstrument]);
 
+  /**
+   * 短期目標を読み込む
+   * 
+   * 処理フロー:
+   * 1. 認証状態を確認（既に取得済みのuserを使用）
+   * 2. 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
+   * 3. 楽器が変わった場合、キャッシュをクリア（楽器切り替え時のデータ更新を確実にする）
+   * 4. オフライン時はキャッシュから読み込み（24時間以内のキャッシュのみ有効）
+   * 5. オンライン時はDBから取得（goalsテーブル、短期目標のみ、show_on_calendarがtrueのもの）
+   * 6. キャッシュに保存（オフライン対応）
+   * 
+   * 注意: 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
+   * 
+   * @param userParam オプション: ユーザー情報（テスト用、通常は未指定）
+   * @param forceRefresh 強制リフレッシュフラグ（デフォルト: false）
+   */
   const loadShortTermGoal = useCallback(async (userParam?: { id: string }, forceRefresh: boolean = false) => {
     try {
-      const user = userParam ?? (await supabase.auth.getUser()).data.user;
-      if (!user) {
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
+      // 注意: userParamはテスト用（通常は未指定）
+      const currentUser = userParam ?? user;
+      if (!currentUser) {
         setShortTermGoal(null);
         setShortTermGoals([]);
         return;
@@ -747,13 +922,13 @@ export function useCalendarData(currentDate: Date) {
 
       // 楽器IDを取得（キャッシュキーとDBフィルタリングの両方で使用）
       const { getInstrumentId } = require('@/lib/instrumentUtils') as { getInstrumentId: (instrument: string | null) => string | null };
-      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, currentUser.selected_instrument_id);
 
       // 強制リフレッシュまたは楽器が変わった場合、目標のキャッシュをクリア
       if (forceRefresh || (previousInstrumentIdForGoalsRef.current !== currentInstrumentId && previousInstrumentIdForGoalsRef.current !== null)) {
         try {
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-          const cacheKeyPattern = `short_term_goals_cache_${user.id}_`;
+          const cacheKeyPattern = `short_term_goals_cache_${currentUser.id}_`;
           const allKeys = await AsyncStorage.getAllKeys();
           const goalCacheKeys = allKeys.filter(key => key.startsWith(cacheKeyPattern));
           
@@ -778,7 +953,7 @@ export function useCalendarData(currentDate: Date) {
       // オフライン時はキャッシュから読み込み（現在選択されている楽器の目標のみ）
       if (!forceRefresh && !isOnline()) {
         try {
-          const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'null'}`;
+          const cacheKey = `short_term_goals_cache_${currentUser.id}_${currentInstrumentId || 'null'}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -800,10 +975,12 @@ export function useCalendarData(currentDate: Date) {
 
       // show_on_calendarカラムは初期スキーマに含まれているため、常に存在する前提でクエリを構築
       // 目標を取得（短期目標と長期目標の両方を含む、現在選択されている楽器の目標のみ）
+      // 注意: 直接Supabase呼び出し（リポジトリ層への移行を検討）
+      const { supabase } = await import('@/lib/supabase');
       let query = supabase
         .from('goals')
         .select('title, target_date, show_on_calendar, is_completed, progress_percentage, goal_type, instrument_id')
-        .eq('user_id', user.id)
+        .eq('user_id', currentUser.id)
         .in('goal_type', ['personal_short', 'personal_long'])
         .eq('show_on_calendar', true); // show_on_calendarがtrueの目標のみを取得
       
@@ -822,7 +999,7 @@ export function useCalendarData(currentDate: Date) {
         const { data: retryGoals, error: retryError } = await supabase
           .from('goals')
           .select('title, target_date, show_on_calendar, is_completed, progress_percentage, goal_type')
-          .eq('user_id', user.id)
+          .eq('user_id', currentUser.id)
           .in('goal_type', ['personal_short', 'personal_long'])
           .eq('show_on_calendar', true)
           .order('created_at', { ascending: false });
@@ -839,7 +1016,7 @@ export function useCalendarData(currentDate: Date) {
           logger.info('goalsテーブルが存在しません。マイグレーションを実行してください。');
           // エラー時もキャッシュから読み込みを試行（現在選択されている楽器の目標のみ）
           try {
-            const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'null'}`;
+            const cacheKey = `short_term_goals_cache_${currentUser.id}_${currentInstrumentId || 'null'}`;
             const AsyncStorage = require('@react-native-async-storage/async-storage').default;
             const cachedData = await AsyncStorage.getItem(cacheKey);
             if (cachedData) {
@@ -861,7 +1038,7 @@ export function useCalendarData(currentDate: Date) {
         logger.error('目標の読み込みエラー:', error);
         // エラー時もキャッシュから読み込みを試行（現在選択されている楽器の目標のみ）
         try {
-          const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'null'}`;
+          const cacheKey = `short_term_goals_cache_${currentUser.id}_${currentInstrumentId || 'null'}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -884,7 +1061,17 @@ export function useCalendarData(currentDate: Date) {
       if (goals && goals.length > 0) {
         logger.debug('[loadShortTermGoal] 取得した目標:', {
           goalsCount: goals.length,
-          goals: goals.map((g: any) => ({
+          // 型安全性のため明示的に型を指定（any型を回避）
+          interface GoalForMapping {
+            title: string;
+            target_date?: string;
+            show_on_calendar?: boolean;
+            is_completed?: boolean;
+            progress_percentage?: number;
+            goal_type?: string;
+            instrument_id?: string | null;
+          }
+          goals: goals.map((g: GoalForMapping) => ({
             title: g.title,
             show_on_calendar: g.show_on_calendar,
             is_completed: g.is_completed,
@@ -895,14 +1082,19 @@ export function useCalendarData(currentDate: Date) {
         });
         
         // 達成済みでない目標をフィルタリング
-        const activeGoals = goals.filter((goal: any) => {
+        // 型安全性のため明示的に型を指定（any型を回避）
+        interface GoalForFilter {
+          is_completed?: boolean;
+          progress_percentage?: number;
+        }
+        const activeGoals = goals.filter((goal: GoalForFilter) => {
           const isCompleted = goal.is_completed === true || goal.progress_percentage === 100;
           return !isCompleted;
         });
 
         logger.debug('[loadShortTermGoal] 達成済みでない目標:', {
           activeGoalsCount: activeGoals.length,
-          activeGoals: activeGoals.map((g: any) => ({
+          activeGoals: activeGoals.map((g: GoalForMapping) => ({
             title: g.title,
             show_on_calendar: g.show_on_calendar,
             instrument_id: g.instrument_id
@@ -910,13 +1102,13 @@ export function useCalendarData(currentDate: Date) {
         });
 
         // show_on_calendarがtrueの目標のみを表示（クエリで既にフィルタリング済みだが、念のためクライアント側でも確認）
-        const visibleGoals = activeGoals.filter((goal: any) => {
+        const visibleGoals = activeGoals.filter((goal: GoalForFilter) => {
           return goal.show_on_calendar === true;
         });
 
         logger.debug('[loadShortTermGoal] 表示対象の目標:', {
           visibleGoalsCount: visibleGoals.length,
-          visibleGoals: visibleGoals.map((g: any) => ({
+          visibleGoals: visibleGoals.map((g: GoalForMapping) => ({
             title: g.title,
             show_on_calendar: g.show_on_calendar,
             instrument_id: g.instrument_id,
@@ -938,7 +1130,7 @@ export function useCalendarData(currentDate: Date) {
           
           // キャッシュに保存（オフライン対応、現在選択されている楽器の目標のみ）
           try {
-            const cacheKey = `short_term_goals_cache_${user.id}_${currentInstrumentId || 'null'}`;
+            const cacheKey = `short_term_goals_cache_${currentUser.id}_${currentInstrumentId || 'null'}`;
             const AsyncStorage = require('@react-native-async-storage/async-storage').default;
             await AsyncStorage.setItem(cacheKey, JSON.stringify({
               shortTermGoal: goalsList[0] || null,
@@ -964,11 +1156,11 @@ export function useCalendarData(currentDate: Date) {
       ErrorHandler.handle(error, '目標の読み込み', false);
       logger.error('目標の読み込みエラー:', error);
       // エラー時もキャッシュから読み込みを試行（現在選択されている楽器の目標のみ）
-        try {
-          const errorUser = userParam ?? (await supabase.auth.getUser()).data.user;
-          if (errorUser) {
-            const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, errorUser?.selected_instrument_id);
-            const cacheKey = `short_term_goals_cache_${errorUser.id}_${errorInstrumentId || 'null'}`;
+      // 注意: 既に取得済みのcurrentUserを使用（直接Supabase呼び出しを回避）
+      try {
+        if (currentUser) {
+          const errorInstrumentId = getEffectiveInstrumentId(selectedInstrument, currentUser.selected_instrument_id);
+          const cacheKey = `short_term_goals_cache_${currentUser.id}_${errorInstrumentId || 'null'}`;
           const AsyncStorage = require('@react-native-async-storage/async-storage').default;
           const cachedData = await AsyncStorage.getItem(cacheKey);
           if (cachedData) {
@@ -989,7 +1181,22 @@ export function useCalendarData(currentDate: Date) {
     }
   }, [selectedInstrument, user]);
 
+  /**
+   * すべてのカレンダーデータを読み込む（統合処理）
+   * 
+   * 処理フロー:
+   * 1. 重複読み込みを防止（isFetchingRefで管理）
+   * 2. 認証状態を確認（既に取得済みのuserを使用）
+   * 3. すべてのデータ読み込み関数を並列実行（Promise.all使用）
+   * 4. 各関数のエラーは個別に処理（1つのエラーが他の処理を妨げない）
+   * 
+   * 注意: 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
+   * 
+   * @param userParam オプション: ユーザー情報（テスト用、通常は未指定）
+   * @returns クリーンアップ関数（コンポーネントのアンマウント時に呼び出される）
+   */
   const loadAllData = useCallback(async (userParam?: { id: string }) => {
+    // 重複読み込みを防止（isFetchingRefで管理）
     if (isFetchingRef.current) {
       return;
     }
@@ -998,26 +1205,30 @@ export function useCalendarData(currentDate: Date) {
     isFetchingRef.current = true;
     
     try {
-      const user = userParam ?? (await supabase.auth.getUser()).data.user;
-      if (!user || cancelled) {
+      // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
+      // 注意: userParamはテスト用（通常は未指定）
+      const currentUser = userParam ?? user;
+      if (!currentUser || cancelled) {
         isFetchingRef.current = false;
         return;
       }
 
+      // すべてのデータ読み込み関数を並列実行（Promise.all使用）
+      // 注意: 各関数のエラーは個別に処理（1つのエラーが他の処理を妨げない）
       await Promise.all([
-        loadPracticeData(user).catch(error => {
+        loadPracticeData(currentUser).catch(error => {
           logger.error(`[useCalendarData] loadPracticeDataエラー:`, error);
         }),
-        loadTotalPracticeTime(user).catch(error => {
+        loadTotalPracticeTime(currentUser).catch(error => {
           logger.error(`[useCalendarData] loadTotalPracticeTimeエラー:`, error);
         }),
-        loadEvents(user).catch(error => {
+        loadEvents(currentUser).catch(error => {
           logger.error(`[useCalendarData] loadEventsエラー:`, error);
         }),
-        loadRecordingsData(user).catch(error => {
+        loadRecordingsData(currentUser).catch(error => {
           logger.error(`[useCalendarData] loadRecordingsDataエラー:`, error);
         }),
-        loadShortTermGoal(user).catch(error => {
+        loadShortTermGoal(currentUser).catch(error => {
           logger.error(`[useCalendarData] loadShortTermGoalエラー:`, error);
         })
       ]);
