@@ -167,7 +167,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   const [recordingLimitStatus, setRecordingLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
   const [dailyLimitStatus, setDailyLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
   const [audioTitle, setAudioTitle] = useState('');
-  const [audioMemo, setAudioMemo] = useState('');
   const [isAudioFavorite, setIsAudioFavorite] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
   const [audioRecordingType, setAudioRecordingType] = useState<'performance' | 'lesson'>('performance'); // 録音種類
@@ -301,9 +300,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, selectedDate || undefined);
         setDailyLimitStatus(dailyLimitCheck);
         
-        // 月間録音数制限をチェック（フリープランのみ）
+        // 月間録音数制限をチェック（フリープランのみ、楽器ごと）
         if (!entitlement?.isEntitled) {
-          const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined);
+          const instrumentId = getInstrumentId(selectedInstrument);
+          const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined, instrumentId);
           setRecordingLimitStatus(limitCheck);
         } else {
           setRecordingLimitStatus(null); // プレミアムユーザーは月間制限不要
@@ -658,12 +658,21 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
 
       logger.debug('loadPracticeSessions: 取得結果', {
         sessionsCount: sessions?.length || 0,
-        sessions: sessions,
+        sessions: sessions?.map(s => ({
+          id: s.id,
+          duration_minutes: s.duration_minutes,
+          input_method: s.input_method,
+          content: s.content?.substring(0, 50),
+          instrument_id: s.instrument_id
+        })),
         error: error ? {
           message: error.message,
           code: (error as any)?.code,
           details: (error as any)?.details
-        } : null
+        } : null,
+        userId: user.id,
+        practiceDate,
+        instrumentId
       });
 
       if (error) {
@@ -685,8 +694,26 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       }
 
       if (sessions && sessions.length > 0) {
+        logger.debug('loadPracticeSessions: セッションが見つかりました', {
+          totalSessions: sessions.length,
+          sessions: sessions.map(s => ({
+            id: s.id,
+            input_method: s.input_method,
+            duration_minutes: s.duration_minutes,
+            instrument_id: s.instrument_id
+          }))
+        });
+        
         // 基礎練（preset）を除外して、時間記録（manual, voice, timer）のみを取得
         const timeRecords = sessions.filter(s => s.input_method !== 'preset');
+        logger.debug('loadPracticeSessions: 時間記録（preset除外後）', {
+          timeRecordsCount: timeRecords.length,
+          timeRecords: timeRecords.map(s => ({
+            id: s.id,
+            input_method: s.input_method,
+            duration_minutes: s.duration_minutes
+          }))
+        });
         
         // タイマー記録とその他の記録を分離
         const timerSessions = timeRecords.filter(s => s.input_method === 'timer');
@@ -722,6 +749,18 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           // otherSessionsがある場合は最初のセッションのIDとcontentを使用
           const primarySession = otherSessions.length > 0 ? otherSessions[0] : timerSessions[0];
           
+          if (!primarySession || !primarySession.id) {
+            logger.error('loadPracticeSessions: primarySessionが無効です', {
+              otherSessionsCount: otherSessions.length,
+              timerSessionsCount: timerSessions.length,
+              primarySession
+            });
+            setExistingRecord(null);
+            setMinutes('');
+            setContent('');
+            return;
+          }
+          
           // クイック記録、タイマー記録のcontentは表示しない
           // 手動入力（manual）のcontentのみを表示
           const manualSessions = timeRecords.filter(s => s.input_method === 'manual');
@@ -729,11 +768,20 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             ? manualSessions.map(s => cleanContentFromTimeDetails(s.content)).filter(c => c && c.trim() !== '').join(', ')
             : null;
           
-          setExistingRecord({
+          const existingRecordData = {
             id: primarySession.id!,
             minutes: totalMinutes, // すべての時間記録の合計
             content: manualContent || null // 手動入力のcontentのみ
+          };
+          
+          logger.debug('loadPracticeSessions: 既存の記録を設定します', {
+            existingRecord: existingRecordData,
+            totalMinutes,
+            manualContent,
+            primarySessionId: primarySession.id
           });
+          
+          setExistingRecord(existingRecordData);
           
           // 既存の記録をフォームに設定（合計時間を表示）
           setMinutes(totalMinutes.toString());
@@ -741,6 +789,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           setContent(manualContent || '');
         } else {
           // 時間記録がない場合（基礎練のみ、または記録なし）
+          logger.debug('loadPracticeSessions: 時間記録がありません（基礎練のみ）');
           setExistingRecord(null);
           setMinutes('');
           setContent('');
@@ -748,7 +797,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       } else {
         logger.debug('loadPracticeSessions: セッションが見つかりませんでした', {
           practiceDate: formatLocalDate(selectedDate),
-          instrumentId: getInstrumentId(selectedInstrument)
+          instrumentId: getInstrumentId(selectedInstrument),
+          userId: user.id
         });
         setExistingRecord(null);
         setTimerMinutes(0);
@@ -897,21 +947,21 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         // 録音状態を保持してデータを再読み込み
         loadExistingRecord();
       } else {
-        // 通常のモーダルオープン時はリセット
+        // 通常のモーダルオープン時は、まずデータを読み込んでから表示
         // ただし、録音保存直後の場合は、録音情報を保持してからデータを再読み込み
         const currentIsRecordingJustSaved = isRecordingJustSavedRef.current;
-        setExistingRecord(null);
+        
         // 録音保存直後の場合は、録音情報をクリアしない（録音済みUIを表示するため）
         if (!currentIsRecordingJustSaved) {
           setExistingRecordings([]);
         }
-        setMinutes('');
-        setContent('');
         setAudioUrl('');
         setVideoUrl('');
-        setTimerMinutes(0);
         setIsRecordingJustSaved(false); // フラグをリセット
-        // データを再読み込み（モーダルが開かれたときに必ず最新データを取得）
+        
+        // データを先に読み込む（既存の記録をクリアする前に読み込む）
+        // loadExistingRecordはloadPracticeSessionsとloadRecordingを呼び出す
+        // loadPracticeSessions内で既存の記録があればsetExistingRecordが呼ばれる
         loadExistingRecord();
       }
     }
@@ -978,7 +1028,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           user_id: user.id,
           instrument_id: getInstrumentId(selectedInstrument) || null, // 現在の楽器IDを追加
           title: audioTitle || '録音',
-          memo: audioMemo || null,
           file_path: path,
           duration_seconds: audioDuration || null,
           is_favorite: isAudioFavorite,
@@ -1023,7 +1072,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             willShow: true
           });
           setAudioTitle('');
-          setAudioMemo('');
           setIsAudioFavorite(false);
           setAudioDuration(0);
           setAudioRecordingType('performance'); // デフォルトにリセット
@@ -1085,7 +1133,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
 
   const handleAudioSave = async (audioData: {
     title: string;
-    memo: string;
     isFavorite: boolean;
     duration: number;
     audioUrl: string;
@@ -1133,7 +1180,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       }
       
       setAudioTitle('');
-      setAudioMemo('');
       setIsAudioFavorite(false);
       setAudioDuration(0);
       setSelectedRecordingSlot(null); // 録音スロットをクリア
@@ -1196,7 +1242,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
     } else {
       // 録音IDがない場合（保存前の状態）は、録音情報を表示
       setAudioTitle(audioData.title);
-      setAudioMemo(audioData.memo);
       setIsAudioFavorite(audioData.isFavorite);
       setAudioDuration(audioData.duration);
       setAudioUrl(audioData.audioUrl);
@@ -1218,7 +1263,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
     if (url.trim()) {
       setAudioUrl(''); // 動画URLが入力されたら録音をクリア
       setAudioTitle('');
-      setAudioMemo('');
       setIsAudioFavorite(false);
       setAudioDuration(0);
       setAudioRecordingType('performance'); // デフォルトにリセット
@@ -1280,6 +1324,11 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       if (hasMedia) {
         onRecordingSaved?.();
       }
+      
+      // 保存後にデータを再読み込み（既存の記録と詳細を表示するため）
+      // データベース反映を待つため少し遅延してから再読み込み
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await loadPracticeSessions();
       
       // 保存が完了したらモーダルを閉じる
       onClose();
@@ -1941,7 +1990,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   <Text style={styles.audioTitle}>{audioTitle}</Text>
                   {isAudioFavorite && <Text style={styles.favoriteStar}>⭐</Text>}
                 </View>
-                {audioMemo && <Text style={styles.audioMemo}>{audioMemo}</Text>}
                 <Text style={styles.audioDuration}>録音時間: {Math.floor(audioDuration / 60)}分{audioDuration % 60}秒</Text>
                 {/* 録音種類表示 */}
                 <Text style={styles.audioRecordingTypeText}>
@@ -1995,16 +2043,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 {!entitlement?.isEntitled && recordingLimitStatus && (
                   <View style={[styles.limitInfoContainer, { backgroundColor: currentTheme.surface, borderColor: recordingLimitStatus.canRecord ? currentTheme.primary : '#FF4444', marginBottom: 12 }]}>
                     <Text style={[styles.limitInfoText, { color: currentTheme.text }]}>
-                      {recordingLimitStatus.canRecord 
-                        ? `${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}（各楽器ごとに月3回まで、あと${recordingLimitStatus.limit - recordingLimitStatus.currentCount}回可能）`
-                        : `${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}（各楽器ごとに月3回まで）`
-                      }
+                      {recordingLimitStatus.currentCount}/{recordingLimitStatus.limit}（月3回まで）
                     </Text>
-                    {!recordingLimitStatus.canRecord && (
-                      <Text style={[styles.limitInfoSubText, { color: currentTheme.textSecondary }]}>
-                        プレミアムで無制限に録音できます
-                      </Text>
-                    )}
                   </View>
                 )}
 
@@ -2100,7 +2140,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                     style={[styles.input, styles.videoInput]}
                     value={videoUrl}
                     onChangeText={handleVideoUrlChange}
-                    placeholder="YouTube、Instagram等の動画URLを入力..."
+                    placeholder="動画URLを入力、、、"
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
@@ -2663,12 +2703,6 @@ const styles = StyleSheet.create({
   },
   favoriteStar: {
     fontSize: 16,
-  },
-  audioMemo: {
-    fontSize: 14,
-    color: '#777777',
-    marginBottom: 6,
-    fontStyle: 'italic',
   },
   audioDuration: {
     fontSize: 14,
