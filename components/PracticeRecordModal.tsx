@@ -165,7 +165,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   const [videoUrl, setVideoUrl] = useState('');
   const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const [recordingLimitStatus, setRecordingLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
-  const [dailyLimitStatus, setDailyLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
+  const [dailyLimitStatus, setDailyLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number; reason?: string } | null>(null);
   const [audioTitle, setAudioTitle] = useState('');
   const [isAudioFavorite, setIsAudioFavorite] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
@@ -1463,7 +1463,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   setExistingRecordings(prev => prev.filter((_, idx) => idx !== recordingIndex));
                   setAudioUrl('');
                   setAudioTitle('');
-                  setAudioMemo('');
                   setIsAudioFavorite(false);
                   setAudioDuration(0);
 
@@ -1515,7 +1514,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 setAudioUrl('');
                 setExistingRecordings([]);
                 setAudioTitle('');
-                setAudioMemo('');
                 setIsAudioFavorite(false);
                 setAudioDuration(0);
 
