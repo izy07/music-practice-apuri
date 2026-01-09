@@ -1556,7 +1556,7 @@ export default function ProfileSettingsScreen() {
               </TouchableOpacity>
             </View>
             {pastOrgs.map((row, index) => (
-                <View key={row.id || `past-org-${index}`} style={[styles.inputRow, { marginBottom: 12 }]}>
+                <View key={row.id || `past-org-${index}`} style={styles.inputRow}>
                 <View style={[styles.inputContainer, { flex: 1 }]}>
                   <TextInput
                     style={[styles.input, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary, color: currentTheme.text }]}
@@ -1572,7 +1572,7 @@ export default function ProfileSettingsScreen() {
                   />
                 </View>
                 <TouchableOpacity 
-                  style={[styles.addButton, { backgroundColor: '#FF4444', marginLeft: 8 }]} 
+                  style={[styles.addButton, { backgroundColor: '#FF4444' }]} 
                   onPress={() => {
                     const updated = pastOrgs.filter((_, i) => i !== index);
                     setPastOrgs(updated.length > 0 ? updated : [{ id: Date.now().toString(), name: '', startYm: '', endYm: '' }]);
@@ -1599,7 +1599,7 @@ export default function ProfileSettingsScreen() {
               </TouchableOpacity>
             </View>
             {awardsEdit.map((row, index) => (
-                <View key={row.id || `award-${index}`} style={[styles.inputRow, { marginBottom: 12 }]}>
+                <View key={row.id || `award-${index}`} style={styles.inputRow}>
                 <View style={[styles.inputContainer, { flex: 1 }]}>
                   <TextInput
                     style={[styles.input, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary, color: currentTheme.text }]}
@@ -1615,7 +1615,7 @@ export default function ProfileSettingsScreen() {
                   />
                 </View>
                 <TouchableOpacity 
-                  style={[styles.addButton, { backgroundColor: '#FF4444', marginLeft: 8 }]} 
+                  style={[styles.addButton, { backgroundColor: '#FF4444' }]} 
                   onPress={() => {
                     const updated = awardsEdit.filter((_, i) => i !== index);
                     setAwardsEdit(updated.length > 0 ? updated : [{ id: Date.now().toString(), title: '', dateYm: '', result: '' }]);
@@ -1642,7 +1642,7 @@ export default function ProfileSettingsScreen() {
               </TouchableOpacity>
             </View>
             {performancesEdit.map((row, index) => (
-                <View key={row.id || `performance-${index}`} style={[styles.inputRow, { marginBottom: 12 }]}>
+                <View key={row.id || `performance-${index}`} style={styles.inputRow}>
                 <View style={[styles.inputContainer, { flex: 1 }]}>
                   <TextInput
                     style={[styles.input, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary, color: currentTheme.text }]}
@@ -1658,7 +1658,7 @@ export default function ProfileSettingsScreen() {
                   />
                 </View>
                 <TouchableOpacity 
-                  style={[styles.addButton, { backgroundColor: '#FF4444', marginLeft: 8 }]} 
+                  style={[styles.addButton, { backgroundColor: '#FF4444' }]} 
                   onPress={() => {
                     const updated = performancesEdit.filter((_, i) => i !== index);
                     setPerformancesEdit(updated.length > 0 ? updated : [{ id: Date.now().toString(), title: '' }]);

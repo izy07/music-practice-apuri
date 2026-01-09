@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: "pages"
-  cancel-in-progress: false
+  cancel-in-progress: true  # 進行中のデプロイをキャンセル（新規デプロイを優先）
 
 jobs:
   build:
@@ -23,15 +23,7 @@ jobs:
     steps:
       - name: チェックアウト
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # 完全な履歴を取得（shallow cloneを回避し、Git履歴の問題を防ぐ）
-
-      - name: 環境変数の確認
-        run: |
-          echo "🔍 環境変数を確認します..."
-          echo "EXPO_PUBLIC_WEB_BASE: ${{ env.EXPO_PUBLIC_WEB_BASE || '未設定' }}"
-          echo "GITHUB_PAGES_BASE: ${{ env.GITHUB_PAGES_BASE || '未設定' }}"
-          echo "NODE_ENV: ${{ env.NODE_ENV || '未設定' }}"
+        # fetch-depth: 0 を削除（shallow cloneで高速化）
 
       - name: Node.js セットアップ
         uses: actions/setup-node@v4
@@ -39,117 +31,30 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
-      - name: Node.jsバージョン確認
-        run: |
-          echo "📌 Node.jsバージョン:"
-          node --version
-          echo "📌 npmバージョン:"
-          npm --version
-
-      - name: マイグレーションファイルの整合性を強制（ビルド前の予防策）
-        run: |
-          echo "🔍 マイグレーションファイルの整合性を強制します（ビルド前の予防策）..."
-          if [ -f "scripts/enforce-migration-consistency.sh" ]; then
-            chmod +x scripts/enforce-migration-consistency.sh
-            bash scripts/enforce-migration-consistency.sh || {
-              echo "⚠️  マイグレーションファイルの整合性確保に失敗しましたが、ビルドは続行します"
-            }
-          else
-            echo "⚠️  enforce-migration-consistency.sh が見つかりません。手動で削除します..."
-            find supabase/migrations -name "*.sql" -type f ! -name "20251219000000_initial_schema.sql" -exec rm -f {} \; 2>/dev/null || true
-            find supabase/migrations -name "*.skip" -exec rm -f {} \; 2>/dev/null || true
-          fi
-          echo "✅ マイグレーションファイルの整合性チェックが完了しました"
-        continue-on-error: true  # ビルドには直接影響しないため、エラーでも続行
-
       - name: 依存関係のインストール
         run: |
           echo "📦 依存関係をインストールします..."
           npm ci --legacy-peer-deps || {
             echo "❌ 依存関係のインストールに失敗しました"
-            echo "package-lock.jsonの状態を確認します..."
-            ls -la package-lock.json || echo "package-lock.jsonが見つかりません"
             exit 1
           }
-          echo "✅ 依存関係のインストールが完了しました"
-
-      - name: ビルドスクリプトの確認
-        run: |
-          echo "🔍 ビルドスクリプトを確認します..."
-          if [ -f package.json ]; then
-            echo "✅ package.jsonが存在します"
-            cat package.json | grep -A 2 '"build:web:github"' || echo "⚠️  build:web:githubスクリプトが見つかりません"
-          else
-            echo "❌ package.jsonが見つかりません"
-            exit 1
-          fi
-          
-          echo "🔍 必要なスクリプトファイルを確認します..."
-          [ -f scripts/copy-web-build-to-dist.js ] && echo "✅ scripts/copy-web-build-to-dist.js が存在します" || echo "❌ scripts/copy-web-build-to-dist.js が見つかりません"
-          [ -f scripts/create-robust-404.js ] && echo "✅ scripts/create-robust-404.js が存在します" || echo "❌ scripts/create-robust-404.js が見つかりません"
-          [ -f scripts/fix-github-pages-paths.js ] && echo "✅ scripts/fix-github-pages-paths.js が存在します" || echo "❌ scripts/fix-github-pages-paths.js が見つかりません"
 
       - name: Webビルド（GitHub Pages用）
         run: |
           echo "🔧 ビルドを開始します..."
-          echo "環境変数を確認:"
-          echo "  EXPO_PUBLIC_WEB_BASE: $EXPO_PUBLIC_WEB_BASE"
-          echo "  GITHUB_PAGES_BASE: $GITHUB_PAGES_BASE"
-          echo "  NODE_ENV: $NODE_ENV"
-          
           # 既存のdistディレクトリをクリーンアップ
-          if [ -d dist ]; then
-            echo "🧹 既存のdistディレクトリをクリーンアップします..."
-            rm -rf dist
-          fi
+          rm -rf dist web-build
           
-          # web-buildディレクトリもクリーンアップ（念のため）
-          if [ -d web-build ]; then
-            echo "🧹 既存のweb-buildディレクトリをクリーンアップします..."
-            rm -rf web-build
-          fi
-          
-          # ビルドを実行（エラーが発生しても続行）
-          set +e
+          # ビルドを実行
           npm run build:web:github
-          BUILD_EXIT_CODE=$?
-          set -e
-          
-          # web-buildディレクトリが存在する場合はdistにコピー（ビルドが部分的に成功した場合）
-          if [ -d web-build ] && [ ! -d dist ]; then
-            echo "⚠️  web-buildディレクトリが存在するため、distにコピーします..."
-            cp -r web-build dist
-          fi
           
           # distディレクトリが存在しない、またはindex.htmlが存在しない場合はエラー
           if [ ! -d dist ] || [ ! -f dist/index.html ]; then
             echo "❌ ビルドが失敗しました（distディレクトリまたはindex.htmlが存在しません）"
-            echo "📁 現在のディレクトリ:"
-            pwd
-            echo "📁 distディレクトリの内容:"
-            ls -la dist/ 2>&1 || echo "distディレクトリが存在しません"
-            echo "📁 web-buildディレクトリの内容:"
-            ls -la web-build/ 2>&1 || echo "web-buildディレクトリが存在しません"
-            echo "📁 scriptsディレクトリの内容:"
-            ls -la scripts/ 2>&1 || echo "scriptsディレクトリが存在しません"
-            echo "📋 ビルド終了コード: $BUILD_EXIT_CODE"
             exit 1
           fi
           
-          if [ $BUILD_EXIT_CODE -ne 0 ]; then
-            echo "⚠️  ビルド中に警告またはエラーが発生しましたが、distディレクトリは存在します"
-            echo "📋 ビルド終了コード: $BUILD_EXIT_CODE"
-          fi
-          
           echo "✅ ビルドが完了しました"
-          echo "📁 ビルド後のdistディレクトリの内容:"
-          ls -la dist/ || echo "⚠️  distディレクトリが存在しません"
-          
-          # web-buildディレクトリが存在する場合はdistにコピー（フォールバック）
-          if [ -d web-build ] && [ ! -d dist ]; then
-            echo "⚠️  web-buildディレクトリが存在するため、distにコピーします..."
-            cp -r web-build dist
-          fi
         env:
           EXPO_PUBLIC_WEB_BASE: /music-practice-apuri
           GITHUB_PAGES_BASE: /music-practice-apuri
@@ -157,70 +62,17 @@ jobs:
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0ZWVxa3BzZXpiYWJkbXJpdGtuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDQyNDUsImV4cCI6MjA3MDcyMDI0NX0.3wITO5E53yW2spDHi99ngaA0SRqnsJbAYzdT7DDa1tM' }}
           NODE_ENV: production
 
-      - name: ビルド成果物の確認
-        run: |
-          echo "📁 distディレクトリの詳細確認:"
-          if [ ! -d dist ]; then
-            echo "❌ distディレクトリが存在しません"
-            echo "📁 現在のディレクトリの内容:"
-            ls -la
-            exit 1
-          fi
-          
-          echo "📁 distディレクトリの内容:"
-          ls -la dist/
-          echo ""
-          echo "📁 distディレクトリのサイズ:"
-          du -sh dist/ || echo "サイズ取得に失敗"
-          echo ""
-          echo "📄 主要ファイルの確認:"
-          [ -f dist/index.html ] && echo "✅ index.html が存在します ($(wc -c < dist/index.html) bytes)" || {
-            echo "❌ index.html が見つかりません"
-            exit 1
-          }
-          [ -f dist/404.html ] && echo "✅ 404.html が存在します ($(wc -c < dist/404.html) bytes)" || echo "⚠️  404.html が見つかりません（後で作成されます）"
-          [ -f dist/.nojekyll ] && echo "✅ .nojekyll が存在します" || echo "⚠️  .nojekyll が見つかりません（後で作成されます）"
-          [ -f dist/metadata.json ] && echo "✅ metadata.json が存在します" || echo "⚠️  metadata.json が見つかりません"
-          
-          echo ""
-          echo "📁 _expoディレクトリの確認:"
-          [ -d dist/_expo ] && echo "✅ dist/_expo が存在します" || echo "⚠️  dist/_expo が見つかりません"
-          [ -d dist/assets ] && echo "✅ dist/assets が存在します" || echo "⚠️  dist/assets が見つかりません"
-
       - name: 404.htmlの作成（SPAルーティング用）
         run: |
           echo "🔧 404.htmlを作成します..."
-          
           if [ ! -f dist/index.html ]; then
-            echo "❌ index.htmlが見つからないため、404.htmlを作成できません"
-            echo "📁 distディレクトリの内容:"
-            ls -la dist/ 2>&1 || echo "distディレクトリが存在しません"
+            echo "❌ index.htmlが見つかりません"
             exit 1
           fi
-          
-          if [ ! -f scripts/create-robust-404.js ]; then
-            echo "❌ scripts/create-robust-404.jsが見つかりません"
-            echo "📁 scriptsディレクトリの内容:"
-            ls -la scripts/ 2>&1 || echo "scriptsディレクトリが存在しません"
-            exit 1
-          fi
-          
-          echo "環境変数を確認:"
-          echo "  GITHUB_PAGES_BASE: $GITHUB_PAGES_BASE"
-          echo "  EXPO_PUBLIC_WEB_BASE: $EXPO_PUBLIC_WEB_BASE"
-          
           node scripts/create-robust-404.js || {
             echo "❌ 404.htmlの作成に失敗しました"
-            echo "スクリプトの実行エラーを確認してください"
             exit 1
           }
-          
-          if [ -f dist/404.html ]; then
-            echo "✅ 404.htmlを作成しました ($(wc -c < dist/404.html) bytes)"
-          else
-            echo "❌ 404.htmlの作成に失敗しました（ファイルが存在しません）"
-            exit 1
-          fi
         env:
           GITHUB_PAGES_BASE: /music-practice-apuri
           EXPO_PUBLIC_WEB_BASE: /music-practice-apuri
@@ -228,42 +80,7 @@ jobs:
       - name: .nojekyllファイルの作成
         run: |
           echo "🔧 .nojekyllファイルを作成します..."
-          if [ ! -d dist ]; then
-            echo "❌ distディレクトリが存在しません"
-            exit 1
-          fi
           echo "" > dist/.nojekyll
-          if [ -f dist/.nojekyll ]; then
-            echo "✅ .nojekyllファイルを作成しました"
-          else
-            echo "❌ .nojekyllファイルの作成に失敗しました"
-            exit 1
-          fi
-
-      - name: 最終確認
-        run: |
-          echo "🔍 デプロイ前の最終確認:"
-          echo "📁 distディレクトリの内容:"
-          ls -la dist/
-          echo ""
-          echo "📄 必須ファイルの確認:"
-          [ -f dist/index.html ] && echo "✅ index.html" || {
-            echo "❌ index.html が見つかりません"
-            exit 1
-          }
-          [ -f dist/404.html ] && echo "✅ 404.html" || {
-            echo "❌ 404.html が見つかりません"
-            exit 1
-          }
-          [ -f dist/.nojekyll ] && echo "✅ .nojekyll" || {
-            echo "❌ .nojekyll が見つかりません"
-            exit 1
-          }
-          echo ""
-          echo "📊 ディレクトリサイズ:"
-          du -sh dist/ || echo "サイズ取得に失敗"
-          echo ""
-          echo "✅ すべての必須ファイルが揃っています"
 
       - name: ビルド成果物のアップロード
         uses: actions/upload-pages-artifact@v3
@@ -278,23 +95,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     steps:
-      - name: デプロイ前の確認
-        run: |
-          echo "🔍 デプロイ前の確認:"
-          echo "GitHub Pages環境: github-pages"
-          echo "デプロイ元ジョブ: build"
-          
       - name: GitHub Pagesへのデプロイ
         id: deployment
         uses: actions/deploy-pages@v4
         continue-on-error: false
-        
-      - name: デプロイ結果の確認
-        run: |
-          echo "✅ デプロイが完了しました"
-          echo "📌 デプロイURL: ${{ steps.deployment.outputs.page_url }}"
-          if [ -z "${{ steps.deployment.outputs.page_url }}" ]; then
-            echo "⚠️  デプロイURLが取得できませんでした"
-            echo "GitHub Pagesの設定を確認してください"
-          fi
-

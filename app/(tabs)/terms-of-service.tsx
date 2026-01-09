@@ -19,7 +19,7 @@ export default function TermsOfServiceScreen() {
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => safeGoBack('/(tabs)/privacy-settings', true)}
+          onPress={() => safeGoBack(router, '/(tabs)/privacy-settings')}
         >
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>

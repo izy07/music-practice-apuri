@@ -56,6 +56,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const {
     signIn,
+    signInWithGoogle,
     isLoading,
     error,
     clearError,
@@ -514,8 +515,26 @@ export default function LoginScreen() {
                 <View style={styles.dividerLine} />
               </View>
 
+              {/* Googleログインボタン */}
+              <TouchableOpacity
+                style={styles.googleButton}
+                onPress={async () => {
+                  setIsLoggingIn(true);
+                  try {
+                    await signInWithGoogle();
+                  } catch (error) {
+                    logger.error('Googleログインエラー:', error);
+                    setIsLoggingIn(false);
+                  }
+                }}
+                disabled={isLoggingIn}
+              >
+                <Text style={styles.googleIcon}>🔍</Text>
+                <Text style={styles.googleButtonText}>Googleでログイン</Text>
+              </TouchableOpacity>
+
               {/* パスワード再設定リンク */}
-              <TouchableOpacity onPress={handleResetPassword} disabled={isLoggingIn} style={{ alignSelf: 'center', marginBottom: 12 }}>
+              <TouchableOpacity onPress={handleResetPassword} disabled={isLoggingIn} style={{ alignSelf: 'center', marginTop: 8, marginBottom: 8 }}>
                 <Text style={{ color: colors.primary }}>パスワードをお忘れですか？</Text>
               </TouchableOpacity>
 
@@ -546,28 +565,28 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    paddingTop: 60,
+    paddingTop: 20,
   },
   content: {
     flex: 1,
     paddingHorizontal: 24,
-    paddingVertical: 32,
+    paddingVertical: 16,
   },
   header: {
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 24,
   },
   title: {
-    fontSize: 32,
+    fontSize: 28,
     fontWeight: '700',
     color: '#333',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#666',
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 20,
   },
   errorContainer: {
     backgroundColor: '#FFEBEE',
@@ -583,10 +602,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   form: {
-    marginBottom: 32,
+    marginBottom: 20,
   },
   inputContainer: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   inputLabel: {
     fontSize: 14,
@@ -661,7 +680,7 @@ const styles = StyleSheet.create({
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 24,
+    marginVertical: 16,
   },
   dividerLine: {
     flex: 1,
@@ -707,5 +726,27 @@ const styles = StyleSheet.create({
     color: '#8B4513',
     fontSize: 14,
     fontWeight: '600',
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    marginTop: 8,
+    elevation: 2,
+  },
+  googleIcon: {
+    fontSize: 18,
+    marginRight: 8,
+  },
+  googleButtonText: {
+    color: '#333',
+    fontSize: 16,
+    fontWeight: '500',
   },
 });

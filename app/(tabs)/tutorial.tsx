@@ -52,33 +52,33 @@ export default function TutorialScreen() {
       gradientColors: ['#667eea', '#764ba2'],
     },
     {
-      icon: '📊',
-      title: '練習を「見える化」',
-      description: '• 「クイック記録」でワンタップ記録\n• カレンダーで練習時間・内容を管理\n• 目標設定で進捗を可視化\n• 演奏録音・レッスン録音が可能',
+      icon: '📅',
+      title: 'カレンダー画面の\n機能紹介',
+      description: '• カレンダーで練習時間・内容を管理\n• 「演奏録音」や「クイック記録」で簡単に記録\n• イベント登録で練習予定を管理\n• 楽器ヘッダーから代表曲画面を開けます',
       gradientColors: ['#f093fb', '#f5576c'],
     },
     {
       icon: '🎯',
-      title: '上達の土台は「基礎」から。',
-      description: '• 楽器別・レベル別の豊富な基礎練習メニュー\n• 「練習済み！」でカレンダーにマークと内容表示',
+      title: '目標画面',
+      description: '• 練習目標を設定して進捗を可視化\n• 目標達成状況を確認\n• モチベーション維持に役立ちます',
       gradientColors: ['#43e97b', '#38f9d7'],
     },
     {
-      icon: '🎤',
-      title: '演奏録音機能',
-      description: '• カレンダー・練習記録画面から簡単録音\n• レッスン録音で先生の話を聞き逃さない\n• 録音ライブラリで一覧表示・管理\n• 過去の録音と比較して成長を実感',
+      icon: '⏱️',
+      title: 'タイマーとチューナー',
+      description: '• 円形型タイマーで練習時間を計測\n• 自動記録機能で練習時間を自動保存\n• チューナーで正確な音程を確認',
       gradientColors: ['#fa709a', '#fee140'],
     },
     {
-      icon: '🔔',
-      title: '通知設定',
-      description: '通知を受け取ることで、継続的な練習をサポートします。',
+      icon: '🎼',
+      title: '基礎練機能',
+      description: '• 楽器別・レベル別の豊富な基礎練習メニュー\n• 「練習済み！」でカレンダーにマークと内容表示\n• 基礎からしっかり上達をサポート',
       gradientColors: ['#30cfd0', '#330867'],
     },
     {
-      icon: '🎼',
-      title: '楽器選択',
-      description: '練習する楽器を選択してください。',
+      icon: '📚',
+      title: 'その他の便利機能',
+      description: '• ガイドは、楽器のことを網羅！楽器初心者にもわかりやすく基本情報や運指表、お手入れ方法からよくあるQ &Aまで\n• 外観設定で色を好みにカスタマイズ\n• 楽器ごとにデータ切り分け\n• マイライブラリで弾いた/弾きたい楽曲を管理\n• グラフや統計で練習の振り返り',
       gradientColors: ['#a8edea', '#fed6e3'],
     },
   ];
@@ -464,7 +464,7 @@ export default function TutorialScreen() {
           {/* 説明文 */}
           <Text style={styles.stepDescription}>{currentStepData.description}</Text>
 
-          {/* カレンダーマークの説明（ステップ1の場合のみ） */}
+          {/* カレンダーマークの説明（ステップ2の場合のみ） */}
           {currentStep === 1 && (
             <Animated.View
               style={[
@@ -490,49 +490,6 @@ export default function TutorialScreen() {
                   <Text style={styles.markLabel}>両方記録</Text>
                 </View>
               </View>
-            </Animated.View>
-          )}
-
-          {/* 通知設定（ステップ4の場合のみ） */}
-          {currentStep === 4 && (
-            <Animated.View
-              style={[
-                styles.notificationCard,
-                {
-                  opacity: fadeAnim,
-                  transform: [{ translateY: slideAnim }],
-                },
-              ]}
-            >
-              <View style={styles.notificationContent}>
-                <TouchableOpacity
-                  style={[
-                    styles.notificationToggle,
-                    notificationEnabled && styles.notificationToggleActive,
-                    isRequestingPermission && styles.notificationToggleDisabled
-                  ]}
-                  onPress={handleNotificationToggle}
-                  disabled={isRequestingPermission}
-                >
-                  <View
-                    style={[
-                      styles.notificationToggleKnob,
-                      notificationEnabled && styles.notificationToggleKnobActive,
-                    ]}
-                  />
-                </TouchableOpacity>
-                <Text style={styles.notificationLabel}>
-                  {isRequestingPermission ? '設定中...' : '通知をオンにする'}
-                </Text>
-              </View>
-              <Text style={styles.notificationDescription}>
-                {isRequestingPermission
-                  ? '通知の設定を確認しています...'
-                  : notificationEnabled 
-                    ? '✅ 練習リマインダーや目標達成通知を受け取れます' 
-                    : '通知をオンにすると練習の継続に役立ちます'
-                }
-              </Text>
             </Animated.View>
           )}
         </Animated.View>

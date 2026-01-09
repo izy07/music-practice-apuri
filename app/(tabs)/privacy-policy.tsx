@@ -19,7 +19,7 @@ export default function PrivacyPolicyScreen() {
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary || '#E0E0E0' }]}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => safeGoBack('/(tabs)/privacy-settings', true)}
+          onPress={() => safeGoBack(router, '/(tabs)/privacy-settings')}
         >
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>

@@ -221,19 +221,15 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       }
 
       // 3. AsyncStorageから読み込み（優先順位: user.selected_instrument_id > AsyncStorage > デフォルト）
-      const [storedInstrument, storedSettings, storedCustomTheme, storedIsCustomTheme] = await Promise.all([
+      const [storedInstrument, storedSettings] = await Promise.all([
         AsyncStorage.getItem(getKey(STORAGE_KEYS.selectedInstrument, uid)),
         AsyncStorage.getItem(getKey(STORAGE_KEYS.practiceSettings, uid)),
-        AsyncStorage.getItem(getKey(STORAGE_KEYS.customTheme, uid)),
-        AsyncStorage.getItem(getKey(STORAGE_KEYS.isCustomTheme, uid)),
       ]);
 
       // 従来キーのマイグレーション
-      const [legacyInstrument, legacySettings, legacyCustomTheme, legacyIsCustomTheme] = await Promise.all([
+      const [legacyInstrument, legacySettings] = await Promise.all([
         AsyncStorage.getItem(STORAGE_KEYS.selectedInstrument),
         AsyncStorage.getItem(STORAGE_KEYS.practiceSettings),
-        AsyncStorage.getItem(STORAGE_KEYS.customTheme),
-        AsyncStorage.getItem(STORAGE_KEYS.isCustomTheme),
       ]);
 
       if (!storedInstrument && legacyInstrument) {
@@ -244,14 +240,6 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         await AsyncStorage.setItem(getKey(STORAGE_KEYS.practiceSettings, uid), legacySettings);
         await AsyncStorage.removeItem(STORAGE_KEYS.practiceSettings);
       }
-      if (!storedCustomTheme && legacyCustomTheme) {
-        await AsyncStorage.setItem(getKey(STORAGE_KEYS.customTheme, uid), legacyCustomTheme);
-        await AsyncStorage.removeItem(STORAGE_KEYS.customTheme);
-      }
-      if (!storedIsCustomTheme && legacyIsCustomTheme) {
-        await AsyncStorage.setItem(getKey(STORAGE_KEYS.isCustomTheme, uid), legacyIsCustomTheme);
-        await AsyncStorage.removeItem(STORAGE_KEYS.isCustomTheme);
-      }
 
       // 4. データソースの優先順位を明確化: user.selected_instrument_id > AsyncStorage > デフォルト
       // 計画に従って、user.selected_instrument_idを最優先に設定
@@ -261,19 +249,29 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         setSelectedInstrumentState(instrumentIdToUse);
       }
 
-      // 5. カスタムテーマの処理
-      if (storedIsCustomTheme === 'true' && storedCustomTheme) {
-        try {
-          const parsedTheme = JSON.parse(storedCustomTheme);
-          setCustomThemeState(parsedTheme);
-          setIsCustomTheme(true);
-          setCurrentThemeState(parsedTheme);
-          if (!cancelled) {
-            setIsInitializing(false);
+      // 5. カスタムテーマの処理（楽器IDを含めたキーで読み込み）
+      if (instrumentIdToUse) {
+        const customThemeKey = `${getKey(STORAGE_KEYS.customTheme, uid)}:${instrumentIdToUse}`;
+        const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme, uid)}:${instrumentIdToUse}`;
+        
+        const [storedCustomTheme, storedIsCustomTheme] = await Promise.all([
+          AsyncStorage.getItem(customThemeKey),
+          AsyncStorage.getItem(isCustomThemeKey),
+        ]);
+        
+        if (storedIsCustomTheme === 'true' && storedCustomTheme) {
+          try {
+            const parsedTheme = JSON.parse(storedCustomTheme);
+            setCustomThemeState(parsedTheme);
+            setIsCustomTheme(true);
+            setCurrentThemeState(parsedTheme);
+            if (!cancelled) {
+              setIsInitializing(false);
+            }
+            return;
+          } catch (parseError) {
+            logger.error('カスタムテーマのパースエラー:', parseError);
           }
-          return;
-        } catch (parseError) {
-          logger.error('カスタムテーマのパースエラー:', parseError);
         }
       }
 
@@ -298,17 +296,49 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       // 8. バックグラウンドでDBから楽器データを取得（計画に従ってloadInstrumentsFromDBを確実に呼び出す）
       if (currentUser) {
         // 非ブロッキングで楽器データを取得（初期化をブロックしない）
-        loadInstrumentsFromDB().then(() => {
+        loadInstrumentsFromDB().then(async () => {
           // 楽器データ取得後に選択中の楽器のテーマを更新
           if (!cancelled && instrumentIdToUse) {
-            // 最新のdbInstrumentsを取得するため、setStateのコールバックを使用
-            setDbInstruments(prevInstruments => {
-              const dbInstrument = prevInstruments.find(inst => inst.id === instrumentIdToUse);
-              if (dbInstrument) {
-                setCurrentThemeState(dbInstrument);
+            // その楽器のカスタムテーマを確認
+            const customThemeKey = `${getKey(STORAGE_KEYS.customTheme, uid)}:${instrumentIdToUse}`;
+            const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme, uid)}:${instrumentIdToUse}`;
+            
+            const [storedCustomTheme, storedIsCustomTheme] = await Promise.all([
+              AsyncStorage.getItem(customThemeKey),
+              AsyncStorage.getItem(isCustomThemeKey),
+            ]);
+            
+            if (storedIsCustomTheme === 'true' && storedCustomTheme) {
+              try {
+                const parsedTheme = JSON.parse(storedCustomTheme);
+                setCustomThemeState(parsedTheme);
+                setIsCustomTheme(true);
+                setCurrentThemeState(parsedTheme);
+              } catch (parseError) {
+                logger.error('カスタムテーマのパースエラー:', parseError);
+                // パースエラーの場合は楽器のデフォルトテーマを使用
+                setDbInstruments(prevInstruments => {
+                  const dbInstrument = prevInstruments.find(inst => inst.id === instrumentIdToUse);
+                  if (dbInstrument) {
+                    setCurrentThemeState(dbInstrument);
+                  }
+                  return prevInstruments;
+                });
+                setCustomThemeState(null);
+                setIsCustomTheme(false);
               }
-              return prevInstruments;
-            });
+            } else {
+              // カスタムテーマがない場合は楽器のデフォルトテーマを使用
+              setDbInstruments(prevInstruments => {
+                const dbInstrument = prevInstruments.find(inst => inst.id === instrumentIdToUse);
+                if (dbInstrument) {
+                  setCurrentThemeState(dbInstrument);
+                }
+                return prevInstruments;
+              });
+              setCustomThemeState(null);
+              setIsCustomTheme(false);
+            }
           }
         }).catch(error => {
           logger.error('loadInstrumentsFromDBエラー:', error);
@@ -448,11 +478,41 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       setSelectedInstrumentState(instrumentId);
       await AsyncStorage.setItem(getKey(STORAGE_KEYS.selectedInstrument), instrumentId);
       
-      // 2. 楽器テーマを更新
-      const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
-                         defaultInstruments.find(inst => inst.id === instrumentId);
-      if (instrument) {
-        setCurrentThemeState(instrument);
+      // 2. その楽器のカスタムテーマを読み込む
+      const customThemeKey = `${getKey(STORAGE_KEYS.customTheme)}:${instrumentId}`;
+      const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme)}:${instrumentId}`;
+      
+      const [storedCustomTheme, storedIsCustomTheme] = await Promise.all([
+        AsyncStorage.getItem(customThemeKey),
+        AsyncStorage.getItem(isCustomThemeKey),
+      ]);
+      
+      if (storedIsCustomTheme === 'true' && storedCustomTheme) {
+        try {
+          const parsedTheme = JSON.parse(storedCustomTheme);
+          setCustomThemeState(parsedTheme);
+          setIsCustomTheme(true);
+          setCurrentThemeState(parsedTheme);
+        } catch (parseError) {
+          logger.error('カスタムテーマのパースエラー:', parseError);
+          // パースエラーの場合は楽器のデフォルトテーマを使用
+          const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
+                             defaultInstruments.find(inst => inst.id === instrumentId);
+          if (instrument) {
+            setCurrentThemeState(instrument);
+          }
+          setCustomThemeState(null);
+          setIsCustomTheme(false);
+        }
+      } else {
+        // カスタムテーマがない場合は楽器のデフォルトテーマを使用
+        const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
+                           defaultInstruments.find(inst => inst.id === instrumentId);
+        if (instrument) {
+          setCurrentThemeState(instrument);
+        }
+        setCustomThemeState(null);
+        setIsCustomTheme(false);
       }
 
       // 3. サーバーに同期（認証済みの場合のみ）
@@ -512,16 +572,44 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
 
   // selectedInstrumentまたはuser.selected_instrument_idが変更されたらテーマを更新
   useEffect(() => {
-    const { getEffectiveInstrumentId } = require('@/lib/instrumentUtils');
-    const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
-    if (!instrumentId) return;
+    const updateThemeForInstrument = async () => {
+      const { getEffectiveInstrumentId } = require('@/lib/instrumentUtils');
+      const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+      if (!instrumentId) return;
 
-    const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
-                       defaultInstruments.find(inst => inst.id === instrumentId);
-    if (instrument && instrument.id !== currentTheme.id) {
-      setCurrentThemeState(instrument);
-    }
-  }, [selectedInstrument, user?.selected_instrument_id, dbInstruments, defaultInstruments, currentTheme.id]);
+      // その楽器のカスタムテーマを確認
+      const customThemeKey = `${getKey(STORAGE_KEYS.customTheme)}:${instrumentId}`;
+      const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme)}:${instrumentId}`;
+      
+      const [storedCustomTheme, storedIsCustomTheme] = await Promise.all([
+        AsyncStorage.getItem(customThemeKey),
+        AsyncStorage.getItem(isCustomThemeKey),
+      ]);
+      
+      if (storedIsCustomTheme === 'true' && storedCustomTheme) {
+        try {
+          const parsedTheme = JSON.parse(storedCustomTheme);
+          setCustomThemeState(parsedTheme);
+          setIsCustomTheme(true);
+          setCurrentThemeState(parsedTheme);
+          return;
+        } catch (parseError) {
+          logger.error('カスタムテーマのパースエラー:', parseError);
+        }
+      }
+      
+      // カスタムテーマがない場合は楽器のデフォルトテーマを使用
+      const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
+                         defaultInstruments.find(inst => inst.id === instrumentId);
+      if (instrument && instrument.id !== currentTheme.id) {
+        setCurrentThemeState(instrument);
+        setCustomThemeState(null);
+        setIsCustomTheme(false);
+      }
+    };
+    
+    updateThemeForInstrument();
+  }, [selectedInstrument, user?.selected_instrument_id, dbInstruments, defaultInstruments, currentTheme.id, getKey]);
 
   // currentThemeの計算（カスタムテーマ優先）
   const currentThemeComputed = useMemo(() => {
@@ -544,26 +632,50 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
 
   const setCustomTheme = useCallback(async (theme: Instrument) => {
     try {
+      const { getEffectiveInstrumentId } = require('@/lib/instrumentUtils');
+      const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+      
+      if (!instrumentId) {
+        logger.warn('楽器IDが取得できないため、カスタムテーマを保存できません');
+        return;
+      }
+
+      // 楽器IDを含めたキーで保存
+      const customThemeKey = `${getKey(STORAGE_KEYS.customTheme)}:${instrumentId}`;
+      const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme)}:${instrumentId}`;
+      
       setCustomThemeState(theme);
       setIsCustomTheme(true);
       setCurrentThemeState(theme);
-      await AsyncStorage.setItem(getKey(STORAGE_KEYS.customTheme), JSON.stringify(theme));
-      await AsyncStorage.setItem(getKey(STORAGE_KEYS.isCustomTheme), 'true');
+      await AsyncStorage.setItem(customThemeKey, JSON.stringify(theme));
+      await AsyncStorage.setItem(isCustomThemeKey, 'true');
+      
+      logger.debug('カスタムテーマを保存しました', { instrumentId, customThemeKey });
     } catch (error) {
       logger.error('カスタムテーマ保存エラー:', error);
       ErrorHandler.handle(error, 'カスタムテーマ保存', false);
     }
-  }, [getKey]);
+  }, [getKey, selectedInstrument, user?.selected_instrument_id]);
 
   const resetToInstrumentTheme = useCallback(async () => {
     try {
-      setCustomThemeState(null);
-      setIsCustomTheme(false);
-      await AsyncStorage.removeItem(getKey(STORAGE_KEYS.customTheme));
-      await AsyncStorage.setItem(getKey(STORAGE_KEYS.isCustomTheme), 'false');
-      
       const { getEffectiveInstrumentId } = require('@/lib/instrumentUtils');
       const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+      
+      if (instrumentId) {
+        // 楽器IDを含めたキーで削除
+        const customThemeKey = `${getKey(STORAGE_KEYS.customTheme)}:${instrumentId}`;
+        const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme)}:${instrumentId}`;
+        
+        await AsyncStorage.removeItem(customThemeKey);
+        await AsyncStorage.setItem(isCustomThemeKey, 'false');
+        
+        logger.debug('カスタムテーマをリセットしました', { instrumentId, customThemeKey });
+      }
+      
+      setCustomThemeState(null);
+      setIsCustomTheme(false);
+      
       if (instrumentId) {
         const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
                            defaultInstruments.find(inst => inst.id === instrumentId);

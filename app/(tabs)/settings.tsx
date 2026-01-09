@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User, Palette, Globe, Bell, ChartBar as BarChart3, BookOpen, MessageSquare, Shield, FileText, LogOut, ChevronRight, Library, Zap, Crown, Heart, Share2, Star, GraduationCap } from 'lucide-react-native';
+import { User, Palette, Globe, ChartBar as BarChart3, BookOpen, MessageSquare, FileText, LogOut, ChevronRight, Library, Zap, Crown, Heart, Share2, Star, GraduationCap } from 'lucide-react-native';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
@@ -136,28 +136,12 @@ export default function SettingsScreen() {
       onPress: () => router.push('/(tabs)/pricing-plans' as any)
     },
     {
-      id: 'notifications',
-      title: t('notificationSettings'),
-      subtitle: t('notificationSettingsSubtitle'),
-      icon: Bell,
-      color: '#FF9800',
-      onPress: () => router.push('/(tabs)/notification-settings' as any)
-    },
-    {
       id: 'language',
       title: t('languageSettings'),
       subtitle: t('languageSettingsSubtitle'),
       icon: Globe,
       color: '#2196F3',
       onPress: () => router.push('/(tabs)/language-settings' as any)
-    },
-    {
-      id: 'privacy',
-      title: t('privacySettings'),
-      subtitle: t('privacySettingsSubtitle'),
-      icon: Shield,
-      color: '#FF5722',
-      onPress: () => router.push('/(tabs)/privacy-settings' as any)
     },
     {
       id: 'support',

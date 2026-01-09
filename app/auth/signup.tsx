@@ -60,7 +60,7 @@ export default function SignupScreen() {
   
   const router = useRouter();
   const segments = useSegments();
-  const { user, isAuthenticated, isLoading, isInitialized, signUp: signUpFromHook, error: authError } = useAuthAdvanced();
+  const { user, isAuthenticated, isLoading, isInitialized, signUp: signUpFromHook, signInWithGoogle, error: authError } = useAuthAdvanced();
   
   // 新規登録画面のローカル状態（UI用）
   const [localError, setLocalError] = useState<string | null>(null);
@@ -409,6 +409,29 @@ export default function SignupScreen() {
               )}
             </TouchableOpacity>
 
+            {/* 分割線 */}
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>または</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            {/* Google新規登録ボタン */}
+            <TouchableOpacity
+              style={styles.googleButton}
+              onPress={async () => {
+                try {
+                  await signInWithGoogle();
+                } catch (error) {
+                  logger.error('Google新規登録エラー:', error);
+                }
+              }}
+              disabled={isLoading}
+            >
+              <Text style={styles.googleIcon}>🔍</Text>
+              <Text style={styles.googleButtonText}>Googleで新規登録</Text>
+            </TouchableOpacity>
+
             <View style={styles.loginLinkContainer}>
               <Text style={styles.loginText}>
                 既にアカウントをお持ちですか？
@@ -610,5 +633,49 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 11,
     marginHorizontal: 1,
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+    width: '100%',
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.border,
+  },
+  dividerText: {
+    color: colors.textSecondary,
+    fontSize: 14,
+    marginHorizontal: 16,
+  },
+  googleButton: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    width: '100%',
+    ...createShadowStyle({
+      shadowColor: colors.primary,
+      shadowOpacity: 0.1,
+      shadowRadius: 5,
+      elevation: 3,
+    }),
+  },
+  googleIcon: {
+    fontSize: 20,
+    marginRight: 8,
+  },
+  googleButtonText: {
+    color: colors.text,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

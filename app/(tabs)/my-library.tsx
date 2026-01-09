@@ -666,13 +666,26 @@ export default function MyLibraryScreen() {
           throw error;
         }
 
-        logger.debug('曲削除成功:', { songId: song.id });
-        
-        // 削除後にリストを再読み込み
-        await loadSongs();
-        
-        // Web環境では簡易的なアラートを表示
-        window.alert('曲を削除しました');
+              logger.debug('曲削除成功:', { songId: song.id });
+              
+              // 削除後にリストを再読み込み
+              await loadSongs();
+              
+              // 制限状態を再チェック（削除後に上限が解除される可能性があるため）
+              try {
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+                const { getInstrumentId } = await import('@/lib/instrumentUtils');
+                const instrumentId = getInstrumentId(selectedInstrument);
+                const updatedLimitCheck = await checkMyLibraryLimit(user.id, entitlement, instrumentId);
+                setLibraryLimitStatus(updatedLimitCheck);
+          }
+              } catch (error) {
+                logger.error('制限チェック更新エラー:', error);
+              }
+              
+              // Web環境では簡易的なアラートを表示
+              window.alert('曲を削除しました');
       } catch (error) {
         logger.error('曲削除エラー:', error);
         window.alert('曲の削除に失敗しました。もう一度お試しください。');
@@ -706,6 +719,19 @@ export default function MyLibraryScreen() {
               
               // 削除後にリストを再読み込み
               await loadSongs();
+              
+              // 制限状態を再チェック（削除後に上限が解除される可能性があるため）
+              try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (user) {
+                const { getInstrumentId } = await import('@/lib/instrumentUtils');
+                const instrumentId = getInstrumentId(selectedInstrument);
+                const updatedLimitCheck = await checkMyLibraryLimit(user.id, entitlement, instrumentId);
+                setLibraryLimitStatus(updatedLimitCheck);
+                }
+              } catch (error) {
+                logger.error('制限チェック更新エラー:', error);
+              }
               
               Alert.alert('削除完了', '曲を削除しました');
             } catch (error) {
@@ -745,18 +771,65 @@ export default function MyLibraryScreen() {
   };
 
   // 新規追加開始
-  const startAdding = () => {
+  const startAdding = async () => {
+    // プレミアムユーザーは制限なし
+    if (entitlement.isEntitled) {
     setEditingSong(null);
-    // 現在のフィルターステータスを初期値として設定
     setFormData({
       title: '',
       artist: '',
       genre: '',
       difficulty: 'beginner' as 'beginner' | 'intermediate' | 'advanced',
-      status: filterStatus, // 現在選択されているフィルターのステータスを使用
+        status: filterStatus,
       notes: ''
     });
     setShowAddModal(true);
+      return;
+    }
+
+    // フリープランの場合、上限チェック
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('エラー', 'ログインしてください');
+        return;
+      }
+
+      const { getInstrumentId } = await import('@/lib/instrumentUtils');
+      const instrumentId = getInstrumentId(selectedInstrument);
+      
+      const limitCheck = await checkMyLibraryLimit(user.id, entitlement, instrumentId);
+      setLibraryLimitStatus(limitCheck);
+      
+      if (!limitCheck.canAdd) {
+        Alert.alert(
+          '上限に達しました',
+          `Freeプランでは各楽器ごとに楽曲を${limitCheck.limit}曲まで追加できます。\n現在の曲数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nこれ以上追加するには、プレミアムへアップグレードしてください。`,
+          [
+            { text: 'キャンセル', style: 'cancel' },
+            { text: 'プレミアムを見る', onPress: () => {
+              router.push('/(tabs)/pricing-plans');
+            }}
+          ]
+        );
+        return;
+      }
+
+      // 上限に達していない場合はモーダルを開く
+      setEditingSong(null);
+      setFormData({
+        title: '',
+        artist: '',
+        genre: '',
+        difficulty: 'beginner' as 'beginner' | 'intermediate' | 'advanced',
+        status: filterStatus,
+        notes: ''
+      });
+      setShowAddModal(true);
+    } catch (error) {
+      logger.error('追加開始時のエラー:', error);
+      Alert.alert('エラー', '楽曲の追加を開始できませんでした');
+    }
   };
 
   // フィルタリングされた曲リスト
@@ -890,7 +963,7 @@ export default function MyLibraryScreen() {
           disabled={libraryLimitStatus !== null && !libraryLimitStatus.canAdd}
         >
           <Plus 
-            size={24} 
+            size={30} 
             color={(libraryLimitStatus !== null && !libraryLimitStatus.canAdd) ? currentTheme.textSecondary : currentTheme.primary} 
           />
         </TouchableOpacity>
@@ -912,22 +985,6 @@ export default function MyLibraryScreen() {
           </View>
         )}
 
-        {/* 楽曲数制限の表示（フリープランの場合） */}
-        {!entitlement.isEntitled && libraryLimitStatus && (
-          <View style={[styles.limitInfoContainer, { backgroundColor: currentTheme.surface, borderColor: libraryLimitStatus.canAdd ? currentTheme.primary : '#FF4444' }]}>
-            <Text style={[styles.limitInfoText, { color: currentTheme.text }]}>
-              {libraryLimitStatus.canAdd 
-                ? `楽曲数: ${libraryLimitStatus.currentCount}/${libraryLimitStatus.limit}（あと${libraryLimitStatus.limit - libraryLimitStatus.currentCount}曲追加可能）`
-                : `上限に達しています: ${libraryLimitStatus.currentCount}/${libraryLimitStatus.limit}`
-              }
-            </Text>
-            {!libraryLimitStatus.canAdd && (
-              <Text style={[styles.limitInfoSubText, { color: currentTheme.textSecondary }]}>
-                プレミアムで無制限に追加できます
-              </Text>
-            )}
-          </View>
-        )}
         
         {/* フィルター */}
         <View style={styles.filterContainer}>
@@ -1249,7 +1306,7 @@ export default function MyLibraryScreen() {
                 <Text style={[styles.formLabel, { color: currentTheme.text }]}>ジャンル</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                   <View style={styles.genreContainer}>
-                    {['クラシック', 'ポップス', 'ジャズ', 'ロック', 'アニメ', 'ゲーム', 'その他'].map(genre => (
+                    {['クラシック', 'ポップス', 'ジャズ', 'アニソン/ボカロ', 'ロック', 'その他'].map(genre => (
                       <TouchableOpacity
                         key={genre}
                         style={[
@@ -1344,22 +1401,6 @@ export default function MyLibraryScreen() {
                 />
               </View>
 
-              {/* 楽曲数制限の表示（フリープランの場合、新規追加時のみ） */}
-              {!entitlement.isEntitled && !editingSong && libraryLimitStatus && (
-                <View style={[styles.limitInfoContainer, { backgroundColor: currentTheme.surface, borderColor: libraryLimitStatus.canAdd ? currentTheme.primary : '#FF4444', marginBottom: 12 }]}>
-                  <Text style={[styles.limitInfoText, { color: currentTheme.text }]}>
-                    {libraryLimitStatus.canAdd 
-                      ? `楽曲数: ${libraryLimitStatus.currentCount}/${libraryLimitStatus.limit}（あと${libraryLimitStatus.limit - libraryLimitStatus.currentCount}曲追加可能）`
-                      : `上限に達しています: ${libraryLimitStatus.currentCount}/${libraryLimitStatus.limit}`
-                    }
-                  </Text>
-                  {!libraryLimitStatus.canAdd && (
-                    <Text style={[styles.limitInfoSubText, { color: currentTheme.textSecondary }]}>
-                      プレミアムで無制限に追加できます
-                    </Text>
-                  )}
-                </View>
-              )}
 
               {/* 保存ボタン */}
               <View style={styles.saveButtonContainer}>

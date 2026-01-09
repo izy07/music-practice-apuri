@@ -1217,9 +1217,38 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         }
       } catch (instrumentProfileError) {
         logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+        // ネットワークエラー時はローカルストレージから楽器IDを取得
+        try {
+          const { STORAGE_KEYS, withUser } = await import('@/lib/storageKeys');
+          const storedInstrument = await AsyncStorage.getItem(withUser(STORAGE_KEYS.selectedInstrument, userId));
+          if (storedInstrument && storedInstrument.trim() !== '') {
+            fallbackInstrumentId = storedInstrument;
+            logger.debug('ローカルストレージから楽器IDを取得しました:', { instrumentId: fallbackInstrumentId });
+          }
+        } catch (storageError) {
+          logger.debug('ローカルストレージからの楽器ID取得エラー（続行）:', storageError);
+        }
       }
       
       const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
+      // ネットワークエラー時でも既存ユーザーとみなす（新規登録フラグがない場合）
+      let fallbackTutorialCompleted = fallbackInstrumentId !== null;
+      if (!fallbackTutorialCompleted) {
+        // 新規登録フラグがない場合は既存ユーザーとみなす
+        try {
+          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+            const isNewSignup = localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
+            fallbackTutorialCompleted = !isNewSignup;
+          } else {
+            const flag = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
+            fallbackTutorialCompleted = flag !== 'true';
+          }
+        } catch (flagError) {
+          // エラー時は既存ユーザーとみなす（安全側に倒す）
+          fallbackTutorialCompleted = true;
+        }
+      }
+      
       const authUser: AuthUser = {
                 id: userId,
         email: user.email || '',
@@ -1228,8 +1257,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         created_at: user.created_at,
         last_sign_in_at: user.last_sign_in_at,
         selected_instrument_id: fallbackInstrumentId,
-        // 楽器が選択されている場合は既存ユーザーとみなしてチュートリアル完了にする
-        tutorial_completed: fallbackInstrumentId !== null,
+        // ネットワークエラー時でも既存ユーザーとみなしてチュートリアル完了にする
+        tutorial_completed: fallbackTutorialCompleted,
         onboarding_completed: false,
       };
       
@@ -1275,9 +1304,39 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           }
         } catch (instrumentProfileError) {
           logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+          // ネットワークエラー時はローカルストレージから楽器IDを取得
+          try {
+            const { STORAGE_KEYS } = await import('@/lib/storageKeys');
+            const getKey = (key: string, uid?: string) => uid ? `${key}_${uid}` : key;
+            const storedInstrument = await AsyncStorage.getItem(getKey(STORAGE_KEYS.selectedInstrument, userId));
+            if (storedInstrument && storedInstrument.trim() !== '') {
+              fallbackInstrumentId = storedInstrument;
+              logger.debug('ローカルストレージから楽器IDを取得しました:', { instrumentId: fallbackInstrumentId });
+            }
+          } catch (storageError) {
+            logger.debug('ローカルストレージからの楽器ID取得エラー（続行）:', storageError);
+          }
         }
         
         const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
+        // ネットワークエラー時でも既存ユーザーとみなす（新規登録フラグがない場合）
+        let fallbackTutorialCompleted = fallbackInstrumentId !== null;
+        if (!fallbackTutorialCompleted) {
+          // 新規登録フラグがない場合は既存ユーザーとみなす
+          try {
+            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+              const isNewSignup = localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
+              fallbackTutorialCompleted = !isNewSignup;
+            } else {
+              const flag = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
+              fallbackTutorialCompleted = flag !== 'true';
+            }
+          } catch (flagError) {
+            // エラー時は既存ユーザーとみなす（安全側に倒す）
+            fallbackTutorialCompleted = true;
+          }
+        }
+        
         const fallbackUser: AuthUser = {
           id: userId,
           email: user?.email || '',
@@ -1286,8 +1345,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           created_at: user?.created_at || new Date().toISOString(),
           last_sign_in_at: user?.last_sign_in_at,
           selected_instrument_id: fallbackInstrumentId,
-          // 楽器が選択されている場合は既存ユーザーとみなしてチュートリアル完了にする
-          tutorial_completed: fallbackInstrumentId !== null,
+          // ネットワークエラー時でも既存ユーザーとみなしてチュートリアル完了にする
+          tutorial_completed: fallbackTutorialCompleted,
           onboarding_completed: false,
         };
         

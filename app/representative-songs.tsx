@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Dimensions, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Dimensions, Linking, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, ExternalLink, Youtube } from 'lucide-react-native';
+import { ArrowLeft, ExternalLink, Youtube, Plus, Trash2 } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { supabase } from '@/lib/supabase';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import logger from '@/lib/logger';
@@ -36,24 +37,61 @@ interface Instrument {
   name_en: string;
 }
 
+interface UserFavoriteSong {
+  id: string;
+  user_id: string;
+  instrument_id: string;
+  title: string;
+  composer: string;
+  era?: string;
+  genre?: string;
+  youtube_url?: string;
+  spotify_url?: string;
+  description_ja?: string;
+  description_en?: string;
+  famous_performer?: string;
+  famous_video_url?: string;
+  famous_note?: string;
+  display_order: number;
+  created_at?: string;
+  updated_at?: string;
+  is_user_favorite?: boolean; // お気に入り曲かどうかを識別するフラグ
+}
+
 export default function RepresentativeSongsScreen() {
   const router = useRouter();
   const { instrumentId: instrumentIdParam } = useLocalSearchParams();
   // useLocalSearchParams()の戻り値は string | string[] なので、文字列に変換
   const instrumentId = Array.isArray(instrumentIdParam) ? instrumentIdParam[0] : instrumentIdParam;
   const { currentTheme } = useInstrumentTheme();
+  const { user, isAuthenticated } = useAuthAdvanced();
   
-  const [songs, setSongs] = useState<RepresentativeSong[]>([]);
+  const [songs, setSongs] = useState<(RepresentativeSong | UserFavoriteSong)[]>([]);
+  const [favoriteSongs, setFavoriteSongs] = useState<UserFavoriteSong[]>([]);
   const [instrument, setInstrument] = useState<Instrument | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedSong, setSelectedSong] = useState<RepresentativeSong | null>(null);
+  const [selectedSong, setSelectedSong] = useState<RepresentativeSong | UserFavoriteSong | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newSong, setNewSong] = useState({
+    title: '',
+    composer: '',
+    era: '',
+    genre: '',
+    youtube_url: '',
+    description_ja: '',
+    famous_performer: '',
+    famous_note: '',
+  });
 
   useEffect(() => {
     if (instrumentId) {
       loadSongs();
+      if (isAuthenticated && user) {
+        loadFavoriteSongs();
+      }
     }
-  }, [instrumentId]);
+  }, [instrumentId, isAuthenticated, user]);
 
   const loadSongs = async () => {
     try {
@@ -142,12 +180,16 @@ export default function RepresentativeSongsScreen() {
         // キャッシュに保存
         practiceDataCache.set(cacheKey, songsData);
         setSongs(songsData);
-        return;
+      } else {
+        // データベースに代表曲がない場合は空配列
+        logger.debug('[代表曲画面] 代表曲データなし');
+        setSongs([]);
       }
       
-      // データベースに代表曲がない場合は空配列
-      logger.debug('[代表曲画面] 代表曲データなし');
-      setSongs([]);
+      // お気に入り曲を読み込む（認証済みの場合）
+      if (isAuthenticated && user) {
+        await loadFavoriteSongs();
+      }
     } catch (error) {
       logger.error('[代表曲画面] データ読み込みエラー:', error);
       // エラー時は空配列
@@ -161,8 +203,154 @@ export default function RepresentativeSongsScreen() {
     }
   };
 
+  const loadFavoriteSongs = async () => {
+    if (!isAuthenticated || !user || !instrumentId) {
+      return;
+    }
 
-  const handleSongPress = (song: RepresentativeSong) => {
+    try {
+      const { data, error } = await supabase
+        .from('user_favorite_songs')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('instrument_id', instrumentId)
+        .order('display_order', { ascending: true });
+
+      if (error) {
+        // テーブルが存在しない場合はエラーを無視
+        const isTableNotFound = error.code === 'PGRST205' || 
+                                error.code === 'PGRST116' || 
+                                error.status === 404 ||
+                                error.message?.includes('Could not find the table') ||
+                                error.message?.includes('does not exist');
+        
+        if (!isTableNotFound) {
+          logger.error('[代表曲画面] お気に入り曲取得エラー:', error);
+        }
+        setFavoriteSongs([]);
+        return;
+      }
+
+      const favoriteSongsWithFlag = (data || []).map(song => ({
+        ...song,
+        is_user_favorite: true,
+      }));
+
+      setFavoriteSongs(favoriteSongsWithFlag);
+      
+      // 代表曲とお気に入り曲を結合（現在のsongs状態を使用）
+      setSongs(prevSongs => [...prevSongs, ...favoriteSongsWithFlag]);
+    } catch (error) {
+      logger.error('[代表曲画面] お気に入り曲読み込みエラー:', error);
+      setFavoriteSongs([]);
+    }
+  };
+
+  const handleAddFavoriteSong = async () => {
+    if (!isAuthenticated || !user || !instrumentId) {
+      Alert.alert('エラー', 'ログインが必要です');
+      return;
+    }
+
+    if (!newSong.title.trim()) {
+      Alert.alert('エラー', '曲名を入力してください');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('user_favorite_songs')
+        .insert({
+          user_id: user.id,
+          instrument_id: instrumentId,
+          title: newSong.title.trim(),
+          composer: newSong.composer.trim() || '',
+          era: newSong.era.trim() || null,
+          genre: newSong.genre.trim() || null,
+          youtube_url: newSong.youtube_url.trim() || null,
+          description_ja: newSong.description_ja.trim() || null,
+          famous_performer: newSong.famous_performer.trim() || null,
+          famous_note: newSong.famous_note.trim() || null,
+          display_order: favoriteSongs.length,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        logger.error('[代表曲画面] お気に入り曲追加エラー:', error);
+        Alert.alert('エラー', `お気に入り曲の追加に失敗しました: ${error.message}`);
+        return;
+      }
+
+      const newFavoriteSong: UserFavoriteSong = {
+        ...data,
+        is_user_favorite: true,
+      };
+
+      setFavoriteSongs([...favoriteSongs, newFavoriteSong]);
+      setSongs([...songs, newFavoriteSong]);
+      
+      // フォームをリセット
+      setNewSong({
+        title: '',
+        composer: '',
+        era: '',
+        genre: '',
+        youtube_url: '',
+        description_ja: '',
+        famous_performer: '',
+        famous_note: '',
+      });
+      setShowAddModal(false);
+      Alert.alert('成功', 'お気に入り曲を追加しました');
+    } catch (error) {
+      logger.error('[代表曲画面] お気に入り曲追加で予期しないエラー:', error);
+      Alert.alert('エラー', 'お気に入り曲の追加に失敗しました');
+    }
+  };
+
+  const handleDeleteFavoriteSong = async (songId: string) => {
+    if (!isAuthenticated || !user) {
+      return;
+    }
+
+    Alert.alert(
+      '削除確認',
+      'このお気に入り曲を削除しますか？',
+      [
+        { text: 'キャンセル', style: 'cancel' },
+        {
+          text: '削除',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('user_favorite_songs')
+                .delete()
+                .eq('id', songId)
+                .eq('user_id', user.id);
+
+              if (error) {
+                logger.error('[代表曲画面] お気に入り曲削除エラー:', error);
+                Alert.alert('エラー', `お気に入り曲の削除に失敗しました: ${error.message}`);
+                return;
+              }
+
+              setFavoriteSongs(favoriteSongs.filter(song => song.id !== songId));
+              setSongs(songs.filter(song => song.id !== songId));
+              Alert.alert('成功', 'お気に入り曲を削除しました');
+            } catch (error) {
+              logger.error('[代表曲画面] お気に入り曲削除で予期しないエラー:', error);
+              Alert.alert('エラー', 'お気に入り曲の削除に失敗しました');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+
+  const handleSongPress = (song: RepresentativeSong | UserFavoriteSong) => {
     // 曲名を押したら、説明を表示するモーダルを開く
     setSelectedSong(song);
     setShowModal(true);
@@ -234,7 +422,21 @@ export default function RepresentativeSongsScreen() {
           </View>
         )}
 
-        {/* 代表曲一覧 */}
+        {/* お気に入り曲追加ボタン（ログイン済みの場合） */}
+        {isAuthenticated && user && (
+          <View style={styles.addButtonContainer}>
+            <TouchableOpacity
+              style={[styles.addButton, { backgroundColor: currentTheme.primary }]}
+              onPress={() => setShowAddModal(true)}
+              activeOpacity={0.8}
+            >
+              <Plus size={20} color="#FFFFFF" />
+              <Text style={styles.addButtonText}>お気に入り曲を追加</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* 代表曲・お気に入り曲一覧 */}
         <View style={styles.content}>
           {songs.length === 0 ? (
             <View style={styles.emptyState}>
@@ -243,26 +445,46 @@ export default function RepresentativeSongsScreen() {
               </Text>
             </View>
           ) : (
-            songs.map((song) => (
-              <TouchableOpacity
-                key={song.id}
-                style={[styles.songCard, { backgroundColor: currentTheme.surface }]}
-                onPress={() => handleSongPress(song)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.songHeader}>
-                  <View style={styles.songTitleContainer}>
-                    <Text style={[styles.songTitle, { color: currentTheme.text }]}>
-                      {song.title}{song.famous_performer ? ` / ${song.famous_performer}` : ''}{song.famous_note ? `（${song.famous_note}）` : ''}
-                    </Text>
+            songs.map((song) => {
+              const isFavorite = 'is_user_favorite' in song && song.is_user_favorite;
+              return (
+                <TouchableOpacity
+                  key={song.id}
+                  style={[styles.songCard, { backgroundColor: currentTheme.surface }]}
+                  onPress={() => handleSongPress(song)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.songHeader}>
+                    <View style={styles.songTitleContainer}>
+                      <Text style={[styles.songTitle, { color: currentTheme.text }]}>
+                        {song.title}{song.famous_performer ? ` / ${song.famous_performer}` : ''}{song.famous_note ? `（${song.famous_note}）` : ''}
+                        {isFavorite && (
+                          <Text style={[styles.favoriteLabel, { color: currentTheme.primary }]}>
+                            {' '}★
+                          </Text>
+                        )}
+                      </Text>
+                    </View>
+                    {isFavorite && isAuthenticated && user && (
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          handleDeleteFavoriteSong(song.id);
+                        }}
+                        style={styles.deleteButton}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <Trash2 size={18} color={currentTheme.error || '#F44336'} />
+                      </TouchableOpacity>
+                    )}
                   </View>
-                </View>
-                
-                <Text style={[styles.composer, { color: currentTheme.textSecondary }]}>
-                  作曲者: {song.composer}{song.era ? ` | 時代: ${song.era}` : ''}
-                </Text>
-              </TouchableOpacity>
-            ))
+                  
+                  <Text style={[styles.composer, { color: currentTheme.textSecondary }]}>
+                    作曲者: {song.composer}{song.era ? ` | 時代: ${song.era}` : ''}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })
           )}
         </View>
       </ScrollView>
@@ -329,6 +551,157 @@ export default function RepresentativeSongsScreen() {
                 </TouchableOpacity>
               </View>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* お気に入り曲追加モーダル */}
+      <Modal
+        visible={showAddModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setShowAddModal(false);
+          setNewSong({
+            title: '',
+            composer: '',
+            era: '',
+            genre: '',
+            youtube_url: '',
+            description_ja: '',
+            famous_performer: '',
+            famous_note: '',
+          });
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
+                お気に入り曲を追加
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowAddModal(false);
+                  setNewSong({
+                    title: '',
+                    composer: '',
+                    era: '',
+                    genre: '',
+                    youtube_url: '',
+                    description_ja: '',
+                    famous_performer: '',
+                    famous_note: '',
+                  });
+                }}
+                style={styles.modalCloseButton}
+              >
+                <Text style={[styles.modalCloseText, { color: currentTheme.textSecondary }]}>×</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>曲名 *</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  value={newSong.title}
+                  onChangeText={(text) => setNewSong({ ...newSong, title: text })}
+                  placeholder="曲名を入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>作曲者</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  value={newSong.composer}
+                  onChangeText={(text) => setNewSong({ ...newSong, composer: text })}
+                  placeholder="作曲者名を入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>時代</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  value={newSong.era}
+                  onChangeText={(text) => setNewSong({ ...newSong, era: text })}
+                  placeholder="例: バロック、古典、ロマン派など"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>ジャンル</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  value={newSong.genre}
+                  onChangeText={(text) => setNewSong({ ...newSong, genre: text })}
+                  placeholder="ジャンルを入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>YouTube URL</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  value={newSong.youtube_url}
+                  onChangeText={(text) => setNewSong({ ...newSong, youtube_url: text })}
+                  placeholder="https://youtube.com/..."
+                  placeholderTextColor={currentTheme.textSecondary}
+                  keyboardType="url"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>著名な演奏者</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  value={newSong.famous_performer}
+                  onChangeText={(text) => setNewSong({ ...newSong, famous_performer: text })}
+                  placeholder="演奏者名を入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>備考</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  value={newSong.famous_note}
+                  onChangeText={(text) => setNewSong({ ...newSong, famous_note: text })}
+                  placeholder="備考を入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>説明</Text>
+                <TextInput
+                  style={[styles.textInput, styles.textArea, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  value={newSong.description_ja}
+                  onChangeText={(text) => setNewSong({ ...newSong, description_ja: text })}
+                  placeholder="曲の説明を入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                  multiline
+                  numberOfLines={4}
+                />
+              </View>
+            </ScrollView>
+            
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.saveButton, { backgroundColor: currentTheme.primary }]}
+                onPress={handleAddFavoriteSong}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.saveButtonText}>追加</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -513,6 +886,69 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   youtubeButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  addButtonContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 8,
+    elevation: 2,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
+    }),
+  },
+  addButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  favoriteLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  deleteButton: {
+    padding: 4,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+  },
+  textArea: {
+    minHeight: 100,
+    textAlignVertical: 'top',
+  },
+  saveButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  saveButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',

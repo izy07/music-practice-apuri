@@ -753,6 +753,13 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
           </View>
         </View>
       </View>
+      
+      {/* BPM説明文 */}
+      <View style={styles.bpmExplanationContainer}>
+        <Text style={[styles.bpmExplanationText, { color: currentTheme.textSecondary }]}>
+          BPM調整とはbeats-per-minute (一分間の拍数)の略です。
+        </Text>
+      </View>
     </>
   );
 }
@@ -797,24 +804,25 @@ const styles = StyleSheet.create({
   },
   settingsContainer: {
     borderRadius: 20,
-    padding: 20,
+    padding: 12,
     marginBottom: 20,
     elevation: 4,
+    width: '100%',
   },
   settingLabel: {
     fontSize: 16,
     fontWeight: '500',
   },
   bpmAdjustContainer: {
-    marginBottom: 20,
+    marginBottom: 8,
   },
   bpmSliderContainer: {
     width: '100%',
-    marginBottom: 16,
+    marginBottom: 6,
     paddingHorizontal: 8,
   },
   bpmInputContainer: {
-    marginBottom: 16,
+    marginBottom: 6,
     alignItems: 'center',
   },
   bpmInput: {
@@ -833,7 +841,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   timeSignatureSettingContainer: {
-    marginBottom: 20,
+    marginBottom: 8,
   },
   timeSignatureDisplayButton: {
     width: 60,
@@ -841,7 +849,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 2,
     alignSelf: 'center',
     elevation: 3,
     borderWidth: 2,
@@ -894,14 +902,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   metronomeSoundSettingContainer: {
-    marginBottom: 20,
+    marginBottom: 8,
   },
   metronomeSoundSettingGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 8,
-    marginTop: 8,
+    marginTop: 2,
   },
   metronomeSoundSettingButton: {
     minWidth: 80,
@@ -915,6 +923,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  bpmExplanationContainer: {
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  bpmExplanationText: {
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
   metronomeStartButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -922,7 +939,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 24,
     elevation: 4,
-    marginTop: 20,
+    marginTop: 10,
   },
   metronomeStartButtonText: {
     color: '#FFFFFF',

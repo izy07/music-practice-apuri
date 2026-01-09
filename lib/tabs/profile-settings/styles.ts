@@ -489,8 +489,9 @@ export const styles = StyleSheet.create({
   // 新しいスタイル
   inputRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 8,
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
   },
   inputContainer: {
     flex: 1,
@@ -515,13 +516,13 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
   subSection: {
-    marginBottom: 10,
+    marginBottom: 4,
   },
   subSectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 4,
   },
   subSectionTitle: {
     fontSize: 16,
@@ -530,15 +531,16 @@ export const styles = StyleSheet.create({
   addButton: {
     width: 32,
     height: 32,
-    padding: 6,
-    borderRadius: 20,
+    padding: 0,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    flexShrink: 0,
   },
   careerItem: {
-    padding: 12,
+    padding: 8,
     borderRadius: 12,
-    marginBottom: 8,
+    marginBottom: 4,
     borderWidth: 1,
     borderColor: '#E9ECEF',
   },
@@ -548,21 +550,21 @@ export const styles = StyleSheet.create({
   careerItemTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   careerItemSubtitle: {
     fontSize: 14,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   careerItemDescription: {
     fontSize: 14,
     fontStyle: 'italic',
-    marginTop: 4,
+    marginTop: 2,
   },
   careerItemActions: {
     flexDirection: 'row',
     gap: 8,
-    marginTop: 12,
+    marginTop: 6,
   },
   actionButton: {
     padding: 8,

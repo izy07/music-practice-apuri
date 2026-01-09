@@ -410,17 +410,19 @@ export const checkDailyRecordingLimit = async (
 };
 
 /**
- * 月間録音回数をチェック
+ * 月間録音回数をチェック（楽器ごと）
  * 
  * @param userId ユーザーID
  * @param entitlement エンタイトルメント情報
  * @param selectedDate 選択された日付（Freeプランの場合は今月である必要がある）
+ * @param instrumentId 楽器ID（指定された楽器の録音数のみをチェック）
  * @returns 録音可能かどうか
  */
 export const checkMonthlyRecordingLimit = async (
   userId: string,
   entitlement: Entitlement | null | undefined,
-  selectedDate?: Date | string | null
+  selectedDate?: Date | string | null,
+  instrumentId?: string | null
 ): Promise<{ canRecord: boolean; currentCount: number; limit: number; reason?: string }> => {
   try {
     // Premiumユーザーは無制限
@@ -428,15 +430,16 @@ export const checkMonthlyRecordingLimit = async (
       return { canRecord: true, currentCount: 0, limit: Infinity };
     }
 
+    // 楽器ごとの制限値（各楽器ごとに3回まで）
+    const limit = FREE_PLAN_LIMITS.RECORDINGS_PER_MONTH_PER_INSTRUMENT;
+
     // Freeプランの場合、選択された日付が今月であることを確認
     if (selectedDate !== undefined && !isCurrentMonth(selectedDate)) {
       logger.debug('Freeプラン: 選択された日付が今月ではありません', {
         selectedDate,
-        userId
+        userId,
+        instrumentId
       });
-      // 楽器数を取得して制限値を計算
-      const instrumentCount = await getUserInstrumentCount(userId);
-      const limit = FREE_PLAN_LIMITS.RECORDINGS_PER_MONTH_PER_INSTRUMENT * instrumentCount;
       return {
         canRecord: false,
         currentCount: 0,
@@ -445,21 +448,37 @@ export const checkMonthlyRecordingLimit = async (
       };
     }
 
-    // 楽器数を取得して制限値を計算
-    const instrumentCount = await getUserInstrumentCount(userId);
-    const limit = FREE_PLAN_LIMITS.RECORDINGS_PER_MONTH_PER_INSTRUMENT * instrumentCount;
+    // 楽器IDが指定されていない場合は、カウントを0として返す
+    if (!instrumentId) {
+      logger.debug('楽器IDが指定されていないため、カウントを0として返します', {
+        userId
+      });
+      return { canRecord: true, currentCount: 0, limit };
+    }
 
-    // 今月の録音数を取得
+    // 今月の録音数を取得（指定された楽器の録音のみをカウント）
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
+    const start = new Date(year, month - 1, 1);
+    const end = new Date(year, month, 0);
+    
+    // 指定された楽器の録音のみを取得
+    let query = supabase
+      .from('recordings')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('instrument_id', instrumentId)
+      .gte('recorded_at', start.toISOString())
+      .lte('recorded_at', new Date(end.getTime() + 24 * 60 * 60 * 1000 - 1).toISOString());
 
-    const { data: recordings, error } = await listRecordingsByMonth(userId, year, month);
+    const { data: recordings, error } = await query;
 
     if (error) {
       logger.warn('月間録音数の取得に失敗しました。制限チェックをスキップします。', {
         error,
         userId,
+        instrumentId,
         year,
         month
       });
@@ -471,9 +490,9 @@ export const checkMonthlyRecordingLimit = async (
     const currentCount = recordings?.length || 0;
     const canRecord = currentCount < limit;
 
-    logger.debug('月間録音制限チェック:', {
+    logger.debug('月間録音制限チェック（楽器ごと）:', {
       userId,
-      instrumentCount,
+      instrumentId,
       currentCount,
       limit,
       canRecord
@@ -483,7 +502,8 @@ export const checkMonthlyRecordingLimit = async (
   } catch (error) {
     logger.error('月間録音制限チェック中にエラーが発生しました:', {
       error,
-      userId
+      userId,
+      instrumentId
     });
     ErrorHandler.handle(error, '月間録音制限チェック', false);
     // エラー時は許可（フォールバック）
@@ -1361,3 +1381,24 @@ export const checkMyLibraryLimit = async (
   }
 };
 
+      error,
+      userId,
+      instrumentId
+    });
+    ErrorHandler.handle(error, 'マイライブラリ制限チェック', false);
+    // エラー時は許可（フォールバック）
+    const fallbackLimit = FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT;
+    return { canAdd: true, currentCount: 0, limit: fallbackLimit };
+  }
+};
+
+      error,
+      userId,
+      instrumentId
+    });
+    ErrorHandler.handle(error, 'マイライブラリ制限チェック', false);
+    // エラー時は許可（フォールバック）
+    const fallbackLimit = FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT;
+    return { canAdd: true, currentCount: 0, limit: fallbackLimit };
+  }
+};

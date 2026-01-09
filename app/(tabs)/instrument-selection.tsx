@@ -156,6 +156,7 @@ export default function InstrumentSelectionScreen() {
     }
   };
 
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>
@@ -546,6 +547,7 @@ const styles = StyleSheet.create({
   activeInstrumentName: {
     fontSize: 14,
     fontWeight: '500',
+    flex: 1,
   },
   limitInfoContainer: {
     padding: 12,

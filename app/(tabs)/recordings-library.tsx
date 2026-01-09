@@ -32,7 +32,6 @@ const { width } = Dimensions.get('window');
 interface Recording {
   id: string;
   title: string | null;
-  memo: string | null;
   file_path: string;
   duration_seconds: number;
   is_favorite: boolean;
@@ -512,8 +511,7 @@ export default function RecordingsLibraryScreen() {
       const query = searchQuery.toLowerCase().trim();
       filtered = filtered.filter(recording => {
         const title = (recording.title || '').toLowerCase();
-        const memo = (recording.memo || '').toLowerCase();
-        return title.includes(query) || memo.includes(query);
+        return title.includes(query);
       });
     }
 
@@ -650,7 +648,7 @@ export default function RecordingsLibraryScreen() {
             <Search size={20} color={currentTheme.textSecondary} />
             <TextInput
               style={[styles.searchInput, { color: currentTheme.text }]}
-              placeholder="タイトルやメモで検索..."
+              placeholder="タイトルで検索..."
               placeholderTextColor={currentTheme.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -936,12 +934,6 @@ export default function RecordingsLibraryScreen() {
                       </TouchableOpacity>
                     </View>
                   </View>
-                  
-                  {recording.memo && (
-                    <Text style={[styles.recordingMemo, { color: currentTheme.textSecondary }]}>
-                      {recording.memo}
-                    </Text>
-                  )}
                 </View>
               ))
             )}
@@ -1131,14 +1123,6 @@ const styles = StyleSheet.create({
     minHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  recordingMemo: {
-    fontSize: 14,
-    fontStyle: 'italic',
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5E5',
   },
   searchContainer: {
     flexDirection: 'row',

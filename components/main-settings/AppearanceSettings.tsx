@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform } from 'react-native';
-import { Palette, Check } from 'lucide-react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, Modal, TextInput } from 'react-native';
+import { Palette, Check, X } from 'lucide-react-native';
 import { Instrument } from '@/services';
 
 interface PresetPalette {
@@ -27,6 +27,8 @@ interface ColorPickerProps {
 
 const ColorPicker: React.FC<ColorPickerProps> = ({ label, color, onColorChange, colorType, currentTheme }) => {
   const colorInputRef = useRef<HTMLInputElement | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [colorInput, setColorInput] = useState(color);
 
   const handleColorChange = async (newColor: string) => {
     try {
@@ -37,9 +39,41 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ label, color, onColorChange, 
     }
   };
 
+  const validateColorCode = (code: string): boolean => {
+    // #で始まる6桁の16進数か、#なしの6桁の16進数
+    const hexColorRegex = /^#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
+    return hexColorRegex.test(code);
+  };
+
+  const formatColorCode = (code: string): string => {
+    // #がない場合は追加
+    if (!code.startsWith('#')) {
+      return '#' + code;
+    }
+    return code;
+  };
+
+  const handleSaveColor = () => {
+    const formattedColor = formatColorCode(colorInput.trim());
+    if (validateColorCode(formattedColor)) {
+      handleColorChange(formattedColor);
+      setShowModal(false);
+    } else {
+      Alert.alert('エラー', '正しい色コードを入力してください（例: #FF0000 または FF0000）');
+    }
+  };
+
   const openColorPicker = () => {
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
+    // モバイル環境では直接モーダルを開く（より確実）
+    if (Platform.OS !== 'web') {
+      setColorInput(color);
+      setShowModal(true);
+      return;
+    }
+
       // Web環境ではHTML5のカラーピッカーを使用
+    if (typeof document !== 'undefined') {
+      try {
       const input = document.createElement('input');
       input.type = 'color';
       input.value = color;
@@ -55,7 +89,9 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ label, color, onColorChange, 
         if (target.value) {
           handleColorChange(target.value);
         }
+          if (document.body.contains(input)) {
         document.body.removeChild(input);
+          }
         input.removeEventListener('change', handleChange);
       };
       
@@ -63,48 +99,112 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ label, color, onColorChange, 
       
       // カラーピッカーを開く
       input.click();
+      } catch (error) {
+        // エラーが発生した場合はモーダルで色コードを入力
+        console.error('カラーピッカーエラー:', error);
+        setColorInput(color);
+        setShowModal(true);
+      }
     } else {
-      // モバイル環境ではアラートで色コードを入力
-      // Alert.promptは一部のプラットフォームで利用できないため、代替方法を使用
-      Alert.alert(
-        '色を選択',
-        '16進数の色コードを入力してください（例: #FF0000）\n\n現在の色: ' + color,
-        [
-          {
-            text: 'キャンセル',
-            style: 'cancel',
-          },
-          {
-            text: '色コードを入力',
-            onPress: () => {
-              // モバイル環境では、色コード入力用のモーダルを表示するか、
-              // またはWeb環境でのみカラーピッカーを使用することを推奨
-              Alert.alert(
-                'モバイル環境',
-                'カラーピッカーはWeb環境でのみ利用できます。\n色コードを直接入力する場合は、設定画面から手動で変更してください。'
-              );
-            },
-          },
-        ]
-      );
+      // フォールバック: モーダルで色コードを入力
+      setColorInput(color);
+      setShowModal(true);
     }
   };
 
   return (
-  <View style={styles.colorPickerContainer}>
-    <Text style={[styles.colorPickerLabel, { color: currentTheme?.text || '#2D3748' }]}>{label}</Text>
-    <View style={styles.colorPickerRow}>
-        <View style={[styles.colorPreview, { backgroundColor: color, borderColor: currentTheme?.secondary || '#E2E8F0' }]} />
-      <TouchableOpacity
-          style={[styles.colorButton, { backgroundColor: currentTheme?.primary || '#4A5568' }]}
-          onPress={openColorPicker}
-        activeOpacity={0.7}
+    <>
+      <View style={styles.colorPickerContainer}>
+        <Text style={[styles.colorPickerLabel, { color: currentTheme?.text || '#2D3748' }]}>{label}</Text>
+        <View style={styles.colorPickerRow}>
+          <TouchableOpacity
+            onPress={openColorPicker}
+            activeOpacity={0.7}
+            hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
+          >
+          <View style={[styles.colorPreview, { backgroundColor: color, borderColor: currentTheme?.secondary || '#E2E8F0' }]} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.colorButton, { backgroundColor: currentTheme?.primary || '#4A5568' }]}
+            onPress={openColorPicker}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={[styles.colorButtonText, { color: currentTheme?.surface || '#FFFFFF' }]}>変更</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* モバイル環境用の色コード入力モーダル */}
+      <Modal
+        visible={showModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowModal(false)}
       >
-          <Text style={[styles.colorButtonText, { color: currentTheme?.surface || '#FFFFFF' }]}>変更</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-);
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: currentTheme?.surface || '#FFFFFF' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: currentTheme?.text || '#2D3748' }]}>
+                {label}を変更
+              </Text>
+              <TouchableOpacity
+                onPress={() => setShowModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <X size={24} color={currentTheme?.text || '#2D3748'} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalBody}>
+              <Text style={[styles.modalLabel, { color: currentTheme?.text || '#2D3748' }]}>
+                色コードを入力（例: #FF0000 または FF0000）
+              </Text>
+              <View style={styles.colorInputRow}>
+                <View style={[styles.colorPreviewLarge, { backgroundColor: colorInput.startsWith('#') ? colorInput : '#' + colorInput, borderColor: currentTheme?.secondary || '#E2E8F0' }]} />
+                <TextInput
+                  style={[styles.colorInput, { 
+                    color: currentTheme?.text || '#2D3748',
+                    borderColor: currentTheme?.secondary || '#E2E8F0',
+                    backgroundColor: currentTheme?.background || '#F7FAFC'
+                  }]}
+                  value={colorInput}
+                  onChangeText={setColorInput}
+                  placeholder="#FF0000"
+                  placeholderTextColor={currentTheme?.textSecondary || '#718096'}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  maxLength={7}
+                />
+              </View>
+              <Text style={[styles.modalHint, { color: currentTheme?.textSecondary || '#718096' }]}>
+                現在の色: {color}
+              </Text>
+            </View>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonCancel, { borderColor: currentTheme?.secondary || '#E2E8F0' }]}
+                onPress={() => setShowModal(false)}
+              >
+                <Text style={[styles.modalButtonText, { color: currentTheme?.text || '#2D3748' }]}>
+                  キャンセル
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSave, { backgroundColor: currentTheme?.primary || '#4A5568' }]}
+                onPress={handleSaveColor}
+              >
+                <Text style={[styles.modalButtonText, { color: currentTheme?.surface || '#FFFFFF' }]}>
+                  保存
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
+  );
 };
 
 interface AppearanceSettingsProps {
@@ -702,6 +802,94 @@ const styles = StyleSheet.create({
   resetButtonText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  // モーダル用のスタイル
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalBody: {
+    marginBottom: 20,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  colorInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
+  colorPreviewLarge: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    borderWidth: 2,
+  },
+  colorInput: {
+    flex: 1,
+    height: 50,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    fontSize: 16,
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+  },
+  modalHint: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    gap: 12,
+    justifyContent: 'flex-end',
+  },
+  modalButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  modalButtonCancel: {
+    borderWidth: 1,
+    backgroundColor: 'transparent',
+  },
+  modalButtonSave: {
+    // backgroundColorは動的に設定
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

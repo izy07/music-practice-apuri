@@ -227,11 +227,9 @@ const styles = StyleSheet.create({
   plansRow: {
     flexDirection: 'row',
     gap: 12,
-    flexWrap: 'wrap',
   },
   planCard: {
     flex: 1,
-    minWidth: 150,
     borderWidth: 1,
     borderRadius: 16,
     padding: 16,
