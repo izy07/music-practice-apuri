@@ -237,4 +237,3 @@ export const getTermsForInstrument = (
     return true;
   });
 };
-
