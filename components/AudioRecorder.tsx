@@ -20,6 +20,7 @@ import { ErrorHandler } from '@/lib/errorHandler';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { checkMonthlyRecordingLimit, checkDailyRecordingLimit, isCurrentMonth, canSaveDataForInstrument, getMaxRecordingDuration } from '@/lib/subscriptionLimits';
+import { getInstrumentId } from '@/lib/instrumentUtils';
 import logger from '@/lib/logger';
 import audioResourceManager from '@/lib/audioResourceManager';
 
@@ -29,7 +30,6 @@ interface AudioRecorderProps {
   visible: boolean;
   onSave: (audioData: {
     title: string;
-    memo: string;
     isFavorite: boolean;
     duration: number;
     audioUrl: string;
@@ -44,7 +44,7 @@ interface AudioRecorderProps {
 }
 
 export default function AudioRecorder({ visible, onSave, onClose, onRecordingSaved, onBack, selectedDate, initialRecordingType }: AudioRecorderProps) {
-  const { currentTheme } = useInstrumentTheme();
+  const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const router = useRouter();
   const { entitlement } = useSubscription();
   const { user } = useAuthAdvanced();
@@ -54,7 +54,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [title, setTitle] = useState('');
-  const [memo, setMemo] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [isSaving, setIsSaving] = useState(false);
@@ -176,9 +175,10 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, selectedDate || undefined);
         setDailyLimitStatus(dailyLimitCheck);
         
-        // 月間録音数制限をチェック（フリープランのみ）
+        // 月間録音数制限をチェック（フリープランのみ、楽器ごと）
         if (!entitlement?.isEntitled) {
-          const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined);
+          const instrumentId = getInstrumentId(selectedInstrument);
+          const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined, instrumentId);
           setRecordingLimitStatus(limitCheck);
         } else {
           setRecordingLimitStatus(null); // プレミアムユーザーは月間制限不要
@@ -241,9 +241,10 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         }
       }
       
-      // Freeプランの場合、月間録音数の制限をチェック
+      // Freeプランの場合、月間録音数の制限をチェック（楽器ごと）
       if (!entitlement?.isEntitled && user?.id) {
-        const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined);
+        const instrumentId = getInstrumentId(selectedInstrument);
+        const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined, instrumentId);
         setRecordingLimitStatus(limitCheck);
         
         if (!limitCheck.canRecord) {
@@ -948,8 +949,10 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         return;
       }
       
-      // Freeプランの場合、月間録音回数をチェック（今月の日付のみ）
-      const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, recordedAt);
+      // Freeプランの場合、月間録音回数をチェック（今月の日付のみ、楽器ごと）
+      // 楽器IDを取得（selectedInstrumentから取得、プロファイルの値とは異なる可能性がある）
+      const currentInstrumentId = getInstrumentId(selectedInstrument);
+      const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, recordedAt, currentInstrumentId);
       if (!limitCheck.canRecord) {
         const reason = limitCheck.reason || '';
         Alert.alert(
@@ -984,7 +987,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         instrument_id: instrumentId, // 現在の楽器IDを追加
         song_id: selectedSongId, // 選択された楽曲IDを追加
         title: recordingTitle,
-        memo: memo.trim(),
         file_path: filePath || '', // ファイルパスがnullの場合は空文字列を使用
         duration_seconds: finalDuration,
         is_favorite: isFavorite,
@@ -1013,7 +1015,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       // 4. 録音データをonSaveコールバックに渡す（モーダル内に表示するため）
       const audioData = {
         title: recordingTitle,
-        memo: memo.trim(),
         isFavorite: isFavorite,
         duration: finalDuration,
         audioUrl: filePath || audioUrl || '', // 保存されたファイルパスまたは元のURL
@@ -1068,7 +1069,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
             }
             setAudioUrl(null);
             setTitle('');
-            setMemo('');
             setIsFavorite(false);
             setRecordingTime(0);
             setRecordingDuration(0);
@@ -1123,16 +1123,8 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
             {!entitlement?.isEntitled && recordingLimitStatus && (
               <View style={[styles.limitInfoContainer, { backgroundColor: currentTheme.surface, borderColor: recordingLimitStatus.canRecord ? currentTheme.primary : '#FF4444', marginBottom: 16 }]}>
                 <Text style={[styles.limitInfoText, { color: currentTheme.text }]}>
-                  {recordingLimitStatus.canRecord 
-                    ? `月間録音数: ${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}回（あと${recordingLimitStatus.limit - recordingLimitStatus.currentCount}回録音可能）`
-                    : `月間録音数上限に達しています: ${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}回`
-                  }
+                  {recordingLimitStatus.currentCount}/{recordingLimitStatus.limit}（月3回まで）
                 </Text>
-                {!recordingLimitStatus.canRecord && (
-                  <Text style={[styles.limitInfoSubText, { color: currentTheme.textSecondary }]}>
-                    プレミアムで無制限に録音できます
-                  </Text>
-                )}
               </View>
             )}
             
@@ -1288,24 +1280,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
                 onChangeText={setTitle}
                 placeholder="録音のタイトルを入力（省略可）"
                 placeholderTextColor={currentTheme.textSecondary}
-              />
-            </View>
-
-            {/* メモ入力 */}
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: currentTheme.text }]}>メモ</Text>
-              <TextInput
-                style={[styles.textArea, { 
-                  borderColor: currentTheme.secondary,
-                  backgroundColor: currentTheme.surface,
-                  color: currentTheme.text
-                }]}
-                value={memo}
-                onChangeText={setMemo}
-                placeholder="録音についてのメモを入力"
-                placeholderTextColor={currentTheme.textSecondary}
-                multiline
-                numberOfLines={3}
               />
             </View>
 
