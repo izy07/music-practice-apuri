@@ -18,6 +18,9 @@ import { getBasePath, navigateWithBasePath } from '@/lib/navigationUtils'; // �
 import { checkDatabaseSchema } from '@/lib/databaseSchemaChecker'; // データベーススキーマチェック
 import { initializeGoalRepository } from '@/repositories/goalRepository'; // 目標リポジトリの初期化
 import audioResourceManager from '@/lib/audioResourceManager'; // オーディオリソース管理
+import { isOnline } from '@/lib/offlineStorage'; // ネットワーク状態確認
+import { isOnline } from '@/lib/offlineStorage'; // ネットワーク状態確認
+import { isOnline } from '@/lib/offlineStorage'; // ネットワーク状態確認
 
 // Web環境ではexpo-status-barをインポートしない
 type StatusBarComponent = React.ComponentType<{ style: 'dark' | 'light' | 'auto' }>;
@@ -127,6 +130,76 @@ function RootLayoutContent() {
       subscription.remove();
     };
   }, []);
+
+  // ネットワーク切断検出：ネットワークが切断されたらログイン画面にリダイレクト
+  React.useEffect(() => {
+    if (Platform.OS !== 'web') {
+      // ネイティブ環境ではネットワーク状態の監視は別途実装が必要
+      return;
+    }
+
+    const handleOffline = () => {
+      const currentSegments = Platform.OS === 'web' ? segmentsRef.current : segments;
+      const firstSegment = currentSegments[0];
+      const isInAuthGroup = firstSegment === 'auth';
+      
+      // ログイン画面にいない場合のみリダイレクト
+      if (!isInAuthGroup && isReady && isInitialized) {
+        logger.debug('ネットワーク切断を検出 - ログイン画面にリダイレクト');
+        router.replace('/auth/login');
+      }
+    };
+
+    // 初回チェック
+    if (!isOnline()) {
+      handleOffline();
+    }
+
+    // ネットワーク状態の変化を監視
+    if (typeof window !== 'undefined') {
+      window.addEventListener('offline', handleOffline);
+      return () => {
+        window.removeEventListener('offline', handleOffline);
+      };
+    }
+  }, [isReady, isInitialized, router]);
+
+  // ネットワーク切断検出：ネットワークが切断されたらログイン画面にリダイレクト
+  React.useEffect(() => {
+    if (Platform.OS !== 'web') {
+      // ネイティブ環境ではネットワーク状態の監視は別途実装が必要
+      return;
+    }
+
+    const checkNetworkAndRedirect = () => {
+      if (!isOnline()) {
+        const currentSegments = Platform.OS === 'web' ? segmentsRef.current : segments;
+        const firstSegment = currentSegments[0];
+        const isInAuthGroup = firstSegment === 'auth';
+        
+        // 既にログイン画面にいる場合は何もしない
+        if (isInAuthGroup) {
+          return;
+        }
+        
+        // ネットワークが切断された場合はログイン画面にリダイレクト
+        logger.debug('ネットワーク切断を検出 - ログイン画面にリダイレクト');
+        router.replace('/auth/login');
+      }
+    };
+
+    // 初回チェック
+    checkNetworkAndRedirect();
+
+    // ネットワーク状態の変化を監視
+    if (typeof window !== 'undefined') {
+      window.addEventListener('offline', checkNetworkAndRedirect);
+      
+      return () => {
+        window.removeEventListener('offline', checkNetworkAndRedirect);
+      };
+    }
+  }, [router]);
   
   // すべてのuseRefを条件分岐の前に配置（Hooksの順序を保持）
   const segmentsRef = useRef(segments); // segmentsをrefで保持（Web環境での強制遷移を防ぐため）
@@ -617,17 +690,25 @@ function RootLayoutContent() {
     // ログイン画面または新規登録画面にいる場合は、適切な画面に遷移
     // ただし、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぐため、
     // ログイン画面のuseEffectで画面遷移を処理する（ここではスキップ）
+    // 新規登録画面でも同様に、signup.tsxのuseEffectで画面遷移を処理する（ここではスキップ）
     if (isInAuthGroup) {
       // ログイン画面のuseEffectで画面遷移が処理されるため、ここではスキップ
       // ただし、ログイン画面のuseEffectが動作しない場合に備えて、フォールバック処理を追加
       const authChild = segments.length > 1 ? segments[1] : undefined;
       if (authChild === 'login') {
         // ログイン画面のuseEffectで処理されるため、ここではスキップ
-        logger.debug('認証済み・ログイン画面 - ログイン画面のuseEffectで画面遷移を処理', { segments: currentSegments });
+        // 重要: ログイン画面にいる間は、ここから楽器選択画面に遷移しないようにする
+        logger.debug('認証済み・ログイン画面 - ログイン画面のuseEffectで画面遷移を処理（ここでは遷移しない）', { segments: currentSegments });
         return;
       }
-      // その他の認証画面（新規登録画面など）の場合は、適切な画面に遷移
-      logger.debug('認証済み・認証画面（ログイン画面以外） - 適切な画面に遷移', { segments: currentSegments });
+      if (authChild === 'signup') {
+        // 新規登録画面のuseEffectで処理されるため、ここではスキップ
+        // 重要: 新規登録画面にいる間は、ここから画面遷移しないようにする（一瞬ログイン画面に飛ぶ問題を防ぐ）
+        logger.debug('認証済み・新規登録画面 - 新規登録画面のuseEffectで画面遷移を処理（ここでは遷移しない）', { segments: currentSegments });
+        return;
+      }
+      // その他の認証画面（callback、reset-passwordなど）の場合は、適切な画面に遷移
+      logger.debug('認証済み・認証画面（ログイン/新規登録以外） - 適切な画面に遷移', { segments: currentSegments });
       // 下記の処理に続く（楽器選択チェックなど）
     }
     
