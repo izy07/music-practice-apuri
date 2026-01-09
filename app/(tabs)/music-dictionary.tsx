@@ -621,14 +621,14 @@ const styles = StyleSheet.create({
   categoryContent: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    gap: 8,
+    gap: 4,
   },
   categoryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
-    marginRight: 8,
+    marginRight: 4,
   },
   categoryButtonText: {
     fontSize: 14,
@@ -761,11 +761,11 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   categoryPickerButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 20,
     borderWidth: 1,
-    marginRight: 8,
+    marginRight: 4,
   },
   categoryPickerButtonText: {
     fontSize: 12,

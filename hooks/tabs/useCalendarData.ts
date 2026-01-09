@@ -28,6 +28,7 @@ interface EventData {
     title: string;
     description?: string;
     date: string;
+    color?: string | null;
   }>;
 }
 
@@ -583,7 +584,7 @@ export function useCalendarData(currentDate: Date) {
       };
       const query = supabase
         .from('events')
-        .select('id, title, description, date, instrument_id')
+        .select('id, title, description, date, color, instrument_id')
         .eq('user_id', currentUser.id)
         .eq('is_completed', false)
         .gte('date', formatLocalDate(startOfMonth))
@@ -601,9 +602,10 @@ export function useCalendarData(currentDate: Date) {
         title: string;
         description?: string;
         date: string;
+        color?: string | null;
         instrument_id?: string | null;
       };
-      let eventsData: Array<{ id: string; title: string; description?: string; date: string }> | null = null;
+      let eventsData: Array<{ id: string; title: string; description?: string; date: string; color?: string | null }> | null = null;
       
       if (error) {
         // エラー処理は後続のコードで行う
@@ -621,6 +623,7 @@ export function useCalendarData(currentDate: Date) {
           title: row.title,
           description: row.description,
           date: row.date,
+          color: row.color || null,
         }));
         
         logger.debug('[useCalendarData.loadEvents] イベントデータ取得に成功しました（楽器ごとに絞り込み済み）', {
@@ -669,7 +672,7 @@ export function useCalendarData(currentDate: Date) {
       if (eventsData) {
         const newEvents: EventData = {};
         
-        eventsData.forEach((event: { id: string; title: string; description?: string; date: string }) => {
+        eventsData.forEach((event: { id: string; title: string; description?: string; date: string; color?: string | null }) => {
           // 日付文字列（YYYY-MM-DD）をキーとして使用
           const dateStr = event.date;
           if (!newEvents[dateStr]) {
@@ -679,7 +682,8 @@ export function useCalendarData(currentDate: Date) {
             id: event.id,
             title: event.title,
             description: event.description || undefined,
-            date: event.date
+            date: event.date,
+            color: event.color || null,
           });
         });
         
@@ -1067,15 +1071,15 @@ export function useCalendarData(currentDate: Date) {
       }
 
       if (goals && goals.length > 0) {
-        // 型安全性のため明示的に型を指定（any型を回避）
+          // 型安全性のため明示的に型を指定（any型を回避）
         type GoalForMapping = {
-          title: string;
-          target_date?: string;
-          show_on_calendar?: boolean;
-          is_completed?: boolean;
-          progress_percentage?: number;
-          goal_type?: string;
-          instrument_id?: string | null;
+            title: string;
+            target_date?: string;
+            show_on_calendar?: boolean;
+            is_completed?: boolean;
+            progress_percentage?: number;
+            goal_type?: string;
+            instrument_id?: string | null;
         };
         
         logger.debug('[loadShortTermGoal] 取得した目標:', {
@@ -1090,23 +1094,23 @@ export function useCalendarData(currentDate: Date) {
           }))
         });
         
-        // 達成済みでない目標をフィルタリング
-        // 型安全性のため明示的に型を指定（any型を回避）
-        const activeGoals = goals.filter((goal: GoalForMapping) => {
-          const isCompleted = goal.is_completed === true || goal.progress_percentage === 100;
-          return !isCompleted;
-        });
+        // 達成済み目標もカレンダーに表示する（達成済み目標が消える問題を修正）
+        // 達成済み目標も表示するように変更（ユーザー要望: 達成済み目標もカレンダーに表示）
+        const activeGoals = goals; // 達成済み目標も含めて表示
 
-        logger.debug('[loadShortTermGoal] 達成済みでない目標:', {
+        logger.debug('[loadShortTermGoal] 全ての目標（達成済み含む）:', {
           activeGoalsCount: activeGoals.length,
           activeGoals: activeGoals.map((g: GoalForMapping) => ({
             title: g.title,
             show_on_calendar: g.show_on_calendar,
-            instrument_id: g.instrument_id
+            instrument_id: g.instrument_id,
+            is_completed: g.is_completed,
+            progress_percentage: g.progress_percentage
           }))
         });
-        
+
         // show_on_calendarがtrueの目標のみを表示（クエリで既にフィルタリング済みだが、念のためクライアント側でも確認）
+        // 達成済み目標も表示する（is_completedがtrueでも表示）
         const visibleGoals = activeGoals.filter((goal: GoalForMapping) => {
           return goal.show_on_calendar === true;
         });

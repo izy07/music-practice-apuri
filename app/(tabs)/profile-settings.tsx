@@ -547,6 +547,31 @@ export default function ProfileSettingsScreen() {
       logger.debug('アップロードファイル名:', fileName);
       
       logger.debug('Supabase Storageにアップロード中...');
+      
+      // バケットの存在確認（オプション）
+      const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+      if (listError) {
+        logger.warn('バケット一覧取得エラー（無視）:', listError);
+      } else {
+        const avatarsBucket = buckets?.find(b => b.name === 'avatars');
+        if (!avatarsBucket) {
+          logger.error('avatarsバケットが存在しません');
+          Alert.alert(
+            'エラー',
+            'ストレージバケットが設定されていません。管理者にお問い合わせください。'
+          );
+          setLoading(false);
+          return;
+        }
+      }
+      
+      // リトライ機能付きでアップロード
+      let uploadError: any = null;
+      let uploadData: any = null;
+      const maxRetries = 3;
+      
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
       const { data, error } = await supabase.storage
         .from('avatars')
         .upload(fileName, blob, {
@@ -555,10 +580,43 @@ export default function ProfileSettingsScreen() {
         });
 
       if (error) {
-        logger.error('アップロードエラー:', error);
+            uploadError = error;
+            logger.warn(`アップロード試行 ${attempt}/${maxRetries} 失敗:`, error);
+            
+            // 503エラーの場合、リトライ前に少し待機
+            if (error.status === 503 && attempt < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+              continue;
+            }
+            
+            // バケットが存在しないエラーの場合
+            if (error.message?.includes('Bucket not found') || error.message?.includes('not found')) {
+              Alert.alert(
+                'エラー',
+                'ストレージバケットが設定されていません。管理者にお問い合わせください。'
+              );
+              setLoading(false);
+              return;
+            }
+            
         throw error;
       }
+          
+          uploadData = data;
       logger.info('アップロード成功:', data);
+          break;
+        } catch (err: any) {
+          uploadError = err;
+          if (attempt === maxRetries) {
+            throw err;
+          }
+        }
+      }
+
+      if (uploadError) {
+        logger.error('アップロードエラー（全試行失敗）:', uploadError);
+        throw uploadError;
+      }
 
       // 公開URLを取得
       const { data: { publicUrl } } = supabase.storage
@@ -578,9 +636,23 @@ export default function ProfileSettingsScreen() {
 
       setAvatarUrl(publicUrl);
       Alert.alert('成功', 'プロフィール画像を更新しました');
-    } catch (error) {
+    } catch (error: any) {
       logger.error('画像アップロードエラー:', error);
-      Alert.alert('エラー', '画像のアップロードに失敗しました');
+      
+      // エラーメッセージを詳細化
+      let errorMessage = '画像のアップロードに失敗しました';
+      
+      if (error?.status === 503 || error?.statusCode === 503) {
+        errorMessage = 'サービスが一時的に利用できません。しばらく待ってから再度お試しください。';
+      } else if (error?.message?.includes('Bucket not found') || error?.message?.includes('not found')) {
+        errorMessage = 'ストレージバケットが設定されていません。管理者にお問い合わせください。';
+      } else if (error?.message?.includes('network') || error?.message?.includes('ネットワーク')) {
+        errorMessage = 'ネットワーク接続を確認してください。';
+      } else if (error?.message) {
+        errorMessage = `エラー: ${error.message}`;
+      }
+      
+      Alert.alert('エラー', errorMessage);
     } finally {
       setLoading(false);
       logger.debug('uploadImage完了');

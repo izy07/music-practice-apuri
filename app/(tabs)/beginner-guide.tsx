@@ -591,6 +591,26 @@ export default function BeginnerGuideScreen() {
                 <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.fingering.chart}</Text>
               </View>
               
+              {/* なぜ英語で表記されているのか（stringInfoがない場合） */}
+              {(currentGuide.fingering as any)?.noteNames && !(currentGuide.fingering as any)?.stringInfo && (
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>なぜ英語で表記されているのか</Text>
+                  <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                    音楽では、音名を英語（C、D、E、F、G、A、B）で表記するのが世界的に標準的です。これは、楽譜や音楽理論、国際的な音楽教育でも英語の音名が広く使われているためです。例えば「C」は「ド」、「G」は「ソ」を意味します。国際的な音楽の共通言語として、英語表記に慣れておくと、楽譜を読む時や他の楽器と合わせる時、海外の音楽家と交流する時にも役立ちます。
+                  </Text>
+                </View>
+              )}
+              
+              {/* なぜ英語で表記されているのか（stringInfoがある場合） */}
+              {(currentGuide.fingering as any)?.stringInfo && (
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>なぜ英語で表記されているのか</Text>
+                  <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                    弦楽器では、各弦を英語の音名（G、D、A、E、Cなど）で表記するのが世界的に標準的です。これは、楽譜や音楽理論でも英語の音名（C、D、E、F、G、A、B）が広く使われているためです。例えば「G線」は「ソ（G）の音が出る弦」という意味で、日本語の「ソ弦」と同じです。国際的な音楽の共通言語として、英語表記に慣れておくと、楽譜を読む時や他の楽器と合わせる時にも役立ちます。
+                  </Text>
+                </View>
+              )}
+              
               {/* 音名対応表 */}
               <View style={styles.infoItem}>
                 <Text style={[styles.infoLabel, { color: currentTheme.textSecondary, marginBottom: 12 }]}>音名対応表</Text>
@@ -676,41 +696,9 @@ export default function BeginnerGuideScreen() {
                 </ScrollView>
               </View>
               
-              {/* 音階表記（英語・ドイツ語） */}
-              {/* stringInfoがない場合のみ表示（弦楽器の場合はstringInfoの説明を優先） */}
-              {(currentGuide.fingering as any)?.noteNames && !(currentGuide.fingering as any)?.stringInfo && (
-                <>
-                  <View style={styles.infoItem}>
-                    <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>なぜ英語で表記されているのか</Text>
-                    <Text style={[styles.infoText, { color: currentTheme.text }]}>
-                      音楽では、音名を英語（C、D、E、F、G、A、B）で表記するのが世界的に標準的です。これは、楽譜や音楽理論、国際的な音楽教育でも英語の音名が広く使われているためです。例えば「C」は「ド」、「G」は「ソ」を意味します。国際的な音楽の共通言語として、英語表記に慣れておくと、楽譜を読む時や他の楽器と合わせる時、海外の音楽家と交流する時にも役立ちます。
-                    </Text>
-                  </View>
-                </>
-              )}
-              
-              {/* 音階表記のみ（stringInfoがある場合） */}
-              {(currentGuide.fingering as any)?.noteNames && (currentGuide.fingering as any)?.stringInfo && (
-                <View style={styles.infoItem}>
-                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>音階の表記</Text>
-                  <Text style={[styles.infoText, { color: currentTheme.text }]}>
-                    日本語：{(currentGuide.fingering as any).noteNames.japanese}{'\n'}
-                    英語：{(currentGuide.fingering as any).noteNames.english}{'\n'}
-                    ドイツ語：{(currentGuide.fingering as any).noteNames.german}
-                  </Text>
-                </View>
-              )}
-              
               {/* 弦楽器の各弦説明 */}
               {(currentGuide.fingering as any)?.stringInfo && (
                 <>
-                  <View style={styles.infoItem}>
-                    <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>なぜ英語で表記されているのか</Text>
-                    <Text style={[styles.infoText, { color: currentTheme.text }]}>
-                      弦楽器では、各弦を英語の音名（G、D、A、E、Cなど）で表記するのが世界的に標準的です。これは、楽譜や音楽理論でも英語の音名（C、D、E、F、G、A、B）が広く使われているためです。例えば「G線」は「ソ（G）の音が出る弦」という意味で、日本語の「ソ弦」と同じです。国際的な音楽の共通言語として、英語表記に慣れておくと、楽譜を読む時や他の楽器と合わせる時にも役立ちます。
-                    </Text>
-                  </View>
-                  
                   {(currentGuide.fingering as any).stringInfo.eString && (
                     <View style={styles.infoItem}>
                       <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>E線について（E線 = ミ弦）</Text>
@@ -751,12 +739,6 @@ export default function BeginnerGuideScreen() {
                       </Text>
                     </View>
                   )}
-                  <View style={styles.infoItem}>
-                    <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>弦の構成</Text>
-                    <Text style={[styles.infoText, { color: currentTheme.text }]}>
-                      {(currentGuide.fingering as any).stringInfo.strings}
-                    </Text>
-                  </View>
                 </>
               )}
               

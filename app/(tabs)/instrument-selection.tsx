@@ -171,8 +171,8 @@ export default function InstrumentSelectionScreen() {
         <View style={styles.placeholder} />
       </View>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* フリープラン用の楽器数制限メッセージ */}
-        {!entitlement.isEntitled && user && (
+        {/* フリープラン用の楽器数制限メッセージ（既存の楽器がある場合のみ表示） */}
+        {!entitlement.isEntitled && user && currentInstrumentId && currentInstrumentId !== '' && activeInstrumentIds.length > 0 && (
           <View style={[styles.freePlanInfoBanner, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
             <View style={styles.freePlanInfoContent}>
               <Text style={[styles.freePlanInfoTitle, { color: currentTheme.text }]}>
@@ -270,7 +270,7 @@ export default function InstrumentSelectionScreen() {
                     </View>
                   )}
 
-                  <TouchableOpacity
+              <TouchableOpacity
                     style={[
                       styles.completionButton, 
                       { 
@@ -278,21 +278,21 @@ export default function InstrumentSelectionScreen() {
                         opacity: isDisabled ? 0.6 : 1
                       }
                     ]}
-                    onPress={handleSaveInstrument}
+                onPress={handleSaveInstrument}
                     disabled={isDisabled}
-                    activeOpacity={0.8}
-                  >
-                    {isLoading ? (
-                      <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="small" color="#FFFFFF" />
-                        <Text style={[styles.completionButtonText, { marginLeft: 8 }]}>保存中...</Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.completionButtonText}>
-                        {isSameInstrument ? 'カレンダー画面に戻る' : (currentInstrumentId && currentInstrumentId !== '' ? '楽器を変更' : '楽器選択を保存')}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
+                activeOpacity={0.8}
+              >
+                {isLoading ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                    <Text style={[styles.completionButtonText, { marginLeft: 8 }]}>保存中...</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.completionButtonText}>
+                    {isSameInstrument ? 'カレンダー画面に戻る' : (currentInstrumentId && currentInstrumentId !== '' ? '楽器を変更' : '楽器選択を保存')}
+                  </Text>
+                )}
+              </TouchableOpacity>
                 </>
               );
             })()}

@@ -79,9 +79,9 @@ export default function SupportScreen() {
     const url = encodeURIComponent('https://music-practice.app');
     const shareUrl = `https://twitter.com/intent/tweet?text=${message}&url=${url}`;
     
-    Linking.openURL(shareUrl).catch(() => {
+      Linking.openURL(shareUrl).catch(() => {
       Alert.alert('エラー', 'Twitterを開けませんでした');
-    });
+      });
   };
 
   return (
@@ -154,13 +154,13 @@ export default function SupportScreen() {
             <ChevronRight size={20} color={currentTheme?.textSecondary || '#999999'} />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.snsButton, { backgroundColor: '#1DA1F2' }]}
+            <TouchableOpacity
+              style={[styles.snsButton, { backgroundColor: '#1DA1F2' }]}
             onPress={handleSNSShare}
-          >
-            <Twitter size={20} color="#FFFFFF" />
-            <Text style={styles.snsButtonText}>Twitter</Text>
-          </TouchableOpacity>
+            >
+              <Twitter size={20} color="#FFFFFF" />
+              <Text style={styles.snsButtonText}>Twitter</Text>
+            </TouchableOpacity>
         </View>
 
         {/* レビュー・ランキング */}

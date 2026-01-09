@@ -50,7 +50,6 @@ export default function EventModal({
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
-  const [description, setDescription] = useState('');
   const [eventColor, setEventColor] = useState<EventColor>(DEFAULT_EVENT_COLOR);
   const [loading, setLoading] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -60,18 +59,15 @@ export default function EventModal({
     if (event) {
       setTitle(event.title);
       setDate(event.date);
-      setDescription(event.description || '');
       setEventColor((event.color as EventColor) || DEFAULT_EVENT_COLOR);
     } else if (selectedDate) {
       setTitle('');
       setDate(formatLocalDate(selectedDate));
-      setDescription('');
       setEventColor(DEFAULT_EVENT_COLOR);
     } else if (visible && !event && !selectedDate) {
       // 新規イベント作成時でselectedDateがない場合は、今日の日付を初期値として設定
       setTitle('');
       setDate(formatLocalDate(new Date()));
-      setDescription('');
       setEventColor(DEFAULT_EVENT_COLOR);
     }
   }, [event, selectedDate, visible]);
@@ -131,7 +127,7 @@ export default function EventModal({
         const updateData: any = {
           title: title.trim(),
           date,
-          description: description.trim() || null,
+          description: null,
           color: eventColor,
           updated_at: new Date().toISOString(),
         };
@@ -207,7 +203,7 @@ export default function EventModal({
           user_id: user.id,
           title: title.trim(),
           date,
-          description: description.trim() || null,
+          description: null,
           color: eventColor,
         };
         
@@ -344,7 +340,6 @@ export default function EventModal({
   const resetForm = () => {
     setTitle('');
     setDate('');
-    setDescription('');
     setEventColor(DEFAULT_EVENT_COLOR);
   };
 
@@ -373,7 +368,7 @@ export default function EventModal({
             'data-modal-content': true
           } : {})}
         >
-          <SafeAreaView>
+          <SafeAreaView style={styles.safeArea}>
             {/* ヘッダー */}
             <View style={styles.header}>
               <Text 
@@ -387,7 +382,12 @@ export default function EventModal({
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            <ScrollView 
+              style={styles.content} 
+              contentContainerStyle={styles.contentContainer}
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+            >
               {/* タイトル入力 */}
               <View style={styles.inputContainer}>
                 <Text style={[styles.label, { color: currentTheme.text }]}>
@@ -442,30 +442,6 @@ export default function EventModal({
                 </View>
               </View>
 
-              {/* 説明入力 */}
-              <View style={styles.inputContainer}>
-                <Text style={[styles.label, { color: currentTheme.text }]}>
-                  説明（任意）
-                </Text>
-                <TextInput
-                  style={[
-                    styles.textArea,
-                    {
-                      backgroundColor: currentTheme.background,
-                      color: currentTheme.text,
-                      borderColor: currentTheme.secondary,
-                    },
-                  ]}
-                  value={description}
-                  onChangeText={setDescription}
-                  placeholder="イベントの詳細やメモを入力"
-                  placeholderTextColor={currentTheme.textSecondary}
-                  multiline
-                  numberOfLines={4}
-                  maxLength={200}
-                />
-              </View>
-
               {/* 色選択 */}
               <View style={styles.inputContainer}>
                 <Text style={[styles.label, { color: currentTheme.text }]}>
@@ -474,40 +450,36 @@ export default function EventModal({
                 <Text style={[styles.colorDescription, { color: currentTheme.textSecondary }]}>
                   {getEventColorOption(eventColor).description}
                 </Text>
-                <View style={styles.colorPicker}>
+                <View style={styles.colorPickerContainer}>
                   {Object.values(EVENT_COLORS).map((colorOption) => (
-                    <TouchableOpacity
-                      key={colorOption.value}
-                      style={[
-                        styles.colorOption,
-                        {
-                          backgroundColor: colorOption.color,
-                          borderColor: eventColor === colorOption.value ? currentTheme.text : 'transparent',
-                          borderWidth: eventColor === colorOption.value ? 3 : 1,
-                        },
-                      ]}
-                      onPress={() => setEventColor(colorOption.value)}
-                    >
-                      {eventColor === colorOption.value && (
-                        <Text style={styles.colorCheckmark}>✓</Text>
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                <View style={styles.colorLabels}>
-                  {Object.values(EVENT_COLORS).map((colorOption) => (
-                    <Text
-                      key={colorOption.value}
-                      style={[
-                        styles.colorLabel,
-                        {
-                          color: eventColor === colorOption.value ? currentTheme.primary : currentTheme.textSecondary,
-                          fontWeight: eventColor === colorOption.value ? '600' : '400',
-                        },
-                      ]}
-                    >
-                      {colorOption.label}
-                    </Text>
+                    <View key={colorOption.value} style={styles.colorOptionContainer}>
+                      <TouchableOpacity
+                        style={[
+                          styles.colorOption,
+                          {
+                            backgroundColor: colorOption.color,
+                            borderColor: eventColor === colorOption.value ? currentTheme.text : 'transparent',
+                            borderWidth: eventColor === colorOption.value ? 3 : 1,
+                          },
+                        ]}
+                        onPress={() => setEventColor(colorOption.value)}
+                      >
+                        {eventColor === colorOption.value && (
+                          <Text style={styles.colorCheckmark}>✓</Text>
+                        )}
+                      </TouchableOpacity>
+                      <Text
+                        style={[
+                          styles.colorLabel,
+                          {
+                            color: eventColor === colorOption.value ? currentTheme.primary : currentTheme.textSecondary,
+                            fontWeight: eventColor === colorOption.value ? '600' : '400',
+                          },
+                        ]}
+                      >
+                        {colorOption.label}
+                      </Text>
+                    </View>
                   ))}
                 </View>
               </View>
@@ -605,8 +577,15 @@ const styles = StyleSheet.create({
   closeButton: {
     padding: 8,
   },
+  safeArea: {
+    flex: 1,
+  },
   content: {
+    flex: 1,
+  },
+  contentContainer: {
     padding: 20,
+    paddingBottom: 40,
   },
   inputContainer: {
     marginBottom: 20,
@@ -714,35 +693,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 12,
   },
-  colorPicker: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-    gap: 8,
-  },
-  colorOption: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-  },
-  colorCheckmark: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  colorLabels: {
+  colorPickerContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     flexWrap: 'wrap',
-    gap: 4,
+    marginBottom: 8,
+    gap: 12,
+  },
+  colorOptionContainer: {
+    alignItems: 'center',
+    flex: 1,
+    minWidth: 50,
+    maxWidth: 80,
+  },
+  colorOption: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    marginBottom: 4,
+  },
+  colorCheckmark: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
   colorLabel: {
     fontSize: 11,
     textAlign: 'center',
-    flex: 1,
-    minWidth: 50,
+    lineHeight: 14,
   },
 });

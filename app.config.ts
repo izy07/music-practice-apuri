@@ -11,6 +11,7 @@ const config: ExpoConfig = {
     supportsTablet: true,
     bundleIdentifier: 'com.musicpractice.app',
     displayName: '楽器練習アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
+    icon: './assets/images/icon.png', // アイコン画像
     infoPlist: {
       // 年齢制限: 12+（録音機能があるため）
       // App Store Connectで設定する必要がありますが、ここでも明示
@@ -31,6 +32,7 @@ const config: ExpoConfig = {
     bundler: 'metro', // WebプラットフォームでもMetroを使用（Webpackとの競合を避ける）
     output: 'static', // 静的エクスポート用（GitHub Pagesデプロイに必要）
     favicon: './assets/images/favicon.png', // PNG形式を使用（jimp-compactがWebPをサポートしていないため）
+    icon: './assets/images/icon.png', // PWAマニフェスト用アイコン（GitHubのデフォルトアイコンを防ぐ）
     // GitHub Pages用のベースパス設定
     baseUrl: process.env.EXPO_PUBLIC_WEB_BASE || '/',
     // 出力ディレクトリを明示的に指定（Expo Routerのデフォルトはweb-build）
@@ -56,9 +58,16 @@ const config: ExpoConfig = {
   experiments: {
     typedRoutes: true,
   },
+  updates: {
+    url: 'https://u.expo.dev/fe3ac800-458f-47ac-a51f-264b5a49c45f',
+  },
+  runtimeVersion: {
+    policy: 'appVersion',
+  },
   extra: {
-    // EAS 初期化時に自動で挿入されるため、明示指定をいったん外す
-    // eas: { projectId: '...' },
+    eas: {
+      projectId: 'fe3ac800-458f-47ac-a51f-264b5a49c45f',
+    },
     supabaseUrl: 'https://uteeqkpsezbabdmritkn.supabase.co',
     supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0ZWVxa3BzZXpiYWJkbXJpdGtuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDQyNDUsImV4cCI6MjA3MDcyMDI0NX0.3wITO5E53yW2spDHi99ngaA0SRqnsJbAYzdT7DDa1tM',
     // Web環境用のリダイレクトURI

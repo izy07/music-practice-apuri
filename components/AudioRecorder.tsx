@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,7 +19,7 @@ import { useRouter } from 'expo-router';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
-import { checkMonthlyRecordingLimit, isCurrentMonth, canSaveDataForInstrument } from '@/lib/subscriptionLimits';
+import { checkMonthlyRecordingLimit, checkDailyRecordingLimit, isCurrentMonth, canSaveDataForInstrument, getMaxRecordingDuration } from '@/lib/subscriptionLimits';
 import logger from '@/lib/logger';
 import audioResourceManager from '@/lib/audioResourceManager';
 
@@ -64,6 +64,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const [showSongSelector, setShowSongSelector] = useState(false);
   const [recordingType, setRecordingType] = useState<'performance' | 'lesson'>('performance'); // 録音種類
   const [recordingLimitStatus, setRecordingLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
+  const [dailyLimitStatus, setDailyLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
   
   // Web Audio API用の参照
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -75,8 +76,10 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const microphoneStreamRef = useRef<MediaStream | null>(null);
   const isRecordingRef = useRef(false); // 最新のisRecording状態を保持
 
-  // 録音時間の制限（1時間 = 3600秒）
-  const MAX_RECORDING_TIME = 3600;
+  // 録音時間の制限（プランに応じて動的に設定）
+  const MAX_RECORDING_TIME = useMemo(() => {
+    return getMaxRecordingDuration(entitlement);
+  }, [entitlement]);
 
   // isRecordingの最新値をrefに保持
   useEffect(() => {
@@ -162,14 +165,24 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   // 画面表示時に録音数の制限を事前チェック
   useEffect(() => {
     const checkLimitOnMount = async () => {
-      if (!user?.id || entitlement?.isEntitled) {
-        setRecordingLimitStatus(null); // プレミアムユーザーはチェック不要
+      if (!user?.id) {
+        setRecordingLimitStatus(null);
+        setDailyLimitStatus(null);
         return;
       }
 
       try {
-        const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined);
-        setRecordingLimitStatus(limitCheck);
+        // 1日の録音数制限をチェック（全プランでチェック）
+        const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, selectedDate || undefined);
+        setDailyLimitStatus(dailyLimitCheck);
+        
+        // 月間録音数制限をチェック（フリープランのみ）
+        if (!entitlement?.isEntitled) {
+          const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined);
+          setRecordingLimitStatus(limitCheck);
+        } else {
+          setRecordingLimitStatus(null); // プレミアムユーザーは月間制限不要
+        }
       } catch (error) {
         logger.error('録音制限チェックエラー:', error);
       }
@@ -207,7 +220,28 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
     try {
       logger.debug('録音開始ボタンが押されました');
       
-      // Freeプランの場合、録音数の制限をチェック
+      // 1日の録音数制限をチェック（全プランでチェック）
+      if (user?.id) {
+        const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, selectedDate || undefined);
+        if (!dailyLimitCheck.canRecord) {
+          Alert.alert(
+            '1日の録音数制限に達しました',
+            dailyLimitCheck.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
+            [
+              { text: 'キャンセル', style: 'cancel' },
+              { text: entitlement?.isEntitled ? '了解' : 'プレミアムを見る', onPress: () => {
+                if (!entitlement?.isEntitled) {
+                  onClose();
+                  router.push('/(tabs)/pricing-plans');
+                }
+              }}
+            ]
+          );
+          return;
+        }
+      }
+      
+      // Freeプランの場合、月間録音数の制限をチェック
       if (!entitlement?.isEntitled && user?.id) {
         const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined);
         setRecordingLimitStatus(limitCheck);
@@ -215,7 +249,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         if (!limitCheck.canRecord) {
           Alert.alert(
             '録音上限に達しました',
-            `Freeプランでは月に${limitCheck.limit}回まで録音できます。\n現在の録音数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
+            `Freeプランでは各楽器ごとに月に3回まで録音できます（合計${limitCheck.limit}回）。\n現在の録音数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
             [
               { text: 'キャンセル', style: 'cancel' },
               { text: 'プレミアムを見る', onPress: () => {
@@ -869,6 +903,30 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       
       const recordedAt = selectedDate ? new Date(selectedDate) : new Date();
       
+      // 1日の録音数制限をチェック（全プランでチェック、念のため）
+      const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, recordedAt);
+      if (!dailyLimitCheck.canRecord) {
+        Alert.alert(
+          '1日の録音数制限に達しました',
+          dailyLimitCheck.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
+          [
+            { text: 'キャンセル', style: 'cancel', onPress: () => {
+              setIsSaving(false);
+              isSavingRef.current = false;
+            }},
+            { text: entitlement?.isEntitled ? '了解' : 'プレミアムを見る', onPress: () => {
+              setIsSaving(false);
+              isSavingRef.current = false;
+              if (!entitlement?.isEntitled) {
+                onClose();
+                router.push('/(tabs)/pricing-plans');
+              }
+            }}
+          ]
+        );
+        return;
+      }
+      
       // Freeプランの場合、選択された日付が今月であることを確認
       if (!entitlement?.isEntitled && !isCurrentMonth(recordedAt)) {
         Alert.alert(
@@ -896,7 +954,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         const reason = limitCheck.reason || '';
         Alert.alert(
           '制限に達しました',
-          reason || `Freeプランでは月${limitCheck.limit}回まで録音できます。\n現在の使用回数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
+          reason || `Freeプランでは各楽器ごとに月に3回まで録音できます（合計${limitCheck.limit}回）。\n現在の使用回数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
           [
             { text: 'キャンセル', style: 'cancel', onPress: () => {
               setIsSaving(false);
@@ -1061,13 +1119,13 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
               録音コントロール
             </Text>
 
-            {/* 録音数制限の表示（フリープランの場合） */}
+            {/* 月間録音数制限の表示（フリープランの場合） */}
             {!entitlement?.isEntitled && recordingLimitStatus && (
               <View style={[styles.limitInfoContainer, { backgroundColor: currentTheme.surface, borderColor: recordingLimitStatus.canRecord ? currentTheme.primary : '#FF4444', marginBottom: 16 }]}>
                 <Text style={[styles.limitInfoText, { color: currentTheme.text }]}>
                   {recordingLimitStatus.canRecord 
-                    ? `録音数: ${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}（あと${recordingLimitStatus.limit - recordingLimitStatus.currentCount}回録音可能）`
-                    : `上限に達しています: ${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}`
+                    ? `月間録音数: ${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}回（あと${recordingLimitStatus.limit - recordingLimitStatus.currentCount}回録音可能）`
+                    : `月間録音数上限に達しています: ${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}回`
                   }
                 </Text>
                 {!recordingLimitStatus.canRecord && (
@@ -1084,15 +1142,15 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
                   style={[
                     styles.recordButton, 
                     { 
-                      backgroundColor: (recordingLimitStatus !== null && !recordingLimitStatus.canRecord) ? currentTheme.textSecondary : currentTheme.primary,
-                      opacity: (recordingLimitStatus !== null && !recordingLimitStatus.canRecord) ? 0.6 : 1
+                      backgroundColor: ((dailyLimitStatus !== null && !dailyLimitStatus.canRecord) || (recordingLimitStatus !== null && !recordingLimitStatus.canRecord)) ? currentTheme.textSecondary : currentTheme.primary,
+                      opacity: ((dailyLimitStatus !== null && !dailyLimitStatus.canRecord) || (recordingLimitStatus !== null && !recordingLimitStatus.canRecord)) ? 0.6 : 1
                     }
                   ]}
                   onPress={() => {
                     logger.debug('録音ボタンがタップされました');
                     startRecording();
                   }}
-                  disabled={recordingLimitStatus !== null && !recordingLimitStatus.canRecord}
+                  disabled={(dailyLimitStatus !== null && !dailyLimitStatus.canRecord) || (recordingLimitStatus !== null && !recordingLimitStatus.canRecord)}
                   activeOpacity={0.8}
                   hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                 >
@@ -1109,19 +1167,25 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
                 </TouchableOpacity>
               )}
             </View>
-
-            {/* 録音時間表示 */}
-            <View style={styles.timeDisplay}>
-              <Text style={[styles.timeText, { color: currentTheme.text }]}>
-                {isRecording ? '録音中: ' : '録音時間: '}
-                {isRecording ? formatTime(recordingTime) : formatTime(recordingDuration)}
+            
+            {/* 最大録音時間の表示（録音前） */}
+            {!isRecording && (
+              <Text style={[styles.maxTimeText, { color: currentTheme.textSecondary, textAlign: 'center', marginTop: 12 }]}>
+                最大{formatTime(MAX_RECORDING_TIME)}まで
               </Text>
-              {isRecording && (
-                <Text style={[styles.maxTimeText, { color: currentTheme.textSecondary }]}>
-                  最大: {formatTime(MAX_RECORDING_TIME)}
+            )}
+
+            {/* 録音時間表示（録音中） */}
+            {isRecording && (
+              <View style={styles.timeDisplay}>
+                <Text style={[styles.timeText, { color: currentTheme.text }]}>
+                  録音中: {formatTime(recordingTime)}
                 </Text>
-              )}
-            </View>
+                <Text style={[styles.maxTimeText, { color: currentTheme.textSecondary, textAlign: 'center', marginTop: 4 }]}>
+                  最大{formatTime(MAX_RECORDING_TIME)}まで
+                </Text>
+              </View>
+            )}
           </View>
         )}
 

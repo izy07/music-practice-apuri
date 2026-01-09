@@ -1,4 +1,4 @@
-import React, { memo, useCallback } from 'react';
+import React, { memo, useCallback, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { getEventColorCode, EventColor } from '@/lib/eventColors';
 
@@ -19,13 +19,13 @@ interface CalendarDayCellProps {
   hasPracticeRecord: boolean; // 練習時間が記録されたか（タイマー、クイック、手動入力など）
   hasBasicPractice: boolean; // 基礎練（input_method: 'preset'）があるか
   hasRecording: boolean;
-  dayEvents: Array<{id: string, title: string, description?: string, color?: EventColor | string | null}>;
+  dayEvents: Array<{id: string, title: string, description?: string, color?: EventColor | string | null, date?: string}>;
   isToday: boolean;
   isSunday: boolean;
   isSaturday: boolean;
   currentTheme: InstrumentTheme;
   onDatePress: (date: Date) => void;
-  onEventPress: (event: {id: string, title: string, description?: string, color?: EventColor | string | null}) => void;
+  onEventPress: (event: {id: string, title: string, description?: string, color?: EventColor | string | null, date?: string}) => void;
 }
 
 const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement => {
@@ -44,19 +44,30 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
     onEventPress
   } = props;
   
+  // イベントがタップされたかを追跡するためのref
+  const eventPressedRef = useRef(false);
+  
   const handlePress = useCallback(() => {
-    // イベントがある場合は、日付セルをタップしても編集モーダルを開かない
-    if (dayEvents && dayEvents.length > 0) {
+    // イベントのタイトル部分がタップされた場合は何もしない
+    if (eventPressedRef.current) {
+      eventPressedRef.current = false;
       return;
     }
+    // 日付セルをタップすると練習記録画面を開く（イベントがあっても開く）
     const selectedDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
     onDatePress(selectedDate);
-  }, [currentDate, day, onDatePress, dayEvents]);
+  }, [currentDate, day, onDatePress]);
 
   const handleEventPress = useCallback(() => {
+    // イベントのタイトル部分をタップするとイベント編集画面を開く
+    eventPressedRef.current = true; // イベントがタップされたことを記録
     if (dayEvents && dayEvents.length > 0) {
       onEventPress(dayEvents[0]);
     }
+    // 少し遅延を入れてリセット（親要素のonPressが呼ばれないようにする）
+    setTimeout(() => {
+      eventPressedRef.current = false;
+    }, 100);
   }, [dayEvents, onEventPress]);
 
   return (
@@ -66,9 +77,11 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
         isToday && styles.todayCell,
       ]}
       onPress={handlePress}
+      activeOpacity={0.7}
+      delayPressIn={50} // 子要素のイベントが先に処理されるように少し遅延
       accessibilityRole="button"
-      accessibilityLabel={`${currentDate.getFullYear()}年${currentDate.getMonth() + 1}月${day}日${isToday ? '、今日' : ''}${hasPracticeRecord ? '、練習記録あり' : ''}${hasRecording ? '、録音あり' : ''}${hasBasicPractice ? '、基礎練あり' : ''}${dayEvents.length > 0 ? `、イベント: ${dayEvents[0].title}` : ''}`}
-      accessibilityHint={dayEvents.length > 0 ? "イベントをタップして詳細を表示します" : "日付をタップして練習記録を追加します"}
+      accessibilityLabel={`${currentDate.getFullYear()}年${currentDate.getMonth() + 1}月${day}日${isToday ? '、今日' : ''}${hasPracticeRecord ? '、練習記録あり' : ''}${hasRecording ? '、録音あり' : ''}${hasBasicPractice ? '、基礎練あり' : ''}${dayEvents && dayEvents.length > 0 ? `、イベント: ${dayEvents[0].title}` : ''}`}
+      accessibilityHint="日付をタップして練習記録を追加します"
     >
       <Text style={[
         styles.dayText,
@@ -98,20 +111,21 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
         const event = dayEvents[0];
         const eventColor = getEventColorCode(event.color);
         return (
-          <TouchableOpacity
+        <TouchableOpacity
             style={[
               styles.eventIndicator,
               {
-                backgroundColor: `${eventColor}20`,
+                backgroundColor: '#FFFFFF',
                 borderColor: eventColor,
               },
             ]}
-            onPress={handleEventPress}
-            activeOpacity={0.7}
-            accessibilityRole="button"
+          onPress={handleEventPress}
+          activeOpacity={0.7}
+          delayPressIn={0} // 子要素のイベントを優先的に処理
+          accessibilityRole="button"
             accessibilityLabel={`イベント: ${event.title}`}
-            accessibilityHint="イベントの詳細を表示します"
-          >
+          accessibilityHint="イベントの詳細を表示します"
+        >
             <Text 
               style={[
                 styles.eventIndicatorText,
@@ -120,8 +134,8 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
               numberOfLines={1}
             >
               {event.title}
-            </Text>
-          </TouchableOpacity>
+          </Text>
+        </TouchableOpacity>
         );
       })()}
       
@@ -209,20 +223,18 @@ const styles = StyleSheet.create({
     bottom: 2,
     left: 2,
     right: 2,
-    backgroundColor: '#E3F2FD',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 2,
     paddingVertical: 1,
-    borderRadius: 0,
+    borderRadius: 2,
     borderWidth: 1,
-    borderColor: '#2196F3',
     maxHeight: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
   eventIndicatorText: {
     fontSize: 7,
-    color: '#1976D2',
-    fontWeight: '500',
+    fontWeight: '600',
     textAlign: 'center',
     lineHeight: 9,
   },

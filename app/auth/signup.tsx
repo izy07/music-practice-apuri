@@ -116,7 +116,8 @@ export default function SignupScreen() {
     }
     
     // 新規登録画面にいない場合はスキップ（他の画面では実行しない）
-    const isInSignupScreen = segments.length >= 2 && segments[0] === 'auth' && segments[1] === 'signup';
+    const segmentsArray = Array.isArray(segments) ? segments : [segments];
+    const isInSignupScreen = segmentsArray.length >= 2 && segmentsArray[0] === 'auth' && segmentsArray[segmentsArray.length - 1] === 'signup';
     if (!isInSignupScreen) {
       return;
     }
@@ -301,9 +302,9 @@ export default function SignupScreen() {
   };
 
   return (
-    <SafeAreaView style={COMMON_STYLES.flex1}>
+    <SafeAreaView style={{ flex: 1 }}>
       <KeyboardAvoidingView
-        style={COMMON_STYLES.flex1}
+        style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <ScrollView 
@@ -408,11 +409,30 @@ export default function SignupScreen() {
               )}
             </TouchableOpacity>
 
-            <TouchableOpacity onPress={goToLogin} style={styles.loginLink}>
+            <View style={styles.loginLinkContainer}>
               <Text style={styles.loginText}>
-                既にアカウントをお持ちですか？ <Text style={styles.loginLinkText}>ログイン</Text>
+                既にアカウントをお持ちですか？
               </Text>
-            </TouchableOpacity>
+              <TouchableOpacity onPress={goToLogin} style={styles.loginLinkButton}>
+                <Text style={styles.loginLinkText}>ログイン</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.termsContainer}>
+              <View style={styles.termsTextContainer}>
+                <Text style={styles.termsText}>新規登録すると</Text>
+                <TouchableOpacity onPress={() => router.push('/terms-of-service')}>
+                  <Text style={styles.termsLink}>利用規約</Text>
+                </TouchableOpacity>
+                <Text style={styles.termsText}>と</Text>
+              </View>
+              <View style={styles.termsTextContainer}>
+                <TouchableOpacity onPress={() => router.push('/privacy-policy')}>
+                  <Text style={styles.termsLink}>プライバシーポリシー</Text>
+                </TouchableOpacity>
+                <Text style={styles.termsText}>に同意したことになります</Text>
+              </View>
+            </View>
           </Animated.View>
         </View>
       </ScrollView>
@@ -426,20 +446,20 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: 'center',
     backgroundColor: colors.background,
-    paddingVertical: 20,
+    paddingVertical: 10,
     minHeight: '100%',
   },
   container: {
     width: '100%',
     maxWidth: 400,
     alignItems: 'center',
-    padding: 20,
+    padding: 15,
   },
   card: {
     width: '100%',
     backgroundColor: colors.surface,
     borderRadius: 12,
-    padding: 25,
+    padding: 20,
     alignItems: 'center',
     ...createShadowStyle({
       shadowColor: colors.primary,
@@ -452,11 +472,11 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     color: colors.primary,
-    marginBottom: 25,
+    marginBottom: 20,
   },
   inputGroup: {
     width: '100%',
-    marginBottom: 15,
+    marginBottom: 12,
   },
   label: {
     fontSize: 15,
@@ -532,7 +552,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: 15,
     ...createShadowStyle({
       shadowColor: colors.secondary,
       shadowOpacity: 0.2,
@@ -548,15 +568,47 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
   },
-  loginLink: {
-    marginTop: 20,
+  loginLinkContainer: {
+    marginTop: 15,
+    alignItems: 'center',
   },
   loginText: {
     color: colors.textSecondary,
     fontSize: 15,
+    marginBottom: 8,
+  },
+  loginLinkButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
   },
   loginLinkText: {
     color: colors.primary,
     fontWeight: 'bold',
+    fontSize: 15,
+  },
+  termsContainer: {
+    width: '100%',
+    marginTop: 15,
+    paddingHorizontal: 5,
+  },
+  termsTextContainer: {
+    flexDirection: 'row',
+    flexWrap: 'nowrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 1,
+  },
+  termsText: {
+    fontSize: 11,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    marginHorizontal: 1,
+  },
+  termsLink: {
+    color: colors.primary,
+    textDecorationLine: 'underline',
+    fontWeight: '600',
+    fontSize: 11,
+    marginHorizontal: 1,
   },
 });

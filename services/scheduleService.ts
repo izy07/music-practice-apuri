@@ -116,12 +116,15 @@ export class ScheduleService {
             // created_byからuser_idを取得（practice_schedulesテーブルの構造に依存）
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
+              // practice_typeに応じて色を設定
+              const eventColor = result.data.practice_type === 'event' ? 'red' : 'orange';
               const eventResult = await createEvent({
                 user_id: user.id,
                 title: result.data.title,
                 date: result.data.practice_date,
                 description: result.data.notes || null,
                 practice_schedule_id: result.data.id, // 練習日程との連携
+                color: eventColor,
               });
               
               if (eventResult.error) {
@@ -243,12 +246,16 @@ export class ScheduleService {
                   }
                 } else if (wasEventOrRehearsal) {
                   // 既存のイベントが見つからない場合、新規作成
+                  // practice_typeに応じて色を設定
+                  const eventColor = result.data.practice_type === 'event' ? 'red' : 
+                                   result.data.practice_type === 'rehearsal' ? 'orange' : 'blue';
                   const eventResult = await createEvent({
                     user_id: user.id,
                     title: result.data.title,
                     date: result.data.practice_date,
                     description: result.data.notes || null,
                     practice_schedule_id: id,
+                    color: eventColor,
                   });
                   
                   if (eventResult.error) {
@@ -265,12 +272,16 @@ export class ScheduleService {
                 }
               } else if (wasEventOrRehearsal) {
                 // イベントが見つからない場合、新規作成
+                // practice_typeに応じて色を設定
+                const eventColor = result.data.practice_type === 'event' ? 'red' : 
+                                 result.data.practice_type === 'rehearsal' ? 'orange' : 'blue';
                 const eventResult = await createEvent({
                   user_id: user.id,
                   title: result.data.title,
                   date: result.data.practice_date,
                   description: result.data.notes || null,
                   practice_schedule_id: id,
+                  color: eventColor,
                 });
                 
                 if (eventResult.error) {

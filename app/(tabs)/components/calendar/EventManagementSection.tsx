@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import { logger } from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { supabase } from '@/lib/supabase';
-import { EVENT_COLORS, EventColor, getEventColorCode, getEventColorOption } from '@/lib/eventColors';
+import { EVENT_COLORS, EventColor, getEventColorCode, getEventColorOption, DEFAULT_EVENT_COLOR } from '@/lib/eventColors';
 
 // テーマの型定義
 interface InstrumentTheme {
@@ -28,7 +28,7 @@ interface Event {
 
 interface EventManagementSectionProps {
   currentTheme: InstrumentTheme | null | undefined;
-  events: { [key: number]: Event[] } | null | undefined;
+  events: { [key: string]: Event[] } | null | undefined;
   onAddEvent: () => void;
   onEditEvent: (event: Event) => void;
   onEventDeleted: () => void;
@@ -89,7 +89,12 @@ export default function EventManagementSection({
     );
   };
 
-  const allEvents = events ? Object.values(events).flat() : [];
+  // eventsは { [dateStr: string]: Event[] } の形式なので、各イベントに日付を追加
+  const allEvents = events 
+    ? Object.entries(events).flatMap(([dateStr, eventArray]) => 
+        eventArray.map(event => ({ ...event, date: event.date || dateStr }))
+      )
+    : [];
   
   // 色でフィルタリング
   const filteredEvents = useMemo(() => {
@@ -97,23 +102,53 @@ export default function EventManagementSection({
       return allEvents;
     }
     return allEvents.filter(event => {
-      const eventColor = (event.color as EventColor) || 'yellow';
+      const eventColor = (event.color as EventColor) || DEFAULT_EVENT_COLOR;
       return eventColor === selectedColorFilter;
     });
   }, [allEvents, selectedColorFilter]);
   
-  // メンテナンスイベントを取得（最新のもの）
-  const lastMaintenanceEvent = useMemo(() => {
+  // メンテナンスイベントを取得（最新のもの）と表示ラベルの判定
+  const maintenanceEventInfo = useMemo(() => {
     const maintenanceEvents = allEvents
       .filter(event => {
-        const eventColor = (event.color as EventColor) || 'yellow';
+        const eventColor = (event.color as EventColor) || DEFAULT_EVENT_COLOR;
         return eventColor === 'green';
       })
       .sort((a, b) => {
         if (!a.date || !b.date) return 0;
         return new Date(b.date).getTime() - new Date(a.date).getTime();
       });
-    return maintenanceEvents[0] || null;
+    
+    if (maintenanceEvents.length === 0) {
+      return { event: null, label: null };
+    }
+    
+    const latestEvent = maintenanceEvents[0];
+    if (!latestEvent.date) {
+      return { event: latestEvent, label: '🔧 前回メンテナンス' };
+    }
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const eventDate = new Date(latestEvent.date);
+    eventDate.setHours(0, 0, 0, 0);
+    
+    const diffTime = eventDate.getTime() - today.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    let label: string;
+    if (diffDays < 0) {
+      // 当日よりも前
+      label = '🔧 前回メンテナンス';
+    } else if (diffDays === 0) {
+      // 当日
+      label = '🔧 メンテナンス当日';
+    } else {
+      // 当日より後
+      label = '🔧 メンテナンス予定';
+    }
+    
+    return { event: latestEvent, label };
   }, [allEvents]);
   
   const displayEvents = filteredEvents.slice(0, 5);
@@ -133,24 +168,24 @@ export default function EventManagementSection({
         <Text style={styles.addButtonText}>イベントを登録</Text>
       </TouchableOpacity>
 
-      {/* 前回メンテナンス表示 */}
-      {lastMaintenanceEvent && (
+      {/* メンテナンス表示（日付に応じてラベルを変更） */}
+      {maintenanceEventInfo.event && maintenanceEventInfo.label && (
         <View style={[styles.maintenanceInfo, { backgroundColor: theme.background, borderColor: getEventColorCode('green') }]}>
           <Text style={[styles.maintenanceLabel, { color: theme.text }]}>
-            🔧 前回メンテナンス
+            {maintenanceEventInfo.label}
           </Text>
           <Text style={[styles.maintenanceDate, { color: theme.textSecondary }]}>
-            {lastMaintenanceEvent.date 
-              ? new Date(lastMaintenanceEvent.date).toLocaleDateString('ja-JP', {
+            {maintenanceEventInfo.event.date 
+              ? new Date(maintenanceEventInfo.event.date).toLocaleDateString('ja-JP', {
                   year: 'numeric',
                   month: 'long',
                   day: 'numeric',
                 })
               : '日付不明'}
           </Text>
-          {lastMaintenanceEvent.title && (
+          {maintenanceEventInfo.event.title && (
             <Text style={[styles.maintenanceTitle, { color: theme.text }]}>
-              {lastMaintenanceEvent.title}
+              {maintenanceEventInfo.event.title}
             </Text>
           )}
         </View>
@@ -189,7 +224,7 @@ export default function EventManagementSection({
             </TouchableOpacity>
             {Object.values(EVENT_COLORS).map((colorOption) => {
               const count = allEvents.filter(event => {
-                const eventColor = (event.color as EventColor) || 'yellow';
+                const eventColor = (event.color as EventColor) || DEFAULT_EVENT_COLOR;
                 return eventColor === colorOption.value;
               }).length;
               
@@ -231,7 +266,7 @@ export default function EventManagementSection({
         </Text>
       ) : (
         displayEvents.map((event, index) => {
-          const eventColor = (event.color as EventColor) || 'yellow';
+          const eventColor = (event.color as EventColor) || DEFAULT_EVENT_COLOR;
           const colorCode = getEventColorCode(eventColor);
           
           return (
@@ -328,28 +363,30 @@ const styles = StyleSheet.create({
   },
   eventCard: {
     backgroundColor: '#F8F9FA',
-    borderRadius: 0,
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    marginBottom: 2,
+    borderRadius: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    marginBottom: 4,
   },
   eventHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 2,
+    alignItems: 'flex-start',
+    marginBottom: 4,
   },
   eventTitleContainer: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     marginRight: 8,
-    gap: 8,
+    gap: 6,
+    flexWrap: 'wrap',
   },
   eventTitle: {
     fontSize: 11,
     fontWeight: '600',
     lineHeight: 14,
+    flexShrink: 1,
   },
   eventDate: {
     fontSize: 9,
@@ -357,11 +394,17 @@ const styles = StyleSheet.create({
   },
   eventActions: {
     flexDirection: 'row',
-    gap: 6,
+    gap: 4,
+    alignItems: 'flex-start',
+    paddingTop: 2,
   },
   actionButton: {
     padding: 6,
-    borderRadius: 0,
+    borderRadius: 4,
+    minWidth: 28,
+    minHeight: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   eventDescription: {
     fontSize: 9,
@@ -415,15 +458,17 @@ const styles = StyleSheet.create({
   filterButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
     borderWidth: 1,
-    gap: 4,
+    gap: 6,
+    minWidth: 60,
   },
   filterButtonText: {
     fontSize: 11,
     fontWeight: '500',
+    lineHeight: 14,
   },
   filterColorDot: {
     width: 8,

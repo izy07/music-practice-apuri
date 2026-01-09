@@ -244,7 +244,7 @@ export default function MyLibraryScreen() {
       }
 
       logger.debug('認証成功:', user.id);
-
+      
       // formData.statusを文字列として正規化（配列やnull/undefinedの場合に対処）
       // ステータス値の型安全性を確保（any型を回避）
       type SongStatus = 'want_to_play' | 'learning' | 'played' | 'mastered';
@@ -1796,6 +1796,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   upgradeBannerButton: {
+    minWidth: 120,
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 6,

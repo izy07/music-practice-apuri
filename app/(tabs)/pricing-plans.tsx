@@ -86,7 +86,7 @@ export default function PricingPlansScreen() {
             </Text>
             <View style={styles.featureList}>
               {[
-                '演奏録音機能（各楽器月3回まで）',
+                '演奏録音機能（各楽器月3回まで、1回あたり3分まで）',
                 '楽器データ（2個まで使用可能）',
                 'マイライブラリ（各楽器ごとに6曲まで）',
                 '目標設定（各楽器ごとに2つまで）',
@@ -227,12 +227,15 @@ const styles = StyleSheet.create({
   plansRow: {
     flexDirection: 'row',
     gap: 12,
+    flexWrap: 'wrap',
   },
   planCard: {
     flex: 1,
+    minWidth: 150,
     borderWidth: 1,
     borderRadius: 16,
     padding: 16,
+    overflow: 'hidden',
   },
   planCardFeatured: {
     borderWidth: 2,
@@ -256,25 +259,31 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 8,
     flex: 1,
+    minHeight: 0,
+    width: '100%',
   },
   featureText: {
     flex: 1,
     flexShrink: 1,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 18,
   },
   ctaButton: {
     marginTop: 4,
     paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 8,
+    gap: 6,
+    width: '100%',
+    maxWidth: '100%',
   },
   ctaText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
+    flexShrink: 1,
   },
   noteBox: {
     marginTop: 16,
@@ -292,5 +301,7 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 });
+
+
 
 

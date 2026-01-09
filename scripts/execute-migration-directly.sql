@@ -161,7 +161,30 @@ BEGIN
 END $$;
 
 -- ============================================
--- 9. eventsテーブルにevent_dateカラムを追加（存在しない場合、dateカラムのエイリアス）
+-- 9. eventsテーブルにcolorカラムを追加
+-- ============================================
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'events' 
+    AND column_name = 'color'
+  ) THEN
+    ALTER TABLE public.events 
+    ADD COLUMN color text;
+    
+    COMMENT ON COLUMN public.events.color IS 'イベントの色（red: 演奏会, green: メンテナンス, blue: レッスン, orange: リハーサル, purple: その他）';
+    
+    -- 既存のイベントにはデフォルト値（blue: レッスン）を設定
+    UPDATE public.events 
+    SET color = 'blue'
+    WHERE color IS NULL;
+  END IF;
+END $$;
+
+-- ============================================
+-- 10. eventsテーブルにevent_dateカラムを追加（存在しない場合、dateカラムのエイリアス）
 -- ============================================
 DO $$
 BEGIN
@@ -184,7 +207,7 @@ BEGIN
 END $$;
 
 -- ============================================
--- 10. tasksテーブルにinstrument_idカラムを追加
+-- 11. tasksテーブルにinstrument_idカラムを追加
 -- ============================================
 DO $$
 BEGIN

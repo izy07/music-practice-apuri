@@ -2,7 +2,7 @@
  * イベントの色定義
  */
 
-export type EventColor = 'red' | 'green' | 'blue' | 'orange' | 'purple' | 'yellow';
+export type EventColor = 'red' | 'green' | 'blue' | 'orange' | 'purple';
 
 export interface EventColorOption {
   value: EventColor;
@@ -42,15 +42,9 @@ export const EVENT_COLORS: Record<EventColor, EventColorOption> = {
     color: '#9C27B0',
     description: 'その他のイベント',
   },
-  yellow: {
-    value: 'yellow',
-    label: 'イベント',
-    color: '#FFC107',
-    description: '一般的なイベント',
-  },
 };
 
-export const DEFAULT_EVENT_COLOR: EventColor = 'yellow';
+export const DEFAULT_EVENT_COLOR: EventColor = 'blue';
 
 /**
  * 色の値から色オプションを取得

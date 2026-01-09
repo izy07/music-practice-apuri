@@ -311,6 +311,105 @@ export const isCurrentMonth = (date: Date | string | null | undefined): boolean 
 };
 
 /**
+ * プランに応じた最大録音時間を取得（秒）
+ * 
+ * @param entitlement エンタイトルメント情報
+ * @returns 最大録音時間（秒）
+ */
+export const getMaxRecordingDuration = (entitlement: Entitlement | null | undefined): number => {
+  if (entitlement?.isEntitled) {
+    return 3600; // プレミアム: 60分
+  }
+  return 180; // フリープラン: 3分
+};
+
+/**
+ * プランに応じた1日の最大録音数を取得
+ * 
+ * @param entitlement エンタイトルメント情報
+ * @returns 1日の最大録音数
+ */
+export const getMaxDailyRecordings = (entitlement: Entitlement | null | undefined): number => {
+  if (entitlement?.isEntitled) {
+    return 2; // プレミアム: 2個
+  }
+  return 1; // フリープラン: 1個
+};
+
+/**
+ * 1日の録音数制限をチェック
+ * 
+ * @param userId ユーザーID
+ * @param entitlement エンタイトルメント情報
+ * @param selectedDate 選択された日付（nullの場合は今日）
+ * @returns 録音可能かどうか
+ */
+export const checkDailyRecordingLimit = async (
+  userId: string,
+  entitlement: Entitlement | null | undefined,
+  selectedDate?: Date | string | null
+): Promise<{ canRecord: boolean; currentCount: number; limit: number; reason?: string }> => {
+  try {
+    // Premiumユーザーも1日2個までという制限があるため、チェックは必要
+    const maxDaily = getMaxDailyRecordings(entitlement);
+    
+    // チェック対象の日付を決定
+    const targetDate = selectedDate ? new Date(selectedDate) : new Date();
+    
+    // 指定日の0時00分00秒と23時59分59秒を取得
+    const startOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
+    const endOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 23, 59, 59);
+
+    const { data: recordings, error } = await supabase
+      .from('recordings')
+      .select('id', { count: 'exact', head: false })
+      .eq('user_id', userId)
+      .gte('recorded_at', startOfDay.toISOString())
+      .lte('recorded_at', endOfDay.toISOString());
+
+    if (error) {
+      logger.warn('1日の録音数取得に失敗しました。制限チェックをスキップします。', {
+        error,
+        userId,
+        targetDate: targetDate.toISOString()
+      });
+      ErrorHandler.handle(error, '1日録音数取得', false);
+      // エラー時は許可（フォールバック）
+      return { canRecord: true, currentCount: 0, limit: maxDaily };
+    }
+
+    const currentCount = recordings?.length || 0;
+    const canRecord = currentCount < maxDaily;
+
+    logger.debug('1日録音制限チェック:', {
+      userId,
+      currentCount,
+      limit: maxDaily,
+      canRecord,
+      targetDate: targetDate.toISOString()
+    });
+
+    return { 
+      canRecord, 
+      currentCount, 
+      limit: maxDaily,
+      reason: !canRecord 
+        ? `本日は既に${maxDaily}個の録音があります。${entitlement?.isEntitled ? '明日以降録音できます。' : '明日以降またはプレミアムで録音できます。'}`
+        : undefined
+    };
+  } catch (error) {
+    logger.error('1日録音制限チェック中にエラーが発生しました:', {
+      error,
+      userId
+    });
+    ErrorHandler.handle(error, '1日録音制限チェック', false);
+    // エラー時は許可（フォールバック）
+    const fallbackLimit = getMaxDailyRecordings(entitlement);
+    return { canRecord: true, currentCount: 0, limit: fallbackLimit };
+  }
+};
+
+/**
  * 月間録音回数をチェック
  * 
  * @param userId ユーザーID

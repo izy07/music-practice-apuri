@@ -94,8 +94,9 @@ const upgradeBannerStyles = {
   },
   button: {
     paddingVertical: 6,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     borderRadius: 6,
+    minWidth: 120,
   },
   buttonText: {
     fontSize: 12,
@@ -115,6 +116,7 @@ interface Goal {
   is_completed: boolean;
   completed_at?: string;
   show_on_calendar?: boolean;
+  instrument_id?: string | null; // 楽器IDを追加（達成済み目標のフィルタリングに必要）
 }
 
 interface GoalFromDB extends Omit<Goal, 'show_on_calendar'> {
@@ -238,6 +240,7 @@ export default function GoalsScreen() {
             let goalsWithShowOnCalendar = parsed.map((g: GoalFromDB) => ({
               ...g,
               show_on_calendar: g.show_on_calendar ?? false,
+              instrument_id: g.instrument_id ?? null, // instrument_idを明示的に保持
             }));
             
             // フリープランの場合、最新の2個だけを表示
@@ -311,6 +314,7 @@ export default function GoalsScreen() {
       const goalsWithShowOnCalendar = filteredGoalsData.map((g: GoalFromDB): Goal => ({
         ...g,
         show_on_calendar: g.show_on_calendar ?? false,
+        instrument_id: g.instrument_id ?? null, // instrument_idを明示的に保持
       }));
       
       // オフラインで保存された目標も追加
@@ -529,6 +533,7 @@ export default function GoalsScreen() {
       const completedGoals: Goal[] = filteredCompletedGoals.map((g: GoalFromDB) => ({
         ...g,
         show_on_calendar: g.show_on_calendar ?? false,
+        instrument_id: g.instrument_id ?? null, // instrument_idを明示的に保持
       }));
       setCompletedGoals(completedGoals);
       
@@ -1095,11 +1100,12 @@ export default function GoalsScreen() {
       if (newProgress === 100) {
         // 達成済み目標に即座に移動（楽観的更新）
         if (currentGoal) {
-          const completedGoal = {
+          const completedGoal: Goal = {
             ...currentGoal,
             progress_percentage: 100,
             is_completed: true,
             completed_at: new Date().toISOString(),
+            instrument_id: currentGoal.instrument_id ?? null, // instrument_idを明示的に保持
           };
           setGoals(prevGoals => prevGoals.filter(g => g.id !== goalId));
           setCompletedGoals(prev => [completedGoal, ...prev]);

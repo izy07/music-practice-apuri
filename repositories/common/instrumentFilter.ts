@@ -184,7 +184,7 @@ export async function applyInstrumentFilter<T extends any>(
     includeLegacyNull
   });
   
-  return query;
+      return query;
 }
 
 /**

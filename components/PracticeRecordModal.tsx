@@ -25,7 +25,7 @@ import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
 import { getInstrumentId } from '@/lib/instrumentUtils';
-import { checkMonthlyRecordingLimit } from '@/lib/subscriptionLimits';
+import { checkMonthlyRecordingLimit, checkDailyRecordingLimit, getMaxRecordingDuration, getMaxDailyRecordings } from '@/lib/subscriptionLimits';
 
 // ドラムロール風のボタンベースピッカー（Web環境対応）
 function WheelPicker({ value, onChange, max, highlightColor }: { value: number; onChange: (v: number) => void; max: number; highlightColor: string }) {
@@ -165,6 +165,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   const [videoUrl, setVideoUrl] = useState('');
   const [showAudioRecorder, setShowAudioRecorder] = useState(false);
   const [recordingLimitStatus, setRecordingLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
+  const [dailyLimitStatus, setDailyLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
   const [audioTitle, setAudioTitle] = useState('');
   const [audioMemo, setAudioMemo] = useState('');
   const [isAudioFavorite, setIsAudioFavorite] = useState(false);
@@ -289,14 +290,24 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   // 画面表示時に録音数の制限を事前チェック
   useEffect(() => {
     const checkLimitOnMount = async () => {
-      if (!user?.id || entitlement?.isEntitled || !visible) {
-        setRecordingLimitStatus(null); // プレミアムユーザーはチェック不要
+      if (!user?.id || !visible) {
+        setRecordingLimitStatus(null);
+        setDailyLimitStatus(null);
         return;
       }
 
       try {
-        const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined);
-        setRecordingLimitStatus(limitCheck);
+        // 1日の録音数制限をチェック（全プランでチェック）
+        const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, selectedDate || undefined);
+        setDailyLimitStatus(dailyLimitCheck);
+        
+        // 月間録音数制限をチェック（フリープランのみ）
+        if (!entitlement?.isEntitled) {
+          const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined);
+          setRecordingLimitStatus(limitCheck);
+        } else {
+          setRecordingLimitStatus(null); // プレミアムユーザーは月間制限不要
+        }
       } catch (error) {
         logger.error('録音制限チェックエラー:', error);
       }
@@ -1820,8 +1831,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             {/* 録音済み情報がある場合：複数の録音を表示 */}
             {existingRecordings.length > 0 && !audioUrl && !videoUrl ? (
               <View style={styles.existingRecordingsContainer}>
-                {/* 録音1と録音2を常に2つ表示 */}
-                {[0, 1].map((slotIndex) => {
+                {/* 録音枠: プレミアムは2つ、フリープランは1つ */}
+                {(entitlement?.isEntitled ? [0, 1] : [0]).map((slotIndex) => {
                   const recording = existingRecordings[slotIndex];
                   if (recording) {
                     // 録音済みの場合
@@ -1985,8 +1996,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   <View style={[styles.limitInfoContainer, { backgroundColor: currentTheme.surface, borderColor: recordingLimitStatus.canRecord ? currentTheme.primary : '#FF4444', marginBottom: 12 }]}>
                     <Text style={[styles.limitInfoText, { color: currentTheme.text }]}>
                       {recordingLimitStatus.canRecord 
-                        ? `録音数: ${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}（あと${recordingLimitStatus.limit - recordingLimitStatus.currentCount}回録音可能）`
-                        : `上限に達しています: ${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}`
+                        ? `${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}（各楽器ごとに月3回まで、あと${recordingLimitStatus.limit - recordingLimitStatus.currentCount}回可能）`
+                        : `${recordingLimitStatus.currentCount}/${recordingLimitStatus.limit}（各楽器ごとに月3回まで）`
                       }
                     </Text>
                     {!recordingLimitStatus.canRecord && (
@@ -1997,11 +2008,16 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   </View>
                 )}
 
-                {/* 2つの録音ボタン */}
+                {/* 録音ボタン: プレミアムは2つ、フリープランは1つ */}
                 <View style={styles.recordingButtonsContainer}>
-                  {[0, 1].map((slotIndex) => {
+                  {(entitlement?.isEntitled ? [0, 1] : [0]).map((slotIndex) => {
                     const existingRec = existingRecordings[slotIndex];
-                    const isDisabled = recordingLimitStatus !== null && !recordingLimitStatus.canRecord && !existingRec;
+                    // 1日の録音数制限と月間録音数制限の両方をチェック
+                    const maxDailyRecordings = getMaxDailyRecordings(entitlement);
+                    const isDisabledByDailyLimit = dailyLimitStatus !== null && !dailyLimitStatus.canRecord && slotIndex >= dailyLimitStatus.currentCount;
+                    const isDisabledByMonthlyLimit = !entitlement?.isEntitled && recordingLimitStatus !== null && !recordingLimitStatus.canRecord;
+                    const isDisabled = (isDisabledByDailyLimit || isDisabledByMonthlyLimit) && !existingRec;
+                    
                     return (
                       <TouchableOpacity
                         key={slotIndex}
@@ -2012,17 +2028,38 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                         ]}
                         onPress={() => {
                           if (isDisabled) {
-                            Alert.alert(
-                              '録音上限に達しました',
-                              `Freeプランでは月に${recordingLimitStatus?.limit}回まで録音できます。\n現在の録音数: ${recordingLimitStatus?.currentCount}/${recordingLimitStatus?.limit}\n\nプレミアムで無制限に録音できます。`,
-                              [
-                                { text: 'キャンセル', style: 'cancel' },
-                                { text: 'プレミアムを見る', onPress: () => {
-                                  onClose();
-                                  router.push('/(tabs)/pricing-plans');
-                                }}
-                              ]
-                            );
+                            // 1日の録音数制限に達している場合
+                            if (isDisabledByDailyLimit) {
+                              Alert.alert(
+                                '1日の録音数制限に達しました',
+                                dailyLimitStatus?.reason || `本日は既に${maxDailyRecordings}個の録音があります。`,
+                                [
+                                  { text: 'キャンセル', style: 'cancel' },
+                                  { text: entitlement?.isEntitled ? '了解' : 'プレミアムを見る', onPress: () => {
+                                    if (!entitlement?.isEntitled) {
+                                      onClose();
+                                      router.push('/(tabs)/pricing-plans');
+                                    }
+                                  }}
+                                ]
+                              );
+                              return;
+                            }
+                            // 月間録音数制限に達している場合
+                            if (isDisabledByMonthlyLimit) {
+                              Alert.alert(
+                                '録音上限に達しました',
+                                `Freeプランでは各楽器ごとに月に3回まで録音できます（合計${recordingLimitStatus?.limit}回）。\n現在の録音数: ${recordingLimitStatus?.currentCount}/${recordingLimitStatus?.limit}\n\nプレミアムで無制限に録音できます。`,
+                                [
+                                  { text: 'キャンセル', style: 'cancel' },
+                                  { text: 'プレミアムを見る', onPress: () => {
+                                    onClose();
+                                    router.push('/(tabs)/pricing-plans');
+                                  }}
+                                ]
+                              );
+                              return;
+                            }
                             return;
                           }
                           // 録音画面に移動する前に、現在のフォーム状態と録音状態を保存

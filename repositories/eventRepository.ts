@@ -16,7 +16,7 @@ export interface Event {
   title: string;
   date: string; // YYYY-MM-DD形式
   description?: string | null;
-  color?: string | null; // イベントの色（red, green, blue, orange, purple, yellow）
+  color?: string | null; // イベントの色（red, green, blue, orange, purple）
   practice_schedule_id?: string | null; // 練習日程との連携用
   instrument_id?: string | null; // 楽器ID（楽器ごとにイベントを分けて管理）
   created_at?: string;
@@ -278,19 +278,29 @@ export const getEventsByUserId = async (
   } = {}
 ): Promise<{ data: Event[] | null; error: any }> => {
   try {
-    // まず、instrument_idカラムの存在を確認
-    const { error: checkError } = await supabase
+    // まず、instrument_idカラムとcolorカラムの存在を確認
+    const { error: instrumentIdCheckError } = await supabase
       .from('events')
       .select('instrument_id')
       .limit(1);
     
-    const hasInstrumentId = !checkError || 
-      (checkError.code !== '42703' && !checkError.message?.includes('instrument_id'));
+    const { error: colorCheckError } = await supabase
+      .from('events')
+      .select('color')
+      .limit(1);
     
-    // SELECT句を構築（instrument_idカラムが存在する場合のみ含める）
-    const selectColumns = hasInstrumentId
-      ? 'id,user_id,title,date,description,color,practice_schedule_id,instrument_id,is_completed,completed_at,created_at,updated_at'
-      : 'id,user_id,title,date,description,color,practice_schedule_id,is_completed,completed_at,created_at,updated_at';
+    const hasInstrumentId = !instrumentIdCheckError || 
+      (instrumentIdCheckError.code !== '42703' && !instrumentIdCheckError.message?.includes('instrument_id'));
+    
+    const hasColor = !colorCheckError || 
+      (colorCheckError.code !== '42703' && !colorCheckError.message?.includes('color'));
+    
+    // SELECT句を構築（カラムが存在する場合のみ含める）
+    let selectColumns = 'id,user_id,title,date,description';
+    if (hasColor) selectColumns += ',color';
+    selectColumns += ',practice_schedule_id';
+    if (hasInstrumentId) selectColumns += ',instrument_id';
+    selectColumns += ',is_completed,completed_at,created_at,updated_at';
     
     let query = supabase
       .from('events')
@@ -320,6 +330,15 @@ export const getEventsByUserId = async (
     if (error) {
       logger.error(`[${REPOSITORY_CONTEXT}] getEventsByUserId:error`, { error });
       return { data: null, error };
+    }
+    
+    // colorカラムが存在しない場合、デフォルト値（blue: レッスン）を設定
+    if (data && !hasColor) {
+      data.forEach((event: any) => {
+        if (!event.color) {
+          event.color = 'blue';
+        }
+      });
     }
     
     return { data, error: null };

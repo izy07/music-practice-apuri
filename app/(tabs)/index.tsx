@@ -54,7 +54,7 @@ interface UIState {
   showQuickRecord: boolean;
   showPracticeRecord: boolean;
   showEventModal: boolean;
-  selectedEvent: {id: string, title: string, description?: string, color?: string | null} | null;
+  selectedEvent: {id: string, title: string, description?: string, color?: string | null, date?: string} | null;
   successMessage: string;
   selectedDate: Date | null;
 }
@@ -64,7 +64,7 @@ type UIAction =
   | { type: 'SHOW_QUICK_RECORD'; payload: boolean }
   | { type: 'SHOW_PRACTICE_RECORD'; payload: boolean }
   | { type: 'SHOW_EVENT_MODAL'; payload: boolean }
-  | { type: 'SET_SELECTED_EVENT'; payload: {id: string, title: string, description?: string, color?: string | null} | null }
+  | { type: 'SET_SELECTED_EVENT'; payload: {id: string, title: string, description?: string, color?: string | null, date?: string} | null }
   | { type: 'SET_SUCCESS_MESSAGE'; payload: string }
   | { type: 'SET_SELECTED_DATE'; payload: Date | null }
   | { type: 'CLOSE_ALL_MODALS' };
@@ -165,7 +165,7 @@ export default function CalendarScreen() {
   const setShowEventModal = useCallback((show: boolean) => {
     dispatchUI({ type: 'SHOW_EVENT_MODAL', payload: show });
   }, []);
-  const setSelectedEvent = useCallback((event: {id: string, title: string, description?: string} | null) => {
+  const setSelectedEvent = useCallback((event: {id: string, title: string, description?: string, color?: string | null, date?: string} | null) => {
     dispatchUI({ type: 'SET_SELECTED_EVENT', payload: event });
   }, []);
   const setSuccessMessage = useCallback((message: string) => {
@@ -927,13 +927,15 @@ export default function CalendarScreen() {
   }, [setSelectedDate, setShowPracticeRecord]);
 
   // 選択された日付のイベントを取得
-  const getEventsForDate = useCallback((date: Date | null): Array<{id: string, title: string, description?: string, color?: string | null}> => {
+  const getEventsForDate = useCallback((date: Date | null): Array<{id: string, title: string, description?: string, color?: string | null, date?: string}> => {
     if (!date) return [];
     const dateStr = formatLocalDate(date);
-    return events[dateStr] || [];
+    const dateEvents = events[dateStr] || [];
+    // 各イベントに日付を追加
+    return dateEvents.map(event => ({ ...event, date: dateStr }));
   }, [events]);
 
-  const handleEventSelection = useCallback((event: {id: string, title: string, description?: string, color?: string | null}) => {
+  const handleEventSelection = useCallback((event: {id: string, title: string, description?: string, color?: string | null, date?: string}) => {
     setSelectedEvent(event);
     setShowEventModal(true);
   }, [setSelectedEvent, setShowEventModal]);
@@ -994,7 +996,9 @@ export default function CalendarScreen() {
         const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const dayData = practiceData[dateStr];
         const dayRecordings = recordingsData[dateStr]; // 日付文字列をキーとして使用
-        const dayEvents: Array<{id: string, title: string, description?: string, color?: string | null}> = events[dateStr] || []; // 日付文字列をキーとして使用
+        const dateEvents = events[dateStr] || [];
+        // 各イベントに日付を追加
+        const dayEvents: Array<{id: string, title: string, description?: string, color?: string | null, date?: string}> = dateEvents.map(event => ({ ...event, date: dateStr }));
         const hasPracticeRecord = dayData?.hasRecord || false; // 練習時間が記録されたか（タイマー、クイック、手動入力など）
         const hasBasicPractice = dayData?.hasBasicPractice || false; // 基礎練（input_method: 'preset'）があるか
         const hasRecording = dayRecordings?.hasRecording || false;
@@ -1258,8 +1262,9 @@ export default function CalendarScreen() {
         event={uiState.selectedEvent ? {
           id: uiState.selectedEvent!.id,
           title: uiState.selectedEvent!.title,
-          date: '', // カレンダーから開く場合は日付は不要
+          date: uiState.selectedEvent!.date || formatLocalDate(uiState.selectedDate || new Date()),
           description: uiState.selectedEvent!.description,
+          color: uiState.selectedEvent!.color || undefined,
           is_completed: false
         } : undefined}
         onEventSaved={async () => {

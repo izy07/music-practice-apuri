@@ -387,8 +387,22 @@ export default function InstrumentHeader() {
     // モーダルを閉じてから遷移
     setShowLearningTools(false);
     
-    // シンプルにrouter.replaceで遷移
+    // モーダルが閉じるのを待ってから遷移（Web環境で確実に動作するように）
+    setTimeout(() => {
+      try {
+        // Web環境ではrouter.pushを使用（router.replaceが正しく動作しない場合があるため）
+        if (Platform.OS === 'web') {
+          router.push(targetRoute as any);
+        } else {
+          // モバイル環境ではrouter.replaceを使用
     router.replace(targetRoute as any);
+        }
+      } catch (error) {
+        logger.error('学習ツールからのナビゲーションエラー:', error);
+        // エラー時はpushで再試行
+        router.push(targetRoute as any);
+      }
+    }, 150); // 少し長めの遅延（モーダルのアニメーションが完了するのを待つ）
   };
 
   return (
@@ -500,20 +514,15 @@ export default function InstrumentHeader() {
                 </Text>
               </TouchableOpacity>
               
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.toolItem}
                 onPress={() => {
-                  setShowLearningTools(false);
-                  Alert.alert(
-                    language === 'en' ? 'Music Dictionary' : '音楽用語辞典',
-                    language === 'en' ? 'This feature is currently under development' : 'この機能は現在開発中です',
-                    [{ text: 'OK' }]
-                  );
+                  navigateFromLearningTools('/(tabs)/music-dictionary');
                 }}
               >
                 <BookOpen size={24} color="#2196F3" />
                 <Text style={[styles.toolText, { color: currentTheme.text }]}>
-                  {language === 'en' ? 'Music Dictionary (Not Implemented)' : '音楽用語辞典(未実装)'}
+                  {language === 'en' ? 'Music Dictionary' : '音楽用語辞典'}
                 </Text>
               </TouchableOpacity>
               
