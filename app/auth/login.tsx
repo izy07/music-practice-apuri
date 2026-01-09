@@ -124,6 +124,37 @@ export default function LoginScreen() {
         }
       }
       
+      // 既存ユーザーの場合、最近使った楽器を取得してカレンダー画面に遷移
+      // 楽器が選択されていない場合でも、user_instrument_profilesから最新の楽器を取得
+      if (user && !hasInstrumentSelected() && !needsTutorial()) {
+        // useEffect内で非同期処理を行うため、async関数を定義して呼び出す
+        (async () => {
+          try {
+            const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
+              .from('user_instrument_profiles')
+              .select('instrument_id, updated_at, created_at')
+              .eq('user_id', user.id)
+              .order('updated_at', { ascending: false })
+              .limit(1);
+            
+            if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
+              const recentInstrumentId = instrumentProfiles[0].instrument_id;
+              logger.debug('既存ユーザー - 最近使った楽器を取得してカレンダー画面に遷移', { 
+                instrumentId: recentInstrumentId,
+                userId: user.id
+              });
+              // カレンダー画面に直接遷移（楽器はInstrumentThemeContextで設定される）
+              router.push('/(tabs)/index');
+              return;
+            }
+          } catch (error) {
+            logger.debug('最近使った楽器の取得エラー（続行）:', error);
+            // エラー時は通常の画面遷移処理に進む
+          }
+        })();
+        return; // 非同期処理を開始したら、ここでreturnして通常の画面遷移処理をスキップ
+      }
+      
       // 適切な画面に遷移（統一関数を使用）
       navigateToAppropriateScreen(router, {
         user,
@@ -132,7 +163,7 @@ export default function LoginScreen() {
         canAccessMainApp,
       });
     }
-  }, [isAuthenticated, isLoading, isLoggingIn, hasInstrumentSelected, needsTutorial, canAccessMainApp, router]);
+  }, [isAuthenticated, isLoading, isLoggingIn, hasInstrumentSelected, needsTutorial, canAccessMainApp, router, user]);
   
   // タイムアウト時のフォールバック: isLoggingInがtrueのままになっている場合の安全装置
   useEffect(() => {

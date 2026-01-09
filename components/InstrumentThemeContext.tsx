@@ -372,7 +372,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     // ログアウト時（userがnullになった場合）
     if (!user) {
       if (currentUserId) {
-        // ログアウト時はストレージをクリア
+        // ログアウト時はストレージをクリア（基本キー）
         AsyncStorage.multiRemove([
           getKey(STORAGE_KEYS.selectedInstrument),
           getKey(STORAGE_KEYS.customTheme),
@@ -382,11 +382,30 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
           ErrorHandler.handle(error, 'ログアウト時のストレージクリア', false);
         });
         
+        // 楽器IDを含むキーもすべて削除（カスタムテーマが楽器ごとに保存されているため）
+        AsyncStorage.getAllKeys().then((allKeys) => {
+          const themeKeys = allKeys.filter(key => 
+            (key.includes('customTheme') || key.includes('isCustomTheme')) &&
+            (key.includes(currentUserId) || key.startsWith('customTheme') || key.startsWith('isCustomTheme'))
+          );
+          
+          if (themeKeys.length > 0) {
+            AsyncStorage.multiRemove(themeKeys).catch((error) => {
+              logger.warn('楽器IDを含むカスタムテーマキーの削除エラー（無視）:', error);
+            });
+            logger.debug('楽器IDを含むカスタムテーマキーを削除しました:', themeKeys);
+          }
+        }).catch((error) => {
+          logger.warn('カスタムテーマキーの取得エラー（無視）:', error);
+        });
+        
         if (!cancelled) {
           setSelectedInstrumentState('');
           setCurrentUserId('');
           setDbInstruments(defaultInstruments);
           setCurrentThemeState(defaultInstruments[0] || defaultTheme);
+          setIsCustomTheme(false);
+          setCustomThemeState(null);
         }
       }
       return;
@@ -404,6 +423,23 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         getKey(STORAGE_KEYS.practiceSettings, currentUserId),
       ]).catch((error) => {
         ErrorHandler.handle(error, 'ユーザー切り替え時のストレージクリア', false);
+      });
+      
+      // 以前のユーザーの楽器IDを含むカスタムテーマキーもすべて削除
+      AsyncStorage.getAllKeys().then((allKeys) => {
+        const themeKeys = allKeys.filter(key => 
+          (key.includes('customTheme') || key.includes('isCustomTheme')) &&
+          (key.includes(currentUserId) || key.startsWith('customTheme') || key.startsWith('isCustomTheme'))
+        );
+        
+        if (themeKeys.length > 0) {
+          AsyncStorage.multiRemove(themeKeys).catch((error) => {
+            logger.warn('以前のユーザーのカスタムテーマキー削除エラー（無視）:', error);
+          });
+          logger.debug('以前のユーザーのカスタムテーマキーを削除しました:', themeKeys);
+        }
+      }).catch((error) => {
+        logger.warn('カスタムテーマキーの取得エラー（無視）:', error);
       });
       
       if (!cancelled) {

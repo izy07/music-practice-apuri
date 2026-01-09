@@ -37,7 +37,7 @@ if [ -f "scripts/enforce-migration-consistency.sh" ]; then
   }
 else
   echo "❌ enforce-migration-consistency.shが見つかりません"
-  exit 1
+      exit 1
 fi
 
 # 3. Supabase環境の完全クリーンアップとリセット

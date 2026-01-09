@@ -1380,25 +1380,3 @@ export const checkMyLibraryLimit = async (
     return { canAdd: true, currentCount: 0, limit: fallbackLimit };
   }
 };
-
-      error,
-      userId,
-      instrumentId
-    });
-    ErrorHandler.handle(error, 'マイライブラリ制限チェック', false);
-    // エラー時は許可（フォールバック）
-    const fallbackLimit = FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT;
-    return { canAdd: true, currentCount: 0, limit: fallbackLimit };
-  }
-};
-
-      error,
-      userId,
-      instrumentId
-    });
-    ErrorHandler.handle(error, 'マイライブラリ制限チェック', false);
-    // エラー時は許可（フォールバック）
-    const fallbackLimit = FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT;
-    return { canAdd: true, currentCount: 0, limit: fallbackLimit };
-  }
-};

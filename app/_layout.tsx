@@ -19,8 +19,6 @@ import { checkDatabaseSchema } from '@/lib/databaseSchemaChecker'; // データ�
 import { initializeGoalRepository } from '@/repositories/goalRepository'; // 目標リポジトリの初期化
 import audioResourceManager from '@/lib/audioResourceManager'; // オーディオリソース管理
 import { isOnline } from '@/lib/offlineStorage'; // ネットワーク状態確認
-import { isOnline } from '@/lib/offlineStorage'; // ネットワーク状態確認
-import { isOnline } from '@/lib/offlineStorage'; // ネットワーク状態確認
 
 // Web環境ではexpo-status-barをインポートしない
 type StatusBarComponent = React.ComponentType<{ style: 'dark' | 'light' | 'auto' }>;
@@ -713,7 +711,18 @@ function RootLayoutContent() {
     }
     
     // 楽器未選択の場合の処理
+    // 重要: ログイン画面にいる場合は、ここから楽器選択画面に遷移しない
+    // ログイン画面のuseEffectで画面遷移が処理されるため
     if (!hasInstrumentSelected()) {
+      // ログイン画面にいる場合は、ログイン画面のuseEffectで処理されるためスキップ
+      if (isInAuthGroup) {
+        const authChild = segments.length > 1 ? segments[1] : undefined;
+        if (authChild === 'login') {
+          logger.debug('楽器未選択・ログイン画面 - ログイン画面のuseEffectで画面遷移を処理', { segments: currentSegments });
+          return; // ログイン画面のuseEffectで処理されるため、ここでは何もしない
+        }
+      }
+      
       // チュートリアル画面にいる場合は許可（遷移をブロックしない）
       if (currentTab === 'tutorial') {
         return; // 遷移を許可

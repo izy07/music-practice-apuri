@@ -9,6 +9,7 @@ import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { levels } from '../data/_levels';
 import { getInstrumentId } from '@/lib/instrumentUtils';
+import { useSegments } from 'expo-router';
 
 const LEVEL_CACHE_KEY_PREFIX = 'user_practice_level';
 
@@ -38,6 +39,7 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
   const [isFirstTime, setIsFirstTime] = useState(true);
   const [userLevel, setUserLevel] = useState<string | null>(null);
   const [hasSelectedLevel, setHasSelectedLevel] = useState(false);
+  const segments = useSegments(); // 現在のルートを取得
 
   /**
    * 楽器ごとのレベルキャッシュキーを取得
@@ -165,6 +167,17 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
         logger.debug('再確認時のキャッシュ読み込みエラー（無視）:', doubleCheckError);
       }
       
+      // 楽器選択画面にいる場合はモーダルを表示しない
+      const isInstrumentSelectionScreen = segments.some(segment => segment === 'instrument-selection');
+      if (isInstrumentSelectionScreen) {
+        logger.debug('楽器選択画面にいるため、レベルモーダルを表示しません');
+        setIsFirstTime(true);
+        setHasSelectedLevel(false);
+        setUserLevel(null);
+        setShowLevelModal(false);
+        return;
+      }
+      
       setIsFirstTime(true);
       setHasSelectedLevel(false);
       setUserLevel(null);
@@ -190,19 +203,38 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
           logger.debug('✅ エラー時のフォールバック: ローカルキャッシュからレベル復元:', { level, cacheKey });
         } else {
           // キャッシュもない場合はモーダルを表示
-          logger.warn('⚠️ キャッシュもないため、モーダルを表示', { instrumentId, cacheKey });
+          // ただし、楽器選択画面にいる場合は表示しない
+          const isInstrumentSelectionScreen = segments.some(segment => segment === 'instrument-selection');
+          if (isInstrumentSelectionScreen) {
+            logger.debug('楽器選択画面にいるため、レベルモーダルを表示しません');
+            setIsFirstTime(true);
+            setHasSelectedLevel(false);
+            setUserLevel(null);
+            setShowLevelModal(false);
+          } else {
+            logger.warn('⚠️ キャッシュもないため、モーダルを表示', { instrumentId, cacheKey });
+            setIsFirstTime(true);
+            setHasSelectedLevel(false);
+            setUserLevel(null);
+            setShowLevelModal(true);
+          }
+        }
+      } catch (cacheError) {
+        logger.error('❌ キャッシュ読み込みエラー:', cacheError);
+        // エラー時もモーダルを表示（ただし、楽器選択画面にいる場合は表示しない）
+        const isInstrumentSelectionScreen = segments.some(segment => segment === 'instrument-selection');
+        if (isInstrumentSelectionScreen) {
+          logger.debug('楽器選択画面にいるため、レベルモーダルを表示しません');
+          setIsFirstTime(true);
+          setHasSelectedLevel(false);
+          setUserLevel(null);
+          setShowLevelModal(false);
+        } else {
           setIsFirstTime(true);
           setHasSelectedLevel(false);
           setUserLevel(null);
           setShowLevelModal(true);
         }
-      } catch (cacheError) {
-        logger.error('❌ キャッシュ読み込みエラー:', cacheError);
-        // エラー時もモーダルを表示
-        setIsFirstTime(true);
-        setHasSelectedLevel(false);
-        setUserLevel(null);
-        setShowLevelModal(true);
       }
     }
   }, [selectedInstrument, getLevelCacheKey]);
@@ -399,6 +431,16 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
     // 楽器変更直後はモーダルを表示しない（一瞬表示されるのを防ぐ）
     // デバウンスを追加して、楽器変更が完了してからレベル確認を実行
     instrumentChangeTimeoutRef.current = setTimeout(async () => {
+      // 楽器選択画面にいる場合はレベル確認をスキップ
+      const isInstrumentSelectionScreen = segments.some(segment => segment === 'instrument-selection');
+      if (isInstrumentSelectionScreen) {
+        logger.debug('楽器選択画面にいるため、レベル確認をスキップします');
+        if (isMounted) {
+          setShowLevelModal(false);
+        }
+        return;
+      }
+      
       // 楽器が選択されている場合のみチェック
       const instrumentId = getInstrumentId(selectedInstrument);
       if (instrumentId) {

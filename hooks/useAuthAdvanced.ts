@@ -2003,12 +2003,14 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           key.startsWith('timer_') ||
           key.includes('selectedInstrument') ||
           key.includes('customTheme') ||
+          key.includes('isCustomTheme') ||
           key.includes('practiceSettings') ||
           key.includes('user_practice_level')
         );
         
         if (userDataKeys.length > 0) {
           await AsyncStorage.multiRemove(userDataKeys);
+          logger.debug('AsyncStorageからユーザーデータを削除しました:', userDataKeys.length, '個のキー');
         }
       } catch (error) {
         logger.error('AsyncStorageクリアエラー:', error);

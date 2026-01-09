@@ -67,7 +67,7 @@ if [ "$MIGRATION_COUNT_AFTER_CLEANUP" -ne 1 ]; then
   echo "📄 見つかったファイル:"
   find supabase/migrations -name "*.sql" -type f || true
   # 再度整合性を強制
-  if [ -f "scripts/enforce-migration-consistency.sh" ]; then
+if [ -f "scripts/enforce-migration-consistency.sh" ]; then
     bash scripts/enforce-migration-consistency.sh
   else
     find supabase/migrations -name "*.sql" -type f ! -name "20251219000000_initial_schema.sql" -exec rm -f {} \; 2>/dev/null || true

@@ -41,16 +41,16 @@ describe('goalRepository', () => {
       const mockGoals = [
         { id: 'goal-1', title: 'Test Goal 1', user_id: mockUserId, instrument_id: mockInstrumentId },
       ];
-      (supabase.from as jest.Mock).mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockReturnThis(),
-        order: jest.fn().mockResolvedValue({ data: mockGoals, error: null }),
-      });
+    (supabase.from as jest.Mock).mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      eq: jest.fn().mockReturnThis(),
+      order: jest.fn().mockResolvedValue({ data: mockGoals, error: null }),
+    });
 
       const result = await goalRepository.getGoals(mockUserId, mockInstrumentId);
 
-      expect(result).toEqual(mockGoals);
-    });
+    expect(result).toEqual(mockGoals);
+  });
 
     it('エラー時は空配列を返す', async () => {
       (supabase.from as jest.Mock).mockReturnValue({
@@ -129,18 +129,18 @@ describe('goalRepository', () => {
         user_id: mockUserId,
         goal_type: 'personal_short',
       };
-      (supabase.from as jest.Mock).mockReturnValue({
-        insert: jest.fn().mockReturnThis(),
-        select: jest.fn().mockReturnThis(),
-        single: jest.fn().mockResolvedValue({ data: mockGoal, error: null }),
-      });
+    (supabase.from as jest.Mock).mockReturnValue({
+      insert: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      single: jest.fn().mockResolvedValue({ data: mockGoal, error: null }),
+    });
 
       await goalRepository.createGoal(mockUserId, {
-        title: 'Test Goal',
-        goal_type: 'personal_short',
-      });
+      title: 'Test Goal',
+      goal_type: 'personal_short',
+    });
 
-      expect(supabase.from).toHaveBeenCalledWith('goals');
+    expect(supabase.from).toHaveBeenCalledWith('goals');
     });
 
     it('楽器IDを含めて目標を作成できる', async () => {
