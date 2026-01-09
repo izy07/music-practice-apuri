@@ -2070,7 +2070,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                             if (isDisabledByDailyLimit) {
                               Alert.alert(
                                 '1日の録音数制限に達しました',
-                                dailyLimitStatus?.reason || `本日は既に${maxDailyRecordings}個の録音があります。`,
+                                (dailyLimitStatus as any)?.reason || `本日は既に${maxDailyRecordings}個の録音があります。`,
                                 [
                                   { text: 'キャンセル', style: 'cancel' },
                                   { text: entitlement?.isEntitled ? '了解' : 'プレミアムを見る', onPress: () => {
