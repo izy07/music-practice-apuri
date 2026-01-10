@@ -596,24 +596,27 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     const userId = user.id;
     
     // 既に処理中の場合は、そのPromiseを返す（同じユーザーIDに対する処理を共有）
-    // ただし、タイムアウトしている可能性があるため、一定時間（15秒）以内に完了しない場合は新しい処理を開始
-    // 並列実行により最大8秒で完了するはずだが、念のため余裕を持たせる
+    // タイムアウトチェックを改善: 既存のPromiseが完了するまで待機し、完了した場合はその結果を返す
+    // タイムアウトした場合は、既存のPromiseを削除して新しい処理を開始する
     const existingPromise = globalProcessingPromises.get(userId);
     if (existingPromise) {
       logger.debug('handleAuthenticatedUser: 既に処理中のため、既存のPromiseを待機します', { userId, email: user.email });
       try {
-        // タイムアウトチェック付きで待機（15秒以内に完了しない場合は新しい処理を開始）
-        // 並列実行により最大8秒で完了するはずだが、ネットワークが遅い場合に備えて15秒に設定
+        // タイムアウトチェック付きで待機（30秒以内に完了しない場合は新しい処理を開始）
+        // プロフィール取得のタイムアウトが5秒、楽器取得のタイムアウトが5秒、フォールバック処理が含まれるため、30秒に設定
         const timeoutPromise = new Promise<null>((resolve) => {
-          setTimeout(() => resolve(null), 15000);
+          setTimeout(() => {
+            logger.warn('既存のhandleAuthenticatedUserがタイムアウトしました（30秒）。新しい処理を開始します。', { userId });
+            globalProcessingPromises.delete(userId);
+            resolve(null);
+          }, 30000);
         });
         const result = await Promise.race([existingPromise, timeoutPromise]);
         if (result) {
+          logger.debug('既存のhandleAuthenticatedUserが完了しました。結果を返します。', { userId });
           return result;
         }
-        // タイムアウトした場合は、既存のPromiseを削除して新しい処理を開始
-        logger.warn('既存のhandleAuthenticatedUserがタイムアウトしました。新しい処理を開始します。', { userId });
-        globalProcessingPromises.delete(userId);
+        // タイムアウトした場合は、既に削除されているので新しい処理を開始
       } catch (error) {
         // 既存のPromiseでエラーが発生した場合は、新しい処理を開始
         logger.warn('既存のhandleAuthenticatedUserでエラーが発生しました。新しい処理を開始します。', { userId, error });
