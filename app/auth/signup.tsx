@@ -592,16 +592,16 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   loginLinkContainer: {
-    marginTop: 12,
+    marginTop: 8,
     alignItems: 'center',
   },
   loginText: {
     color: colors.textSecondary,
     fontSize: 15,
-    marginBottom: 6,
+    marginBottom: 4,
   },
   loginLinkButton: {
-    paddingVertical: 8,
+    paddingVertical: 6,
     paddingHorizontal: 16,
   },
   loginLinkText: {
@@ -611,7 +611,7 @@ const styles = StyleSheet.create({
   },
   termsContainer: {
     width: '100%',
-    marginTop: 12,
+    marginTop: 8,
     paddingHorizontal: 5,
   },
   termsTextContainer: {
