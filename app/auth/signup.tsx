@@ -469,20 +469,20 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     alignItems: 'center',
     backgroundColor: colors.background,
-    paddingVertical: 10,
+    paddingVertical: 5,
     minHeight: '100%',
   },
   container: {
     width: '100%',
     maxWidth: 400,
     alignItems: 'center',
-    padding: 15,
+    padding: 10,
   },
   card: {
     width: '100%',
     backgroundColor: colors.surface,
     borderRadius: 12,
-    padding: 20,
+    padding: 16,
     alignItems: 'center',
     ...createShadowStyle({
       shadowColor: colors.primary,
@@ -495,11 +495,11 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: 'bold',
     color: colors.primary,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   inputGroup: {
     width: '100%',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   label: {
     fontSize: 15,
@@ -551,7 +551,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FED7D7',
     padding: 10,
     borderRadius: 8,
-    marginBottom: 20,
+    marginBottom: 12,
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.error,
@@ -575,7 +575,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 15,
+    marginTop: 12,
     ...createShadowStyle({
       shadowColor: colors.secondary,
       shadowOpacity: 0.2,
@@ -592,13 +592,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   loginLinkContainer: {
-    marginTop: 15,
+    marginTop: 12,
     alignItems: 'center',
   },
   loginText: {
     color: colors.textSecondary,
     fontSize: 15,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   loginLinkButton: {
     paddingVertical: 8,
@@ -611,7 +611,7 @@ const styles = StyleSheet.create({
   },
   termsContainer: {
     width: '100%',
-    marginTop: 15,
+    marginTop: 12,
     paddingHorizontal: 5,
   },
   termsTextContainer: {
@@ -637,7 +637,7 @@ const styles = StyleSheet.create({
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 20,
+    marginVertical: 12,
     width: '100%',
   },
   dividerLine: {
