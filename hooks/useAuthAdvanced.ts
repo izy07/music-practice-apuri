@@ -1045,10 +1045,18 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     
     try {
       const result = await processPromise;
+      // 処理完了後にPromiseを削除（成功した場合のみ）
+      // 既存のPromiseがタイムアウトした場合、新しいPromiseが作成されるため、削除を確実にする
+      if (globalProcessingPromises.get(userId) === processPromise) {
+        globalProcessingPromises.delete(userId);
+      }
       return result;
-    } finally {
-      // 処理完了後にPromiseを削除（必ず実行される）
-      globalProcessingPromises.delete(userId);
+    } catch (error) {
+      // エラー時もPromiseを削除（現在のPromiseであることを確認）
+      if (globalProcessingPromises.get(userId) === processPromise) {
+        globalProcessingPromises.delete(userId);
+      }
+      throw error;
     }
   }, []);
 
