@@ -22,7 +22,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useSegments } from 'expo-router';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
@@ -54,6 +54,7 @@ export default function LoginScreen() {
   }
   
   const router = useRouter();
+  const segments = useSegments();
   const {
     signIn,
     signInWithGoogle,
@@ -91,9 +92,30 @@ export default function LoginScreen() {
 
   // 認証状態に応じた自動遷移（ログイン成功後の画面遷移）
   useEffect(() => {
+    // 現在の画面が新規登録画面の場合は処理をスキップ（ログイン画面のuseEffectが実行されないようにする）
+    const segmentsArray = Array.isArray(segments) ? segments : [segments];
+    const isInSignupScreen = segmentsArray.length >= 2 && segmentsArray[0] === 'auth' && segmentsArray[segmentsArray.length - 1] === 'signup';
+    if (isInSignupScreen) {
+      logger.debug('ログイン画面のuseEffect - 新規登録画面にいるため処理をスキップ', { segments: segmentsArray });
+      return;
+    }
+    
+    // ログイン画面にいることを確認（ログイン画面にいない場合は処理をスキップ）
+    const isInLoginScreen = segmentsArray.length >= 2 && segmentsArray[0] === 'auth' && segmentsArray[segmentsArray.length - 1] === 'login';
+    if (!isInLoginScreen) {
+      logger.debug('ログイン画面のuseEffect - ログイン画面にいないため処理をスキップ', { segments: segmentsArray });
+      return;
+    }
+    
     // ログイン画面にいる間は、認証状態が更新されたら適切な画面に遷移
     // isLoggingInがtrueの時（ログイン処理中）またはfalseの時（ログイン処理完了後）の両方で画面遷移を実行
     if (isAuthenticated && !isLoading) {
+      logger.debug('[ログイン画面] 認証状態更新を検出 - 画面遷移を実行', {
+        isAuthenticated,
+        isLoading,
+        isLoggingIn,
+        segments: segmentsArray,
+      });
       logger.debug('ログイン成功 - 認証状態検出、画面遷移を実行', {
         isAuthenticated,
         isLoading,
@@ -126,7 +148,17 @@ export default function LoginScreen() {
       
       // 既存ユーザーの場合、最近使った楽器を取得してカレンダー画面に遷移
       // 楽器が選択されていない場合でも、user_instrument_profilesから最新の楽器を取得
+      // 注意: この処理は非同期のため、完了まで待機する必要がある
+      // しかし、楽器プロフィールが見つからない場合やエラーが発生した場合は、通常の画面遷移処理に進む
+      logger.debug('[ログイン画面] 条件チェック', {
+        hasUser: !!user,
+        hasInstrument: hasInstrumentSelected(),
+        needsTutorial: needsTutorial(),
+        shouldCheckRecentInstrument: user && !hasInstrumentSelected() && !needsTutorial(),
+      });
+      
       if (user && !hasInstrumentSelected() && !needsTutorial()) {
+        logger.debug('[ログイン画面] 最近使った楽器を取得して画面遷移を試みます', { userId: user.id });
         // useEffect内で非同期処理を行うため、async関数を定義して呼び出す
         (async () => {
           try {
@@ -146,24 +178,58 @@ export default function LoginScreen() {
               // カレンダー画面に直接遷移（楽器はInstrumentThemeContextで設定される）
               router.push('/(tabs)/index');
               return;
+            } else {
+              // 楽器プロフィールが見つからない場合、通常の画面遷移処理に進む
+              logger.debug('[ログイン画面] 楽器プロフィールが見つからないため、通常の画面遷移処理を実行');
+              navigateToAppropriateScreen(router, {
+                user,
+                hasInstrumentSelected,
+                needsTutorial,
+                canAccessMainApp,
+              });
             }
           } catch (error) {
-            logger.debug('最近使った楽器の取得エラー（続行）:', error);
+            logger.error('[ログイン画面] 最近使った楽器の取得エラー（続行）:', error);
             // エラー時は通常の画面遷移処理に進む
+            navigateToAppropriateScreen(router, {
+              user,
+              hasInstrumentSelected,
+              needsTutorial,
+              canAccessMainApp,
+            });
           }
         })();
         return; // 非同期処理を開始したら、ここでreturnして通常の画面遷移処理をスキップ
       }
       
       // 適切な画面に遷移（統一関数を使用）
-      navigateToAppropriateScreen(router, {
-        user,
-        hasInstrumentSelected,
-        needsTutorial,
-        canAccessMainApp,
+      // ユーザーが存在しない場合や、楽器が選択されている場合、またはチュートリアルが必要な場合はここで処理
+      logger.debug('[ログイン画面] navigateToAppropriateScreenを呼び出し（通常の画面遷移）', {
+        hasUser: !!user,
+        hasInstrument: hasInstrumentSelected(),
+        needsTutorial: needsTutorial(),
+        canAccessMain: canAccessMainApp(),
+        userSelectedInstrumentId: user?.selected_instrument_id,
       });
+      
+      try {
+        navigateToAppropriateScreen(router, {
+          user,
+          hasInstrumentSelected,
+          needsTutorial,
+          canAccessMainApp,
+        });
+      } catch (navError) {
+        logger.error('[ログイン画面] navigateToAppropriateScreen呼び出しエラー:', navError);
+        // エラー時はフォールバックとして楽器選択画面に遷移
+        try {
+          router.push('/(tabs)/instrument-selection');
+        } catch (fallbackError) {
+          logger.error('[ログイン画面] フォールバック画面遷移も失敗:', fallbackError);
+        }
+      }
     }
-  }, [isAuthenticated, isLoading, isLoggingIn, hasInstrumentSelected, needsTutorial, canAccessMainApp, router, user]);
+  }, [isAuthenticated, isLoading, isLoggingIn, hasInstrumentSelected, needsTutorial, canAccessMainApp, router, user, segments]);
   
   // タイムアウト時のフォールバック: isLoggingInがtrueのままになっている場合の安全装置
   useEffect(() => {

@@ -57,9 +57,10 @@ export default function RecordingsLibraryScreen() {
   const [recordingTypeFilter, setRecordingTypeFilter] = useState<'all' | 'performance' | 'lesson'>('all'); // 録音種類フィルター
   const scrollViewRef = useRef<ScrollView>(null);
 
+  // 録音種類フィルターが変更された時にデータを再読み込み
   useEffect(() => {
     loadRecordings();
-  }, [entitlement]);
+  }, [entitlement, recordingTypeFilter]);
 
   // Audioオブジェクトのクリーンアップ（メモリリーク防止）
   useEffect(() => {
@@ -73,11 +74,12 @@ export default function RecordingsLibraryScreen() {
     };
   }, [audioElement]);
 
-  // 画面がフォーカスされた時にデータを再読み込み
+  // 画面がフォーカスされた時にデータを再読み込み（楽器変更時のみ）
   useFocusEffect(
     React.useCallback(() => {
+      // 楽器が変更された場合のみ再読み込み（フィルター変更時はuseEffectで処理）
       loadRecordings();
-    }, [entitlement, selectedInstrument, recordingTypeFilter])
+    }, [entitlement, selectedInstrument])
   );
 
   const loadRecordings = async () => {

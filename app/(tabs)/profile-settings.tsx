@@ -1346,22 +1346,6 @@ export default function ProfileSettingsScreen() {
               </View>
             </View>
 
-            <View style={styles.formRow}>
-              <View style={styles.formItem}>
-                <Text style={[styles.formLabel, { color: currentTheme.textSecondary }]}>現在の年齢</Text>
-                <View style={[styles.experienceDisplayNew, { 
-                  backgroundColor: currentTheme.background,
-                  borderColor: currentTheme.secondary
-                }]}>
-                  <Text style={[styles.experienceTextNew, { color: currentTheme.text }]}>
-                    {currentAge ? `${currentAge}歳` : '未設定'}
-                  </Text>
-                  <Text style={[styles.experienceSubtext, { color: currentTheme.textSecondary }]}>
-                    （誕生日から自動計算）
-                  </Text>
-                </View>
-              </View>
-            </View>
 
             <View style={styles.formRow}>
               <View style={styles.formItem}>

@@ -646,7 +646,7 @@ export default function InstrumentHeader() {
                 activeOpacity={0.85}
               >
                 <Text style={[styles.modalActionText, { color: currentTheme.surface }]}>
-                  {language === 'en' ? 'View Representative Songs' : '代表曲を見る'}
+                  {language === 'en' ? 'View Songs' : '楽器が登場する曲一覧を見る'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity

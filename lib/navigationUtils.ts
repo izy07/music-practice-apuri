@@ -34,6 +34,12 @@ export const navigateToAppropriateScreen = (
   }
 ): void => {
   try {
+    logger.debug('[navigateToAppropriateScreen] 画面遷移判定開始', {
+      hasUser: !!options?.user,
+      selectedInstrumentId: options?.user?.selected_instrument_id,
+      tutorialCompleted: options?.user?.tutorial_completed,
+    });
+    
     // オプションが指定されていない場合は、useAuthAdvanced から取得
     // 注意: この関数は hook の外で呼ばれる可能性があるため、
     // オプションで渡された値を使用することを推奨
@@ -41,30 +47,36 @@ export const navigateToAppropriateScreen = (
     const canAccess = options?.canAccessMainApp?.() ?? false;
     const needsTut = options?.needsTutorial?.() ?? false;
     
+    logger.debug('[navigateToAppropriateScreen] 判定結果', {
+      hasSelectedInstrument,
+      canAccess,
+      needsTut,
+    });
+    
     // タイムアウト時のフォールバックユーザーの判定
     const isTimeoutFallback = options?.user && !options.user.selected_instrument_id && options.user.tutorial_completed === true;
     
     if (hasSelectedInstrument || canAccess || isTimeoutFallback) {
-      logger.debug('カレンダー画面に遷移（最後に使用していた楽器のメイン画面）', { 
+      logger.debug('[navigateToAppropriateScreen] カレンダー画面に遷移（最後に使用していた楽器のメイン画面）', { 
         isTimeoutFallback,
         hasSelectedInstrument,
         selectedInstrumentId: options?.user?.selected_instrument_id
       });
       router.push('/(tabs)/index');
     } else if (needsTut) {
-      logger.debug('チュートリアル画面に遷移');
+      logger.debug('[navigateToAppropriateScreen] チュートリアル画面に遷移');
       router.push('/(tabs)/tutorial');
     } else {
-      logger.debug('楽器選択画面に遷移');
+      logger.debug('[navigateToAppropriateScreen] 楽器選択画面に遷移');
       router.push('/(tabs)/instrument-selection');
     }
   } catch (error) {
-    logger.error('画面遷移エラー:', error);
+    logger.error('[navigateToAppropriateScreen] 画面遷移エラー:', error);
     // エラー時は安全にカレンダー画面に遷移
     try {
       router.push('/(tabs)/index');
     } catch (fallbackError) {
-      logger.error('フォールバック画面遷移も失敗:', fallbackError);
+      logger.error('[navigateToAppropriateScreen] フォールバック画面遷移も失敗:', fallbackError);
     }
   }
 };

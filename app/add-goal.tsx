@@ -14,6 +14,7 @@ import { goalService } from '@/services/goalService';
 import { checkGoalLimit, canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import { showFeatureLimitAlert, normalizeLimitResult, getDefaultAlertConfig } from '@/lib/featureAccessHelpers';
 
 interface NewGoal {
   title: string;
@@ -114,36 +115,51 @@ export default function AddGoalScreen() {
       // Freeプランの場合、新しい楽器でデータを保存できるかチェック
       const canSaveCheck = await canSaveDataForInstrument(user.id, instrumentId, entitlement);
       if (!canSaveCheck.canSave) {
-        Alert.alert(
-          'アップグレードが必要です',
-          canSaveCheck.reason || '新しい楽器で目標を追加するには、プレミアムへアップグレードしてください。',
-          [
-            { text: 'キャンセル', style: 'cancel' },
-            { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
-          ]
-        );
-        setIsLoading(false);
+        const normalizedResult = normalizeLimitResult(canSaveCheck, 'instrument_new');
+        const alertConfig = getDefaultAlertConfig('instrument_new');
+        
+        showFeatureLimitAlert({
+          result: {
+            ...normalizedResult,
+            title: alertConfig.defaultTitle,
+          },
+          defaultTitle: alertConfig.defaultTitle,
+          defaultMessage: normalizedResult.reason || '新しい楽器で目標を追加するには、プレミアムへアップグレードしてください。',
+          upgradeButtonText: alertConfig.upgradeButtonText,
+          router,
+          onCancel: () => {
+            setIsLoading(false);
+          },
+        });
         return;
       }
       
       // Freeプランの場合、目標設定数をチェック（各楽器ごとに2個まで）
       const limitCheck = await checkGoalLimit(user.id, instrumentId, entitlement);
       if (!limitCheck.canCreate) {
-        // 楽器名を取得
+        // 楽器名を取得（メッセージに含めるため）
         const { instrumentService, Instrument } = require('@/services/instrumentService');
         const defaultInstruments = instrumentService.getDefaultInstruments();
         const instrument = defaultInstruments.find((i: Instrument) => i.id === instrumentId);
         const instrumentName = instrument?.name || 'この楽器';
         
-        Alert.alert(
-          '上限に達しました',
-          `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
-          [
-            { text: 'キャンセル', style: 'cancel' },
-            { text: 'アップグレードしましょう', onPress: () => router.push('/(tabs)/pricing-plans') }
-          ]
-        );
-        setIsLoading(false);
+        const normalizedResult = normalizeLimitResult(limitCheck, 'goal_create');
+        const alertConfig = getDefaultAlertConfig('goal_create');
+        
+        showFeatureLimitAlert({
+          result: {
+            ...normalizedResult,
+            title: alertConfig.defaultTitle,
+            reason: `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
+          },
+          defaultTitle: alertConfig.defaultTitle,
+          defaultMessage: normalizedResult.reason || `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
+          upgradeButtonText: alertConfig.upgradeButtonText,
+          router,
+          onCancel: () => {
+            setIsLoading(false);
+          },
+        });
         return;
       }
       

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Dimensions, Linking, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ExternalLink, Youtube, Plus, Trash2 } from 'lucide-react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { supabase } from '@/lib/supabase';
@@ -87,11 +87,21 @@ export default function RepresentativeSongsScreen() {
   useEffect(() => {
     if (instrumentId) {
       loadSongs();
-      if (isAuthenticated && user) {
-        loadFavoriteSongs();
-      }
     }
-  }, [instrumentId, isAuthenticated, user]);
+  }, [instrumentId]);
+
+  // 画面がフォーカスされた時にデータを再読み込み（お気に入り曲が追加された場合に反映されるように）
+  useFocusEffect(
+    React.useCallback(() => {
+      if (instrumentId) {
+        // お気に入り曲を再読み込み（代表曲はキャッシュから取得されるため、お気に入り曲のみ再読み込み）
+        if (isAuthenticated && user) {
+          logger.debug('[代表曲画面] 画面フォーカス - お気に入り曲を再読み込み');
+          loadFavoriteSongs();
+        }
+      }
+    }, [instrumentId, isAuthenticated, user])
+  );
 
   const loadSongs = async () => {
     try {
@@ -205,10 +215,13 @@ export default function RepresentativeSongsScreen() {
 
   const loadFavoriteSongs = async () => {
     if (!isAuthenticated || !user || !instrumentId) {
+      logger.debug('[代表曲画面] お気に入り曲読み込みスキップ（認証なしまたは楽器IDなし）');
       return;
     }
 
     try {
+      logger.debug('[代表曲画面] お気に入り曲読み込み開始', { userId: user.id, instrumentId });
+      
       const { data, error } = await supabase
         .from('user_favorite_songs')
         .select('*')
@@ -226,10 +239,15 @@ export default function RepresentativeSongsScreen() {
         
         if (!isTableNotFound) {
           logger.error('[代表曲画面] お気に入り曲取得エラー:', error);
+          Alert.alert('エラー', `お気に入り曲の読み込みに失敗しました: ${error.message}`);
+        } else {
+          logger.debug('[代表曲画面] user_favorite_songsテーブルが存在しません（マイグレーション未適用の可能性）');
         }
         setFavoriteSongs([]);
         return;
       }
+
+      logger.debug('[代表曲画面] お気に入り曲取得成功:', (data || []).length, '曲');
 
       const favoriteSongsWithFlag = (data || []).map(song => ({
         ...song,
@@ -238,10 +256,23 @@ export default function RepresentativeSongsScreen() {
 
       setFavoriteSongs(favoriteSongsWithFlag);
       
-      // 代表曲とお気に入り曲を結合（現在のsongs状態を使用）
-      setSongs(prevSongs => [...prevSongs, ...favoriteSongsWithFlag]);
+      // 代表曲とお気に入り曲を結合
+      // まず、代表曲のみを取得（お気に入り曲を除外）
+      setSongs(prevSongs => {
+        // 既存のsongsからお気に入り曲（is_user_favoriteがtrueのもの）を除外
+        const representativeSongsOnly = prevSongs.filter(song => !('is_user_favorite' in song) || !song.is_user_favorite);
+        // 代表曲と新しいお気に入り曲を結合
+        const combinedSongs = [...representativeSongsOnly, ...favoriteSongsWithFlag];
+        logger.debug('[代表曲画面] 代表曲とお気に入り曲を結合:', {
+          representativeCount: representativeSongsOnly.length,
+          favoriteCount: favoriteSongsWithFlag.length,
+          totalCount: combinedSongs.length
+        });
+        return combinedSongs;
+      });
     } catch (error) {
       logger.error('[代表曲画面] お気に入り曲読み込みエラー:', error);
+      Alert.alert('エラー', `お気に入り曲の読み込みに失敗しました: ${error instanceof Error ? error.message : String(error)}`);
       setFavoriteSongs([]);
     }
   };
@@ -278,17 +309,40 @@ export default function RepresentativeSongsScreen() {
 
       if (error) {
         logger.error('[代表曲画面] お気に入り曲追加エラー:', error);
-        Alert.alert('エラー', `お気に入り曲の追加に失敗しました: ${error.message}`);
+        
+        // テーブルが存在しない場合のエラーメッセージを改善
+        const isTableNotFound = error.code === 'PGRST205' || 
+                                error.code === 'PGRST116' || 
+                                error.status === 404 ||
+                                error.message?.includes('Could not find the table') ||
+                                error.message?.includes('does not exist');
+        
+        if (isTableNotFound) {
+          Alert.alert(
+            'エラー', 
+            'お気に入り曲テーブルが存在しません。\n\nマイグレーションを適用してください:\n\n1. Supabaseダッシュボードにアクセス\n2. SQL Editorを開く\n3. supabase/migrations/20250110000000_create_user_favorite_songs.sql を実行'
+          );
+        } else {
+          Alert.alert('エラー', `お気に入り曲の追加に失敗しました: ${error.message}`);
+        }
         return;
       }
+
+      logger.debug('[代表曲画面] お気に入り曲追加成功:', data);
 
       const newFavoriteSong: UserFavoriteSong = {
         ...data,
         is_user_favorite: true,
       };
 
-      setFavoriteSongs([...favoriteSongs, newFavoriteSong]);
-      setSongs([...songs, newFavoriteSong]);
+      // 状態を更新（お気に入り曲リストと全体の曲リストの両方）
+      setFavoriteSongs(prev => [...prev, newFavoriteSong]);
+      setSongs(prev => [...prev, newFavoriteSong]);
+      
+      logger.debug('[代表曲画面] 状態更新完了:', {
+        favoriteSongsCount: favoriteSongs.length + 1,
+        totalSongsCount: songs.length + 1
+      });
       
       // フォームをリセット
       setNewSong({
@@ -385,7 +439,7 @@ export default function RepresentativeSongsScreen() {
           <TouchableOpacity onPress={() => safeGoBack(router, '/(tabs)/index', false)} style={styles.backButton}>
             <ArrowLeft size={24} color={currentTheme.text} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: currentTheme.text }]}>代表曲</Text>
+          <Text style={[styles.headerTitle, { color: currentTheme.text }]}>楽器が登場する曲一覧</Text>
           <View style={{ width: 24 }} />
         </View>
         <View style={[styles.loadingContainer, { backgroundColor: currentTheme.background }]}>
@@ -436,12 +490,12 @@ export default function RepresentativeSongsScreen() {
           </View>
         )}
 
-        {/* 代表曲・お気に入り曲一覧 */}
+        {/* 楽器が登場する曲・お気に入り曲一覧 */}
         <View style={styles.content}>
           {songs.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={[styles.emptyText, { color: currentTheme.textSecondary }]}>
-                代表曲が登録されていません
+                楽器が登場する曲が登録されていません
               </Text>
             </View>
           ) : (

@@ -13,6 +13,7 @@ import { checkMyLibraryLimit, canSaveDataForInstrument } from '@/lib/subscriptio
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { safeGoBack } from '@/lib/navigationUtils';
+import { showFeatureLimitAlert, normalizeLimitResult, getDefaultAlertConfig } from '@/lib/featureAccessHelpers';
 import { isColumnNotFoundError, handleColumnError } from '@/lib/columnErrorHandler';
 import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 
@@ -379,19 +380,22 @@ export default function MyLibraryScreen() {
         // 新規追加の場合、Freeプランで新しい楽器にデータを保存できるかチェック
         const canSaveCheck = await canSaveDataForInstrument(user.id, selectedInstrument, entitlement);
         if (!canSaveCheck.canSave) {
-          Alert.alert(
-            'アップグレードが必要です',
-            canSaveCheck.reason || '新しい楽器で楽曲を追加するには、プレミアムへアップグレードしてください。',
-            [
-              { text: 'キャンセル', style: 'cancel', onPress: () => {
-                setIsSaving(false);
-              }},
-              { text: 'プレミアムを見る', onPress: () => {
-                setIsSaving(false);
-                router.push('/(tabs)/pricing-plans');
-              }}
-            ]
-          );
+          const normalizedResult = normalizeLimitResult(canSaveCheck, 'instrument_new');
+          const alertConfig = getDefaultAlertConfig('instrument_new');
+          
+          showFeatureLimitAlert({
+            result: {
+              ...normalizedResult,
+              title: alertConfig.defaultTitle,
+            },
+            defaultTitle: alertConfig.defaultTitle,
+            defaultMessage: normalizedResult.reason || '新しい楽器で楽曲を追加するには、プレミアムへアップグレードしてください。',
+            upgradeButtonText: alertConfig.upgradeButtonText,
+            router,
+            onCancel: () => {
+              setIsSaving(false);
+            },
+          });
           return;
         }
         
@@ -413,19 +417,23 @@ export default function MyLibraryScreen() {
         setLibraryLimitStatus(limitCheck);
         
         if (!limitCheck.canAdd) {
-          Alert.alert(
-            '制限に達しました',
-            `Freeプランでは各楽器ごとに楽曲を${limitCheck.limit}曲まで追加できます。\n現在の曲数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nこれ以上追加するには、プレミアムへアップグレードしてください。`,
-            [
-              { text: 'キャンセル', style: 'cancel', onPress: () => {
-                setIsSaving(false);
-              }},
-              { text: 'アップグレード', onPress: () => {
-                setIsSaving(false);
-                router.push('/(tabs)/pricing-plans');
-              }}
-            ]
-          );
+          const normalizedResult = normalizeLimitResult(limitCheck, 'library_add');
+          const alertConfig = getDefaultAlertConfig('library_add');
+          
+          showFeatureLimitAlert({
+            result: {
+              ...normalizedResult,
+              title: '制限に達しました',
+              reason: `Freeプランでは各楽器ごとに楽曲を${limitCheck.limit}曲まで追加できます。\n現在の曲数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nこれ以上追加するには、プレミアムへアップグレードしてください。`,
+            },
+            defaultTitle: '制限に達しました',
+            defaultMessage: `Freeプランでは各楽器ごとに楽曲を${limitCheck.limit}曲まで追加できます。\n現在の曲数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nこれ以上追加するには、プレミアムへアップグレードしてください。`,
+            upgradeButtonText: 'アップグレード',
+            router,
+            onCancel: () => {
+              setIsSaving(false);
+            },
+          });
           return;
         }
         
@@ -802,16 +810,20 @@ export default function MyLibraryScreen() {
       setLibraryLimitStatus(limitCheck);
       
       if (!limitCheck.canAdd) {
-        Alert.alert(
-          '上限に達しました',
-          `Freeプランでは各楽器ごとに楽曲を${limitCheck.limit}曲まで追加できます。\n現在の曲数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nこれ以上追加するには、プレミアムへアップグレードしてください。`,
-          [
-            { text: 'キャンセル', style: 'cancel' },
-            { text: 'プレミアムを見る', onPress: () => {
-              router.push('/(tabs)/pricing-plans');
-            }}
-          ]
-        );
+        const normalizedResult = normalizeLimitResult(limitCheck, 'library_add');
+        const alertConfig = getDefaultAlertConfig('library_add');
+        
+        showFeatureLimitAlert({
+          result: {
+            ...normalizedResult,
+            title: '上限に達しました',
+            reason: `Freeプランでは各楽器ごとに楽曲を${limitCheck.limit}曲まで追加できます。\n現在の曲数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nこれ以上追加するには、プレミアムへアップグレードしてください。`,
+          },
+          defaultTitle: '上限に達しました',
+          defaultMessage: `Freeプランでは各楽器ごとに楽曲を${limitCheck.limit}曲まで追加できます。\n現在の曲数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nこれ以上追加するには、プレミアムへアップグレードしてください。`,
+          upgradeButtonText: alertConfig.upgradeButtonText,
+          router,
+        });
         return;
       }
 

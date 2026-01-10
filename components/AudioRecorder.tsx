@@ -23,6 +23,7 @@ import { checkMonthlyRecordingLimit, checkDailyRecordingLimit, isCurrentMonth, c
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import logger from '@/lib/logger';
 import audioResourceManager from '@/lib/audioResourceManager';
+import { showFeatureLimitAlert, normalizeLimitResult, getDefaultAlertConfig } from '@/lib/featureAccessHelpers';
 
 const { width } = Dimensions.get('window');
 
@@ -907,45 +908,62 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       // 1日の録音数制限をチェック（全プランでチェック、念のため）
       const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, recordedAt);
       if (!dailyLimitCheck.canRecord) {
-        Alert.alert(
-          '1日の録音数制限に達しました',
-          dailyLimitCheck.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
-          [
-            { text: 'キャンセル', style: 'cancel', onPress: () => {
-              setIsSaving(false);
-              isSavingRef.current = false;
-            }},
-            { text: entitlement?.isEntitled ? '了解' : 'プレミアムを見る', onPress: () => {
-              setIsSaving(false);
-              isSavingRef.current = false;
-              if (!entitlement?.isEntitled) {
-                onClose();
-                router.push('/(tabs)/pricing-plans');
-              }
-            }}
-          ]
-        );
+        const normalizedResult = normalizeLimitResult(dailyLimitCheck, 'record_daily');
+        const alertConfig = getDefaultAlertConfig('record_daily');
+        
+        showFeatureLimitAlert({
+          result: {
+            ...normalizedResult,
+            title: alertConfig.defaultTitle,
+            reason: normalizedResult.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
+          },
+          defaultTitle: alertConfig.defaultTitle,
+          defaultMessage: normalizedResult.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
+          upgradeButtonText: alertConfig.upgradeButtonText,
+          router,
+          isPremium: entitlement?.isEntitled,
+          premiumButtonText: '了解',
+          onCancel: () => {
+            setIsSaving(false);
+            isSavingRef.current = false;
+          },
+          onUpgrade: () => {
+            setIsSaving(false);
+            isSavingRef.current = false;
+            if (!entitlement?.isEntitled) {
+              onClose();
+              router.push('/(tabs)/pricing-plans');
+            }
+          },
+        });
         return;
       }
       
       // Freeプランの場合、選択された日付が今月であることを確認
       if (!entitlement?.isEntitled && !isCurrentMonth(recordedAt)) {
-        Alert.alert(
-          '録音できません',
-          'Freeプランでは当月のみ録音できます。\n\n過去の月や未来の月に録音するには、プレミアムへアップグレードしてください。',
-          [
-            { text: 'キャンセル', style: 'cancel', onPress: () => {
-              setIsSaving(false);
-              isSavingRef.current = false;
-            }},
-            { text: 'プレミアムを見る', onPress: () => {
-              setIsSaving(false);
-              isSavingRef.current = false;
-              onClose();
-              router.push('/(tabs)/pricing-plans');
-            }}
-          ]
-        );
+        const alertConfig = getDefaultAlertConfig('record_date_limit');
+        
+        showFeatureLimitAlert({
+          result: {
+            canAccess: false,
+            reason: 'Freeプランでは当月のみ録音できます。\n\n過去の月や未来の月に録音するには、プレミアムへアップグレードしてください。',
+            title: alertConfig.defaultTitle,
+          },
+          defaultTitle: alertConfig.defaultTitle,
+          defaultMessage: 'Freeプランでは当月のみ録音できます。\n\n過去の月や未来の月に録音するには、プレミアムへアップグレードしてください。',
+          upgradeButtonText: alertConfig.upgradeButtonText,
+          router,
+          onCancel: () => {
+            setIsSaving(false);
+            isSavingRef.current = false;
+          },
+          onUpgrade: () => {
+            setIsSaving(false);
+            isSavingRef.current = false;
+            onClose();
+            router.push('/(tabs)/pricing-plans');
+          },
+        });
         return;
       }
       
@@ -954,23 +972,30 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       const currentInstrumentId = getInstrumentId(selectedInstrument);
       const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, recordedAt, currentInstrumentId);
       if (!limitCheck.canRecord) {
-        const reason = limitCheck.reason || '';
-        Alert.alert(
-          '制限に達しました',
-          reason || `Freeプランでは各楽器ごとに月に3回まで録音できます（合計${limitCheck.limit}回）。\n現在の使用回数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
-          [
-            { text: 'キャンセル', style: 'cancel', onPress: () => {
-              setIsSaving(false);
-              isSavingRef.current = false;
-            }},
-            { text: 'プレミアムを見る', onPress: () => {
-              setIsSaving(false);
-              isSavingRef.current = false;
-              onClose();
-              router.push('/(tabs)/pricing-plans');
-            }}
-          ]
-        );
+        const normalizedResult = normalizeLimitResult(limitCheck, 'record_monthly');
+        const alertConfig = getDefaultAlertConfig('record_monthly');
+        
+        showFeatureLimitAlert({
+          result: {
+            ...normalizedResult,
+            title: '制限に達しました',
+            reason: normalizedResult.reason || `Freeプランでは各楽器ごとに月に3回まで録音できます（合計${limitCheck.limit}回）。\n現在の使用回数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
+          },
+          defaultTitle: '制限に達しました',
+          defaultMessage: normalizedResult.reason || `Freeプランでは各楽器ごとに月に3回まで録音できます（合計${limitCheck.limit}回）。\n現在の使用回数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
+          upgradeButtonText: alertConfig.upgradeButtonText,
+          router,
+          onCancel: () => {
+            setIsSaving(false);
+            isSavingRef.current = false;
+          },
+          onUpgrade: () => {
+            setIsSaving(false);
+            isSavingRef.current = false;
+            onClose();
+            router.push('/(tabs)/pricing-plans');
+          },
+        });
         return;
       }
       logger.debug('録音保存開始:', {

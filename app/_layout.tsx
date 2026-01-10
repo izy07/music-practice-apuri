@@ -8,6 +8,7 @@ import { useFrameworkReady } from '@/hooks/useFrameworkReady'; // フレーム�
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced'; // 認証フック（統一版）
 import { LanguageProvider } from '@/components/LanguageContext'; // 多言語対応の管理
 import { InstrumentThemeProvider } from '@/components/InstrumentThemeContext'; // 楽器別テーマの管理
+import { SubscriptionProvider } from '@/contexts/SubscriptionContext'; // サブスクリプション状態の管理
 import LoadingSkeleton from '@/components/LoadingSkeleton'; // ローディング表示コンポーネント
 import { supabase } from '@/lib/supabase'; // Supabaseクライアント
 import { RoutePath } from '@/types/common'; // ルートパス型
@@ -647,8 +648,14 @@ function RootLayoutContent() {
       }
       
       // 未認証で認証画面にいる場合は、現在の画面を維持
+      // 重要: 新規登録画面にいる場合は、新規登録処理中にログイン画面に飛ばないようにする
       if (!isAuthenticated && isInAuthGroup) {
-        logger.debug('未認証・認証画面 - 現在の画面を維持', { segments: currentSegments });
+        const authChild = segments.length > 1 ? segments[1] : undefined;
+        if (authChild === 'signup') {
+          logger.debug('未認証・新規登録画面 - 画面を維持（新規登録処理中）', { segments: currentSegments });
+        } else {
+          logger.debug('未認証・認証画面 - 現在の画面を維持', { segments: currentSegments });
+        }
         return;
       }
       
@@ -662,11 +669,18 @@ function RootLayoutContent() {
     }
     
     // 未認証ユーザー → ログイン画面にリダイレクト
+    // 重要: 新規登録画面にいる場合は、ログイン画面にリダイレクトしない
     if (!isAuthenticated) {
-      // 認証画面にいる場合は何もしない（ログイン画面を表示）
-      // ただし、+not-found画面にいる場合はログイン画面にリダイレクト
+      // 認証画面にいる場合は何もしない（ログイン画面または新規登録画面を表示）
       if (isInAuthGroup && firstSegment && firstSegment === 'auth') {
-        logger.debug('未認証ユーザー・認証画面 - 画面を維持', { isAtRoot, isInAuthGroup, firstSegment });
+        const authChild = segments.length > 1 ? segments[1] : undefined;
+        // 新規登録画面にいる場合は、画面を維持（新規登録処理中にログイン画面に飛ばないようにする）
+        if (authChild === 'signup') {
+          logger.debug('未認証ユーザー・新規登録画面 - 画面を維持（新規登録処理中）', { isAtRoot, isInAuthGroup, firstSegment, authChild });
+          return;
+        }
+        // ログイン画面にいる場合も画面を維持
+        logger.debug('未認証ユーザー・認証画面 - 画面を維持', { isAtRoot, isInAuthGroup, firstSegment, authChild });
         return;
       }
       
@@ -762,8 +776,15 @@ function RootLayoutContent() {
     }
     
     // ルートパスまたは認証画面にいる場合はカレンダー画面に遷移
-    if (isAtRoot || isInAuthGroup) {
+    // ただし、新規登録画面にいる場合はスキップ（新規登録画面のuseEffectで処理される）
+    if (isAtRoot || (isInAuthGroup && !(segments.length > 1 && segments[1] === 'signup'))) {
       router.replace('/(tabs)/index');
+      return;
+    }
+    
+    // 新規登録画面にいる場合は、新規登録画面のuseEffectで処理されるためスキップ
+    if (isInAuthGroup && segments.length > 1 && segments[1] === 'signup') {
+      logger.debug('認証済み・新規登録画面 - 新規登録画面のuseEffectで画面遷移を処理（ここでは遷移しない）', { segments: currentSegments });
       return;
     }
   }, [isReady, isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, needsTutorial, router, segments]);
@@ -824,10 +845,13 @@ export default function RootLayout() {
     <LanguageProvider>
       {/* 楽器別テーマを管理するプロバイダー */}
       <InstrumentThemeProvider>
-        {/* メインコンテンツ */}
-        <RootLayoutContent />
-        {/* ステータスバーの設定（ダークテーマ） */}
-        {StatusBar && <StatusBar style="dark" />}
+        {/* サブスクリプション状態を管理するプロバイダー */}
+        <SubscriptionProvider>
+          {/* メインコンテンツ */}
+          <RootLayoutContent />
+          {/* ステータスバーの設定（ダークテーマ） */}
+          {StatusBar && <StatusBar style="dark" />}
+        </SubscriptionProvider>
       </InstrumentThemeProvider>
     </LanguageProvider>
   );
