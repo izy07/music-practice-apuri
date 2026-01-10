@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Modal, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Search, X, Plus, Edit2, Trash2 } from 'lucide-react-native';
@@ -11,6 +11,7 @@ import { DEFAULT_MUSIC_TERMS, MUSIC_TERM_CATEGORIES, getTermsForInstrument, Musi
 import { getMusicTerms, createMusicTerm, updateMusicTerm, deleteMusicTerm, MusicTerm } from '@/repositories/musicTermRepository';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 
 export default function MusicDictionaryScreen() {
   const router = useRouter();
@@ -416,6 +417,23 @@ function AddEditTermModal({
     }
   }, [term, visible]);
 
+  // Webプラットフォームでのフォーカス管理（aria-hidden警告を防ぐため）
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (visible) {
+        disableBackgroundFocus();
+      } else {
+        enableBackgroundFocus();
+      }
+    }
+    
+    return () => {
+      if (Platform.OS === 'web' && !visible) {
+        enableBackgroundFocus();
+      }
+    };
+  }, [visible]);
+
   const handleSave = async () => {
     if (!termJa.trim() || !descriptionJa.trim()) {
       Alert.alert('エラー', '用語名と説明を入力してください');
@@ -461,7 +479,19 @@ function AddEditTermModal({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal 
+      visible={visible} 
+      transparent 
+      animationType="fade" 
+      onRequestClose={() => {
+        // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+        if (Platform.OS === 'web') {
+          blurActiveElement();
+          enableBackgroundFocus();
+        }
+        onClose();
+      }}
+    >
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
           <View style={styles.modalHeader}>

@@ -3,11 +3,12 @@
  * 初回レベル選択時に表示されるモーダル
  */
 
-import React from 'react';
-import { View, Text, TouchableOpacity, Modal } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, TouchableOpacity, Modal, Platform } from 'react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import type { LevelData } from '../types/practice.types';
 import { styles } from '../styles';
+import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 
 export interface LevelSelectionModalProps {
   visible: boolean;
@@ -22,11 +23,35 @@ export function LevelSelectionModal({
 }: LevelSelectionModalProps) {
   const { currentTheme } = useInstrumentTheme();
 
+  // Webプラットフォームでのフォーカス管理（aria-hidden警告を防ぐため）
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (visible) {
+        disableBackgroundFocus();
+      } else {
+        enableBackgroundFocus();
+      }
+    }
+    
+    return () => {
+      if (Platform.OS === 'web' && !visible) {
+        enableBackgroundFocus();
+      }
+    };
+  }, [visible]);
+
   return (
     <Modal
       visible={visible}
       transparent={true}
       animationType="fade"
+      onRequestClose={() => {
+        // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+        if (Platform.OS === 'web') {
+          blurActiveElement();
+          enableBackgroundFocus();
+        }
+      }}
     >
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>

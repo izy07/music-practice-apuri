@@ -1,11 +1,12 @@
 /**
  * レベル選択モーダルコンポーネント
  */
-import React from 'react';
-import { Modal, View, Text, TouchableOpacity } from 'react-native';
+import React, { useEffect } from 'react';
+import { Modal, View, Text, TouchableOpacity, Platform } from 'react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { Level } from '@/lib/tabs/basic-practice/types';
 import { styles } from '@/lib/tabs/basic-practice/styles';
+import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 
 interface LevelModalProps {
   visible: boolean;
@@ -20,11 +21,35 @@ export const LevelModal: React.FC<LevelModalProps> = ({
 }) => {
   const { currentTheme } = useInstrumentTheme();
 
+  // Webプラットフォームでのフォーカス管理（aria-hidden警告を防ぐため）
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (visible) {
+        disableBackgroundFocus();
+      } else {
+        enableBackgroundFocus();
+      }
+    }
+    
+    return () => {
+      if (Platform.OS === 'web' && !visible) {
+        enableBackgroundFocus();
+      }
+    };
+  }, [visible]);
+
   return (
     <Modal
       visible={visible}
       transparent={true}
       animationType="fade"
+      onRequestClose={() => {
+        // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+        if (Platform.OS === 'web') {
+          blurActiveElement();
+          enableBackgroundFocus();
+        }
+      }}
     >
       <View style={styles.modalOverlay}>
         <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>

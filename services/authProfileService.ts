@@ -45,33 +45,54 @@ export async function fetchUserProfile(
   userId: string,
   timeoutMs: number = 10000
 ): Promise<ProfileFetchResult> {
-  const profilePromise = supabase
-    .from('user_profiles')
-    .select('id, user_id, display_name, selected_instrument_id')
-    .eq('user_id', userId)
-    .maybeSingle();
+  let timeoutId: NodeJS.Timeout | null = null;
+  let isResolved = false;
 
   try {
+    // タイムアウト用のPromise（AbortControllerを使用してクエリをキャンセル）
     const timeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
-      setTimeout(() => {
-        resolve({
-          data: null,
-          error: {
-            code: 'TIMEOUT',
-            message: 'プロフィール取得がタイムアウトしました',
-          },
-        });
+      timeoutId = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true;
+          resolve({
+            data: null,
+            error: {
+              code: 'TIMEOUT',
+              message: 'プロフィール取得がタイムアウトしました',
+            },
+          });
+        }
       }, timeoutMs);
     });
 
+    // SupabaseクエリのPromise
+    const profilePromise = supabase
+      .from('user_profiles')
+      .select('id, user_id, display_name, selected_instrument_id, tutorial_completed, onboarding_completed')
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    // どちらかが先に完了したら結果を返す
     const result = await Promise.race([profilePromise, timeoutPromise]);
 
+    // タイムアウトが発生した場合
     if (result.error?.code === 'TIMEOUT') {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
       return {
         profile: null,
         error: result.error,
         isTimeout: true,
       };
+    }
+
+    // 正常に完了した場合
+    isResolved = true;
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
     }
 
     return {
@@ -80,6 +101,11 @@ export async function fetchUserProfile(
       isTimeout: false,
     };
   } catch (error: any) {
+    isResolved = true;
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
     logger.error('プロフィール取得で予期しないエラーが発生しました:', error);
     return {
       profile: null,
@@ -102,33 +128,54 @@ export async function fetchRecentInstrument(
   userId: string,
   timeoutMs: number = 10000
 ): Promise<RecentInstrumentResult> {
-  const instrumentQueryPromise = supabase
-    .from('user_instrument_profiles')
-    .select('instrument_id, updated_at, created_at')
-    .eq('user_id', userId)
-    .order('updated_at', { ascending: false })
-    .limit(1);
+  let timeoutId: NodeJS.Timeout | null = null;
+  let isResolved = false;
 
   try {
+    // タイムアウト用のPromise
     const instrumentTimeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
-      setTimeout(() => {
-        resolve({
-          data: null,
-          error: {
-            code: 'TIMEOUT',
-            message: '楽器取得がタイムアウトしました',
-          },
-        });
+      timeoutId = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true;
+          resolve({
+            data: null,
+            error: {
+              code: 'TIMEOUT',
+              message: '楽器取得がタイムアウトしました',
+            },
+          });
+        }
       }, timeoutMs);
     });
 
+    // SupabaseクエリのPromise
+    const instrumentQueryPromise = supabase
+      .from('user_instrument_profiles')
+      .select('instrument_id, updated_at, created_at')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+
+    // どちらかが先に完了したら結果を返す
     const result = await Promise.race([instrumentQueryPromise, instrumentTimeoutPromise]);
 
+    // タイムアウトが発生した場合
     if (result.error?.code === 'TIMEOUT') {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
       return {
         instrumentId: null,
         error: result.error,
       };
+    }
+
+    // 正常に完了した場合
+    isResolved = true;
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
     }
 
     if (result.data && !result.error && Array.isArray(result.data) && result.data.length > 0) {
@@ -143,6 +190,11 @@ export async function fetchRecentInstrument(
       error: null,
     };
   } catch (error) {
+    isResolved = true;
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      timeoutId = null;
+    }
     logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', error);
     return {
       instrumentId: null,

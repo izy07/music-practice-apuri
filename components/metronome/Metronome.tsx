@@ -5,6 +5,7 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import audioResourceManager from '@/lib/audioResourceManager';
+import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 
 // 拍子の選択肢（画像に合わせて拡張）
 const timeSignatures = [
@@ -90,6 +91,23 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
   // メトロノーム用のref
   const metronomeIntervalRef = useRef<number | null>(null);
   const activeOscillatorsRef = useRef<OscillatorNode[]>([]);
+
+  // Webプラットフォームでのフォーカス管理（aria-hidden警告を防ぐため）
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (isTimeSignatureModalVisible) {
+        disableBackgroundFocus();
+      } else {
+        enableBackgroundFocus();
+      }
+    }
+    
+    return () => {
+      if (Platform.OS === 'web' && !isTimeSignatureModalVisible) {
+        enableBackgroundFocus();
+      }
+    };
+  }, [isTimeSignatureModalVisible]);
 
   // コンポーネントの初期化とクリーンアップ
   useEffect(() => {
@@ -642,6 +660,13 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
             BPM調整
           </Text>
           
+          {/* BPM説明文 */}
+          <View style={styles.bpmExplanationContainer}>
+            <Text style={[styles.bpmExplanationText, { color: currentTheme.textSecondary }]}>
+              BPM調整とはbeats-per-minute (一分間の拍数)の略です。
+            </Text>
+          </View>
+          
           {/* スライダー（Web環境） */}
           {Platform.OS === 'web' && (
             <View style={styles.bpmSliderContainer}>
@@ -736,7 +761,14 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
           visible={isTimeSignatureModalVisible}
           transparent={true}
           animationType="fade"
-          onRequestClose={() => setIsTimeSignatureModalVisible(false)}
+          onRequestClose={() => {
+            // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+            if (Platform.OS === 'web') {
+              blurActiveElement();
+              enableBackgroundFocus();
+            }
+            setIsTimeSignatureModalVisible(false);
+          }}
         >
           <TouchableOpacity
             style={styles.modalOverlay}
@@ -826,13 +858,6 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
             ))}
           </View>
         </View>
-      </View>
-      
-      {/* BPM説明文 */}
-      <View style={styles.bpmExplanationContainer}>
-        <Text style={[styles.bpmExplanationText, { color: currentTheme.textSecondary }]}>
-          BPM調整とはbeats-per-minute (一分間の拍数)の略です。
-        </Text>
       </View>
     </>
   );
@@ -998,7 +1023,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   bpmExplanationContainer: {
-    marginTop: 8,
+    marginTop: 4,
+    marginBottom: 8,
     paddingHorizontal: 4,
   },
   bpmExplanationText: {

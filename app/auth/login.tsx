@@ -85,121 +85,25 @@ export default function LoginScreen() {
   const [slideAnim] = useState(new Animated.Value(50));
   const [pulseAnim] = useState(new Animated.Value(1));
   
-  // 【修正】認証成功後の画面遷移を確実に実行
-  // 画面フォーカス時と認証状態変更時の両方で処理を実行
-  useFocusEffect(
-    useCallback(() => {
-      logger.debug('[ログイン画面 useFocusEffect] 実行開始（画面フォーカス時）', {
-        isAuthenticated,
-        isLoading,
-        hasUser: !!user,
-      });
-      
-      // 認証済みかつローディング完了の場合のみ処理
-      if (!isAuthenticated || isLoading || !user) {
-        logger.debug('[ログイン画面 useFocusEffect] 条件を満たさないため処理をスキップ');
-        return;
-      }
-      
-      // ログイン処理完了
-      if (isLoggingIn) {
-        setIsLoggingIn(false);
-      }
-      
-      logger.debug('[ログイン画面 useFocusEffect] 認証成功 - 画面遷移を実行', {
-        hasInstrument: hasInstrumentSelected(),
-        needsTutorial: needsTutorial(),
-        canAccessMain: canAccessMainApp(),
-        userSelectedInstrumentId: user.selected_instrument_id,
-      });
-      
-      // 画面遷移を実行
-      const navigateToScreen = () => {
-        try {
-          const hasInstrument = hasInstrumentSelected();
-          const needsTut = needsTutorial();
-          const canAccess = canAccessMainApp();
-          
-          logger.debug('[ログイン画面 useFocusEffect] 画面遷移判定', {
-            hasInstrument,
-            needsTut,
-            canAccess,
-            userSelectedInstrumentId: user.selected_instrument_id,
-          });
-          
-          if (hasInstrument || canAccess) {
-            logger.debug('[ログイン画面 useFocusEffect] → カレンダー画面に遷移');
-            router.replace('/(tabs)/index');
-          } else if (needsTut) {
-            logger.debug('[ログイン画面 useFocusEffect] → チュートリアル画面に遷移');
-            router.replace('/(tabs)/tutorial');
-          } else {
-            logger.debug('[ログイン画面 useFocusEffect] → 楽器選択画面に遷移');
-            router.replace('/(tabs)/instrument-selection');
-          }
-        } catch (navError) {
-          logger.error('[ログイン画面 useFocusEffect] 画面遷移エラー:', navError);
-          try {
-            router.replace('/(tabs)/instrument-selection');
-          } catch (fallbackError) {
-            logger.error('[ログイン画面 useFocusEffect] フォールバックも失敗:', fallbackError);
-          }
-        }
-      };
-      
-      // 少し遅延して実行（_layout.tsxとの競合を避ける）
-      const timeoutId = setTimeout(navigateToScreen, 100);
-      return () => clearTimeout(timeoutId);
-    }, [isAuthenticated, isLoading, user, router, isLoggingIn, hasInstrumentSelected, needsTutorial, canAccessMainApp])
-  );
-
-  // 【修正】認証状態変更時の画面遷移（useEffectで確実に実行）
+  // 認証成功後の画面遷移（簡素化版）
   useEffect(() => {
-    logger.debug('[ログイン画面 useEffect] 実行開始（認証状態監視）', {
-      isAuthenticated,
-      isLoading,
-      hasUser: !!user,
-      segments: Array.isArray(segments) ? segments : [segments],
-      isLoggingIn,
-    });
-    
-    // 現在の画面が新規登録画面の場合は処理をスキップ
-    const segmentsArray = Array.isArray(segments) ? segments : [segments];
-    const isInSignupScreen = segmentsArray.length >= 2 && segmentsArray[0] === 'auth' && segmentsArray[1] === 'signup';
-    if (isInSignupScreen) {
-      logger.debug('[ログイン画面 useEffect] 新規登録画面にいるため処理をスキップ');
-      return;
-    }
-    
-    // ログイン画面にいることを確認
-    const isInLoginScreen = segmentsArray.length >= 2 && segmentsArray[0] === 'auth' && segmentsArray[1] === 'login';
-    if (!isInLoginScreen) {
-      logger.debug('[ログイン画面 useEffect] ログイン画面にいないため処理をスキップ', { segments: segmentsArray });
-      return;
-    }
-    
     // 認証済みかつローディング完了の場合のみ処理
     if (!isAuthenticated || isLoading || !user) {
-      logger.debug('[ログイン画面 useEffect] 条件を満たさないため処理をスキップ', {
-        isAuthenticated,
-        isLoading,
-        hasUser: !!user,
-      });
       return;
     }
-    
+
+    // ログイン画面にいることを確認
+    const segmentsArray = Array.isArray(segments) ? segments : [segments];
+    const isInLoginScreen = segmentsArray.length >= 2 && segmentsArray[0] === 'auth' && segmentsArray[1] === 'login';
+    if (!isInLoginScreen) {
+      return;
+    }
+
     // ログイン処理完了
     if (isLoggingIn) {
       setIsLoggingIn(false);
     }
-    
-    logger.debug('[ログイン画面 useEffect] 認証成功 - 画面遷移を実行', {
-      hasInstrument: hasInstrumentSelected(),
-      needsTutorial: needsTutorial(),
-      canAccessMain: canAccessMainApp(),
-      userSelectedInstrumentId: user.selected_instrument_id,
-    });
-    
+
     // ログイン成功時: カレンダーの日付を今日にリセット
     if (typeof window !== 'undefined' && window.localStorage) {
       try {
@@ -209,65 +113,21 @@ export default function LoginScreen() {
         // エラーは無視
       }
     }
-    
+
     // 画面遷移を実行
-    const navigateToScreen = () => {
-      try {
-        const hasInstrument = hasInstrumentSelected();
-        const needsTut = needsTutorial();
-        const canAccess = canAccessMainApp();
-        
-        logger.debug('[ログイン画面 useEffect] 画面遷移判定', {
-          hasInstrument,
-          needsTut,
-          canAccess,
-          userSelectedInstrumentId: user.selected_instrument_id,
-        });
-        
-        if (hasInstrument || canAccess) {
-          logger.debug('[ログイン画面 useEffect] → カレンダー画面に遷移');
-          router.replace('/(tabs)/index');
-        } else if (needsTut) {
-          logger.debug('[ログイン画面 useEffect] → チュートリアル画面に遷移');
-          router.replace('/(tabs)/tutorial');
-        } else {
-          logger.debug('[ログイン画面 useEffect] → 楽器選択画面に遷移');
-          router.replace('/(tabs)/instrument-selection');
-        }
-      } catch (navError) {
-        logger.error('[ログイン画面 useEffect] 画面遷移エラー:', navError);
-        try {
-          router.replace('/(tabs)/instrument-selection');
-        } catch (fallbackError) {
-          logger.error('[ログイン画面 useEffect] フォールバックも失敗:', fallbackError);
-        }
-      }
-    };
-    
-    // 少し遅延して実行（_layout.tsxとの競合を避ける）
-    const timeoutId = setTimeout(navigateToScreen, 100);
-    return () => clearTimeout(timeoutId);
+    const hasInstrument = hasInstrumentSelected();
+    const needsTut = needsTutorial();
+    const canAccess = canAccessMainApp();
+
+    const targetPath = hasInstrument || canAccess
+      ? '/(tabs)/index'
+      : needsTut
+      ? '/(tabs)/tutorial'
+      : '/(tabs)/instrument-selection';
+
+    logger.debug('[ログイン画面] 認証成功 - 画面遷移:', targetPath);
+    router.replace(targetPath as any);
   }, [isAuthenticated, isLoading, user, router, isLoggingIn, segments, hasInstrumentSelected, needsTutorial, canAccessMainApp]);
-  
-  // タイムアウト時のフォールバック: isLoggingInがtrueのままになっている場合の安全装置
-  useEffect(() => {
-    if (isLoggingIn) {
-      const timeoutId = setTimeout(() => {
-        logger.warn('ログイン処理が長時間実行中のため、isLoggingInをリセットします');
-        setIsLoggingIn(false);
-        // エラーメッセージを表示（ただし、認証が成功している可能性もあるため、警告のみ）
-        // プロフィール取得がタイムアウトした場合でも、ログイン自体は成功している可能性がある
-        if (!isAuthenticated) {
-          Alert.alert(
-            'ログインタイムアウト',
-            'ログイン処理がタイムアウトしました。ネットワーク接続を確認して再度お試しください。'
-          );
-        }
-      }, 15000); // 15秒後にフォールバック（プロフィール取得のタイムアウト10秒 + 余裕5秒）
-      
-      return () => clearTimeout(timeoutId);
-    }
-  }, [isLoggingIn, isAuthenticated]);
 
   // アニメーション開始
   useEffect(() => {

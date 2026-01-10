@@ -596,15 +596,16 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     const userId = user.id;
     
     // 既に処理中の場合は、そのPromiseを返す（同じユーザーIDに対する処理を共有）
-    // ただし、タイムアウトしている可能性があるため、一定時間（12秒）以内に完了しない場合は新しい処理を開始
+    // ただし、タイムアウトしている可能性があるため、一定時間（15秒）以内に完了しない場合は新しい処理を開始
+    // 並列実行により最大8秒で完了するはずだが、念のため余裕を持たせる
     const existingPromise = globalProcessingPromises.get(userId);
     if (existingPromise) {
       logger.debug('handleAuthenticatedUser: 既に処理中のため、既存のPromiseを待機します', { userId, email: user.email });
       try {
-        // タイムアウトチェック付きで待機（12秒以内に完了しない場合は新しい処理を開始）
-        // プロフィール取得のタイムアウト（10秒）より長く設定して、正常な処理を優先
+        // タイムアウトチェック付きで待機（15秒以内に完了しない場合は新しい処理を開始）
+        // 並列実行により最大8秒で完了するはずだが、ネットワークが遅い場合に備えて15秒に設定
         const timeoutPromise = new Promise<null>((resolve) => {
-          setTimeout(() => resolve(null), 12000);
+          setTimeout(() => resolve(null), 15000);
         });
         const result = await Promise.race([existingPromise, timeoutPromise]);
         if (result) {
@@ -625,13 +626,29 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       try {
         logger.debug('handleAuthenticatedUser開始:', { userId, email: user.email });
       
-      // 【リファクタリング】ユーザープロフィールを取得（サービス層を使用）
-      // タイムアウトを10秒に短縮して、ログイン処理を高速化
+      // 【リファクタリング】ユーザープロフィールと最近使用した楽器を並列取得（高速化）
+      // タイムアウトを5秒に短縮して、ログイン処理を高速化
       // ネットワークが遅い場合でも、タイムアウト後はフォールバック処理でログインを完了できる
-      const profileResult = await fetchUserProfile(userId, 10000);
+      const profileTimeoutMs = 5000;
+      const instrumentTimeoutMs = 5000;
+      
+      logger.debug('プロフィールと楽器データを並列取得開始', { userId });
+      const [profileResult, recentInstrumentResult] = await Promise.all([
+        fetchUserProfile(userId, profileTimeoutMs),
+        fetchRecentInstrument(userId, instrumentTimeoutMs),
+      ]);
+      
+      logger.debug('プロフィールと楽器データの並列取得完了', { 
+        userId,
+        profileResult: profileResult.profile ? '成功' : profileResult.error?.code || '失敗',
+        instrumentId: recentInstrumentResult.instrumentId || 'なし',
+        isTimeout: profileResult.isTimeout,
+      });
+      
       const profile = profileResult.profile;
       const profileError = profileResult.error;
       const isTimeout = profileResult.isTimeout || false;
+      const fallbackInstrumentId = recentInstrumentResult.instrumentId || null;
       
       if (profileError) {
         logger.warn('プロフィール取得エラー:', { error: profileError, code: profileError.code });
@@ -652,16 +669,17 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           return null;
         }
         
-        // 【リファクタリング】タイムアウトエラーの場合は、サービス層を使用してフォールバック処理
+        // 【リファクタリング】タイムアウトエラーの場合は、すぐにフォールバック処理を実行
         // ネットワークが遅い場合でも、ログインは成功している可能性があるため
         // タイムアウト時には、すぐにフォールバックユーザーを作成して認証状態を更新し、
         // その後バックグラウンドでプロフィール取得を試みる
         if (profileError?.code === 'TIMEOUT' || isTimeout) {
-          logger.warn('プロフィール取得がタイムアウトしました。フォールバックユーザーを作成して認証状態を更新します。', { userId });
+          logger.warn('プロフィール取得がタイムアウトしました。フォールバックユーザーを作成して認証状態を更新します。', { 
+            userId,
+            fallbackInstrumentId 
+          });
           
-          // 【リファクタリング】サービス層を使用して最近使用した楽器を取得
-          const recentInstrumentResult = await fetchRecentInstrument(userId, 10000);
-          const fallbackInstrumentId = recentInstrumentResult.instrumentId;
+          // 既に並列実行で取得済みの楽器IDを使用（再取得不要で高速化）
           
           // 【リファクタリング】サービス層を使用して新規登録フラグを取得
           const isNewSignup = await getNewSignupFlag();
@@ -920,17 +938,24 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       // プロフィールが存在しない場合（エラーでもPGRST116でもない場合）
       // user_instrument_profilesから最新の楽器を確認
       // 【リファクタリング】サービス層を使用して最近使用した楽器を取得
-      const recentInstrumentResult = await fetchRecentInstrument(userId, 10000);
-      let fallbackInstrumentId = recentInstrumentResult.instrumentId;
+      // 既に並列取得で取得済みの楽器IDを使用（再取得不要で高速化）
+      // 651行目で既に取得済みのfallbackInstrumentIdを使用
+      let finalFallbackInstrumentId: string | null = fallbackInstrumentId || null;
+      
+      // 楽器IDが取得できていない場合は、再度取得を試みる
+      if (!finalFallbackInstrumentId) {
+        const fallbackInstrumentResult = await fetchRecentInstrument(userId, 10000);
+        finalFallbackInstrumentId = fallbackInstrumentResult.instrumentId || null;
+      }
       
       // ネットワークエラー時はローカルストレージから楽器IDを取得（フォールバック）
-      if (!fallbackInstrumentId) {
+      if (!finalFallbackInstrumentId) {
         try {
           const { STORAGE_KEYS, withUser } = await import('@/lib/storageKeys');
           const storedInstrument = await AsyncStorage.getItem(withUser(STORAGE_KEYS.selectedInstrument, userId));
           if (storedInstrument && storedInstrument.trim() !== '') {
-            fallbackInstrumentId = storedInstrument;
-            logger.debug('ローカルストレージから楽器IDを取得しました:', { instrumentId: fallbackInstrumentId });
+            finalFallbackInstrumentId = storedInstrument;
+            logger.debug('ローカルストレージから楽器IDを取得しました:', { instrumentId: finalFallbackInstrumentId });
           }
         } catch (storageError) {
           logger.debug('ローカルストレージからの楽器ID取得エラー（続行）:', storageError);
@@ -941,7 +966,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       const isNewSignup = await getNewSignupFlag();
       
       // 【リファクタリング】サービス層を使用してフォールバックユーザーを作成
-      const authUser = createFallbackUser(user, fallbackInstrumentId, isNewSignup);
+      const authUser = createFallbackUser(user, finalFallbackInstrumentId, isNewSignup);
       
       updateAuthState({
         user: authUser,
@@ -1117,11 +1142,12 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           // ただし、前回の処理がタイムアウトした場合は、新しい処理を開始できるようにする
           const existingPromise = globalProcessingPromises.get(userId);
           if (existingPromise) {
-            // 既存の処理がタイムアウトしている可能性があるため、12秒待機してから再試行
+            // 既存の処理がタイムアウトしている可能性があるため、15秒待機してから再試行
+            // 並列実行により最大5秒で完了するはずだが、念のため余裕を持たせる
             logger.debug('onAuthStateChange: 既に処理中のため、タイムアウトチェックを実行します', { userId, email: session.user.email, event });
             try {
               const timeoutPromise = new Promise<null>((resolve) => {
-                setTimeout(() => resolve(null), 12000);
+                setTimeout(() => resolve(null), 15000);
               });
               const result = await Promise.race([existingPromise, timeoutPromise]);
               if (result) {
@@ -1823,85 +1849,4 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     fetchUserProfile,
     clearNewSignupFlag: clearNewSignupFlag, // 【リファクタリング】サービス層の関数を使用
   };
-};
-
-// 認証エラーメッセージの取得
-const getAuthErrorMessage = (error: unknown): string => {
-  if (!error) return '認証エラーが発生しました';
-  
-  // エラーオブジェクトの型ガード
-  const isErrorObject = (err: unknown): err is { code?: string | number; status?: number; message?: string } => {
-    return typeof err === 'object' && err !== null;
-  };
-  
-  const errorObj = isErrorObject(error) ? error : null;
-  const errorCode = errorObj?.code ?? errorObj?.status;
-  const errorMessage = errorObj?.message ?? (typeof error === 'string' ? error : String(error));
-  
-  // 根本的に厳密な判定：エラーコードを優先
-  // エラーコードが明確な場合のみ「登録済み」と判定
-  if (errorCode === 'user_already_exists' || errorCode === 'user_already_registered') {
-    return 'このメールアドレスは既に登録されています';
-  }
-  
-  // メッセージベースの判定（Supabaseの既定文言、誤判定を防ぐ）
-  const message = errorMessage.toLowerCase();
-  if (message.includes('user not found') || message.includes('user does not exist')) {
-    return 'このユーザーは登録されていません';
-  }
-  if (message.includes('invalid login credentials')) {
-    return 'メールアドレスまたはパスワードが正しくありません';
-  }
-  
-  // エラーメッセージの文字列マッチング（完全一致パターンのみ、誤判定を防ぐ）
-  // 広すぎる判定（例: 'already exists'だけ）は削除
-  const hasExactAlreadyRegisteredMessage = 
-    message === 'user already registered' ||
-    message === 'email address is already registered' ||
-    message === 'user already exists' ||
-    message === 'email address is already in use' ||
-    (message.includes('user already registered') && !message.includes('not') && !message.includes('cannot'));
-  
-  // エラーコードが存在する場合のみ、メッセージベースの判定を使用（誤判定を防ぐ）
-  if (errorCode && hasExactAlreadyRegisteredMessage) {
-    return 'このメールアドレスは既に登録されています';
-  }
-  
-  if (message.includes('email not confirmed')) {
-    return 'メールアドレスの確認が完了していません';
-  }
-
-  switch (errorCode) {
-    case 'user_not_found':
-      return 'このユーザーは登録されていません';
-    case 'invalid_credentials':
-      return 'メールアドレスまたはパスワードが正しくありません';
-    case 'user_already_exists':
-      return 'このメールアドレスは既に登録されています';
-    case 'weak_password':
-      return 'パスワードが弱すぎます。より強力なパスワードを設定してください';
-    case 'email_not_confirmed':
-      return 'メールアドレスの確認が完了していません';
-    case 'too_many_requests':
-      return 'リクエストが多すぎます。しばらく時間をおいてから再度お試しください';
-    case 400:
-      // 多くの場合「Invalid login credentials」なので上で処理済み
-      return 'リクエストが無効です';
-    case 401:
-      return '認証に失敗しました';
-    case 422:
-      return '入力データが無効です';
-    case 429:
-      return 'リクエストが多すぎます。しばらく時間をおいてから再度お試しください';
-    case 500:
-      return 'サーバーエラーが発生しました';
-    case 503:
-      return 'サーバーに接続できません。ネットワーク接続を確認してください';
-    default:
-      // ネットワークエラーのチェック（メッセージベース）
-      if (errorMessage?.includes('Failed to fetch') || errorMessage?.includes('NetworkError') || (error as any).name === 'AuthRetryableFetchError') {
-        return 'ネットワーク接続エラーが発生しました。インターネット接続を確認してください';
-      }
-      return errorMessage || '認証エラーが発生しました';
-  }
 };

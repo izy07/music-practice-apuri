@@ -19,11 +19,18 @@ let globalFocusListener: ((e: FocusEvent) => void) | null = null;
 const startGlobalFocusMonitoring = () => {
   if (typeof window === 'undefined' || globalFocusListener) return;
   
-  globalFocusListener = () => {
+  globalFocusListener = (e: FocusEvent) => {
     // モーダルが開いている間のみ処理
     if (modalCount > 0) {
-      const activeElement = document.activeElement as HTMLElement;
+      const activeElement = (e.target || document.activeElement) as HTMLElement;
       if (activeElement) {
+        // モーダル内の要素は除外
+        if (activeElement.closest('[role="dialog"]') || 
+            activeElement.closest('[aria-modal="true"]') ||
+            activeElement.closest('[data-modal-content]')) {
+          return;
+        }
+        
         // フォーカスがある要素の祖先にaria-hiddenがある場合、削除
         let parent = activeElement.parentElement;
         while (parent && parent !== document.body && parent !== document.documentElement) {
@@ -32,7 +39,12 @@ const startGlobalFocusMonitoring = () => {
             if (!parent.closest('[role="dialog"]') && 
                 !parent.closest('[aria-modal="true"]') &&
                 !parent.closest('[data-modal-content]')) {
+              // 即座にaria-hiddenを削除
               parent.removeAttribute('aria-hidden');
+              // inert属性を設定して、フォーカスを完全に無効化
+              if (!parent.hasAttribute('inert')) {
+                parent.setAttribute('inert', '');
+              }
             }
           }
           parent = parent.parentElement;
@@ -42,7 +54,11 @@ const startGlobalFocusMonitoring = () => {
   };
   
   // フォーカスイベントを監視（キャプチャフェーズで実行）
+  // focusinイベントを使用（focusイベントよりも確実）
   document.addEventListener('focusin', globalFocusListener, true);
+  
+  // focusイベントも監視（一部のブラウザで必要）
+  document.addEventListener('focus', globalFocusListener, true);
 };
 
 /**
@@ -155,6 +171,7 @@ export const disableBackgroundFocus = () => {
     (window as any).__modalAriaHiddenInterval = intervalId;
     
     // MutationObserverでリアルタイムにaria-hiddenの追加を監視
+    // より積極的にaria-hiddenを削除して、警告を根本的に解決
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === 'attributes' && mutation.attributeName === 'aria-hidden') {
@@ -164,25 +181,30 @@ export const disableBackgroundFocus = () => {
             if (!target.closest('[role="dialog"]') && 
                 !target.closest('[aria-modal="true"]') &&
                 !target.closest('[data-modal-content]')) {
-              // フォーカス可能な要素が含まれている場合は、aria-hiddenを削除
+              // フォーカス可能な要素が含まれている場合は、即座にaria-hiddenを削除
               const hasFocusableDescendant = target.querySelector(
-                'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]'
               );
-              const isFocusable = target.matches('a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])');
+              const isFocusable = target.matches('a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]');
               
               // 現在フォーカスがある要素の祖先の場合も削除
               const activeElement = document.activeElement as HTMLElement;
               const containsFocusedElement = activeElement && (target.contains(activeElement) || target === activeElement);
               
+              // より積極的に削除：フォーカス可能な要素が含まれている、またはフォーカスがある、または要素自体がフォーカス可能な場合
               if (hasFocusableDescendant || isFocusable || containsFocusedElement) {
-                // 即座に削除
+                // 即座に削除（同期的に実行）
                 target.removeAttribute('aria-hidden');
-                // 念のため、少し遅延して再度削除を試みる
-                setTimeout(() => {
-                  if (target.getAttribute('aria-hidden') === 'true') {
-                    target.removeAttribute('aria-hidden');
-                  }
-                }, 0);
+                // 複数回削除を試みる（React Native Webが再設定する可能性があるため）
+                setTimeout(() => target.removeAttribute('aria-hidden'), 0);
+                setTimeout(() => target.removeAttribute('aria-hidden'), 10);
+                setTimeout(() => target.removeAttribute('aria-hidden'), 50);
+                
+                // inert属性を使用して、フォーカスを完全に無効化
+                // inert属性は、aria-hiddenよりも安全で、フォーカス可能な要素を自動的に無効化する
+                if (!target.hasAttribute('inert')) {
+                  target.setAttribute('inert', '');
+                }
               }
             }
           }
@@ -288,6 +310,18 @@ export const enableBackgroundFocus = () => {
     if (root) {
       root.removeAttribute('inert');
     }
+    
+    // すべてのinert属性を削除（背景要素を再有効化）
+    const allInertElements = document.querySelectorAll('[inert]');
+    allInertElements.forEach((element) => {
+      const htmlElement = element as HTMLElement;
+      // モーダル内の要素は除外（まだ開いているモーダルがある可能性があるため）
+      if (!htmlElement.closest('[role="dialog"]') && 
+          !htmlElement.closest('[aria-modal="true"]') &&
+          !htmlElement.closest('[data-modal-content]')) {
+        htmlElement.removeAttribute('inert');
+      }
+    });
     
     // MutationObserverを切断
     if ((window as any).__modalAriaHiddenObserver) {

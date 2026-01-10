@@ -23,7 +23,7 @@ import { getPracticeSessionsByDate } from '@/repositories/practiceSessionReposit
 import { cleanContentFromTimeDetails } from '@/lib/utils/contentCleaner';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
-import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
+import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import { checkMonthlyRecordingLimit, checkDailyRecordingLimit, getMaxRecordingDuration, getMaxDailyRecordings } from '@/lib/subscriptionLimits';
 
@@ -285,6 +285,23 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   useEffect(() => {
     isRecordingJustSavedRef.current = isRecordingJustSaved;
   }, [isRecordingJustSaved]);
+
+  // Webプラットフォームでのフォーカス管理（aria-hidden警告を防ぐため）
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (visible) {
+        disableBackgroundFocus();
+      } else {
+        enableBackgroundFocus();
+      }
+    }
+    
+    return () => {
+      if (Platform.OS === 'web' && !visible) {
+        enableBackgroundFocus();
+      }
+    };
+  }, [visible]);
 
   // 画面表示時に録音数の制限を事前チェック
   useEffect(() => {
@@ -1688,7 +1705,14 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+        if (Platform.OS === 'web') {
+          blurActiveElement();
+          enableBackgroundFocus();
+        }
+        onClose();
+      }}
     >
       <View 
         style={styles.container}

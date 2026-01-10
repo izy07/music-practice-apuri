@@ -17,40 +17,6 @@ export function getFrequency(note: string, octave: number, a4Frequency: number =
   return a4Frequency * Math.pow(2, semitonesFromA4 / 12);
 }
 
-// 周波数から最も近い音名とオクターブを取得する関数
-export function getNoteFromFrequency(
-  frequency: number,
-  a4Frequency: number = DEFAULT_A4_FREQUENCY
-): {
-  note: string;
-  noteJa: string;
-  octave: number;
-  cents: number;
-  isInTune: boolean;
-} {
-  if (frequency <= 0) {
-    return { note: '', noteJa: '', octave: 0, cents: 0, isInTune: false };
-  }
-
-  // MIDIベースで最も近い音高を算出
-  const a4Midi = 69; // A4 の MIDI 番号
-  const noteNumber = 12 * Math.log2(frequency / a4Frequency) + a4Midi; // 実数のMIDI番号
-  const nearestMidi = Math.round(noteNumber); // 最も近い半音に丸め
-
-  // 音名インデックスとオクターブ
-  const noteIndex = ((nearestMidi % 12) + 12) % 12; // 0-11 に正規化
-  const octave = Math.floor(nearestMidi / 12) - 1;
-
-  const note = NOTE_NAMES[noteIndex];
-  const noteJa = NOTE_NAMES_JA[noteIndex];
-
-  // セント（丸めた最近傍ノートからの差）
-  const cents = (noteNumber - nearestMidi) * 100;
-  const isInTune = Math.abs(cents) <= 10;
-
-  return { note, noteJa, octave, cents, isInTune };
-}
-
 // 楽器別の主要音階を定義
 export const INSTRUMENT_SCALES: { [key: string]: { note: string; octave: number; name: string }[] } = {
   piano: [

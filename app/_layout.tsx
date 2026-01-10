@@ -542,6 +542,16 @@ function RootLayoutContent() {
     const currentTab = isInTabsGroup && currentSegments.length > 1 ? currentSegments[1] : null;
     const isAtRoot = currentSegments.length === 0;
     
+    // 認証画面（ログイン/新規登録）にいる場合は完全にスキップ
+    // 各画面のuseEffectで画面遷移を処理するため、ここでは何もしない
+    if (isInAuthGroup) {
+      const authChild = segments.length > 1 ? segments[1] : undefined;
+      if (authChild === 'login' || authChild === 'signup') {
+        logger.debug('認証画面（ログイン/新規登録）にいるため、処理をスキップ', { authChild });
+        return; // 完全にスキップ
+      }
+    }
+    
     // 利用規約・プライバシーポリシー画面は許可（認証チェックをスキップ）
     if (firstSegment === 'terms-of-service' || firstSegment === 'privacy-policy') {
       return;
@@ -606,17 +616,7 @@ function RootLayoutContent() {
         return;
       }
       
-      // 未認証で認証画面にいる場合は、現在の画面を維持
-      // 重要: 新規登録画面にいる場合は、新規登録処理中にログイン画面に飛ばないようにする
-      if (!isAuthenticated && isInAuthGroup) {
-        const authChild = segments.length > 1 ? segments[1] : undefined;
-        if (authChild === 'signup') {
-          logger.debug('未認証・新規登録画面 - 画面を維持（新規登録処理中）', { segments: currentSegments });
-        } else {
-          logger.debug('未認証・認証画面 - 現在の画面を維持', { segments: currentSegments });
-        }
-        return;
-      }
+      // 認証画面（ログイン/新規登録）は既にスキップされているため、ここでは処理しない
       
       // 未認証でアプリ画面にいる場合は、ログイン画面にリダイレクト
       // ただし、認証確認が完了した後（isInitialized && !isLoading）のみ
@@ -627,36 +627,16 @@ function RootLayoutContent() {
     }
     
     // 未認証ユーザー → ログイン画面にリダイレクト
-    // 重要: 新規登録画面にいる場合は、ログイン画面にリダイレクトしない
+    // 認証画面（ログイン/新規登録）は既にスキップされているため、ここでは処理しない
     if (!isAuthenticated) {
-      // 認証画面にいる場合は何もしない（ログイン画面または新規登録画面を表示）
-      if (isInAuthGroup) {
-        const authChild = segments.length > 1 ? segments[1] : undefined;
-        // 新規登録画面にいる場合は、画面を維持（新規登録処理中にログイン画面に飛ばないようにする）
-        if (authChild === 'signup') {
-          return;
-        }
-        // ログイン画面にいる場合も画面を維持
-        return;
-      }
-      
       // ルートパス（/）またはその他の画面にアクセスした場合は、ログイン画面にリダイレクト
       redirectToLogin(router, '未認証ユーザー');
       return;
     }
 
     // 認証済みユーザー
-    // ログイン画面または新規登録画面にいる場合は、適切な画面に遷移
-    // 【シンプル化】認証画面（ログイン/新規登録）にいる場合は完全にスキップ
-    // 各画面のuseEffectで画面遷移を処理するため、ここでは何もしない
-    if (isInAuthGroup) {
-      const authChild = segments.length > 1 ? segments[1] : undefined;
-      if (authChild === 'login' || authChild === 'signup') {
-        // ログイン画面と新規登録画面のuseEffectで処理されるため、完全にスキップ
-        return;
-      }
-      // その他の認証画面（callback、reset-passwordなど）は後続処理で対応
-    }
+    // 認証画面（ログイン/新規登録）は既にスキップされているため、ここでは処理しない
+    // その他の認証画面（callback、reset-passwordなど）は後続処理で対応
     
     // 楽器未選択の場合の処理
     if (!hasInstrumentSelected()) {

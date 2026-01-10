@@ -13,6 +13,7 @@ import { X, Camera as CameraIcon, RotateCcw, Check } from 'lucide-react-native';
 import { useInstrumentTheme } from './InstrumentThemeContext';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 
 // Web環境ではexpo-cameraをインポートしない
 let CameraView: any = null;
@@ -51,6 +52,23 @@ export default function PostureCameraModal({ visible, onClose, instrumentName }:
     }
   }, [visible, permission, requestPermission]);
 
+  // Webプラットフォームでのフォーカス管理（aria-hidden警告を防ぐため）
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (visible) {
+        disableBackgroundFocus();
+      } else {
+        enableBackgroundFocus();
+      }
+    }
+    
+    return () => {
+      if (Platform.OS === 'web' && !visible) {
+        enableBackgroundFocus();
+      }
+    };
+  }, [visible]);
+
   if (!permission) {
     return null;
   }
@@ -61,7 +79,14 @@ export default function PostureCameraModal({ visible, onClose, instrumentName }:
         visible={visible} 
         animationType="slide" 
         transparent
-        onRequestClose={onClose}
+        onRequestClose={() => {
+          // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+          if (Platform.OS === 'web') {
+            blurActiveElement();
+            enableBackgroundFocus();
+          }
+          onClose();
+        }}
       >
         <View style={styles.overlay}>
           <View 
@@ -134,7 +159,14 @@ export default function PostureCameraModal({ visible, onClose, instrumentName }:
       visible={visible} 
       animationType="slide" 
       transparent
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+        if (Platform.OS === 'web') {
+          blurActiveElement();
+          enableBackgroundFocus();
+        }
+        onClose();
+      }}
     >
       <View style={styles.overlay}>
         <View 

@@ -3,8 +3,8 @@
  * 練習メニューの詳細情報を表示
  */
 
-import React from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView, Alert } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, TouchableOpacity, Modal, ScrollView, Alert, Platform } from 'react-native';
 import { Play } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
@@ -19,6 +19,7 @@ import { styles } from '../styles';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
+import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 
 export interface PracticeDetailModalProps {
   visible: boolean;
@@ -205,6 +206,23 @@ export function PracticeDetailModal({
     ]);
   };
 
+  // Webプラットフォームでのフォーカス管理（aria-hidden警告を防ぐため）
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (visible) {
+        disableBackgroundFocus();
+      } else {
+        enableBackgroundFocus();
+      }
+    }
+    
+    return () => {
+      if (Platform.OS === 'web' && !visible) {
+        enableBackgroundFocus();
+      }
+    };
+  }, [visible]);
+
   if (!selectedMenu) return null;
 
   return (
@@ -212,7 +230,14 @@ export function PracticeDetailModal({
       visible={visible}
       transparent={true}
       animationType="slide"
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+        if (Platform.OS === 'web') {
+          blurActiveElement();
+          enableBackgroundFocus();
+        }
+        onClose();
+      }}
     >
       <View style={styles.detailModalOverlay}>
         <View style={[styles.detailModalContent, { backgroundColor: currentTheme.background }]}>

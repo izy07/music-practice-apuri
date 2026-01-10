@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Modal, Platform } from 'react-native';
 import { ArrowLeft } from 'lucide-react-native';
 import SafeView from '@/components/SafeView';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { createShadowStyle } from '@/lib/shadowStyles';
+import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 
 interface PastOrgEditorModalProps {
   visible: boolean;
@@ -15,6 +16,23 @@ export default function PastOrgEditorModal({ visible, onClose, onSave }: PastOrg
   const { currentTheme } = useInstrumentTheme();
   const [name, setName] = useState('');
 
+  // Webプラットフォームでのフォーカス管理（aria-hidden警告を防ぐため）
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (visible) {
+        disableBackgroundFocus();
+      } else {
+        enableBackgroundFocus();
+      }
+    }
+    
+    return () => {
+      if (Platform.OS === 'web' && !visible) {
+        enableBackgroundFocus();
+      }
+    };
+  }, [visible]);
+
   const handleSave = () => {
     if (name.trim()) {
       onSave(name);
@@ -24,7 +42,19 @@ export default function PastOrgEditorModal({ visible, onClose, onSave }: PastOrg
   };
 
   return (
-    <Modal visible={visible} animationType="none" presentationStyle="fullScreen">
+    <Modal 
+      visible={visible} 
+      animationType="none" 
+      presentationStyle="fullScreen"
+      onRequestClose={() => {
+        // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+        if (Platform.OS === 'web') {
+          blurActiveElement();
+          enableBackgroundFocus();
+        }
+        onClose();
+      }}
+    >
       <SafeView>
         <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}> 
           <TouchableOpacity style={styles.headerBack} onPress={onClose}>

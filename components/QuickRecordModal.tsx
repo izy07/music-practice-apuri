@@ -24,7 +24,7 @@ import { formatLocalDate } from '@/lib/dateUtils';
 import { supabase } from '@/lib/supabase';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import { useRouter } from 'expo-router';
-import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
+import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 import { readableTextColor } from '@/lib/colors';
 
 interface QuickRecordModalProps {
@@ -343,7 +343,14 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
       visible={visible}
       animationType="slide"
       transparent={true}
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+        if (Platform.OS === 'web') {
+          blurActiveElement();
+          enableBackgroundFocus();
+        }
+        onClose();
+      }}
     >
       <View style={styles.overlay}>
         <View 

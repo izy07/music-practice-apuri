@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   ScrollView,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { X, BarChart3, Calendar, Clock, Target } from 'lucide-react-native';
 import { useInstrumentTheme } from './InstrumentThemeContext';
+import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 
 const { width } = Dimensions.get('window');
 
@@ -32,6 +34,23 @@ export default function PracticeStatsModal({
 }: PracticeStatsModalProps) {
   const { currentTheme } = useInstrumentTheme();
 
+  // Webプラットフォームでのフォーカス管理（aria-hidden警告を防ぐため）
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (visible) {
+        disableBackgroundFocus();
+      } else {
+        enableBackgroundFocus();
+      }
+    }
+    
+    return () => {
+      if (Platform.OS === 'web' && !visible) {
+        enableBackgroundFocus();
+      }
+    };
+  }, [visible]);
+
   // 統計データの計算
   const practiceDays = Object.values(practiceData).filter(day => day.hasRecord).length;
   const averagePerDay = practiceDays > 0 ? Math.round(monthlyTotal / practiceDays) : 0;
@@ -46,7 +65,14 @@ export default function PracticeStatsModal({
       visible={visible}
       animationType="slide"
       transparent={true}
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+        if (Platform.OS === 'web') {
+          blurActiveElement();
+          enableBackgroundFocus();
+        }
+        onClose();
+      }}
     >
       <View style={styles.overlay}>
         <View style={[styles.modalContainer, { backgroundColor: currentTheme.background }]}>
