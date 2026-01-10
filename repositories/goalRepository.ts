@@ -5,6 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { Goal } from '@/app/(tabs)/goals/types';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { subGoalRepository } from './subGoalRepository';
 
 // セッションで show_on_calendar カラムの対応可否を保持
 let supportsShowOnCalendar: boolean | null = null; // nullの場合は未チェック
@@ -331,8 +332,33 @@ export const goalRepository = {
               show_on_calendar: g.show_on_calendar ?? false,
             }));
             
+            // 長期目標の場合、サブ目標も取得
+            const goalsWithSubGoals = await Promise.all(
+              goalsWithDefaults.map(async (g: any) => {
+                if (g.goal_type === 'personal_long') {
+                  try {
+                    const subGoals = await subGoalRepository.getSubGoalsByGoalId(g.id, userId);
+                    if (subGoals && subGoals.length > 0) {
+                      const calculatedProgress = subGoalRepository.calculateProgressFromSubGoals(subGoals);
+                      return {
+                        ...g,
+                        sub_goals: subGoals,
+                        progress_percentage: calculatedProgress,
+                        is_completed: calculatedProgress === 100,
+                      };
+                    }
+                    return { ...g, sub_goals: [] };
+                  } catch (error) {
+                    logger.debug('サブ目標取得エラー（無視）:', error);
+                    return { ...g, sub_goals: [] };
+                  }
+                }
+                return g;
+              })
+            );
+            
             // DBから取得した値をそのまま使用
-            return goalsWithDefaults.filter((g: any) => !g.is_completed);
+            return goalsWithSubGoals.filter((g: any) => !g.is_completed);
           }
         }
         
@@ -371,8 +397,33 @@ export const goalRepository = {
               show_on_calendar: g.show_on_calendar ?? false,
             }));
             
+            // 長期目標の場合、サブ目標も取得
+            const goalsWithSubGoals = await Promise.all(
+              goalsWithDefaults.map(async (g: any) => {
+                if (g.goal_type === 'personal_long') {
+                  try {
+                    const subGoals = await subGoalRepository.getSubGoalsByGoalId(g.id, userId);
+                    if (subGoals && subGoals.length > 0) {
+                      const calculatedProgress = subGoalRepository.calculateProgressFromSubGoals(subGoals);
+                      return {
+                        ...g,
+                        sub_goals: subGoals,
+                        progress_percentage: calculatedProgress,
+                        is_completed: calculatedProgress === 100,
+                      };
+                    }
+                    return { ...g, sub_goals: [] };
+                  } catch (error) {
+                    logger.debug('サブ目標取得エラー（無視）:', error);
+                    return { ...g, sub_goals: [] };
+                  }
+                }
+                return g;
+              })
+            );
+            
             // DBから取得した値をそのまま使用
-            return goalsWithDefaults.filter((g: any) => !g.is_completed);
+            return goalsWithSubGoals.filter((g: any) => !g.is_completed);
           }
         }
         
@@ -416,8 +467,33 @@ export const goalRepository = {
               show_on_calendar: false,
             }));
             
+            // 長期目標の場合、サブ目標も取得
+            const goalsWithSubGoals = await Promise.all(
+              goalsWithDefaults.map(async (g: any) => {
+                if (g.goal_type === 'personal_long') {
+                  try {
+                    const subGoals = await subGoalRepository.getSubGoalsByGoalId(g.id, userId);
+                    if (subGoals && subGoals.length > 0) {
+                      const calculatedProgress = subGoalRepository.calculateProgressFromSubGoals(subGoals);
+                      return {
+                        ...g,
+                        sub_goals: subGoals,
+                        progress_percentage: calculatedProgress,
+                        is_completed: calculatedProgress === 100,
+                      };
+                    }
+                    return { ...g, sub_goals: [] };
+                  } catch (error) {
+                    logger.debug('サブ目標取得エラー（無視）:', error);
+                    return { ...g, sub_goals: [] };
+                  }
+                }
+                return g;
+              })
+            );
+            
             // DBから取得した値をそのまま使用
-            return goalsWithDefaults.filter((g: any) => !g.is_completed);
+            return goalsWithSubGoals.filter((g: any) => !g.is_completed);
           }
         }
       }
@@ -431,8 +507,36 @@ export const goalRepository = {
         show_on_calendar: g.show_on_calendar ?? false,
       }));
       
+      // 長期目標の場合、サブ目標も取得
+      const goalsWithSubGoals = await Promise.all(
+        goalsWithDefaults.map(async (g: any) => {
+          if (g.goal_type === 'personal_long') {
+            try {
+              const subGoals = await subGoalRepository.getSubGoalsByGoalId(g.id, userId);
+              // サブ目標がある場合は進捗率を自動計算
+              if (subGoals && subGoals.length > 0) {
+                const calculatedProgress = subGoalRepository.calculateProgressFromSubGoals(subGoals);
+                return {
+                  ...g,
+                  sub_goals: subGoals,
+                  progress_percentage: calculatedProgress,
+                  // 進捗率が100%の場合は完了としてマーク
+                  is_completed: calculatedProgress === 100,
+                };
+              }
+              return { ...g, sub_goals: [] };
+            } catch (error) {
+              // サブ目標取得エラーは無視（既存機能に影響しない）
+              logger.debug('サブ目標取得エラー（無視）:', error);
+              return { ...g, sub_goals: [] };
+            }
+          }
+          return g;
+        })
+      );
+      
       // DBから取得した値をそのまま使用
-      return goalsWithDefaults.filter((g: any) => !g.is_completed);
+      return goalsWithSubGoals.filter((g: any) => !g.is_completed);
     }
     
     return [];
@@ -575,7 +679,35 @@ export const goalRepository = {
         is_completed: g.is_completed ?? (g.progress_percentage === 100),
         show_on_calendar: g.show_on_calendar ?? false,
       }));
-      return goalsWithDefaults.filter((g: any) => g.is_completed === true);
+      
+      // 長期目標の場合、サブ目標も取得
+      const goalsWithSubGoals = await Promise.all(
+        goalsWithDefaults.map(async (g: any) => {
+          if (g.goal_type === 'personal_long') {
+            try {
+              const subGoals = await subGoalRepository.getSubGoalsByGoalId(g.id, userId);
+              // サブ目標がある場合は進捗率を自動計算
+              if (subGoals && subGoals.length > 0) {
+                const calculatedProgress = subGoalRepository.calculateProgressFromSubGoals(subGoals);
+                return {
+                  ...g,
+                  sub_goals: subGoals,
+                  progress_percentage: calculatedProgress,
+                  is_completed: calculatedProgress === 100,
+                };
+              }
+              return { ...g, sub_goals: [] };
+            } catch (error) {
+              // サブ目標取得エラーは無視（既存機能に影響しない）
+              logger.debug('サブ目標取得エラー（無視）:', error);
+              return { ...g, sub_goals: [] };
+            }
+          }
+          return g;
+        })
+      );
+      
+      return goalsWithSubGoals.filter((g: any) => g.is_completed === true);
     }
     
     return [];
@@ -689,7 +821,7 @@ export const goalRepository = {
     target_date?: string;
     goal_type: 'personal_short' | 'personal_long' | 'group';
     instrument_id?: string | null;
-  }): Promise<void> {
+  }): Promise<string | null> {
     // 最初の目標かどうかをチェック（instrument_idカラムが存在する場合のみフィルタリング）
     const existingGoalsCount = await this.getExistingGoalsCount(
       userId, 
@@ -726,9 +858,11 @@ export const goalRepository = {
       insertPayload.show_on_calendar = showOnCalendar;
     }
 
-    let { error } = await supabase
+    let { data: insertedData, error } = await supabase
       .from('goals')
-      .insert(insertPayload);
+      .insert(insertPayload)
+      .select('id')
+      .single();
 
     // エラーハンドリング
     if (error) {
@@ -755,14 +889,16 @@ export const goalRepository = {
         } catch {}
         
         // show_on_calendarを除外して再試行
-        const { error: retryError } = await supabase
+        const { data: retryData, error: retryError } = await supabase
           .from('goals')
-          .insert(insertData);
+          .insert(insertData)
+          .select('id')
+          .single();
         
         if (retryError) {
           throw retryError;
         }
-        return;
+        return retryData?.id || null;
       }
 
       // instrument_idカラムのエラーの場合
@@ -783,9 +919,11 @@ export const goalRepository = {
           retryPayload.show_on_calendar = showOnCalendar;
         }
         
-        const { error: retryError } = await supabase
+        const { data: retryData2, error: retryError } = await supabase
           .from('goals')
-          .insert(retryPayload);
+          .insert(retryPayload)
+          .select('id')
+          .single();
         
         if (retryError) {
           // まだエラーが発生する場合は、show_on_calendarも除外
@@ -797,18 +935,21 @@ export const goalRepository = {
               }
             } catch {}
             
-            const { error: finalError } = await supabase
+            const { data: finalData, error: finalError } = await supabase
               .from('goals')
-              .insert(retryData);
+              .insert(retryData)
+              .select('id')
+              .single();
             
             if (finalError) {
               throw finalError;
             }
+            return finalData?.id || null;
           } else {
             throw retryError;
           }
         }
-        return;
+        return retryData2?.id || null;
       }
 
       // is_completedカラムのエラーの場合
@@ -825,19 +966,24 @@ export const goalRepository = {
           retryPayload.instrument_id = goal.instrument_id || null;
         }
         
-        const { error: retryError } = await supabase
+        const { data: retryData3, error: retryError } = await supabase
           .from('goals')
-          .insert(retryPayload);
+          .insert(retryPayload)
+          .select('id')
+          .single();
         
         if (retryError) {
           throw retryError;
         }
-        return;
+        return retryData3?.id || null;
       }
 
       // その他のエラー
       throw error;
     }
+    
+    // 成功した場合、作成した目標のIDを返す
+    return insertedData?.id || null;
   },
 
   /**

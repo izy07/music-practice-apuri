@@ -15,7 +15,7 @@ import { RoutePath } from '@/types/common'; // ルートパス型
 import { TIMEOUT } from '@/lib/constants'; // タイムアウト定数
 import logger from '@/lib/logger'; // ロガー
 import { ErrorHandler } from '@/lib/errorHandler'; // エラーハンドラー
-import { getBasePath, navigateWithBasePath } from '@/lib/navigationUtils'; // ベースパス取得関数とナビゲーション関数
+import { getBasePath, navigateWithBasePath, redirectToLogin } from '@/lib/navigationUtils'; // ベースパス取得関数とナビゲーション関数
 import { checkDatabaseSchema } from '@/lib/databaseSchemaChecker'; // データベーススキーマチェック
 import { initializeGoalRepository } from '@/repositories/goalRepository'; // 目標リポジトリの初期化
 import audioResourceManager from '@/lib/audioResourceManager'; // オーディオリソース管理
@@ -114,13 +114,18 @@ function RootLayoutContent() {
     user
   } = useAuthAdvanced();
 
+  // segmentsをrefで保持（Web環境での強制遷移を防ぐため）
+  const segmentsRef = useRef(segments);
+
+  // segmentsが変更されたらrefを更新
+  React.useEffect(() => {
+    segmentsRef.current = segments;
+  }, [segments]);
 
   // アプリのライフサイクル管理：バックグラウンド移行時にオーディオリソースを解放
   React.useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'background' || nextAppState === 'inactive') {
-        // アプリがバックグラウンドに移行した時にすべてのオーディオリソースを強制解放
-        logger.debug('アプリがバックグラウンドに移行: オーディオリソースを解放');
         audioResourceManager.forceReleaseAll();
       }
     });
@@ -130,78 +135,33 @@ function RootLayoutContent() {
     };
   }, []);
 
-  // ネットワーク切断検出：ネットワークが切断されたらログイン画面にリダイレクト
+  // ネットワーク切断検出：ネットワークが切断されたらログイン画面にリダイレクト（統合版）
   React.useEffect(() => {
-    if (Platform.OS !== 'web') {
-      // ネイティブ環境ではネットワーク状態の監視は別途実装が必要
+    if (Platform.OS !== 'web' || typeof window === 'undefined') {
       return;
     }
 
     const handleOffline = () => {
-      const currentSegments = Platform.OS === 'web' ? segmentsRef.current : segments;
-      const firstSegment = currentSegments[0];
-      const isInAuthGroup = firstSegment === 'auth';
-      
-      // ログイン画面にいない場合のみリダイレクト
-      if (!isInAuthGroup && isReady && isInitialized) {
-        logger.debug('ネットワーク切断を検出 - ログイン画面にリダイレクト');
-        router.replace('/auth/login');
-      }
-    };
-
-    // 初回チェック
-    if (!isOnline()) {
-      handleOffline();
-    }
-
-    // ネットワーク状態の変化を監視
-    if (typeof window !== 'undefined') {
-      window.addEventListener('offline', handleOffline);
-      return () => {
-        window.removeEventListener('offline', handleOffline);
-      };
-    }
-  }, [isReady, isInitialized, router]);
-
-  // ネットワーク切断検出：ネットワークが切断されたらログイン画面にリダイレクト
-  React.useEffect(() => {
-    if (Platform.OS !== 'web') {
-      // ネイティブ環境ではネットワーク状態の監視は別途実装が必要
-      return;
-    }
-
-    const checkNetworkAndRedirect = () => {
       if (!isOnline()) {
         const currentSegments = Platform.OS === 'web' ? segmentsRef.current : segments;
-        const firstSegment = currentSegments[0];
-        const isInAuthGroup = firstSegment === 'auth';
+        const isInAuthGroup = currentSegments[0] === 'auth';
         
-        // 既にログイン画面にいる場合は何もしない
-        if (isInAuthGroup) {
-          return;
+        // ログイン画面にいない場合のみリダイレクト
+        if (!isInAuthGroup && isReady && isInitialized) {
+          redirectToLogin(router, 'ネットワーク切断を検出');
         }
-        
-        // ネットワークが切断された場合はログイン画面にリダイレクト
-        logger.debug('ネットワーク切断を検出 - ログイン画面にリダイレクト');
-        router.replace('/auth/login');
       }
     };
 
     // 初回チェック
-    checkNetworkAndRedirect();
+    handleOffline();
 
     // ネットワーク状態の変化を監視
-    if (typeof window !== 'undefined') {
-      window.addEventListener('offline', checkNetworkAndRedirect);
-      
-      return () => {
-        window.removeEventListener('offline', checkNetworkAndRedirect);
-      };
-    }
-  }, [router]);
-  
-  // すべてのuseRefを条件分岐の前に配置（Hooksの順序を保持）
-  const segmentsRef = useRef(segments); // segmentsをrefで保持（Web環境での強制遷移を防ぐため）
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [isReady, isInitialized, router, segments]);
   
   // segmentsが変更されたらrefを更新
   React.useEffect(() => {
@@ -613,8 +573,7 @@ function RootLayoutContent() {
       
       // ルートパスのみログイン画面にリダイレクト（初回アクセス時）
       if (isAtRoot) {
-        logger.debug('認証初期化中・ルートパス - ログイン画面にリダイレクト', { isLoading, isInitialized });
-        router.replace('/auth/login');
+        redirectToLogin(router, '認証初期化中・ルートパス');
         return;
       }
       
@@ -662,8 +621,7 @@ function RootLayoutContent() {
       // 未認証でアプリ画面にいる場合は、ログイン画面にリダイレクト
       // ただし、認証確認が完了した後（isInitialized && !isLoading）のみ
       if (!isAuthenticated && (isInTabsGroup || isInOrgGroup) && isInitialized && !isLoading) {
-        logger.debug('未認証・アプリ画面 - ログイン画面にリダイレクト', { segments: currentSegments });
-        router.replace('/auth/login');
+        redirectToLogin(router, '未認証・アプリ画面');
         return;
       }
     }
@@ -672,90 +630,54 @@ function RootLayoutContent() {
     // 重要: 新規登録画面にいる場合は、ログイン画面にリダイレクトしない
     if (!isAuthenticated) {
       // 認証画面にいる場合は何もしない（ログイン画面または新規登録画面を表示）
-      if (isInAuthGroup && firstSegment && firstSegment === 'auth') {
+      if (isInAuthGroup) {
         const authChild = segments.length > 1 ? segments[1] : undefined;
         // 新規登録画面にいる場合は、画面を維持（新規登録処理中にログイン画面に飛ばないようにする）
         if (authChild === 'signup') {
-          logger.debug('未認証ユーザー・新規登録画面 - 画面を維持（新規登録処理中）', { isAtRoot, isInAuthGroup, firstSegment, authChild });
           return;
         }
         // ログイン画面にいる場合も画面を維持
-        logger.debug('未認証ユーザー・認証画面 - 画面を維持', { isAtRoot, isInAuthGroup, firstSegment, authChild });
         return;
       }
       
       // ルートパス（/）またはその他の画面にアクセスした場合は、ログイン画面にリダイレクト
-      logger.debug('未認証ユーザー - ログイン画面にリダイレクト', { isAtRoot, isInAuthGroup, firstSegment });
-      try {
-        router.replace('/auth/login');
-      } catch (error) {
-        logger.error('ログイン画面への遷移エラー:', error);
-        // エラー時はルートパスに遷移（次回のuseEffectで再度リダイレクトを試みる）
-        if (!isAtRoot) {
-          router.replace('/');
-        }
-      }
+      redirectToLogin(router, '未認証ユーザー');
       return;
     }
 
     // 認証済みユーザー
     // ログイン画面または新規登録画面にいる場合は、適切な画面に遷移
-    // ただし、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぐため、
-    // ログイン画面のuseEffectで画面遷移を処理する（ここではスキップ）
-    // 新規登録画面でも同様に、signup.tsxのuseEffectで画面遷移を処理する（ここではスキップ）
+    // 【シンプル化】認証画面（ログイン/新規登録）にいる場合は完全にスキップ
+    // 各画面のuseEffectで画面遷移を処理するため、ここでは何もしない
     if (isInAuthGroup) {
-      // ログイン画面のuseEffectで画面遷移が処理されるため、ここではスキップ
-      // ただし、ログイン画面のuseEffectが動作しない場合に備えて、フォールバック処理を追加
       const authChild = segments.length > 1 ? segments[1] : undefined;
-      if (authChild === 'login') {
-        // ログイン画面のuseEffectで処理されるため、ここではスキップ
-        // 重要: ログイン画面にいる間は、ここから楽器選択画面に遷移しないようにする
-        logger.debug('認証済み・ログイン画面 - ログイン画面のuseEffectで画面遷移を処理（ここでは遷移しない）', { segments: currentSegments });
+      if (authChild === 'login' || authChild === 'signup') {
+        // ログイン画面と新規登録画面のuseEffectで処理されるため、完全にスキップ
         return;
       }
-      if (authChild === 'signup') {
-        // 新規登録画面のuseEffectで処理されるため、ここではスキップ
-        // 重要: 新規登録画面にいる間は、ここから画面遷移しないようにする（一瞬ログイン画面に飛ぶ問題を防ぐ）
-        logger.debug('認証済み・新規登録画面 - 新規登録画面のuseEffectで画面遷移を処理（ここでは遷移しない）', { segments: currentSegments });
-        return;
-      }
-      // その他の認証画面（callback、reset-passwordなど）の場合は、適切な画面に遷移
-      logger.debug('認証済み・認証画面（ログイン/新規登録以外） - 適切な画面に遷移', { segments: currentSegments });
-      // 下記の処理に続く（楽器選択チェックなど）
+      // その他の認証画面（callback、reset-passwordなど）は後続処理で対応
     }
     
     // 楽器未選択の場合の処理
-    // 重要: ログイン画面にいる場合は、ここから楽器選択画面に遷移しない
-    // ログイン画面のuseEffectで画面遷移が処理されるため
     if (!hasInstrumentSelected()) {
-      // ログイン画面にいる場合は、ログイン画面のuseEffectで処理されるためスキップ
-      if (isInAuthGroup) {
-        const authChild = segments.length > 1 ? segments[1] : undefined;
-        if (authChild === 'login') {
-          logger.debug('楽器未選択・ログイン画面 - ログイン画面のuseEffectで画面遷移を処理', { segments: currentSegments });
-          return; // ログイン画面のuseEffectで処理されるため、ここでは何もしない
-        }
-      }
-      
       // チュートリアル画面にいる場合は許可（遷移をブロックしない）
       if (currentTab === 'tutorial') {
-        return; // 遷移を許可
+        return;
       }
       
       // 楽器選択画面にいる場合は許可（遷移をブロックしない）
       if (currentTab === 'instrument-selection') {
-        return; // 遷移を許可
+        return;
       }
       
-      // チュートリアルが必要な場合のみチュートリアル画面にリダイレクト
-      // ただし、楽器が選択されている場合はカレンダー画面に遷移（タイムアウト時の誤った遷移を防ぐ）
-      if (needsTutorial() && !hasInstrumentSelected()) {
-        // チュートリアルが必要な場合（新規登録直後など）かつ楽器が未選択の場合
+      // チュートリアルが必要な場合はチュートリアル画面に遷移
+      if (needsTutorial()) {
         logger.debug('新規登録直後のため、チュートリアル画面にリダイレクト');
         router.replace('/(tabs)/tutorial');
         return;
       }
-      // チュートリアル完了後または楽器未選択の場合は楽器選択画面にリダイレクト
+      
+      // その他の場合は楽器選択画面に遷移
       logger.debug('楽器未選択のため、楽器選択画面にリダイレクト');
       router.replace('/(tabs)/instrument-selection');
       return;
@@ -763,28 +685,30 @@ function RootLayoutContent() {
 
     // 認証済み + 楽器選択済み
     // チュートリアル画面にいる場合はカレンダー画面に遷移
-    // ただし、楽器選択画面にいる場合は、楽器選択を完了するまで遷移しない
     if (currentTab === 'tutorial' && hasInstrumentSelected()) {
       logger.debug('楽器選択済みのため、チュートリアル画面からカレンダー画面にリダイレクト');
       router.replace('/(tabs)/index');
       return;
     }
     
-    // Web環境: 既に適切な画面にいる場合は維持（リロード時も現在の画面を保持）
+    // Web環境: 既に適切な画面にいる場合は維持
     if (Platform.OS === 'web' && (isInTabsGroup || isInOrgGroup)) {
       return;
     }
     
-    // ルートパスまたは認証画面にいる場合はカレンダー画面に遷移
-    // ただし、新規登録画面にいる場合はスキップ（新規登録画面のuseEffectで処理される）
-    if (isAtRoot || (isInAuthGroup && !(segments.length > 1 && segments[1] === 'signup'))) {
+    // ルートパスの場合はカレンダー画面に遷移
+    if (isAtRoot) {
       router.replace('/(tabs)/index');
       return;
     }
     
-    // 新規登録画面にいる場合は、新規登録画面のuseEffectで処理されるためスキップ
-    if (isInAuthGroup && segments.length > 1 && segments[1] === 'signup') {
-      logger.debug('認証済み・新規登録画面 - 新規登録画面のuseEffectで画面遷移を処理（ここでは遷移しない）', { segments: currentSegments });
+    // その他の認証画面（callback、reset-passwordなど）の処理
+    if (isInAuthGroup) {
+      if (!hasInstrumentSelected()) {
+        router.replace('/(tabs)/instrument-selection');
+      } else {
+        router.replace('/(tabs)/index');
+      }
       return;
     }
   }, [isReady, isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, needsTutorial, router, segments]);

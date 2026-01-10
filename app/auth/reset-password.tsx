@@ -23,6 +23,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { redirectToLogin } from '@/lib/navigationUtils';
 import { supabase } from '@/lib/supabase';
 import { Eye, EyeOff, Lock, Check } from 'lucide-react-native';
 
@@ -94,7 +95,7 @@ export default function ResetPasswordScreen() {
           [
             {
               text: 'ログイン画面に戻る',
-              onPress: () => router.replace('/auth/login'),
+              onPress: () => redirectToLogin(router, 'セッションエラー'),
             },
           ]
         );
@@ -104,7 +105,7 @@ export default function ResetPasswordScreen() {
       setIsValidSession(true);
     } catch (error) {
       console.error('セッション確認エラー:', error);
-      router.replace('/auth/login');
+      redirectToLogin(router, 'セッション確認エラー');
     }
   };
 
@@ -165,7 +166,7 @@ export default function ResetPasswordScreen() {
             onPress: () => {
               // ログアウトしてからログイン画面に遷移
               supabase.auth.signOut().then(() => {
-                router.replace('/auth/login');
+                redirectToLogin(router, 'パスワード更新成功');
               });
             },
           },
@@ -185,7 +186,7 @@ export default function ResetPasswordScreen() {
 
   // ログイン画面への遷移
   const goToLogin = () => {
-    router.replace('/auth/login');
+    redirectToLogin(router, 'ユーザー操作');
   };
 
   // フィールド更新

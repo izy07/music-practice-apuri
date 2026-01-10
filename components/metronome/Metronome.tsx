@@ -43,7 +43,7 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
     noteValue: 4,
     display: '4/4'
   });
-  const [metronomeSoundType, setMetronomeSoundType] = useState<'click' | 'beep' | 'bell'>('click');
+  const [metronomeSoundType, setMetronomeSoundType] = useState<'click' | 'tone' | 'bell' | 'wood'>('click');
   const [isTimeSignatureModalVisible, setIsTimeSignatureModalVisible] = useState(false);
 
   // メトロノーム設定の読み込み
@@ -52,9 +52,11 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
       try {
         const { default: AsyncStorage } = await import('@react-native-async-storage/async-storage');
         const savedSoundType = await AsyncStorage.getItem('metronome_sound_type');
-        if (savedSoundType === 'click' || savedSoundType === 'beep' || savedSoundType === 'bell') {
-          setMetronomeSoundType(savedSoundType);
-          logger.debug('メトロノーム音設定を読み込み:', savedSoundType);
+        if (savedSoundType === 'click' || savedSoundType === 'tone' || savedSoundType === 'bell' || savedSoundType === 'wood' || savedSoundType === 'beep') {
+          // 'beep' は 'tone' に移行（後方互換性のため）
+          const soundType = savedSoundType === 'beep' ? 'tone' : savedSoundType;
+          setMetronomeSoundType(soundType as 'click' | 'tone' | 'bell' | 'wood');
+          logger.debug('メトロノーム音設定を読み込み:', soundType);
         }
       } catch (error) {
         logger.debug('メトロノーム音設定の読み込みエラー:', error);
@@ -283,8 +285,8 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
         }
         break;
         
-      case 'beep':
-        // ビープ音（明確な音色、強拍と弱拍で周波数を変える）
+      case 'tone':
+        // トーン音（ピアノのような柔らかい音色、ベル音とは異なる周波数構成）
         {
           const oscillator = ctx.createOscillator();
           const gainNode = ctx.createGain();
@@ -295,20 +297,91 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
           audioResourceManager.registerOscillator(OWNER_NAME, oscillator);
           activeOscillatorsRef.current.push(oscillator);
           
-          oscillator.type = 'square'; // より明確な音色
+          // sine波を使用して、クリック音（square波）と明確に区別
+          oscillator.type = 'sine'; // 柔らかい音色
           if (isStrongBeat) {
-            oscillator.frequency.setValueAtTime(1200, currentTime); // 強拍：高い音
+            // 強拍: 中音域（600Hz）でベル音（880Hz）と区別
+            oscillator.frequency.setValueAtTime(600, currentTime);
           } else {
-            oscillator.frequency.setValueAtTime(600, currentTime); // 弱拍：低い音
+            // 弱拍: 低音域（300Hz）でベル音（440Hz）と区別
+            oscillator.frequency.setValueAtTime(300, currentTime);
           }
           
-          // スマホでも聞こえるように音量を上げる
+          // トーン音は中程度の長さ（0.2秒）にして、クリック音（短い）とベル音（長い）と区別
           gainNode.gain.setValueAtTime(0, currentTime);
-          gainNode.gain.linearRampToValueAtTime(metronomeVolume * 1.0, currentTime + 0.005);
-          gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.12);
+          gainNode.gain.linearRampToValueAtTime(metronomeVolume * 0.85, currentTime + 0.015);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.2);
           
           oscillator.start(currentTime);
-          oscillator.stop(currentTime + 0.12);
+          oscillator.stop(currentTime + 0.2);
+          
+          // 停止後に配列から削除
+          oscillator.onended = () => {
+            activeOscillatorsRef.current = activeOscillatorsRef.current.filter(osc => osc !== oscillator);
+          };
+        }
+        break;
+        
+      case 'beep':
+        // 後方互換性のため 'beep' を 'tone' として処理
+        {
+          const oscillator = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+          oscillator.connect(gainNode);
+          gainNode.connect(ctx.destination);
+          
+          audioResourceManager.registerOscillator(OWNER_NAME, oscillator);
+          activeOscillatorsRef.current.push(oscillator);
+          
+          oscillator.type = 'sine';
+          if (isStrongBeat) {
+            oscillator.frequency.setValueAtTime(600, currentTime);
+          } else {
+            oscillator.frequency.setValueAtTime(300, currentTime);
+          }
+          
+          gainNode.gain.setValueAtTime(0, currentTime);
+          gainNode.gain.linearRampToValueAtTime(metronomeVolume * 0.85, currentTime + 0.015);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.2);
+          
+          oscillator.start(currentTime);
+          oscillator.stop(currentTime + 0.2);
+          
+          oscillator.onended = () => {
+            activeOscillatorsRef.current = activeOscillatorsRef.current.filter(osc => osc !== oscillator);
+          };
+        }
+        break;
+        
+      case 'wood':
+        // ウッドブロック音（低い周波数、短く鋭い減衰、クリック音とは異なる音色）
+        {
+          const oscillator = ctx.createOscillator();
+          const gainNode = ctx.createGain();
+          oscillator.connect(gainNode);
+          gainNode.connect(ctx.destination);
+          
+          // オシレーターをリソース管理サービスに登録
+          audioResourceManager.registerOscillator(OWNER_NAME, oscillator);
+          activeOscillatorsRef.current.push(oscillator);
+          
+          // sawtooth波を使用して、クリック音（square波）と区別
+          oscillator.type = 'sawtooth'; // ウッドブロックのような音色
+          if (isStrongBeat) {
+            // 強拍: 低音域（200Hz）でクリック音（1000Hz）と明確に区別
+            oscillator.frequency.setValueAtTime(200, currentTime);
+          } else {
+            // 弱拍: さらに低音域（150Hz）でクリック音（600Hz）と明確に区別
+            oscillator.frequency.setValueAtTime(150, currentTime);
+          }
+          
+          // ウッドブロックは非常に短く鋭い減衰（0.08秒）で、クリック音と区別
+          gainNode.gain.setValueAtTime(0, currentTime);
+          gainNode.gain.linearRampToValueAtTime(metronomeVolume * 1.0, currentTime + 0.002);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, currentTime + 0.08);
+          
+          oscillator.start(currentTime);
+          oscillator.stop(currentTime + 0.08);
           
           // 停止後に配列から削除
           oscillator.onended = () => {
@@ -721,7 +794,8 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
           <View style={styles.metronomeSoundSettingGrid}>
             {[
               { id: 'click', name: 'クリック' },
-              { id: 'beep', name: 'ビープ' },
+              { id: 'tone', name: 'トーン' },
+              { id: 'wood', name: 'ウッド' },
               { id: 'bell', name: 'ベル' },
             ].map((sound) => (
               <TouchableOpacity
@@ -734,7 +808,7 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
                       : currentTheme.secondary,
                   }
                 ]}
-                onPress={() => setMetronomeSoundType(sound.id as 'click' | 'beep' | 'bell')}
+                onPress={() => setMetronomeSoundType(sound.id as 'click' | 'tone' | 'wood' | 'bell')}
               >
                 <Text
                   style={[

@@ -32,6 +32,19 @@ export interface UserProfile {
 }
 
 // 目標関連
+export interface SubGoal {
+  id: string;
+  goal_id: string;
+  user_id: string;
+  title: string;
+  description?: string;
+  is_completed: boolean;
+  completed_at?: string | null;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Goal {
   id: string;
   user_id: string;
@@ -45,6 +58,7 @@ export interface Goal {
   completed_at?: string;
   created_at: string;
   updated_at?: string;
+  sub_goals?: SubGoal[]; // サブ目標（長期目標の場合のみ）
 }
 
 // 練習記録関連

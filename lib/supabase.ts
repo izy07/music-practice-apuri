@@ -486,6 +486,44 @@ export type Database = {
           updated_at?: string;
         };
       };
+      sub_goals: {
+        Row: {
+          id: string;
+          goal_id: string;
+          user_id: string;
+          title: string;
+          description: string | null;
+          is_completed: boolean;
+          completed_at: string | null;
+          order_index: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          goal_id: string;
+          user_id: string;
+          title: string;
+          description?: string | null;
+          is_completed?: boolean;
+          completed_at?: string | null;
+          order_index?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          goal_id?: string;
+          user_id?: string;
+          title?: string;
+          description?: string | null;
+          is_completed?: boolean;
+          completed_at?: string | null;
+          order_index?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
       music_terms: {
         Row: {
           id: string;

@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { redirectToLogin } from '@/lib/navigationUtils';
 
 export default function AuthCallback() {
   const router = useRouter();
@@ -50,7 +51,7 @@ export default function AuthCallback() {
           if (oauthError && oauthError.includes('google')) {
             logger.warn('⚠️ Google OAuthエラー（機能は無効化されています）:', oauthError);
             // Google OAuthは無効化されているため、ログイン画面にリダイレクト
-            router.replace('/auth/login');
+            redirectToLogin(router, 'Google OAuthエラー');
             return;
           }
           
@@ -67,8 +68,8 @@ export default function AuthCallback() {
                 logger.debug('✅ セッションが存在 - 認証状態監視に任せます');
                 // 認証状態監視に任せる（_layout.tsxが自動的に適切な画面に遷移）
               } else {
-                logger.debug('❌ セッションなし - ログイン画面に遷移');
-                router.replace('/auth/login');
+                // _layout.tsxが自動的にログイン画面にリダイレクトするため、ここでは何もしない
+                logger.debug('❌ セッションなし - 認証状態監視に任せます');
               }
             }
             return;
@@ -86,8 +87,8 @@ export default function AuthCallback() {
               logger.debug('✅ セッションが存在 - 認証状態監視に任せます');
               // 認証状態監視に任せる（_layout.tsxが自動的に適切な画面に遷移）
             } else {
-              logger.debug('❌ セッションなし - ログイン画面に遷移');
-              router.replace('/auth/login');
+              // _layout.tsxが自動的にログイン画面にリダイレクトするため、ここでは何もしない
+              logger.debug('❌ セッションなし - 認証状態監視に任せます');
             }
             return;
           }
@@ -115,9 +116,8 @@ export default function AuthCallback() {
           // _layout.tsx が自動的に適切な画面に遷移します。
           // ここでは画面遷移を行わず、認証状態監視に任せます。
         } else {
-          logger.debug('❌ 認証失敗 - ログイン画面に戻る');
           // 認証失敗時のみログイン画面に遷移
-          router.replace('/auth/login');
+          redirectToLogin(router, '認証失敗');
         }
       } catch (error) {
         logger.error('💥 認証コールバック処理エラー:', error);

@@ -284,10 +284,10 @@ export default function TutorialScreen() {
     try {
       logger.debug('チュートリアル完了ボタンが押されました');
       
+      // ユーザー情報の確認（_layout.tsxが自動的にログイン画面にリダイレクトするため、ここでは何もしない）
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        logger.debug('ユーザー情報なし - ログイン画面に遷移');
-        router.replace('/auth/login');
+        // _layout.tsxが自動的にログイン画面にリダイレクトするため、ここでは何もしない
         return;
       }
 

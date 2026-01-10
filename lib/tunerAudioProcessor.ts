@@ -92,11 +92,6 @@ export const getNoteFromFrequency = (
     };
   }
   
-  // オクターブの計算（一般的なチューナーの標準的な方法）
-  // MIDI note 69 = A4 = octave 4
-  // octave = floor(MIDI_note / 12) - 1
-  const octave = Math.floor(nearestMidi / 12) - 1;
-  
   // 音名インデックスの計算（0-11に正規化）
   // MIDI note 69 (A4) = 69 % 12 = 9 = 'A'
   const noteIndex = ((nearestMidi % 12) + 12) % 12; // 0-11 に正規化
@@ -118,19 +113,42 @@ export const getNoteFromFrequency = (
   const note = NOTE_NAMES[noteIndex];
   const noteJa = NOTE_NAMES_JA[noteIndex];
 
-  // セントの計算（より正確な方法：周波数比から直接計算）
+  // オクターブの計算（標準的なMIDI仕様に基づく正確な計算）
+  // MIDI note 60 = C4 (中央のC) = octave 4
+  // MIDI note 69 = A4 = octave 4
+  // 標準的な計算: octave = floor(MIDI_note / 12) - 1
+  // MIDI note 60: floor(60 / 12) - 1 = 5 - 1 = 4 ✓
+  // MIDI note 69: floor(69 / 12) - 1 = 5 - 1 = 4 ✓
+  // MIDI note 72: floor(72 / 12) - 1 = 6 - 1 = 5 ✓
+  const octave = Math.floor(nearestMidi / 12) - 1;
+
+  // セントの計算（標準的なチューナーの計算方法）
   // セント = 1200 * log2(実測周波数 / 基準周波数)
-  // 基準周波数は最も近い半音の周波数
-  // 1セント = 半音の1/100
+  // 基準周波数は最も近い半音の周波数（12平均律に基づく）
+  // 1セント = 半音の1/100、100セント = 1半音
   // 正の値 = 高い、負の値 = 低い
   
   // 基準音の周波数を計算（最も近い半音）
-  const referenceNoteNumber = nearestMidi;
-  const semitonesFromA4 = referenceNoteNumber - a4NoteNumber;
+  const semitonesFromA4 = nearestMidi - a4NoteNumber;
   const referenceFrequency = a4Freq * Math.pow(2, semitonesFromA4 / 12);
   
-  // 周波数比からセントを計算（より正確）
-  const cents = 1200 * Math.log2(frequency / referenceFrequency);
+  // 周波数比からセントを計算（標準的な方法）
+  // この方法は、実測周波数と基準周波数の比から直接セントを計算するため、正確
+  // ただし、周波数が基準周波数と非常に近い場合、対数計算の精度の問題を避けるため、
+  // 簡易的な方法を使用することも可能
+  let cents: number;
+  if (Math.abs(frequency - referenceFrequency) < referenceFrequency * 0.00001) {
+    // 周波数が基準周波数とほぼ同じ場合、簡易的な計算を使用（精度の問題を避ける）
+    cents = (noteNumber - nearestMidi) * 100;
+  } else {
+    // 標準的な方法: 周波数比からセントを計算（より正確）
+    cents = 1200 * Math.log2(frequency / referenceFrequency);
+  }
+  
+  // セントの値が異常に大きい場合（±200セント以上）、計算エラーの可能性があるため、簡易的な方法を使用
+  if (Math.abs(cents) > 200) {
+    cents = (noteNumber - nearestMidi) * 100;
+  }
   const absCents = Math.abs(cents);
 
   // プロ仕様のチューニング品質判定

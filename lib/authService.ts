@@ -5,13 +5,14 @@
  */
 
 import { supabase } from './supabase';
-import { signInWithRetry, getAuthErrorMessage } from './authHelpers';
+import { signInWithRetry, getAuthErrorMessage, getAuthErrorInfo, AuthErrorInfo } from './authHelpers';
 import logger from './logger';
 import { signUpNew } from './signUpNew';
 
 export interface AuthResult {
   success: boolean;
   error?: string;
+  errorInfo?: AuthErrorInfo;
   data?: any;
 }
 
@@ -99,10 +100,11 @@ export async function signIn(
     return result;
   } catch (error: any) {
     logger.error('[AuthService] signIn例外:', { error: error.message || error });
-    const errorMessage = getAuthErrorMessage(error) || error.message || 'ログインに失敗しました';
+    const errorInfo = getAuthErrorInfo(error);
     return {
       success: false,
-      error: errorMessage,
+      error: errorInfo.userFriendlyMessage || error.message || 'ログインに失敗しました',
+      errorInfo,
     };
   }
 }

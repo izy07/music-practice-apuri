@@ -30,7 +30,7 @@ import { COMMON_STYLES, APP_COLORS } from '@/lib/appStyles';
 import logger from '@/lib/logger';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
-import { navigateWithBasePath } from '@/lib/navigationUtils';
+import { navigateWithBasePath, redirectToLogin } from '@/lib/navigationUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -269,8 +269,7 @@ export default function SignupScreen() {
                 {
                   text: 'ログイン',
                   onPress: () => {
-                    logger.debug('🎯 ログイン画面に遷移');
-                    router.push('/auth/login');
+                    redirectToLogin(router, 'ログインリンク', true);
                   },
                 },
               ]
@@ -297,8 +296,7 @@ export default function SignupScreen() {
 
   // ログイン画面への遷移
   const goToLogin = () => {
-    logger.debug('🎯 ログイン画面に遷移');
-    router.push('/auth/login');
+    redirectToLogin(router, 'ログインリンク', true);
   };
 
   return (

@@ -32,9 +32,9 @@ export const EVENT_COLORS: Record<EventColor, EventColorOption> = {
   },
   orange: {
     value: 'orange',
-    label: 'リハーサル',
+    label: '練習',
     color: '#FF9800',
-    description: 'リハーサル、合奏練習など',
+    description: '練習、合奏練習など',
   },
   purple: {
     value: 'purple',

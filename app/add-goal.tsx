@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Plus, Target, Calendar, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, Plus, Target, Calendar, ChevronLeft, ChevronRight, List, CheckSquare2, Square, Trash2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
@@ -15,12 +15,19 @@ import { checkGoalLimit, canSaveDataForInstrument } from '@/lib/subscriptionLimi
 import { useSubscription } from '@/hooks/useSubscription';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { showFeatureLimitAlert, normalizeLimitResult, getDefaultAlertConfig } from '@/lib/featureAccessHelpers';
+import { subGoalRepository } from '@/repositories/subGoalRepository';
 
 interface NewGoal {
   title: string;
   description: string;
   target_date: string;
   goal_type: 'personal_short' | 'personal_long';
+}
+
+interface NewSubGoal {
+  id: string;
+  title: string;
+  is_completed: boolean;
 }
 
 export default function AddGoalScreen() {
@@ -39,6 +46,8 @@ export default function AddGoalScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [showCalendar, setShowCalendar] = useState(false);
   const [goalLimitStatus, setGoalLimitStatus] = useState<{ canCreate: boolean; currentCount: number; limit: number } | null>(null);
+  const [subGoals, setSubGoals] = useState<NewSubGoal[]>([]);
+  const [newSubGoalTitle, setNewSubGoalTitle] = useState('');
 
   // 画面表示時に目標数の制限を事前チェック
   useEffect(() => {
@@ -179,6 +188,26 @@ export default function AddGoalScreen() {
       }
 
       logger.debug('目標作成成功');
+
+      // 長期目標でサブ目標がある場合、サブ目標も作成
+      if (newGoal.goal_type === 'personal_long' && subGoals.length > 0 && result.data) {
+        try {
+          const goalId = result.data;
+          
+          for (let i = 0; i < subGoals.length; i++) {
+            const subGoal = subGoals[i];
+            await subGoalRepository.createSubGoal(goalId, user.id, {
+              title: subGoal.title,
+              order_index: i,
+            });
+          }
+          logger.debug(`サブ目標を${subGoals.length}個作成しました`);
+        } catch (subGoalError) {
+          logger.error('サブ目標の作成エラー:', subGoalError);
+          // サブ目標の作成に失敗しても目標は作成されているので、警告のみ表示
+          Alert.alert('警告', '目標は作成されましたが、サブ目標の作成に失敗しました。目標画面から後で追加できます。');
+        }
+      }
       
       // カレンダー画面の目標キャッシュをクリア（新しく追加した目標をカレンダーに表示するため）
       try {
@@ -257,7 +286,12 @@ export default function AddGoalScreen() {
                   backgroundColor: newGoal.goal_type === 'personal_short' ? `${currentTheme.primary}20` : currentTheme.surface
                 }
               ]}
-              onPress={() => setNewGoal({...newGoal, goal_type: 'personal_short'})}
+              onPress={() => {
+                setNewGoal({...newGoal, goal_type: 'personal_short'});
+                // 短期目標に変更した場合、サブ目標をクリア
+                setSubGoals([]);
+                setNewSubGoalTitle('');
+              }}
             >
               <Target size={20} color={newGoal.goal_type === 'personal_short' ? currentTheme.primary : currentTheme.textSecondary} />
               <Text style={[styles.goalTypeTitle, { color: newGoal.goal_type === 'personal_short' ? currentTheme.primary : currentTheme.text }]}>
@@ -343,6 +377,108 @@ export default function AddGoalScreen() {
             </View>
           </View>
         </View>
+
+        {/* 長期目標の場合: サブ目標（チェックリスト）入力セクション */}
+        {newGoal.goal_type === 'personal_long' && (
+          <View style={[styles.formSection, { backgroundColor: currentTheme.surface }]}>
+            <View style={styles.subGoalsHeader}>
+              <List size={18} color={currentTheme.text} />
+              <Text style={[styles.sectionTitle, { color: currentTheme.text, marginBottom: 0 }]}>
+                やることリスト（最大10個）
+              </Text>
+            </View>
+            <Text style={[styles.subGoalsDescription, { color: currentTheme.textSecondary }]}>
+              目標達成のために必要なタスクを追加してください。進捗率は自動計算されます。
+            </Text>
+
+            {/* サブ目標リスト */}
+            {subGoals.length > 0 && (
+              <View style={styles.subGoalsList}>
+                {subGoals.map((subGoal, index) => (
+                  <View key={subGoal.id} style={[styles.subGoalItem, { borderColor: currentTheme.secondary }]}>
+                    <View style={styles.subGoalItemContent}>
+                      <Text style={[styles.subGoalIndex, { color: currentTheme.textSecondary }]}>
+                        {index + 1}.
+                      </Text>
+                      <Text style={[styles.subGoalText, { color: currentTheme.text }]}>
+                        {subGoal.title}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.subGoalDeleteButton}
+                      onPress={() => {
+                        setSubGoals(subGoals.filter(sg => sg.id !== subGoal.id));
+                      }}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Trash2 size={16} color={currentTheme.textSecondary} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* サブ目標追加入力 */}
+            {subGoals.length < 10 && (
+              <View style={styles.subGoalInputContainer}>
+                <TextInput
+                  style={[styles.subGoalInput, { 
+                    backgroundColor: currentTheme.background,
+                    color: currentTheme.text,
+                    borderColor: currentTheme.secondary
+                  }]}
+                  value={newSubGoalTitle}
+                  onChangeText={(text) => {
+                    if (text.length <= 100) {
+                      setNewSubGoalTitle(text);
+                    }
+                  }}
+                  placeholder="サブ目標を入力してください（例: 基礎練習を毎日行う）"
+                  placeholderTextColor={currentTheme.textSecondary}
+                  maxLength={100}
+                />
+                <TouchableOpacity
+                  style={[
+                    styles.addSubGoalButton,
+                    { 
+                      backgroundColor: currentTheme.primary,
+                      opacity: newSubGoalTitle.trim() ? 1 : 0.5
+                    }
+                  ]}
+                  onPress={() => {
+                    const title = newSubGoalTitle.trim();
+                    if (!title) {
+                      Alert.alert('エラー', 'サブ目標のタイトルを入力してください');
+                      return;
+                    }
+                    if (subGoals.length >= 10) {
+                      Alert.alert('エラー', 'サブ目標は最大10個まで設定できます');
+                      return;
+                    }
+                    setSubGoals([...subGoals, {
+                      id: `temp-${Date.now()}-${Math.random()}`,
+                      title: title,
+                      is_completed: false,
+                    }]);
+                    setNewSubGoalTitle('');
+                  }}
+                  disabled={!newSubGoalTitle.trim() || subGoals.length >= 10}
+                  activeOpacity={0.7}
+                >
+                  <Plus size={16} color="#FFFFFF" />
+                  <Text style={styles.addSubGoalButtonText}>追加</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {subGoals.length >= 10 && (
+              <Text style={[styles.subGoalsLimitText, { color: currentTheme.textSecondary }]}>
+                サブ目標は最大10個まで設定できます
+              </Text>
+            )}
+          </View>
+        )}
 
         {/* 目標数制限の表示（フリープランの場合） */}
         {!entitlement?.isEntitled && goalLimitStatus && (
@@ -596,5 +732,79 @@ const styles = StyleSheet.create({
   dateInputText: {
     fontSize: 16,
     flex: 1,
+  },
+  // サブ目標関連のスタイル
+  subGoalsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  subGoalsDescription: {
+    fontSize: 14,
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  subGoalsList: {
+    marginBottom: 16,
+    gap: 8,
+  },
+  subGoalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    backgroundColor: 'transparent',
+  },
+  subGoalItemContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  subGoalIndex: {
+    fontSize: 14,
+    fontWeight: '600',
+    minWidth: 24,
+  },
+  subGoalText: {
+    fontSize: 14,
+    flex: 1,
+  },
+  subGoalDeleteButton: {
+    padding: 4,
+    marginLeft: 8,
+  },
+  subGoalInputContainer: {
+    gap: 8,
+  },
+  subGoalInput: {
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  addSubGoalButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 6,
+  },
+  addSubGoalButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  subGoalsLimitText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 8,
+    fontStyle: 'italic',
   },
 });

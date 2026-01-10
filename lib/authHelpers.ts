@@ -16,6 +16,155 @@ interface SupabaseAuthError {
 }
 
 /**
+ * エラーの種類を表す型
+ */
+export type AuthErrorType = 'network' | 'authentication' | 'validation' | 'rate_limit' | 'email_not_confirmed' | 'unknown';
+
+/**
+ * エラーの詳細情報
+ */
+export interface AuthErrorInfo {
+  type: AuthErrorType;
+  message: string;
+  code?: string;
+  userFriendlyMessage: string;
+}
+
+/**
+ * エラーの種類を判定
+ */
+export function getAuthErrorType(error: unknown): AuthErrorType {
+  if (!error) return 'unknown';
+  
+  const authError = error as SupabaseAuthError;
+  const errorCode = authError.code || authError.status;
+  const errorMessage = (authError.message || String(error)).toLowerCase();
+  
+  // ネットワークエラー
+  if (
+    errorMessage.includes('network') ||
+    errorMessage.includes('fetch') ||
+    errorMessage.includes('connection') ||
+    errorMessage.includes('timeout') ||
+    errorMessage.includes('failed to fetch') ||
+    errorMessage.includes('networkerror') ||
+    errorCode === 'NETWORK_ERROR' ||
+    errorCode === 'ECONNREFUSED' ||
+    errorCode === 'ETIMEDOUT'
+  ) {
+    return 'network';
+  }
+  
+  // レート制限エラー
+  if (
+    errorCode === 'too_many_requests' ||
+    errorCode === 'email_rate_limit_exceeded' ||
+    errorMessage.includes('rate limit') ||
+    errorMessage.includes('too many requests')
+  ) {
+    return 'rate_limit';
+  }
+  
+  // メール未確認エラー
+  if (
+    errorCode === 'email_not_confirmed' ||
+    errorMessage.includes('email not confirmed') ||
+    errorMessage.includes('email verification')
+  ) {
+    return 'email_not_confirmed';
+  }
+  
+  // 認証エラー（メールアドレス・パスワードの間違いなど）
+  if (
+    errorCode === 'invalid_credentials' ||
+    errorCode === 'invalid_grant' ||
+    errorCode === 'user_not_found' ||
+    errorMessage.includes('invalid credentials') ||
+    errorMessage.includes('invalid login') ||
+    errorMessage.includes('user not found') ||
+    errorMessage.includes('wrong password') ||
+    errorMessage.includes('incorrect password') ||
+    errorMessage.includes('authentication failed')
+  ) {
+    return 'authentication';
+  }
+  
+  // バリデーションエラー
+  if (
+    errorCode === 'validation_error' ||
+    errorMessage.includes('validation') ||
+    errorMessage.includes('invalid email') ||
+    errorMessage.includes('invalid password')
+  ) {
+    return 'validation';
+  }
+  
+  return 'unknown';
+}
+
+/**
+ * エラーの詳細情報を取得
+ */
+export function getAuthErrorInfo(error: unknown): AuthErrorInfo {
+  // エラーが文字列の場合は、エラーメッセージから種別を判定
+  if (typeof error === 'string') {
+    const errorLower = error.toLowerCase();
+    let type: AuthErrorType = 'unknown';
+    
+    if (errorLower.includes('ネットワーク') || errorLower.includes('接続') || errorLower.includes('fetch') || errorLower.includes('connection')) {
+      type = 'network';
+    } else if (errorLower.includes('メールアドレス') || errorLower.includes('パスワード') || errorLower.includes('認証') || errorLower.includes('credentials') || errorLower.includes('invalid')) {
+      type = 'authentication';
+    } else if (errorLower.includes('リクエスト') || errorLower.includes('上限') || errorLower.includes('rate limit')) {
+      type = 'rate_limit';
+    } else if (errorLower.includes('メール') && errorLower.includes('確認')) {
+      type = 'email_not_confirmed';
+    }
+    
+    return {
+      type,
+      message: error,
+      userFriendlyMessage: error,
+    };
+  }
+  
+  const type = getAuthErrorType(error);
+  const message = getAuthErrorMessage(error);
+  const authError = error as SupabaseAuthError;
+  const errorCode = authError.code || authError.status;
+  
+  // ユーザーフレンドリーなメッセージ
+  let userFriendlyMessage = message;
+  
+  switch (type) {
+    case 'network':
+      userFriendlyMessage = 'ネットワークエラーが発生しました。\n\nインターネット接続を確認してから、もう一度お試しください。';
+      break;
+    case 'authentication':
+      userFriendlyMessage = 'メールアドレスまたはパスワードが正しくありません。\n\n入力内容を確認してから、もう一度お試しください。';
+      break;
+    case 'rate_limit':
+      userFriendlyMessage = 'リクエストが多すぎます。\n\nしばらく待ってから、もう一度お試しください。';
+      break;
+    case 'email_not_confirmed':
+      userFriendlyMessage = 'メールアドレスの確認が必要です。\n\n登録時に送信されたメールを確認してください。';
+      break;
+    case 'validation':
+      userFriendlyMessage = '入力内容に問題があります。\n\nメールアドレスとパスワードの形式を確認してください。';
+      break;
+    default:
+      userFriendlyMessage = message || 'ログインに失敗しました。\n\nもう一度お試しください。';
+  }
+  
+  return {
+    type,
+    message,
+    code: errorCode,
+    userFriendlyMessage,
+  };
+}
+
+/**
  * エラーメッセージを取得
  */
 export function getAuthErrorMessage(error: unknown): string {
@@ -85,7 +234,7 @@ export async function signInWithRetry(
   email: string,
   password: string,
   maxRetries: number = 3
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; errorInfo?: AuthErrorInfo }> {
   let lastError: unknown = null;
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -103,9 +252,11 @@ export async function signInWithRetry(
         
         // リトライ不可なエラーの場合は即座に終了
         if (error.code === 'invalid_credentials' || error.code === 'email_not_confirmed') {
+          const errorInfo = getAuthErrorInfo(error);
           return {
             success: false,
-            error: getAuthErrorMessage(error),
+            error: errorInfo.userFriendlyMessage,
+            errorInfo,
           };
         }
         
@@ -137,9 +288,11 @@ export async function signInWithRetry(
     }
   }
   
+  const errorInfo = lastError ? getAuthErrorInfo(lastError) : getAuthErrorInfo({ code: 'unknown', message: 'ログインに失敗しました' });
   return {
     success: false,
-    error: getAuthErrorMessage(lastError) || 'ログインに失敗しました',
+    error: errorInfo.userFriendlyMessage,
+    errorInfo,
   };
 }
 

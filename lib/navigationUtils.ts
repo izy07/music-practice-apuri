@@ -146,3 +146,37 @@ export const navigateWithBasePath = (router: ReturnType<typeof useRouter>, path:
   const fullPath = basePath ? `${basePath}${path}` : path;
   router.push(fullPath as any);
 };
+
+/**
+ * ログイン画面にリダイレクト（統一関数）
+ * 
+ * すべてのログイン画面へのリダイレクトをこの関数で統一することで、
+ * エラーハンドリングとログを一元管理します。
+ * 
+ * @param router Expo Router の router インスタンス
+ * @param reason リダイレクト理由（ログ用、オプション）
+ * @param usePush pushを使用するか（デフォルト: false、replaceを使用）
+ */
+export const redirectToLogin = (
+  router: ReturnType<typeof useRouter>,
+  reason?: string,
+  usePush: boolean = false
+): void => {
+  try {
+    const loginPath = '/auth/login';
+    
+    if (usePush) {
+      router.push(loginPath as any);
+    } else {
+      router.replace(loginPath as any);
+    }
+    
+    // ログは必要最小限（エラーのみ、理由がある場合のみdebug）
+    if (reason) {
+      logger.debug(`[redirectToLogin] ${reason}`);
+    }
+  } catch (error) {
+    logger.error('[redirectToLogin] ログイン画面への遷移エラー:', error);
+    // エラー時は再試行しない（無限ループを防ぐ）
+  }
+};

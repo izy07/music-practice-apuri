@@ -1,13 +1,15 @@
 /**
  * 目標カードコンポーネント
  */
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { Target, Calendar, CircleCheck as CheckCircle } from 'lucide-react-native';
-import { Goal } from '@/lib/tabs/goals/types';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
+import { Target, Calendar, CircleCheck as CheckCircle, Square, CheckSquare2, Plus, Edit, Trash2, List } from 'lucide-react-native';
+import { Goal, SubGoal } from '@/lib/tabs/goals/types';
 import { getGoalTypeLabel, getGoalTypeColor } from '@/lib/tabs/goals/utils';
 import { styles } from '@/lib/tabs/goals/styles';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
+import { subGoalRepository } from '@/repositories/subGoalRepository';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 
 interface GoalCardProps {
   goal: Goal;
@@ -16,6 +18,7 @@ interface GoalCardProps {
   onCompleteGoal: (goalId: string) => Promise<void>;
   onDeleteGoal: (goalId: string) => Promise<void>;
   onSetGoalShowOnCalendar: (goalId: string, show: boolean) => Promise<void>;
+  onGoalUpdated?: (updatedGoal: Goal) => void; // サブ目標更新時に親コンポーネントに通知
 }
 
 export const GoalCard: React.FC<GoalCardProps> = ({
@@ -25,8 +28,60 @@ export const GoalCard: React.FC<GoalCardProps> = ({
   onCompleteGoal,
   onDeleteGoal,
   onSetGoalShowOnCalendar,
+  onGoalUpdated,
 }) => {
   const { currentTheme } = useInstrumentTheme();
+  const { user } = useAuthAdvanced();
+  const [subGoals, setSubGoals] = useState<SubGoal[]>(goal.sub_goals || []);
+  const [isLoadingSubGoals, setIsLoadingSubGoals] = useState(false);
+  const [showSubGoalsEditor, setShowSubGoalsEditor] = useState(false);
+
+  // サブ目標を取得（goalが更新されたとき）
+  useEffect(() => {
+    if (goal.sub_goals) {
+      setSubGoals(goal.sub_goals);
+    }
+  }, [goal.sub_goals]);
+
+  // サブ目標の完了状態をトグル
+  const handleToggleSubGoal = async (subGoalId: string) => {
+    if (!user?.id) return;
+    
+    setIsLoadingSubGoals(true);
+    try {
+      const result = await subGoalRepository.toggleSubGoalCompletion(subGoalId, user.id);
+      const updatedSubGoals = subGoals.map(sg => 
+        sg.id === subGoalId ? result.subGoal : sg
+      );
+      setSubGoals(updatedSubGoals);
+      
+      // 親目標の進捗率も更新されたため、親コンポーネントに通知
+      if (onGoalUpdated) {
+        const updatedGoal: Goal = {
+          ...goal,
+          sub_goals: updatedSubGoals,
+          progress_percentage: result.updatedProgress,
+          is_completed: result.updatedProgress === 100,
+        };
+        onGoalUpdated(updatedGoal);
+      }
+      
+      // 親コンポーネントの進捗率も更新（リフレッシュを促す）
+      if (onUpdateProgress) {
+        await onUpdateProgress(goal.id, result.updatedProgress);
+      }
+    } catch (error) {
+      console.error('サブ目標の更新エラー:', error);
+    } finally {
+      setIsLoadingSubGoals(false);
+    }
+  };
+
+  // サブ目標がある場合の進捗率計算
+  const hasSubGoals = subGoals && subGoals.length > 0;
+  const displayProgress = hasSubGoals 
+    ? subGoalRepository.calculateProgressFromSubGoals(subGoals)
+    : goal.progress_percentage;
 
   return (
     <View key={goal.id} style={[styles.goalCard, { backgroundColor: currentTheme.surface }]}>
@@ -100,52 +155,95 @@ export const GoalCard: React.FC<GoalCardProps> = ({
                 style={[
                   styles.progressSliderFill, 
                   { 
-                    width: `${goal.progress_percentage || 0}%`,
+                    width: `${displayProgress || 0}%`,
                     backgroundColor: getGoalTypeColor(goal.goal_type)
                   }
                 ]} 
               />
             </View>
             <Text style={[styles.progressPercentageLabel, { color: getGoalTypeColor(goal.goal_type) }]}>
-              {goal.progress_percentage || 0}%
+              {displayProgress || 0}%
+              {hasSubGoals && ` (${subGoals.filter(sg => sg.is_completed).length}/${subGoals.length})`}
             </Text>
           </View>
 
-          {/* 進捗変更ボタン */}
-          <View style={styles.progressButtonsWithBar}>
-            <TouchableOpacity
-              style={[
-                styles.progressButton, 
-                styles.progressButtonMinus,
-                { borderColor: currentTheme.textSecondary + '80' }
-              ]}
-              activeOpacity={0.7}
-              onPress={() => {
-                const currentProgress = goal.progress_percentage || 0;
-                onUpdateProgress(goal.id, Math.max(0, currentProgress - 10));
-              }}
-            >
-              <Text style={styles.progressButtonText}>−10%</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.progressButton, 
-                styles.progressButtonPlus, 
-                { 
-                  backgroundColor: getGoalTypeColor(goal.goal_type),
-                  borderWidth: 1.5,
-                  borderColor: getGoalTypeColor(goal.goal_type)
-                }
-              ]}
-              activeOpacity={0.7}
-              onPress={() => {
-                const currentProgress = goal.progress_percentage || 0;
-                onUpdateProgress(goal.id, Math.min(100, currentProgress + 10));
-              }}
-            >
-              <Text style={[styles.progressButtonText, { color: '#FFFFFF' }]}>+10%</Text>
-            </TouchableOpacity>
-          </View>
+          {/* サブ目標がある場合: サブ目標リストを表示 */}
+          {hasSubGoals ? (
+            <>
+              <View style={[styles.subGoalsSection, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary }]}>
+                <View style={styles.subGoalsHeader}>
+                  <List size={14} color={currentTheme.textSecondary} />
+                  <Text style={[styles.subGoalsTitle, { color: currentTheme.textSecondary }]}>
+                    やることリスト
+                  </Text>
+                </View>
+                {isLoadingSubGoals && (
+                  <ActivityIndicator size="small" color={getGoalTypeColor(goal.goal_type)} style={{ marginVertical: 8 }} />
+                )}
+                {subGoals.map((subGoal) => (
+                  <TouchableOpacity
+                    key={subGoal.id}
+                    style={[styles.subGoalItem, { borderColor: currentTheme.secondary }]}
+                    onPress={() => handleToggleSubGoal(subGoal.id)}
+                    disabled={isLoadingSubGoals}
+                    activeOpacity={0.7}
+                  >
+                    {subGoal.is_completed ? (
+                      <CheckSquare2 size={20} color={getGoalTypeColor(goal.goal_type)} />
+                    ) : (
+                      <Square size={20} color={currentTheme.textSecondary} />
+                    )}
+                    <Text
+                      style={[
+                        styles.subGoalText,
+                        { color: currentTheme.text },
+                        subGoal.is_completed && styles.subGoalTextCompleted
+                      ]}
+                      numberOfLines={2}
+                    >
+                      {subGoal.title}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          ) : (
+            /* サブ目標がない場合: 手動進捗調整ボタン */
+            <View style={styles.progressButtonsWithBar}>
+              <TouchableOpacity
+                style={[
+                  styles.progressButton, 
+                  styles.progressButtonMinus,
+                  { borderColor: currentTheme.textSecondary + '80' }
+                ]}
+                activeOpacity={0.7}
+                onPress={() => {
+                  const currentProgress = goal.progress_percentage || 0;
+                  onUpdateProgress(goal.id, Math.max(0, currentProgress - 10));
+                }}
+              >
+                <Text style={styles.progressButtonText}>−10%</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.progressButton, 
+                  styles.progressButtonPlus, 
+                  { 
+                    backgroundColor: getGoalTypeColor(goal.goal_type),
+                    borderWidth: 1.5,
+                    borderColor: getGoalTypeColor(goal.goal_type)
+                  }
+                ]}
+                activeOpacity={0.7}
+                onPress={() => {
+                  const currentProgress = goal.progress_percentage || 0;
+                  onUpdateProgress(goal.id, Math.min(100, currentProgress + 10));
+                }}
+              >
+                <Text style={[styles.progressButtonText, { color: '#FFFFFF' }]}>+10%</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* カレンダー表示切り替えと達成ボタン（長期目標のみ） */}
           {/* 達成済み（progress_percentage === 100 または is_completed === true）の場合はカレンダー表示ボタンを非表示 */}

@@ -83,7 +83,7 @@ export class GoalService {
   async createGoal(
     userId: string,
     params: CreateGoalParams
-  ): Promise<ServiceResult<void>> {
+  ): Promise<ServiceResult<string | null>> {
     // バリデーション
     if (!params.title || params.title.trim().length === 0) {
       return {
@@ -108,8 +108,9 @@ export class GoalService {
     return safeServiceExecute(
       async () => {
         logger.debug(`[${SERVICE_CONTEXT}] createGoal:start`, { userId, params });
-        await goalRepository.createGoal(userId, params);
-        logger.info(`[${SERVICE_CONTEXT}] createGoal:success`, { userId });
+        const goalId = await goalRepository.createGoal(userId, params);
+        logger.info(`[${SERVICE_CONTEXT}] createGoal:success`, { userId, goalId });
+        return goalId;
       },
       `${SERVICE_CONTEXT}.createGoal`,
       'GOAL_CREATE_ERROR'

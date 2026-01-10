@@ -7,7 +7,7 @@
  * - ログイン失敗（未登録） → 新規登録画面への誘導
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -22,12 +22,14 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter, useSegments } from 'expo-router';
+import { useRouter, useSegments, useFocusEffect } from 'expo-router';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
 import { getBasePath, navigateToAppropriateScreen } from '@/lib/navigationUtils';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { signIn as signInService } from '@/lib/authService';
+import { getAuthErrorInfo, AuthErrorType } from '@/lib/authHelpers';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -76,160 +78,176 @@ export default function LoginScreen() {
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [showPassword, setShowPassword] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false); // ログイン処理中のローカル状態
+  const [errorType, setErrorType] = useState<AuthErrorType | null>(null); // エラーの種類
   
   // アニメーション状態
   const [fadeAnim] = useState(new Animated.Value(0));
   const [slideAnim] = useState(new Animated.Value(50));
   const [pulseAnim] = useState(new Animated.Value(1));
   
-  logger.debug('LoginScreen state:', {
-    isAuthenticated,
-    isLoading,
-    hasInstrument: hasInstrumentSelected(),
-    needsTutorial: needsTutorial(),
-    canAccessMain: canAccessMainApp(),
-  });
-
-  // 認証状態に応じた自動遷移（ログイン成功後の画面遷移）
-  useEffect(() => {
-    // 現在の画面が新規登録画面の場合は処理をスキップ（ログイン画面のuseEffectが実行されないようにする）
-    const segmentsArray = Array.isArray(segments) ? segments : [segments];
-    const isInSignupScreen = segmentsArray.length >= 2 && segmentsArray[0] === 'auth' && segmentsArray[segmentsArray.length - 1] === 'signup';
-    if (isInSignupScreen) {
-      logger.debug('ログイン画面のuseEffect - 新規登録画面にいるため処理をスキップ', { segments: segmentsArray });
-      return;
-    }
-    
-    // ログイン画面にいることを確認（ログイン画面にいない場合は処理をスキップ）
-    const isInLoginScreen = segmentsArray.length >= 2 && segmentsArray[0] === 'auth' && segmentsArray[segmentsArray.length - 1] === 'login';
-    if (!isInLoginScreen) {
-      logger.debug('ログイン画面のuseEffect - ログイン画面にいないため処理をスキップ', { segments: segmentsArray });
-      return;
-    }
-    
-    // ログイン画面にいる間は、認証状態が更新されたら適切な画面に遷移
-    // isLoggingInがtrueの時（ログイン処理中）またはfalseの時（ログイン処理完了後）の両方で画面遷移を実行
-    if (isAuthenticated && !isLoading) {
-      logger.debug('[ログイン画面] 認証状態更新を検出 - 画面遷移を実行', {
+  // 【修正】認証成功後の画面遷移を確実に実行
+  // 画面フォーカス時と認証状態変更時の両方で処理を実行
+  useFocusEffect(
+    useCallback(() => {
+      logger.debug('[ログイン画面 useFocusEffect] 実行開始（画面フォーカス時）', {
         isAuthenticated,
         isLoading,
-        isLoggingIn,
-        segments: segmentsArray,
+        hasUser: !!user,
       });
-      logger.debug('ログイン成功 - 認証状態検出、画面遷移を実行', {
-        isAuthenticated,
-        isLoading,
-        isLoggingIn,
-        hasInstrument: hasInstrumentSelected(),
-        needsTutorial: needsTutorial(),
-        canAccessMain: canAccessMainApp()
-      });
+      
+      // 認証済みかつローディング完了の場合のみ処理
+      if (!isAuthenticated || isLoading || !user) {
+        logger.debug('[ログイン画面 useFocusEffect] 条件を満たさないため処理をスキップ');
+        return;
+      }
       
       // ログイン処理完了
       if (isLoggingIn) {
         setIsLoggingIn(false);
       }
       
-      // 一般的なアプリと同様に、すぐに画面遷移を実行（遅延なし）
-      logger.debug('認証状態更新完了 - 画面遷移を実行');
-      
-      // ログイン成功時: カレンダーの日付を今日にリセット
-      if (typeof window !== 'undefined' && window.localStorage) {
-        try {
-          // 保存されたカレンダーの日付を削除（今日の日付が表示されるように）
-          window.localStorage.removeItem('home_calendar_view_date');
-          // ログイン成功フラグを設定（カレンダー画面で日付をリセットするため）
-          window.localStorage.setItem('login_success_reset_calendar', 'true');
-          logger.debug('ログイン成功 - カレンダーの日付を今日にリセットしました');
-        } catch (error) {
-          logger.warn('カレンダー日付のリセットに失敗しました（続行）:', error);
-        }
-      }
-      
-      // 既存ユーザーの場合、最近使った楽器を取得してカレンダー画面に遷移
-      // 楽器が選択されていない場合でも、user_instrument_profilesから最新の楽器を取得
-      // 注意: この処理は非同期のため、完了まで待機する必要がある
-      // しかし、楽器プロフィールが見つからない場合やエラーが発生した場合は、通常の画面遷移処理に進む
-      logger.debug('[ログイン画面] 条件チェック', {
-        hasUser: !!user,
-        hasInstrument: hasInstrumentSelected(),
-        needsTutorial: needsTutorial(),
-        shouldCheckRecentInstrument: user && !hasInstrumentSelected() && !needsTutorial(),
-      });
-      
-      if (user && !hasInstrumentSelected() && !needsTutorial()) {
-        logger.debug('[ログイン画面] 最近使った楽器を取得して画面遷移を試みます', { userId: user.id });
-        // useEffect内で非同期処理を行うため、async関数を定義して呼び出す
-        (async () => {
-          try {
-            const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
-              .from('user_instrument_profiles')
-              .select('instrument_id, updated_at, created_at')
-              .eq('user_id', user.id)
-              .order('updated_at', { ascending: false })
-              .limit(1);
-            
-            if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
-              const recentInstrumentId = instrumentProfiles[0].instrument_id;
-              logger.debug('既存ユーザー - 最近使った楽器を取得してカレンダー画面に遷移', { 
-                instrumentId: recentInstrumentId,
-                userId: user.id
-              });
-              // カレンダー画面に直接遷移（楽器はInstrumentThemeContextで設定される）
-              router.push('/(tabs)/index');
-              return;
-            } else {
-              // 楽器プロフィールが見つからない場合、通常の画面遷移処理に進む
-              logger.debug('[ログイン画面] 楽器プロフィールが見つからないため、通常の画面遷移処理を実行');
-              navigateToAppropriateScreen(router, {
-                user,
-                hasInstrumentSelected,
-                needsTutorial,
-                canAccessMainApp,
-              });
-            }
-          } catch (error) {
-            logger.error('[ログイン画面] 最近使った楽器の取得エラー（続行）:', error);
-            // エラー時は通常の画面遷移処理に進む
-            navigateToAppropriateScreen(router, {
-              user,
-              hasInstrumentSelected,
-              needsTutorial,
-              canAccessMainApp,
-            });
-          }
-        })();
-        return; // 非同期処理を開始したら、ここでreturnして通常の画面遷移処理をスキップ
-      }
-      
-      // 適切な画面に遷移（統一関数を使用）
-      // ユーザーが存在しない場合や、楽器が選択されている場合、またはチュートリアルが必要な場合はここで処理
-      logger.debug('[ログイン画面] navigateToAppropriateScreenを呼び出し（通常の画面遷移）', {
-        hasUser: !!user,
+      logger.debug('[ログイン画面 useFocusEffect] 認証成功 - 画面遷移を実行', {
         hasInstrument: hasInstrumentSelected(),
         needsTutorial: needsTutorial(),
         canAccessMain: canAccessMainApp(),
-        userSelectedInstrumentId: user?.selected_instrument_id,
+        userSelectedInstrumentId: user.selected_instrument_id,
       });
       
-      try {
-        navigateToAppropriateScreen(router, {
-          user,
-          hasInstrumentSelected,
-          needsTutorial,
-          canAccessMainApp,
-        });
-      } catch (navError) {
-        logger.error('[ログイン画面] navigateToAppropriateScreen呼び出しエラー:', navError);
-        // エラー時はフォールバックとして楽器選択画面に遷移
+      // 画面遷移を実行
+      const navigateToScreen = () => {
         try {
-          router.push('/(tabs)/instrument-selection');
-        } catch (fallbackError) {
-          logger.error('[ログイン画面] フォールバック画面遷移も失敗:', fallbackError);
+          const hasInstrument = hasInstrumentSelected();
+          const needsTut = needsTutorial();
+          const canAccess = canAccessMainApp();
+          
+          logger.debug('[ログイン画面 useFocusEffect] 画面遷移判定', {
+            hasInstrument,
+            needsTut,
+            canAccess,
+            userSelectedInstrumentId: user.selected_instrument_id,
+          });
+          
+          if (hasInstrument || canAccess) {
+            logger.debug('[ログイン画面 useFocusEffect] → カレンダー画面に遷移');
+            router.replace('/(tabs)/index');
+          } else if (needsTut) {
+            logger.debug('[ログイン画面 useFocusEffect] → チュートリアル画面に遷移');
+            router.replace('/(tabs)/tutorial');
+          } else {
+            logger.debug('[ログイン画面 useFocusEffect] → 楽器選択画面に遷移');
+            router.replace('/(tabs)/instrument-selection');
+          }
+        } catch (navError) {
+          logger.error('[ログイン画面 useFocusEffect] 画面遷移エラー:', navError);
+          try {
+            router.replace('/(tabs)/instrument-selection');
+          } catch (fallbackError) {
+            logger.error('[ログイン画面 useFocusEffect] フォールバックも失敗:', fallbackError);
+          }
         }
+      };
+      
+      // 少し遅延して実行（_layout.tsxとの競合を避ける）
+      const timeoutId = setTimeout(navigateToScreen, 100);
+      return () => clearTimeout(timeoutId);
+    }, [isAuthenticated, isLoading, user, router, isLoggingIn, hasInstrumentSelected, needsTutorial, canAccessMainApp])
+  );
+
+  // 【修正】認証状態変更時の画面遷移（useEffectで確実に実行）
+  useEffect(() => {
+    logger.debug('[ログイン画面 useEffect] 実行開始（認証状態監視）', {
+      isAuthenticated,
+      isLoading,
+      hasUser: !!user,
+      segments: Array.isArray(segments) ? segments : [segments],
+      isLoggingIn,
+    });
+    
+    // 現在の画面が新規登録画面の場合は処理をスキップ
+    const segmentsArray = Array.isArray(segments) ? segments : [segments];
+    const isInSignupScreen = segmentsArray.length >= 2 && segmentsArray[0] === 'auth' && segmentsArray[1] === 'signup';
+    if (isInSignupScreen) {
+      logger.debug('[ログイン画面 useEffect] 新規登録画面にいるため処理をスキップ');
+      return;
+    }
+    
+    // ログイン画面にいることを確認
+    const isInLoginScreen = segmentsArray.length >= 2 && segmentsArray[0] === 'auth' && segmentsArray[1] === 'login';
+    if (!isInLoginScreen) {
+      logger.debug('[ログイン画面 useEffect] ログイン画面にいないため処理をスキップ', { segments: segmentsArray });
+      return;
+    }
+    
+    // 認証済みかつローディング完了の場合のみ処理
+    if (!isAuthenticated || isLoading || !user) {
+      logger.debug('[ログイン画面 useEffect] 条件を満たさないため処理をスキップ', {
+        isAuthenticated,
+        isLoading,
+        hasUser: !!user,
+      });
+      return;
+    }
+    
+    // ログイン処理完了
+    if (isLoggingIn) {
+      setIsLoggingIn(false);
+    }
+    
+    logger.debug('[ログイン画面 useEffect] 認証成功 - 画面遷移を実行', {
+      hasInstrument: hasInstrumentSelected(),
+      needsTutorial: needsTutorial(),
+      canAccessMain: canAccessMainApp(),
+      userSelectedInstrumentId: user.selected_instrument_id,
+    });
+    
+    // ログイン成功時: カレンダーの日付を今日にリセット
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        window.localStorage.removeItem('home_calendar_view_date');
+        window.localStorage.setItem('login_success_reset_calendar', 'true');
+      } catch (error) {
+        // エラーは無視
       }
     }
-  }, [isAuthenticated, isLoading, isLoggingIn, hasInstrumentSelected, needsTutorial, canAccessMainApp, router, user, segments]);
+    
+    // 画面遷移を実行
+    const navigateToScreen = () => {
+      try {
+        const hasInstrument = hasInstrumentSelected();
+        const needsTut = needsTutorial();
+        const canAccess = canAccessMainApp();
+        
+        logger.debug('[ログイン画面 useEffect] 画面遷移判定', {
+          hasInstrument,
+          needsTut,
+          canAccess,
+          userSelectedInstrumentId: user.selected_instrument_id,
+        });
+        
+        if (hasInstrument || canAccess) {
+          logger.debug('[ログイン画面 useEffect] → カレンダー画面に遷移');
+          router.replace('/(tabs)/index');
+        } else if (needsTut) {
+          logger.debug('[ログイン画面 useEffect] → チュートリアル画面に遷移');
+          router.replace('/(tabs)/tutorial');
+        } else {
+          logger.debug('[ログイン画面 useEffect] → 楽器選択画面に遷移');
+          router.replace('/(tabs)/instrument-selection');
+        }
+      } catch (navError) {
+        logger.error('[ログイン画面 useEffect] 画面遷移エラー:', navError);
+        try {
+          router.replace('/(tabs)/instrument-selection');
+        } catch (fallbackError) {
+          logger.error('[ログイン画面 useEffect] フォールバックも失敗:', fallbackError);
+        }
+      }
+    };
+    
+    // 少し遅延して実行（_layout.tsxとの競合を避ける）
+    const timeoutId = setTimeout(navigateToScreen, 100);
+    return () => clearTimeout(timeoutId);
+  }, [isAuthenticated, isLoading, user, router, isLoggingIn, segments, hasInstrumentSelected, needsTutorial, canAccessMainApp]);
   
   // タイムアウト時のフォールバック: isLoggingInがtrueのままになっている場合の安全装置
   useEffect(() => {
@@ -311,6 +329,7 @@ export default function LoginScreen() {
     // エラーをクリア
     setFormErrors({});
     clearError();
+    setErrorType(null);
     
     if (!validateForm()) {
       logger.debug('フォームバリデーション失敗', formErrors);
@@ -330,67 +349,91 @@ export default function LoginScreen() {
     
     try {
       logger.debug('signIn関数を呼び出し中...', { email: formData.email });
+      
+      // useAuthAdvancedのsignInを使用（認証状態の更新を確実に行うため）
+      // エラー情報を取得するため、エラーが発生した場合はsignInServiceを使用してエラー情報を取得
       const success = await signIn(formData);
       
       logger.debug('ログイン結果確認:', { 
         success, 
         isAuthenticated, 
         isLoading,
-        error: error || 'なし' 
+        error: error || 'なし',
+        hasUser: !!user
       });
-      
-      // ログイン処理が完了したので、isLoggingInをリセット
-      // 成功時も失敗時も、認証状態の更新はuseEffectで処理されるため、ここではリセットする
-      setIsLoggingIn(false);
       
       if (success) {
         logger.debug('ログイン成功 - 認証状態の更新を待機中');
         setFormErrors({});
+        setErrorType(null);
         
-        // 認証状態の更新と画面遷移は、useEffect（88-123行）で自動的に処理される
-        // useAuthAdvancedのsignIn関数がupdateAuthStateを呼び出し、
-        // 認証状態が更新されるとuseEffectが検知して適切な画面に遷移する
-        // フラグは使用せず、認証状態のみで判定する
+        // ログイン処理が完了したので、isLoggingInをリセット
+        setIsLoggingIn(false);
+        
         logger.debug('ログイン成功 - 認証状態の更新と画面遷移は自動的に処理されます');
       } else {
-        logger.debug('ログイン失敗', { success, isAuthenticated, error });
+        // ログイン失敗時は即座にフラグをリセット
+        setIsLoggingIn(false);
         
-        const fallbackMsg = error || 'メールアドレスまたはパスワードが正しくありません';
+        // エラー情報を取得（error stateから）
+        // error stateはuseAuthAdvancedのsignInで設定されたエラーメッセージ（文字列）
+        // エラーメッセージからエラー種別を判定
+        const errorInfo = getAuthErrorInfo(error || 'ログインに失敗しました');
+        setErrorType(errorInfo.type);
+        
+        logger.debug('ログイン失敗', { 
+          success, 
+          errorType: errorInfo.type,
+          errorMessage: errorInfo.userFriendlyMessage,
+          isAuthenticated,
+          errorFromState: error
+        });
+        
+        // エラーメッセージを設定（エラー種別に応じたメッセージを使用）
+        const errorMessage = errorInfo.userFriendlyMessage || error || 'ログインに失敗しました';
+        
         // Webでも確実に視認できるようフィールドエラーも表示
         setFormErrors(prev => ({
           ...prev,
-          password: fallbackMsg,
+          password: errorMessage,
         }));
 
-        // エラーメッセージをアラートでも表示
+        // エラーの種類に応じたAlert表示
+        let alertTitle = 'ログイン失敗';
+        if (errorInfo.type === 'network') {
+          alertTitle = 'ネットワークエラー';
+        } else if (errorInfo.type === 'authentication') {
+          alertTitle = '認証エラー';
+        } else if (errorInfo.type === 'rate_limit') {
+          alertTitle = 'リクエスト制限';
+        } else if (errorInfo.type === 'email_not_confirmed') {
+          alertTitle = 'メール確認が必要です';
+        }
+        
         Alert.alert(
-          'ログイン失敗',
-          fallbackMsg,
+          alertTitle,
+          errorMessage,
           [{ text: 'OK' }]
         );
 
-        // 未登録ユーザーの場合は新規登録画面への誘導
-        const errorLower = (error || '').toLowerCase();
-        if (errorLower.includes('登録されていません') || 
-            errorLower.includes('not found') || 
-            errorLower.includes('user not found') || 
-            errorLower.includes('invalid login credentials') ||
-            errorLower.includes('invalid credentials') ||
-            errorLower.includes('email not confirmed')) {
-          Alert.alert(
-            'ログインできません',
-            'メールアドレスまたはパスワードが正しくない可能性があります。\n\n新規登録を行いますか？',
-            [
-              { text: 'キャンセル', style: 'cancel' },
-              {
-                text: '新規登録',
-                onPress: () => {
-                  logger.debug('新規登録画面に遷移');
-                  router.push('/auth/signup');
+        // 認証エラーの場合は新規登録画面への誘導を表示
+        if (errorInfo.type === 'authentication' || errorInfo.type === 'email_not_confirmed') {
+          setTimeout(() => {
+            Alert.alert(
+              'ログインできません',
+              'メールアドレスまたはパスワードが正しくない可能性があります。\n\n新規登録を行いますか？',
+              [
+                { text: 'キャンセル', style: 'cancel' },
+                {
+                  text: '新規登録',
+                  onPress: () => {
+                    logger.debug('新規登録画面に遷移');
+                    router.push('/auth/signup');
+                  },
                 },
-              },
-            ]
-          );
+              ]
+            );
+          }, 500);
         }
       }
     } catch (error) {
@@ -398,9 +441,28 @@ export default function LoginScreen() {
       // 例外が発生した場合も確実にisLoggingInをリセット
       setIsLoggingIn(false);
       
-      const errorMessage = error instanceof Error ? error.message : 'ログインに失敗しました。もう一度お試しください。';
+      // エラー情報を取得
+      const errorInfo = getAuthErrorInfo(error);
+      setErrorType(errorInfo.type);
+      
+      const errorMessage = errorInfo.userFriendlyMessage || (error instanceof Error ? error.message : 'ログインに失敗しました。もう一度お試しください。');
+      
+      // エラーの種類に応じたAlert表示
+      let alertTitle = 'エラー';
+      if (errorInfo.type === 'network') {
+        alertTitle = 'ネットワークエラー';
+      } else if (errorInfo.type === 'authentication') {
+        alertTitle = '認証エラー';
+      }
+      
       // 例外エラーはuseAuthAdvancedのerrorに設定されないため、Alertで表示
-      Alert.alert('エラー', errorMessage);
+      Alert.alert(alertTitle, errorMessage);
+      
+      // フィールドエラーも表示
+      setFormErrors(prev => ({
+        ...prev,
+        password: errorMessage,
+      }));
     } finally {
       // 念のため、finallyブロックでもisLoggingInをリセット（上記のsetIsLoggingIn(false)が実行されない場合に備える）
       setIsLoggingIn(false);
@@ -514,14 +576,59 @@ export default function LoginScreen() {
             </View>
 
             {/* エラー表示（上部バナー） */}
-            {error && (
+            {(error || errorType) && (
               <Animated.View
                 style={[
                   styles.errorContainer,
-                  { transform: [{ scale: pulseAnim }] },
+                  { 
+                    transform: [{ scale: pulseAnim }],
+                    backgroundColor: errorType === 'network' ? '#FFF3E0' : errorType === 'authentication' ? '#FFEBEE' : '#FFEBEE',
+                    borderLeftColor: errorType === 'network' ? '#FF9800' : errorType === 'authentication' ? '#F44336' : '#F44336',
+                  },
                 ]}
               >
-                <Text style={styles.errorText}>⚠️ {error}</Text>
+                <View style={styles.errorHeader}>
+                  {errorType === 'network' && <Text style={styles.errorIcon}>📡</Text>}
+                  {errorType === 'authentication' && <Text style={styles.errorIcon}>🔒</Text>}
+                  {errorType === 'rate_limit' && <Text style={styles.errorIcon}>⏱️</Text>}
+                  {errorType === 'email_not_confirmed' && <Text style={styles.errorIcon}>✉️</Text>}
+                  {!errorType && <Text style={styles.errorIcon}>⚠️</Text>}
+                  <Text style={[styles.errorTitle, { color: errorType === 'network' ? '#E65100' : '#D32F2F' }]}>
+                    {errorType === 'network' && 'ネットワークエラー'}
+                    {errorType === 'authentication' && '認証エラー'}
+                    {errorType === 'rate_limit' && 'リクエスト制限'}
+                    {errorType === 'email_not_confirmed' && 'メール確認が必要です'}
+                    {!errorType && 'エラー'}
+                  </Text>
+                </View>
+                <Text style={[styles.errorText, { color: errorType === 'network' ? '#E65100' : '#D32F2F' }]}>
+                  {error || 'ログインに失敗しました'}
+                </Text>
+                {error && !errorType && (
+                  <Text style={styles.errorHint}>
+                    💡 もう一度お試しください。
+                  </Text>
+                )}
+                {errorType === 'network' && (
+                  <Text style={styles.errorHint}>
+                    💡 インターネット接続を確認してから、もう一度お試しください。
+                  </Text>
+                )}
+                {errorType === 'authentication' && (
+                  <Text style={styles.errorHint}>
+                    💡 メールアドレスまたはパスワードが正しくない可能性があります。入力内容を確認してください。
+                  </Text>
+                )}
+                {errorType === 'rate_limit' && (
+                  <Text style={styles.errorHint}>
+                    💡 しばらく待ってから、もう一度お試しください。
+                  </Text>
+                )}
+                {errorType === 'email_not_confirmed' && (
+                  <Text style={styles.errorHint}>
+                    💡 登録時に送信されたメールを確認して、メールアドレスを認証してください。
+                  </Text>
+                )}
               </Animated.View>
             )}
 
@@ -693,10 +800,31 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#F44336',
   },
+  errorHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  errorIcon: {
+    fontSize: 18,
+  },
+  errorTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#D32F2F',
+  },
   errorText: {
-    color: '#F44336',
+    color: '#D32F2F',
     fontSize: 14,
     fontWeight: '500',
+    marginBottom: 4,
+  },
+  errorHint: {
+    color: '#757575',
+    fontSize: 12,
+    marginTop: 8,
+    lineHeight: 18,
   },
   form: {
     marginBottom: 20,

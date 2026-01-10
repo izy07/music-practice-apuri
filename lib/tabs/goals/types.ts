@@ -2,6 +2,19 @@
  * goals.tsx の型定義
  */
 
+export interface SubGoal {
+  id: string;
+  goal_id: string;
+  user_id: string;
+  title: string;
+  description?: string;
+  is_completed: boolean;
+  completed_at?: string;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Goal {
   id: string;
   title: string;
@@ -13,6 +26,9 @@ export interface Goal {
   is_completed: boolean;
   completed_at?: string;
   show_on_calendar?: boolean;
+  sub_goals?: SubGoal[]; // サブ目標（長期目標の場合のみ）
+  instrument_id?: string | null; // 楽器ID
+  user_id?: string; // ユーザーID（サブ目標作成時に必要）
 }
 
 export interface UserProfile {

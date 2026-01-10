@@ -18,7 +18,18 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { TIMEOUT } from '@/lib/constants';
-import { getBasePath } from '@/lib/navigationUtils';
+import { getBasePath, redirectToLogin } from '@/lib/navigationUtils';
+import { getAuthErrorMessage, getAuthErrorInfo } from '@/lib/authHelpers';
+import {
+  fetchUserProfile,
+  fetchRecentInstrument,
+  getNewSignupFlag,
+  clearNewSignupFlag,
+  setNewSignupFlag,
+  isExistingUser,
+  createFallbackUser,
+  convertToAuthUser,
+} from '@/services/authProfileService';
 
 // Web環境での最後のアクティビティ時刻を保存するキー（useIdleTimeoutと同じキー）
 const LAST_ACTIVITY_KEY = 'music-practice-last-activity';
@@ -83,29 +94,8 @@ let globalAuthState: AuthState = {
   error: null,
 };
 
-// 新規登録フラグのキー
-const NEW_SIGNUP_FLAG_KEY = 'music-practice-new-signup-flag';
-
-// 新規登録フラグの状態（メモリ上で保持）
-let newSignupFlagState: boolean = false;
-
-// 新規登録フラグの状態を更新
-const updateNewSignupFlagState = async (): Promise<void> => {
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-    try {
-      newSignupFlagState = localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
-    } catch (error) {
-      newSignupFlagState = false;
-    }
-  } else {
-    try {
-      const value = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
-      newSignupFlagState = value === 'true';
-    } catch (error) {
-      newSignupFlagState = false;
-    }
-  }
-};
+// 【リファクタリング】新規登録フラグの管理はサービス層に移行
+// グローバル状態は削除し、サービス層を使用（状態管理を簡素化）
 
 // 認証状態更新のリスナー
 const authStateListeners = new Set<(state: AuthState) => void>();
@@ -537,7 +527,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                     await supabase.auth.signOut();
                   }
                   if (typeof router !== 'undefined') {
-                    router.replace('/auth/login');
+                    redirectToLogin(router, 'リフレッシュトークン無効（401エラー）');
                   }
                 } else {
                   // その他のエラーはログに記録（ログアウトしない）
@@ -635,47 +625,13 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       try {
         logger.debug('handleAuthenticatedUser開始:', { userId, email: user.email });
       
-      // ユーザープロフィールを取得（最小限のカラムのみで取得してパフォーマンスを最適化）
+      // 【リファクタリング】ユーザープロフィールを取得（サービス層を使用）
       // タイムアウトを10秒に短縮して、ログイン処理を高速化
       // ネットワークが遅い場合でも、タイムアウト後はフォールバック処理でログインを完了できる
-      let profile: any = null;
-      let profileError: any = null;
-      
-      // profilePromiseをtryブロックの外で定義（タイムアウト後のバックグラウンド処理で使用するため）
-      const profilePromise = supabase
-        .from('user_profiles')
-        .select('id, user_id, display_name, selected_instrument_id')
-        .eq('user_id', userId)
-        .maybeSingle();
-      
-      try {
-        // Promise.raceを使用してタイムアウトを実装
-        // 注意: SupabaseクエリはAbortControllerを直接サポートしていないため、
-        // タイムアウトが発火してもクエリ自体は継続しますが、少なくともタイムアウトを検出できます
-        const timeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
-          setTimeout(() => {
-            resolve({
-              data: null,
-              error: {
-                code: 'TIMEOUT',
-                message: 'プロフィール取得がタイムアウトしました',
-              },
-            });
-          }, 10000); // 10秒でタイムアウト（ログイン処理を高速化）
-        });
-        
-        const result = await Promise.race([profilePromise, timeoutPromise]);
-        profile = result.data;
-        profileError = result.error;
-      } catch (error: any) {
-        // Promise.raceでエラーが発生した場合（通常は発生しないはず）
-        logger.error('プロフィール取得で予期しないエラーが発生しました:', error);
-        profileError = { 
-          code: error?.code || 'UNKNOWN_ERROR', 
-          message: error?.message || 'プロフィール取得でエラーが発生しました',
-          status: error?.status,
-        };
-      }
+      const profileResult = await fetchUserProfile(userId, 10000);
+      const profile = profileResult.profile;
+      const profileError = profileResult.error;
+      const isTimeout = profileResult.isTimeout || false;
       
       if (profileError) {
         logger.warn('プロフィール取得エラー:', { error: profileError, code: profileError.code });
@@ -696,152 +652,39 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           return null;
         }
         
-        // タイムアウトエラーの場合は、セッションをクリアせず、デフォルト値で処理を続行
+        // 【リファクタリング】タイムアウトエラーの場合は、サービス層を使用してフォールバック処理
         // ネットワークが遅い場合でも、ログインは成功している可能性があるため
         // タイムアウト時には、すぐにフォールバックユーザーを作成して認証状態を更新し、
         // その後バックグラウンドでプロフィール取得を試みる
-        if (profileError.code === 'TIMEOUT') {
+        if (profileError?.code === 'TIMEOUT' || isTimeout) {
           logger.warn('プロフィール取得がタイムアウトしました。フォールバックユーザーを作成して認証状態を更新します。', { userId });
           
-          // user_instrument_profilesから最新の楽器を確認（短いタイムアウト付きで同期的に実行）
-          // これにより、チュートリアル画面への誤った遷移を防ぐ
-          let fallbackInstrumentId: string | null = null;
-          try {
-            const instrumentQueryPromise = supabase
-              .from('user_instrument_profiles')
-              .select('instrument_id, updated_at, created_at')
-              .eq('user_id', userId)
-              .order('updated_at', { ascending: false })
-              .limit(1);
-            
-            // 10秒でタイムアウト（プロフィール取得と同じ時間を設定）
-            // 既存ユーザーの楽器情報を確実に取得するため、タイムアウト時間を延長
-            const instrumentTimeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
-              setTimeout(() => {
-                resolve({
-                  data: null,
-                  error: {
-                    code: 'TIMEOUT',
-                    message: '楽器取得がタイムアウトしました',
-                  },
-                });
-              }, 10000); // 10秒に延長（プロフィール取得と同じ）
-            });
-            
-            const instrumentResult = await Promise.race([instrumentQueryPromise, instrumentTimeoutPromise]);
-            
-            if (instrumentResult.data && !instrumentResult.error && Array.isArray(instrumentResult.data) && instrumentResult.data.length > 0) {
-              fallbackInstrumentId = instrumentResult.data[0].instrument_id;
-              logger.debug('user_instrument_profilesから最新の楽器を取得しました（タイムアウト時）:', { instrumentId: fallbackInstrumentId });
-            } else if (instrumentResult.error && instrumentResult.error.code === 'TIMEOUT') {
-              logger.debug('楽器取得がタイムアウトしました。selected_instrument_idはnullのまま続行します。');
-            } else {
-              logger.debug('楽器取得でエラーが発生しました（続行）:', instrumentResult.error);
-            }
-          } catch (instrumentProfileError) {
-            logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+          // 【リファクタリング】サービス層を使用して最近使用した楽器を取得
+          const recentInstrumentResult = await fetchRecentInstrument(userId, 10000);
+          const fallbackInstrumentId = recentInstrumentResult.instrumentId;
+          
+          // 【リファクタリング】サービス層を使用して新規登録フラグを取得
+          const isNewSignup = await getNewSignupFlag();
+          
+          // 【リファクタリング】サービス層を使用して既存ユーザーかどうかを判定
+          const isExisting = isExistingUser(user, fallbackInstrumentId);
+          
+          // 【リファクタリング】既存ユーザーの場合、新規登録フラグを削除（サービス層を使用）
+          if (isExisting) {
+            await clearNewSignupFlag();
+            logger.debug('既存ユーザーと判定したため、新規登録フラグを削除しました（タイムアウト時）');
           }
           
-          // すぐにフォールバックユーザーを作成して認証状態を更新
-          // プロフィール取得がタイムアウトした場合でも、ログインは成功している可能性があるため
-          // フォールバックユーザーを作成して認証状態を更新し、後でプロフィールを取得する
-          const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
-          
-          // 既存ユーザーかどうかを判定（user.created_atとlast_sign_in_atを使用）
-          // 1. last_sign_in_atが存在し、created_atと異なる場合 → 既存ユーザー（以前にログインしたことがある）
-          // 2. ユーザーが24時間以上前に作成された場合 → 既存ユーザー
-          // これにより、ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ
-          let isNewSignup = false;
-          const userCreatedAt = user.created_at ? new Date(user.created_at) : null;
-          const lastSignInAt = user.last_sign_in_at ? new Date(user.last_sign_in_at) : null;
-          const now = new Date();
-          const hoursSinceCreation = userCreatedAt 
-            ? (now.getTime() - userCreatedAt.getTime()) / (1000 * 60 * 60)
-            : Infinity;
-          
-          // last_sign_in_atが存在し、created_atと異なる場合、既存ユーザーとみなす
-          // これは最も確実な既存ユーザーの判定方法
-          const isExistingUserBySignIn = lastSignInAt && userCreatedAt && 
-            lastSignInAt.getTime() > userCreatedAt.getTime() + (1000 * 60); // 作成から1分以上経過後にログインしている場合
-          
-          if (isExistingUserBySignIn) {
-            // 以前にログインしたことがある場合は、既存ユーザーとみなす
-            isNewSignup = false;
-            logger.debug('既存ユーザーと判定（以前にログインしたことがある）:', { 
-              created_at: user.created_at,
-              last_sign_in_at: user.last_sign_in_at
-            });
-          } else if (hoursSinceCreation > 24) {
-            // 24時間以上前に作成されたユーザーは既存ユーザーとみなす
-            isNewSignup = false;
-            logger.debug('既存ユーザーと判定（作成日時から24時間以上経過）:', { 
-              hoursSinceCreation: Math.floor(hoursSinceCreation) 
-            });
-          } else {
-            // 24時間以内に作成されたユーザーのみ、新規登録フラグをチェック
-            // これにより、既存ユーザーが誤ってチュートリアル画面に遷移するのを防ぐ
-            try {
-              if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-                isNewSignup = localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
-              } else {
-                const flag = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
-                isNewSignup = flag === 'true';
-              }
-            } catch (error) {
-              // エラー時は既存ユーザーとみなす
-              isNewSignup = false;
-            }
-          }
-          
-          // 既存ユーザーの場合、チュートリアル完了とみなす
-          // これにより、ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ
-          // 特に、last_sign_in_atとcreated_atを比較して既存ユーザーと判定した場合は確実にtrueにする
-          // 楽器が選択されている場合も既存ユーザーとみなしてチュートリアル完了にする
-          const fallbackTutorialCompleted = !isNewSignup || isExistingUserBySignIn || (hoursSinceCreation > 24) || (fallbackInstrumentId !== null);
-          
-          // プロフィール取得タイムアウト時は、newSignupFlagStateも更新する
-          // 既存ユーザーの場合、フラグを確実にfalseに設定
-          // これにより、needsTutorial()が正しくfalseを返すようになる
-          // 楽器が選択されている場合、以前にログインしたことがある場合、24時間以上前に作成された場合は既存ユーザーとみなす
-          const isExistingUser = fallbackInstrumentId !== null || isExistingUserBySignIn || hoursSinceCreation > 24;
-          if (isExistingUser) {
-            newSignupFlagState = false;
-            // ストレージからもフラグを削除（確実性を高める）
-            try {
-              if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-                localStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
-              } else {
-                await AsyncStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
-              }
-              logger.debug('既存ユーザーと判定したため、新規登録フラグを削除しました（タイムアウト時）');
-            } catch (flagError) {
-              logger.warn('新規登録フラグの削除エラー（無視）:', flagError);
-            }
-          } else {
-            newSignupFlagState = isNewSignup;
-          }
+          // 【リファクタリング】サービス層を使用してフォールバックユーザーを作成
+          const fallbackUser = createFallbackUser(user, fallbackInstrumentId, isNewSignup);
           
           logger.debug('プロフィール取得タイムアウト時フォールバックユーザーを作成しました:', {
             userId,
             email: user.email,
-            selected_instrument_id: fallbackInstrumentId,
-            tutorial_completed: fallbackTutorialCompleted,
+            selected_instrument_id: fallbackUser.selected_instrument_id,
+            tutorial_completed: fallbackUser.tutorial_completed,
             isNewSignup,
-            newSignupFlagState,
-            hoursSinceCreation: userCreatedAt ? Math.floor(hoursSinceCreation) : null,
           });
-          
-          const fallbackUser: AuthUser = {
-            id: userId,
-            email: user.email || '',
-            name: fallbackName,
-            avatar_url: user?.user_metadata?.avatar_url,
-            created_at: user.created_at || new Date().toISOString(),
-            last_sign_in_at: user.last_sign_in_at,
-            selected_instrument_id: fallbackInstrumentId,
-            tutorial_completed: fallbackTutorialCompleted, // 新規登録フラグが存在しない場合はtrue（既存ユーザーとみなす）
-            onboarding_completed: false,
-          };
           
           // セッションが有効な場合は、isAuthenticated: trueを設定する
           updateAuthState({
@@ -852,56 +695,44 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             error: null,
           });
           
-          // タイムアウト後も、バックグラウンドでプロフィール取得を試みる（非同期）
-          profilePromise.then((result) => {
-            if (result.data && !result.error) {
-              logger.debug('タイムアウト後のプロフィール取得に成功しました。認証状態を更新します。', { userId });
-              // プロフィールが取得できた場合は、認証状態を更新
-              const profileName = result.data.display_name || user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
-              
-              // user_instrument_profilesから最新の楽器を確認
-              let selectedInstrumentId = result.data.selected_instrument_id || null;
-              if (!selectedInstrumentId) {
-                (async () => {
-                  try {
-                    const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
-                      .from('user_instrument_profiles')
-                      .select('instrument_id, updated_at, created_at')
-                      .eq('user_id', userId)
-                      .order('updated_at', { ascending: false })
-                      .limit(1);
-                    
-                    if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
-                      selectedInstrumentId = instrumentProfiles[0].instrument_id;
-                    }
-                  } catch (error) {
-                    logger.debug('user_instrument_profilesからの楽器取得エラー（無視）:', error);
-                  }
-                })();
+          // 【リファクタリング】タイムアウト後も、バックグラウンドでプロフィール取得を試みる（非同期、サービス層を使用）
+          fetchUserProfile(userId, 10000)
+            .then((result) => {
+              if (result.profile && !result.error) {
+                logger.debug('タイムアウト後のプロフィール取得に成功しました。認証状態を更新します。', { userId });
+                
+                // プロフィールが取得できた場合は、認証状態を更新
+                let selectedInstrumentId = result.profile.selected_instrument_id || null;
+                
+                // selected_instrument_idがnullの場合は、最近使用した楽器を取得
+                if (!selectedInstrumentId) {
+                  fetchRecentInstrument(userId, 10000).then((instrumentResult) => {
+                    selectedInstrumentId = instrumentResult.instrumentId;
+                    const authUser = convertToAuthUser(user, { ...result.profile, selected_instrument_id: selectedInstrumentId } as any);
+                    updateAuthState({
+                      user: authUser,
+                      isAuthenticated: true,
+                      isLoading: false,
+                      isInitialized: true,
+                      error: null,
+                    });
+                  }).catch((error) => {
+                    logger.debug('タイムアウト後の楽器取得エラー（無視）:', error);
+                  });
+                } else {
+                  const authUser = convertToAuthUser(user, result.profile);
+                  updateAuthState({
+                    user: authUser,
+                    isAuthenticated: true,
+                    isLoading: false,
+                    isInitialized: true,
+                    error: null,
+                  });
+                }
               }
-              
-              const authUser: AuthUser = {
-                id: userId,
-                email: user.email || '',
-                name: profileName,
-                avatar_url: (result.data as any).avatar_url || user?.user_metadata?.avatar_url,
-                created_at: user.created_at || new Date().toISOString(),
-                last_sign_in_at: user.last_sign_in_at,
-                selected_instrument_id: selectedInstrumentId,
-                tutorial_completed: (result.data as any).tutorial_completed ?? false,
-                onboarding_completed: (result.data as any).onboarding_completed ?? false,
-              };
-              updateAuthState({
-                user: authUser,
-                isAuthenticated: true,
-                isLoading: false,
-                isInitialized: true,
-                error: null,
-              });
-            }
-          }).catch((error) => {
-            logger.debug('タイムアウト後のプロフィール取得エラー（無視）:', error);
-          });
+            }).catch((error) => {
+              logger.debug('タイムアウト後のプロフィール取得エラー（無視）:', error);
+            });
           
           // フォールバックユーザーを返して処理を完了
           return fallbackUser;
@@ -944,46 +775,17 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             // 既にプロフィールが存在する場合は成功として扱う（競合エラー）
             if (createError.code === '23505' || createError.status === 409 || (createError.message?.includes('duplicate key') || createError.message?.includes('already exists'))) {
               logger.debug('プロフィールは既に存在します（競合エラー） - 再度取得を試みます', { userId });
-              // 再度取得を試みる
-              const { data: retryProfile, error: retryError } = await supabase
-                .from('user_profiles')
-                .select('id, user_id, display_name, selected_instrument_id')
-                .eq('user_id', userId)
-                .maybeSingle();
+              // 【リファクタリング】サービス層を使用してプロフィールを再取得
+              const retryResult = await fetchUserProfile(userId, 10000);
               
-              if (retryError || !retryProfile) {
-                ErrorHandler.handle(retryError || new Error('プロフィールの取得に失敗しました'), 'プロフィール取得', false);
-                // user_instrument_profilesから最新の楽器を確認
-                let fallbackInstrumentId: string | null = null;
-                try {
-                  const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
-                    .from('user_instrument_profiles')
-                    .select('instrument_id, updated_at, created_at')
-                    .eq('user_id', userId)
-                    .order('updated_at', { ascending: false })
-                    .limit(1);
-                  
-                  if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
-                    fallbackInstrumentId = instrumentProfiles[0].instrument_id;
-                    logger.debug('user_instrument_profilesから最新の楽器を取得しました:', { instrumentId: fallbackInstrumentId });
-                  }
-                } catch (instrumentProfileError) {
-                  logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
-                }
+              if (retryResult.error || !retryResult.profile) {
+                ErrorHandler.handle(retryResult.error || new Error('プロフィールの取得に失敗しました'), 'プロフィール取得', false);
+                // 【リファクタリング】サービス層を使用して最近使用した楽器を取得
+                const recentInstrumentResult = await fetchRecentInstrument(userId, 10000);
+                const fallbackInstrumentId = recentInstrumentResult.instrumentId;
                 
-                // プロフィール取得に失敗した場合は基本情報のみで処理
-                const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
-                const authUser: AuthUser = {
-                  id: userId,
-                  email: user?.email || '',
-                  name: fallbackName,
-                  avatar_url: user?.user_metadata?.avatar_url,
-                  created_at: user?.created_at || new Date().toISOString(),
-                  last_sign_in_at: user?.last_sign_in_at,
-                  selected_instrument_id: fallbackInstrumentId,
-                  tutorial_completed: false,
-                  onboarding_completed: false,
-                };
+                // 【リファクタリング】サービス層を使用してフォールバックユーザーを作成
+                const authUser = createFallbackUser(user, fallbackInstrumentId, false);
                 
                 updateAuthState({
                   user: authUser,
@@ -995,18 +797,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                 return authUser;
               }
               
-              // 取得したプロフィールを使用
-              const authUser: AuthUser = {
-                id: userId,
-                email: user?.email || '',
-                name: retryProfile.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー',
-                avatar_url: (retryProfile as any).avatar_url || user?.user_metadata?.avatar_url,
-                created_at: user?.created_at || new Date().toISOString(),
-                last_sign_in_at: user?.last_sign_in_at,
-                selected_instrument_id: retryProfile.selected_instrument_id || null,
-                tutorial_completed: (retryProfile as any).tutorial_completed ?? false,
-                onboarding_completed: (retryProfile as any).onboarding_completed ?? false,
-              };
+              // 【リファクタリング】取得したプロフィールを使用（サービス層を使用）
+              const authUser = convertToAuthUser(user, retryResult.profile);
               
               updateAuthState({
                 user: authUser,
@@ -1019,37 +811,12 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             }
             
             ErrorHandler.handle(createError, 'プロフィール作成', false);
-            // user_instrument_profilesから最新の楽器を確認
-            let fallbackInstrumentId: string | null = null;
-            try {
-              const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
-                .from('user_instrument_profiles')
-                .select('instrument_id, updated_at, created_at')
-                .eq('user_id', userId)
-                .order('updated_at', { ascending: false })
-                .limit(1);
-              
-              if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
-                fallbackInstrumentId = instrumentProfiles[0].instrument_id;
-                logger.debug('user_instrument_profilesから最新の楽器を取得しました:', { instrumentId: fallbackInstrumentId });
-              }
-            } catch (instrumentProfileError) {
-              logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
-            }
+            // 【リファクタリング】サービス層を使用して最近使用した楽器を取得
+            const recentInstrumentResult = await fetchRecentInstrument(userId, 10000);
+            const fallbackInstrumentId = recentInstrumentResult.instrumentId;
             
-            // プロフィール作成に失敗した場合は基本情報のみで処理
-            const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
-            const authUser: AuthUser = {
-              id: userId,
-              email: user?.email || '',
-              name: fallbackName,
-              avatar_url: user?.user_metadata?.avatar_url,
-              created_at: user?.created_at || new Date().toISOString(),
-              last_sign_in_at: user?.last_sign_in_at,
-              selected_instrument_id: fallbackInstrumentId,
-              tutorial_completed: false,
-              onboarding_completed: false,
-            };
+            // 【リファクタリング】サービス層を使用してフォールバックユーザーを作成
+            const authUser = createFallbackUser(user, fallbackInstrumentId, false);
             
             updateAuthState({
               user: authUser,
@@ -1061,19 +828,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             return authUser;
           }
           
-          // 新規作成されたプロフィールを使用
+          // 【リファクタリング】新規作成されたプロフィールを使用（サービス層を使用）
           if (newProfile) {
-            const authUser: AuthUser = {
-                id: userId,
-              email: user.email || '',
-              name: newProfile.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー',
-              avatar_url: (newProfile as any).avatar_url || user?.user_metadata?.avatar_url,
-              created_at: user.created_at,
-              last_sign_in_at: user.last_sign_in_at,
-              selected_instrument_id: newProfile.selected_instrument_id || null,
-              tutorial_completed: (newProfile as any).tutorial_completed ?? false,
-              onboarding_completed: (newProfile as any).onboarding_completed ?? false,
-            };
+            const authUser = convertToAuthUser(user, newProfile as any);
             
             updateAuthState({
               user: authUser,
@@ -1085,97 +842,57 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             return authUser;
           }
         } else {
-          // その他のエラーの場合でも、ログインは成功しているのでフォールバックユーザーを返す
+          // 【リファクタリング】その他のエラーの場合でも、ログインは成功しているのでフォールバックユーザーを返す（サービス層を使用）
           ErrorHandler.handle(profileError, 'プロフィール取得', false);
           logger.warn('プロフィール取得でエラーが発生しましたが、ログインは成功しているためフォールバックユーザーを使用します', { error: profileError });
           
-          // user_instrument_profilesから最新の楽器を確認
-          try {
-            const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
-              .from('user_instrument_profiles')
-              .select('instrument_id, updated_at, created_at')
-              .eq('user_id', userId)
-              .order('updated_at', { ascending: false })
-              .limit(1);
+          // サービス層を使用して最近使用した楽器を取得
+          const recentInstrumentResult = await fetchRecentInstrument(userId, 10000);
+          const latestInstrumentId = recentInstrumentResult.instrumentId;
+          
+          if (latestInstrumentId) {
+            logger.debug('user_instrument_profilesから最新の楽器を取得しました:', { instrumentId: latestInstrumentId });
             
-            if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
-              const latestInstrumentId = instrumentProfiles[0].instrument_id;
-              logger.debug('user_instrument_profilesから最新の楽器を取得しました:', { instrumentId: latestInstrumentId });
-              
-              // フォールバックユーザーを作成（最新の楽器を使用）
-              const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
-              // 楽器が選択されている場合は既存ユーザーとみなしてチュートリアル完了にする
-              const authUser: AuthUser = {
-                id: userId,
-                email: user?.email || '',
-                name: fallbackName,
-                avatar_url: user.user_metadata?.avatar_url,
-                created_at: user.created_at,
-                last_sign_in_at: user.last_sign_in_at,
-                selected_instrument_id: latestInstrumentId,
-                tutorial_completed: true, // 楽器が選択されている場合は既存ユーザーとみなす
-                onboarding_completed: false,
-              };
-              
-              updateAuthState({
-                user: authUser,
-                isAuthenticated: true,
-                isLoading: false,
-                isInitialized: true,
-                error: null,
-              });
-              
-              logger.debug('フォールバックユーザーを作成しました（楽器選択済み）:', { 
-                userId: authUser.id, 
-                email: authUser.email,
-                selected_instrument_id: authUser.selected_instrument_id
-              });
-              return authUser;
-            }
-          } catch (instrumentProfileError) {
-            logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+            // サービス層を使用してフォールバックユーザーを作成（楽器が選択されている場合は既存ユーザーとみなす）
+            const authUser = createFallbackUser(user, latestInstrumentId, false);
+            // 楽器が選択されている場合は既存ユーザーとみなしてチュートリアル完了にする
+            authUser.tutorial_completed = true;
+            
+            updateAuthState({
+              user: authUser,
+              isAuthenticated: true,
+              isLoading: false,
+              isInitialized: true,
+              error: null,
+            });
+            
+            logger.debug('フォールバックユーザーを作成しました（楽器選択済み）:', { 
+              userId: authUser.id, 
+              email: authUser.email,
+              selected_instrument_id: authUser.selected_instrument_id
+            });
+            return authUser;
           }
           
           // フォールバックユーザーを作成して処理を続行（下のフォールバック処理に到達）
         }
       }
       
-      // プロフィールが存在する場合
+      // 【リファクタリング】プロフィールが存在する場合（サービス層を使用）
       if (profile) {
-        // プロフィール情報をAuthUser形式に変換
-        const profileName = profile.display_name || user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
+        // selected_instrument_idがnullの場合、サービス層を使用して最近使用した楽器を取得
         let selectedInstrumentId = profile.selected_instrument_id || null;
         
-        // selected_instrument_idがnullの場合、user_instrument_profilesから最新の楽器を確認
         if (!selectedInstrumentId) {
-          try {
-            const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
-              .from('user_instrument_profiles')
-              .select('instrument_id, updated_at, created_at')
-              .eq('user_id', userId)
-              .order('updated_at', { ascending: false })
-              .limit(1);
-            
-            if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
-              selectedInstrumentId = instrumentProfiles[0].instrument_id;
-              logger.debug('user_instrument_profilesから最新の楽器を取得しました（プロフィールのselected_instrument_idがnullの場合）:', { instrumentId: selectedInstrumentId });
-            }
-          } catch (instrumentProfileError) {
-            logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
+          const recentInstrumentResult = await fetchRecentInstrument(userId, 10000);
+          if (recentInstrumentResult.instrumentId) {
+            selectedInstrumentId = recentInstrumentResult.instrumentId;
+            logger.debug('user_instrument_profilesから最新の楽器を取得しました（プロフィールのselected_instrument_idがnullの場合）:', { instrumentId: selectedInstrumentId });
           }
         }
         
-        const authUser: AuthUser = {
-                id: userId,
-          email: user.email || '',
-          name: profileName,
-          avatar_url: (profile as any).avatar_url,
-          created_at: user.created_at,
-          last_sign_in_at: user.last_sign_in_at,
-          selected_instrument_id: selectedInstrumentId,
-          tutorial_completed: (profile as any).tutorial_completed ?? false,
-          onboarding_completed: (profile as any).onboarding_completed ?? false,
-        };
+        // 【リファクタリング】サービス層を使用してAuthUserに変換
+        const authUser = convertToAuthUser(user, { ...profile, selected_instrument_id: selectedInstrumentId } as any);
         
         logger.debug('ユーザー情報取得完了:', {
           email: authUser.email,
@@ -1202,22 +919,12 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       
       // プロフィールが存在しない場合（エラーでもPGRST116でもない場合）
       // user_instrument_profilesから最新の楽器を確認
-      let fallbackInstrumentId: string | null = null;
-      try {
-        const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
-          .from('user_instrument_profiles')
-          .select('instrument_id, updated_at, created_at')
-          .eq('user_id', userId)
-          .order('updated_at', { ascending: false })
-          .limit(1);
-        
-        if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
-          fallbackInstrumentId = instrumentProfiles[0].instrument_id;
-          logger.debug('user_instrument_profilesから最新の楽器を取得しました:', { instrumentId: fallbackInstrumentId });
-        }
-      } catch (instrumentProfileError) {
-        logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
-        // ネットワークエラー時はローカルストレージから楽器IDを取得
+      // 【リファクタリング】サービス層を使用して最近使用した楽器を取得
+      const recentInstrumentResult = await fetchRecentInstrument(userId, 10000);
+      let fallbackInstrumentId = recentInstrumentResult.instrumentId;
+      
+      // ネットワークエラー時はローカルストレージから楽器IDを取得（フォールバック）
+      if (!fallbackInstrumentId) {
         try {
           const { STORAGE_KEYS, withUser } = await import('@/lib/storageKeys');
           const storedInstrument = await AsyncStorage.getItem(withUser(STORAGE_KEYS.selectedInstrument, userId));
@@ -1230,37 +937,11 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         }
       }
       
-      const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
-      // ネットワークエラー時でも既存ユーザーとみなす（新規登録フラグがない場合）
-      let fallbackTutorialCompleted = fallbackInstrumentId !== null;
-      if (!fallbackTutorialCompleted) {
-        // 新規登録フラグがない場合は既存ユーザーとみなす
-        try {
-          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-            const isNewSignup = localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
-            fallbackTutorialCompleted = !isNewSignup;
-          } else {
-            const flag = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
-            fallbackTutorialCompleted = flag !== 'true';
-          }
-        } catch (flagError) {
-          // エラー時は既存ユーザーとみなす（安全側に倒す）
-          fallbackTutorialCompleted = true;
-        }
-      }
+      // 【リファクタリング】サービス層を使用して新規登録フラグを取得
+      const isNewSignup = await getNewSignupFlag();
       
-      const authUser: AuthUser = {
-                id: userId,
-        email: user.email || '',
-        name: fallbackName,
-        avatar_url: user.user_metadata?.avatar_url,
-        created_at: user.created_at,
-        last_sign_in_at: user.last_sign_in_at,
-        selected_instrument_id: fallbackInstrumentId,
-        // ネットワークエラー時でも既存ユーザーとみなしてチュートリアル完了にする
-        tutorial_completed: fallbackTutorialCompleted,
-        onboarding_completed: false,
-      };
+      // 【リファクタリング】サービス層を使用してフォールバックユーザーを作成
+      const authUser = createFallbackUser(user, fallbackInstrumentId, isNewSignup);
       
       updateAuthState({
         user: authUser,
@@ -1288,23 +969,12 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           return null;
         }
         
-        // user_instrument_profilesから最新の楽器を確認
-        let fallbackInstrumentId: string | null = null;
-        try {
-          const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
-            .from('user_instrument_profiles')
-            .select('instrument_id, updated_at, created_at')
-            .eq('user_id', userId)
-            .order('updated_at', { ascending: false })
-            .limit(1);
-          
-          if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
-            fallbackInstrumentId = instrumentProfiles[0].instrument_id;
-            logger.debug('user_instrument_profilesから最新の楽器を取得しました:', { instrumentId: fallbackInstrumentId });
-          }
-        } catch (instrumentProfileError) {
-          logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
-          // ネットワークエラー時はローカルストレージから楽器IDを取得
+        // 【リファクタリング】サービス層を使用して最近使用した楽器を取得
+        const recentInstrumentResult = await fetchRecentInstrument(userId, 10000);
+        let fallbackInstrumentId = recentInstrumentResult.instrumentId;
+        
+        // ネットワークエラー時はローカルストレージから楽器IDを取得（フォールバック）
+        if (!fallbackInstrumentId) {
           try {
             const { STORAGE_KEYS } = await import('@/lib/storageKeys');
             const getKey = (key: string, uid?: string) => uid ? `${key}_${uid}` : key;
@@ -1318,37 +988,11 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           }
         }
         
-        const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
-        // ネットワークエラー時でも既存ユーザーとみなす（新規登録フラグがない場合）
-        let fallbackTutorialCompleted = fallbackInstrumentId !== null;
-        if (!fallbackTutorialCompleted) {
-          // 新規登録フラグがない場合は既存ユーザーとみなす
-          try {
-            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-              const isNewSignup = localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
-              fallbackTutorialCompleted = !isNewSignup;
-            } else {
-              const flag = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
-              fallbackTutorialCompleted = flag !== 'true';
-            }
-          } catch (flagError) {
-            // エラー時は既存ユーザーとみなす（安全側に倒す）
-            fallbackTutorialCompleted = true;
-          }
-        }
+        // 【リファクタリング】サービス層を使用して新規登録フラグを取得
+        const isNewSignup = await getNewSignupFlag();
         
-        const fallbackUser: AuthUser = {
-          id: userId,
-          email: user?.email || '',
-          name: fallbackName,
-          avatar_url: user?.user_metadata?.avatar_url,
-          created_at: user?.created_at || new Date().toISOString(),
-          last_sign_in_at: user?.last_sign_in_at,
-          selected_instrument_id: fallbackInstrumentId,
-          // ネットワークエラー時でも既存ユーザーとみなしてチュートリアル完了にする
-          tutorial_completed: fallbackTutorialCompleted,
-          onboarding_completed: false,
-        };
+        // 【リファクタリング】サービス層を使用してフォールバックユーザーを作成
+        const fallbackUser = createFallbackUser(user, fallbackInstrumentId, isNewSignup);
         
         updateAuthState({
           user: fallbackUser,
@@ -1895,47 +1539,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     return false;
   }, []);
 
-  // 新規登録フラグを設定
-  const setNewSignupFlag = useCallback(async (): Promise<void> => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-      try {
-        localStorage.setItem(NEW_SIGNUP_FLAG_KEY, 'true');
-        newSignupFlagState = true;
-        logger.debug('新規登録フラグを設定しました');
-      } catch (error) {
-        logger.warn('新規登録フラグの設定に失敗しました:', error);
-      }
-    } else {
-      try {
-        await AsyncStorage.setItem(NEW_SIGNUP_FLAG_KEY, 'true');
-        newSignupFlagState = true;
-        logger.debug('新規登録フラグを設定しました（AsyncStorage）');
-      } catch (error) {
-        logger.warn('新規登録フラグの設定に失敗しました（AsyncStorage）:', error);
-      }
-    }
-  }, []);
-  
-  // 新規登録フラグを削除
-  const clearNewSignupFlag = useCallback(async (): Promise<void> => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-      try {
-        localStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
-        newSignupFlagState = false;
-        logger.debug('新規登録フラグを削除しました');
-      } catch (error) {
-        logger.warn('新規登録フラグの削除に失敗しました:', error);
-      }
-    } else {
-      try {
-        await AsyncStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
-        newSignupFlagState = false;
-        logger.debug('新規登録フラグを削除しました（AsyncStorage）');
-      } catch (error) {
-        logger.warn('新規登録フラグの削除に失敗しました（AsyncStorage）:', error);
-      }
-    }
-  }, []);
+  // 【リファクタリング】新規登録フラグの管理はサービス層に移行（関数は不要）
 
   // ログアウト処理
   const signOut = useCallback(async (): Promise<void> => {
@@ -2150,14 +1754,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     return !!(authState.user?.selected_instrument_id);
   }, [authState.user]);
 
-  // 新規登録フラグの状態を初期化（認証状態が初期化された時に実行）
-  useEffect(() => {
-    if (authState.isInitialized) {
-      updateNewSignupFlagState().catch(() => {
-        // エラーは無視
-      });
-    }
-  }, [authState.isInitialized]);
+  // 【リファクタリング】新規登録フラグの状態管理はサービス層に移行（useEffectは不要）
   
   // チュートリアル必要状態のチェック（データベースの状態を最優先）
   // フラグベースの判定を削除し、データベースの状態（tutorial_completed、selected_instrument_id）と
@@ -2200,27 +1797,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       }
     }
     
-    // 上記の条件をすべて満たさない場合のみ、新規登録ユーザーとみなしてチュートリアルを表示
-    // ただし、新規登録フラグもチェック（二重の安全性確保）
-    // フラグが存在しない場合、またはエラー時は既存ユーザーとみなす（安全側に倒す）
-    try {
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-        const flag = localStorage.getItem(NEW_SIGNUP_FLAG_KEY);
-        if (flag !== 'true') {
-          return false; // フラグが存在しない場合は既存ユーザーとみなす
-        }
-      } else {
-        // 非同期チェックは避け、メモリ上の状態を参照
-        if (!newSignupFlagState) {
-          return false; // メモリ上のフラグがfalseの場合は既存ユーザーとみなす
-        }
-      }
-    } catch (error) {
-      // エラー時は既存ユーザーとみなす（安全側に倒す）
-      return false;
-    }
-    
-    // すべての安全性チェックを通過し、新規登録フラグも存在する場合のみ、チュートリアルを表示
+    // 【リファクタリング】上記の条件をすべて満たさない場合のみ、新規登録ユーザーとみなしてチュートリアルを表示
+    // 新規登録フラグのチェックは削除（データベースの状態のみに依存）
+    // 既に上記の安全性チェックで既存ユーザーは除外されているため、ここに到達した場合は新規登録ユーザーとみなす
     return true;
   }, [authState.isAuthenticated, authState.user?.tutorial_completed, authState.user?.selected_instrument_id, authState.user?.created_at, authState.user?.last_sign_in_at, hasInstrumentSelected]);
 
@@ -2242,7 +1821,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     needsTutorial,
     canAccessMainApp,
     fetchUserProfile,
-    clearNewSignupFlag, // チュートリアル完了時に呼び出す
+    clearNewSignupFlag: clearNewSignupFlag, // 【リファクタリング】サービス層の関数を使用
   };
 };
 

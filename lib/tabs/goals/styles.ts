@@ -1152,4 +1152,90 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  // サブ目標関連のスタイル
+  subGoalsSection: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  subGoalsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  subGoalsTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  subGoalItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    marginTop: 4,
+    borderBottomWidth: 1,
+  },
+  subGoalItemContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  subGoalDeleteButton: {
+    padding: 4,
+  },
+  subGoalText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  subGoalTextCompleted: {
+    textDecorationLine: 'line-through',
+    opacity: 0.6,
+  },
+  addSubGoalButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  addSubGoalButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  subGoalInputContainer: {
+    marginTop: 8,
+    gap: 8,
+  },
+  subGoalInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+  },
+  subGoalInputButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'flex-end',
+  },
+  subGoalInputButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+    minWidth: 80,
+    alignItems: 'center',
+  },
+  subGoalInputButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });

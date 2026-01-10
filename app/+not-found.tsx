@@ -16,42 +16,8 @@ export default function NotFoundScreen() {
     
     hasRedirectedRef.current = true;
     
-    // 認証画面へのアクセスを試みている場合は、ログイン画面にリダイレクト
-    const isAuthSegment = segments.includes('auth');
-    // TypeScript警告回避: 配列の長さを数値として扱う
-    const segmentCount: number = Array.isArray(segments) ? segments.length : 0;
-    const isEmptySegment: boolean = segmentCount === 0;
-    if (isAuthSegment || isEmptySegment) {
-      logger.debug('NotFoundScreen: 認証画面またはルートパス - ログイン画面にリダイレクト', { segments });
-      setTimeout(() => {
-        try {
-          router.replace('/auth/login' as any);
-        } catch (error) {
-          logger.error('NotFoundScreen: ログイン画面への遷移エラー', error);
-          // フォールバック: ルートパスに遷移
-          router.replace('/' as any);
-        }
-      }, 50);
-      return;
-    }
-    
-    // Web環境での処理
-    if (typeof window !== 'undefined') {
-      const currentPath = window.location.pathname;
-      
-      // 認証画面のパスをチェック
-      if (currentPath.includes('/auth/')) {
-        logger.debug('NotFoundScreen: 認証画面パス - ログイン画面にリダイレクト', { currentPath });
-        setTimeout(() => {
-          try {
-            router.replace('/auth/login' as any);
-          } catch (error) {
-            logger.error('NotFoundScreen: ログイン画面への遷移エラー', error);
-          }
-        }, 50);
-        return;
-      }
-    }
+    // _layout.tsxが自動的に認証チェックとリダイレクトを行うため、ここではルートパスに遷移するだけ
+    // 認証画面へのアクセスやルートパスの場合は、_layout.tsxが適切に処理する
     
     // その他の場合はルートパスに遷移（_layout.tsxが適切に処理する）
     logger.debug('NotFoundScreen: ルートパスに遷移', { segments });

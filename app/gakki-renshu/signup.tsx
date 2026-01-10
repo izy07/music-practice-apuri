@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { signUp } from '../../lib/authService';
+import { redirectToLogin } from '@/lib/navigationUtils';
 
 export default function SignupScreen() {
   const router = useRouter();
@@ -118,7 +119,7 @@ export default function SignupScreen() {
 
             <TouchableOpacity
               style={styles.linkButton}
-              onPress={() => router.push('/auth/login')}
+              onPress={() => redirectToLogin(router, 'ログインリンク', true)}
             >
               <Text style={styles.linkText}>ログインはこちら</Text>
             </TouchableOpacity>

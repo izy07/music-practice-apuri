@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Linking, Platform, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Plus, Target, Calendar, CircleCheck as CheckCircle, Edit3, Trash2, CheckCircle2, CalendarDays } from 'lucide-react-native';
+import { Plus, Target, Calendar, CircleCheck as CheckCircle, Edit3, Trash2, CheckCircle2, CalendarDays, Square, CheckSquare2, List } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
@@ -12,7 +12,10 @@ import logger from '@/lib/logger';
 import { styles } from '@/lib/tabs/goals/styles';
 import { CompletedGoalsSection } from './goals/components/_CompletedGoalsSection';
 import GoalsCalendar from './goals/components/GoalsCalendar';
+import { GoalCard } from '@/components/tabs/goals/components/_GoalCard';
 import { goalRepository } from '@/repositories/goalRepository';
+import { subGoalRepository } from '@/repositories/subGoalRepository';
+import { getGoalTypeColor, getGoalTypeLabel } from '@/lib/tabs/goals/utils';
 import { getUserProfile } from '@/repositories/userRepository';
 import { OfflineStorage, isOnline } from '@/lib/offlineStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -105,6 +108,19 @@ const upgradeBannerStyles = {
   },
 };
 
+interface SubGoal {
+  id: string;
+  goal_id: string;
+  user_id: string;
+  title: string;
+  description?: string;
+  is_completed: boolean;
+  completed_at?: string | null;
+  order_index: number;
+  created_at: string;
+  updated_at: string;
+}
+
 interface Goal {
   id: string;
   title: string;
@@ -117,6 +133,8 @@ interface Goal {
   completed_at?: string;
   show_on_calendar?: boolean;
   instrument_id?: string | null; // 楽器IDを追加（達成済み目標のフィルタリングに必要）
+  sub_goals?: SubGoal[]; // サブ目標（長期目標の場合のみ）
+  user_id?: string; // ユーザーID（サブ目標作成時に必要）
 }
 
 interface GoalFromDB extends Omit<Goal, 'show_on_calendar'> {
@@ -156,6 +174,8 @@ export default function GoalsScreen() {
   
   // 目標関連の状態
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [subGoalInput, setSubGoalInput] = useState<{ [goalId: string]: string }>({});
+  const [showSubGoalInput, setShowSubGoalInput] = useState<{ [goalId: string]: boolean }>({});
   const [completedGoals, setCompletedGoals] = useState<Goal[]>([]);
   const [showAddGoalForm, setShowAddGoalForm] = useState(false);
   const [newGoal, setNewGoal] = useState({
@@ -315,6 +335,7 @@ export default function GoalsScreen() {
         ...g,
         show_on_calendar: g.show_on_calendar ?? false,
         instrument_id: g.instrument_id ?? null, // instrument_idを明示的に保持
+        user_id: g.user_id || user.id, // user_idを明示的に保持
       }));
       
       // オフラインで保存された目標も追加
@@ -1073,6 +1094,16 @@ export default function GoalsScreen() {
       // 認証状態を確認（既に取得済みのuserを使用 - 直接Supabase呼び出しを回避）
       if (!user) {
         Alert.alert('エラー', '認証が必要です');
+        return;
+      }
+
+      // サブ目標がある場合は手動進捗調整を制限
+      if (currentGoal?.sub_goals && currentGoal.sub_goals.length > 0) {
+        Alert.alert(
+          '進捗率は自動計算されます',
+          'サブ目標が設定されている場合、進捗率はサブ目標の完了状況から自動的に計算されます。\n手動で変更するには、まずサブ目標を削除してください。',
+          [{ text: 'OK' }]
+        );
         return;
       }
 
@@ -1921,54 +1952,405 @@ export default function GoalsScreen() {
                     </View>
                   )}
 
-                  {/* 短期目標以外は進捗を表示 */}
-                  {goal.goal_type !== 'personal_short' && (
+                  {/* 長期目標の場合: サブ目標がある場合はサブ目標リスト、ない場合は手動進捗調整 */}
+                  {goal.goal_type === 'personal_long' && (
                     <View style={styles.progressSection}>
                       {/* 進捗スライダー（大きく目立つように） */}
                       <View style={styles.progressSliderContainer}>
                         <View style={styles.progressSliderTrack}>
-                        <View 
-                          style={[
+                          <View 
+                            style={[
                               styles.progressSliderFill, 
-                            { 
+                              { 
                                 width: `${goal.progress_percentage || 0}%`,
-                              backgroundColor: getGoalTypeColor(goal.goal_type)
-                            }
-                          ]} 
-                        />
-                      </View>
+                                backgroundColor: getGoalTypeColor(goal.goal_type)
+                              }
+                            ]} 
+                          />
+                        </View>
                         <Text style={[styles.progressPercentageLabel, { color: getGoalTypeColor(goal.goal_type) }]}>
                           {goal.progress_percentage || 0}%
+                          {goal.sub_goals && goal.sub_goals.length > 0 && 
+                            ` (${goal.sub_goals.filter(sg => sg.is_completed).length}/${goal.sub_goals.length})`
+                          }
                         </Text>
                       </View>
                       
-                      {/* 進捗変更ボタン */}
-                      <View style={styles.progressButtons}>
-                        <TouchableOpacity
-                          style={[
-                            styles.progressButton,
-                            styles.progressButtonMinus,
-                            { borderColor: currentTheme.textSecondary + '80' }
-                          ]}
-                          onPress={() => updateProgress(goal.id, Math.max(0, goal.progress_percentage - 10))}
-                        >
-                          <Text style={styles.progressButtonText}>-10%</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={[
-                            styles.progressButton,
-                            styles.progressButtonPlus,
-                            { 
-                              backgroundColor: getGoalTypeColor(goal.goal_type),
-                              borderWidth: 1.5,
-                              borderColor: getGoalTypeColor(goal.goal_type)
-                            }
-                          ]}
-                          onPress={() => updateProgress(goal.id, Math.min(100, goal.progress_percentage + 10))}
-                        >
-                          <Text style={[styles.progressButtonText, { color: '#FFFFFF' }]}>+10%</Text>
-                        </TouchableOpacity>
-                      </View>
+                      {/* サブ目標がある場合: サブ目標リストを表示 */}
+                      {goal.sub_goals && goal.sub_goals.length > 0 ? (
+                        <View style={[styles.subGoalsSection, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary }]}>
+                          <View style={styles.subGoalsHeader}>
+                            <List size={14} color={currentTheme.textSecondary} />
+                            <Text style={[styles.subGoalsTitle, { color: currentTheme.textSecondary }]}>
+                              やることリスト ({goal.sub_goals.length}/10)
+                            </Text>
+                          </View>
+                          {goal.sub_goals.map((subGoal) => (
+                            <View key={subGoal.id} style={[styles.subGoalItem, { borderColor: currentTheme.secondary }]}>
+                              <TouchableOpacity
+                                style={styles.subGoalItemContent}
+                                onPress={async () => {
+                                  if (!user?.id) return;
+                                  try {
+                                    const result = await subGoalRepository.toggleSubGoalCompletion(subGoal.id, user.id);
+                                    // 目標リストを更新
+                                    setGoals(prevGoals => 
+                                      prevGoals.map(g => {
+                                        if (g.id === goal.id) {
+                                          const updatedSubGoals = (g.sub_goals || []).map(sg =>
+                                            sg.id === subGoal.id ? result.subGoal : sg
+                                          );
+                                          return {
+                                            ...g,
+                                            sub_goals: updatedSubGoals,
+                                            progress_percentage: result.updatedProgress,
+                                            is_completed: result.updatedProgress === 100,
+                                          };
+                                        }
+                                        return g;
+                                      })
+                                    );
+                                    // 進捗率が100%になった場合は達成済みに移動
+                                    if (result.updatedProgress === 100) {
+                                      const updatedGoal = goals.find(g => g.id === goal.id);
+                                      if (updatedGoal) {
+                                        setGoals(prev => prev.filter(g => g.id !== goal.id));
+                                        setCompletedGoals(prev => [{
+                                          ...updatedGoal,
+                                          progress_percentage: 100,
+                                          is_completed: true,
+                                        }, ...prev]);
+                                      }
+                                    }
+                                  } catch (error) {
+                                    console.error('サブ目標の更新エラー:', error);
+                                    Alert.alert('エラー', 'サブ目標の更新に失敗しました');
+                                  }
+                                }}
+                                activeOpacity={0.7}
+                              >
+                                {subGoal.is_completed ? (
+                                  <CheckCircle size={20} color={getGoalTypeColor(goal.goal_type)} />
+                                ) : (
+                                  <Square size={20} color={currentTheme.textSecondary} />
+                                )}
+                                <Text
+                                  style={[
+                                    styles.subGoalText,
+                                    { color: currentTheme.text },
+                                    subGoal.is_completed && styles.subGoalTextCompleted
+                                  ]}
+                                  numberOfLines={2}
+                                >
+                                  {subGoal.title}
+                                </Text>
+                              </TouchableOpacity>
+                              <TouchableOpacity
+                                style={styles.subGoalDeleteButton}
+                                onPress={async () => {
+                                  if (!user?.id) return;
+                                  Alert.alert(
+                                    'サブ目標を削除',
+                                    `「${subGoal.title}」を削除しますか？`,
+                                    [
+                                      { text: 'キャンセル', style: 'cancel' },
+                                      {
+                                        text: '削除',
+                                        style: 'destructive',
+                                        onPress: async () => {
+                                          try {
+                                            await subGoalRepository.deleteSubGoal(subGoal.id, user.id);
+                                            // サブ目標を削除した後、進捗率を再計算
+                                            const remainingSubGoals = (goal.sub_goals || []).filter(sg => sg.id !== subGoal.id);
+                                            const calculatedProgress = remainingSubGoals.length > 0
+                                              ? subGoalRepository.calculateProgressFromSubGoals(remainingSubGoals)
+                                              : goal.progress_percentage; // サブ目標が全て削除された場合は既存の進捗率を維持
+                                            
+                                            // 親目標の進捗率を更新（サブ目標が残っている場合のみ自動計算、全て削除された場合は既存の進捗率を維持）
+                                            if (remainingSubGoals.length > 0) {
+                                              await goalRepository.updateProgress(goal.id, calculatedProgress, user.id);
+                                            }
+                                            
+                                            // 目標リストを更新
+                                            setGoals(prevGoals => 
+                                              prevGoals.map(g => {
+                                                if (g.id === goal.id) {
+                                                  return {
+                                                    ...g,
+                                                    sub_goals: remainingSubGoals,
+                                                    progress_percentage: remainingSubGoals.length > 0 ? calculatedProgress : g.progress_percentage,
+                                                    is_completed: remainingSubGoals.length > 0 ? calculatedProgress === 100 : g.is_completed,
+                                                  };
+                                                }
+                                                return g;
+                                              })
+                                            );
+                                            
+                                            // サブ目標が全て削除された場合、手動進捗調整モードに戻る（進捗率は既存の値を維持）
+                                            if (remainingSubGoals.length === 0) {
+                                              logger.debug('サブ目標が全て削除されました。手動進捗調整モードに戻ります。');
+                                            }
+                                          } catch (error) {
+                                            console.error('サブ目標の削除エラー:', error);
+                                            Alert.alert('エラー', 'サブ目標の削除に失敗しました');
+                                          }
+                                        }
+                                      }
+                                    ]
+                                  );
+                                }}
+                                activeOpacity={0.7}
+                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                              >
+                                <Trash2 size={16} color={currentTheme.textSecondary} />
+                              </TouchableOpacity>
+                            </View>
+                          ))}
+                          {goal.sub_goals.length < 10 && (
+                            <>
+                              {showSubGoalInput[goal.id] ? (
+                                <View style={styles.subGoalInputContainer}>
+                                  <TextInput
+                                    style={[styles.subGoalInput, { 
+                                      backgroundColor: currentTheme.background,
+                                      color: currentTheme.text,
+                                      borderColor: currentTheme.secondary
+                                    }]}
+                                    value={subGoalInput[goal.id] || ''}
+                                    onChangeText={(text) => setSubGoalInput({ ...subGoalInput, [goal.id]: text })}
+                                    placeholder="サブ目標を入力してください"
+                                    placeholderTextColor={currentTheme.textSecondary}
+                                    maxLength={100}
+                                    autoFocus
+                                  />
+                                  <View style={styles.subGoalInputButtons}>
+                                    <TouchableOpacity
+                                      style={[styles.subGoalInputButton, { backgroundColor: currentTheme.secondary }]}
+                                      onPress={() => {
+                                        setShowSubGoalInput({ ...showSubGoalInput, [goal.id]: false });
+                                        setSubGoalInput({ ...subGoalInput, [goal.id]: '' });
+                                      }}
+                                    >
+                                      <Text style={[styles.subGoalInputButtonText, { color: currentTheme.text }]}>キャンセル</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                      style={[styles.subGoalInputButton, { backgroundColor: currentTheme.primary }]}
+                                      onPress={async () => {
+                                        const title = subGoalInput[goal.id]?.trim();
+                                        if (!title) {
+                                          Alert.alert('エラー', 'サブ目標のタイトルを入力してください');
+                                          return;
+                                        }
+                                        if (!user?.id) {
+                                          Alert.alert('エラー', '認証が必要です');
+                                          return;
+                                        }
+                                        
+                                        try {
+                                          const newSubGoal = await subGoalRepository.createSubGoal(goal.id, user.id, { title });
+                                          // サブ目標を追加した後、進捗率を再計算
+                                          const updatedSubGoals = [...(goal.sub_goals || []), newSubGoal].sort((a, b) => a.order_index - b.order_index);
+                                          const calculatedProgress = subGoalRepository.calculateProgressFromSubGoals(updatedSubGoals);
+                                          
+                                          // 親目標の進捗率を更新
+                                          await goalRepository.updateProgress(goal.id, calculatedProgress, user.id);
+                                          
+                                          // 目標リストを更新
+                                          setGoals(prevGoals => {
+                                            const updatedGoals = prevGoals.map(g => {
+                                              if (g.id === goal.id) {
+                                                return {
+                                                  ...g,
+                                                  sub_goals: updatedSubGoals,
+                                                  progress_percentage: calculatedProgress,
+                                                  is_completed: calculatedProgress === 100,
+                                                };
+                                              }
+                                              return g;
+                                            });
+                                            
+                                            // 進捗率が100%になった場合は達成済みに移動
+                                            if (calculatedProgress === 100) {
+                                              const completedGoal = updatedGoals.find(g => g.id === goal.id);
+                                              if (completedGoal) {
+                                                setCompletedGoals(prev => [completedGoal, ...prev]);
+                                                return updatedGoals.filter(g => g.id !== goal.id);
+                                              }
+                                            }
+                                            
+                                            return updatedGoals;
+                                          });
+                                          
+                                          setShowSubGoalInput({ ...showSubGoalInput, [goal.id]: false });
+                                          setSubGoalInput({ ...subGoalInput, [goal.id]: '' });
+                                        } catch (error: any) {
+                                          console.error('サブ目標の追加エラー:', error);
+                                          if (error.message?.includes('10個まで')) {
+                                            Alert.alert('上限に達しました', 'サブ目標は最大10個まで設定できます');
+                                          } else {
+                                            Alert.alert('エラー', 'サブ目標の追加に失敗しました');
+                                          }
+                                        }
+                                      }}
+                                    >
+                                      <Text style={[styles.subGoalInputButtonText, { color: '#FFFFFF' }]}>追加</Text>
+                                    </TouchableOpacity>
+                                  </View>
+                                </View>
+                              ) : (
+                                <TouchableOpacity
+                                  style={[styles.addSubGoalButton, { borderColor: currentTheme.primary }]}
+                                  onPress={() => {
+                                    setShowSubGoalInput({ ...showSubGoalInput, [goal.id]: true });
+                                  }}
+                                  activeOpacity={0.7}
+                                >
+                                  <Plus size={16} color={currentTheme.primary} />
+                                  <Text style={[styles.addSubGoalButtonText, { color: currentTheme.primary }]}>
+                                    サブ目標を追加
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+                            </>
+                          )}
+                        </View>
+                      ) : (
+                        /* サブ目標がない場合: 手動進捗調整ボタンとサブ目標追加ボタン */
+                        <>
+                          <View style={styles.progressButtons}>
+                            <TouchableOpacity
+                              style={[
+                                styles.progressButton,
+                                styles.progressButtonMinus,
+                                { borderColor: currentTheme.textSecondary + '80' }
+                              ]}
+                              onPress={() => updateProgress(goal.id, Math.max(0, goal.progress_percentage - 10))}
+                            >
+                              <Text style={styles.progressButtonText}>-10%</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              style={[
+                                styles.progressButton,
+                                styles.progressButtonPlus,
+                                { 
+                                  backgroundColor: getGoalTypeColor(goal.goal_type),
+                                  borderWidth: 1.5,
+                                  borderColor: getGoalTypeColor(goal.goal_type)
+                                }
+                              ]}
+                              onPress={() => updateProgress(goal.id, Math.min(100, goal.progress_percentage + 10))}
+                            >
+                              <Text style={[styles.progressButtonText, { color: '#FFFFFF' }]}>+10%</Text>
+                            </TouchableOpacity>
+                          </View>
+                          <TouchableOpacity
+                            style={[styles.addSubGoalButton, { 
+                              borderColor: currentTheme.primary,
+                              marginTop: 8,
+                              backgroundColor: 'transparent'
+                            }]}
+                            onPress={() => {
+                              setShowSubGoalInput({ ...showSubGoalInput, [goal.id]: true });
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <List size={16} color={currentTheme.primary} />
+                            <Text style={[styles.addSubGoalButtonText, { color: currentTheme.primary }]}>
+                              サブ目標を作成して自動計算にする
+                            </Text>
+                          </TouchableOpacity>
+                          {showSubGoalInput[goal.id] && (
+                            <View style={styles.subGoalInputContainer}>
+                              <TextInput
+                                style={[styles.subGoalInput, { 
+                                  backgroundColor: currentTheme.background,
+                                  color: currentTheme.text,
+                                  borderColor: currentTheme.secondary
+                                }]}
+                                value={subGoalInput[goal.id] || ''}
+                                onChangeText={(text) => setSubGoalInput({ ...subGoalInput, [goal.id]: text })}
+                                placeholder="サブ目標を入力してください（最大10個まで）"
+                                placeholderTextColor={currentTheme.textSecondary}
+                                maxLength={100}
+                                autoFocus
+                              />
+                              <View style={styles.subGoalInputButtons}>
+                                <TouchableOpacity
+                                  style={[styles.subGoalInputButton, { backgroundColor: currentTheme.secondary }]}
+                                  onPress={() => {
+                                    setShowSubGoalInput({ ...showSubGoalInput, [goal.id]: false });
+                                    setSubGoalInput({ ...subGoalInput, [goal.id]: '' });
+                                  }}
+                                >
+                                  <Text style={[styles.subGoalInputButtonText, { color: currentTheme.text }]}>キャンセル</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                  style={[styles.subGoalInputButton, { backgroundColor: currentTheme.primary }]}
+                                  onPress={async () => {
+                                    const title = subGoalInput[goal.id]?.trim();
+                                    if (!title) {
+                                      Alert.alert('エラー', 'サブ目標のタイトルを入力してください');
+                                      return;
+                                    }
+                                    if (!user?.id) {
+                                      Alert.alert('エラー', '認証が必要です');
+                                      return;
+                                    }
+                                    
+                                    try {
+                                      const newSubGoal = await subGoalRepository.createSubGoal(goal.id, user.id, { title });
+                                      // サブ目標を追加した後、進捗率を再計算
+                                      const updatedSubGoals = [...(goal.sub_goals || []), newSubGoal].sort((a, b) => a.order_index - b.order_index);
+                                      const calculatedProgress = subGoalRepository.calculateProgressFromSubGoals(updatedSubGoals);
+                                      
+                                      // 親目標の進捗率を更新
+                                      await goalRepository.updateProgress(goal.id, calculatedProgress, user.id);
+                                      
+                                      // 目標リストを更新
+                                      setGoals(prevGoals => {
+                                        const updatedGoals = prevGoals.map(g => {
+                                          if (g.id === goal.id) {
+                                            return {
+                                              ...g,
+                                              sub_goals: updatedSubGoals,
+                                              progress_percentage: calculatedProgress,
+                                              is_completed: calculatedProgress === 100,
+                                            };
+                                          }
+                                          return g;
+                                        });
+                                        
+                                        // 進捗率が100%になった場合は達成済みに移動
+                                        if (calculatedProgress === 100) {
+                                          const completedGoal = updatedGoals.find(g => g.id === goal.id);
+                                          if (completedGoal) {
+                                            setCompletedGoals(prev => [completedGoal, ...prev]);
+                                            return updatedGoals.filter(g => g.id !== goal.id);
+                                          }
+                                        }
+                                        
+                                        return updatedGoals;
+                                      });
+                                      
+                                      setShowSubGoalInput({ ...showSubGoalInput, [goal.id]: false });
+                                      setSubGoalInput({ ...subGoalInput, [goal.id]: '' });
+                                    } catch (error: any) {
+                                      console.error('サブ目標の追加エラー:', error);
+                                      if (error.message?.includes('10個まで')) {
+                                        Alert.alert('上限に達しました', 'サブ目標は最大10個まで設定できます');
+                                      } else {
+                                        Alert.alert('エラー', 'サブ目標の追加に失敗しました');
+                                      }
+                                    }
+                                  }}
+                                >
+                                  <Text style={[styles.subGoalInputButtonText, { color: '#FFFFFF' }]}>追加</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+                          )}
+                        </>
+                      )}
                     </View>
                   )}
 
