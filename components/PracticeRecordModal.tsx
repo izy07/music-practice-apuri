@@ -721,10 +721,12 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           }))
         });
         
-        // 基礎練（preset）を除外して、時間記録（manual, voice, timer）のみを取得
+        // 基礎練（preset）と時間記録（manual, voice, timer）を分離
+        const basicPracticeRecords = sessions.filter(s => s.input_method === 'preset');
         const timeRecords = sessions.filter(s => s.input_method !== 'preset');
         logger.debug('loadPracticeSessions: 時間記録（preset除外後）', {
           timeRecordsCount: timeRecords.length,
+          basicPracticeCount: basicPracticeRecords.length,
           timeRecords: timeRecords.map(s => ({
             id: s.id,
             input_method: s.input_method,
@@ -757,6 +759,25 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         logger.debug('練習時間の内訳:', breakdownArray);
         setPracticeBreakdown(breakdownArray);
         
+        // 基礎練のcontentを取得
+        const basicPracticeContent = basicPracticeRecords.length > 0
+          ? basicPracticeRecords
+              .map(s => s.content ? cleanContentFromTimeDetails(s.content) : null)
+              .filter((c): c is string => Boolean(c && typeof c === 'string' && c.trim() !== ''))
+              .join(', ')
+          : null;
+        
+        // 手動入力（manual）のcontentを取得
+        const manualSessions = timeRecords.filter(s => s.input_method === 'manual');
+        const manualContent = manualSessions.length > 0 
+          ? manualSessions.map(s => cleanContentFromTimeDetails(s.content)).filter(c => c && c.trim() !== '').join(', ')
+          : null;
+        
+        // 基礎練と手動入力のcontentを結合
+        const combinedContent = [basicPracticeContent, manualContent]
+          .filter((c): c is string => Boolean(c && c.trim() !== ''))
+          .join(', ');
+        
         if (timeRecords.length > 0) {
           // 時間記録がある場合（タイマー、クイック、手動入力）
           // すべての時間記録の合計を計算
@@ -764,13 +785,25 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           
           // 既存の記録を設定（合計時間を使用）
           // otherSessionsがある場合は最初のセッションのIDとcontentを使用
-          const primarySession = otherSessions.length > 0 ? otherSessions[0] : timerSessions[0];
+          let primarySession = otherSessions.length > 0 ? otherSessions[0] : timerSessions[0];
           
+          // primarySessionが無効な場合は、timeRecordsの最初の有効なセッションを使用
           if (!primarySession || !primarySession.id) {
-            logger.error('loadPracticeSessions: primarySessionが無効です', {
+            logger.warn('loadPracticeSessions: primarySessionが無効です。timeRecordsの最初のセッションを使用します', {
               otherSessionsCount: otherSessions.length,
               timerSessionsCount: timerSessions.length,
-              primarySession
+              primarySession,
+              timeRecordsCount: timeRecords.length
+            });
+            // timeRecordsの最初の有効なセッションを使用
+            primarySession = timeRecords.find(s => s.id) || timeRecords[0];
+          }
+          
+          // それでもprimarySessionが無効な場合は、既存の記録を表示しない（エラー）
+          if (!primarySession || !primarySession.id) {
+            logger.error('loadPracticeSessions: timeRecordsに有効なセッションがありません', {
+              timeRecordsCount: timeRecords.length,
+              timeRecords: timeRecords.map(s => ({ id: s.id, input_method: s.input_method }))
             });
             setExistingRecord(null);
             setMinutes('');
@@ -778,23 +811,18 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             return;
           }
           
-          // クイック記録、タイマー記録のcontentは表示しない
-          // 手動入力（manual）のcontentのみを表示
-          const manualSessions = timeRecords.filter(s => s.input_method === 'manual');
-          const manualContent = manualSessions.length > 0 
-            ? manualSessions.map(s => cleanContentFromTimeDetails(s.content)).filter(c => c && c.trim() !== '').join(', ')
-            : null;
-          
           const existingRecordData = {
             id: primarySession.id!,
             minutes: totalMinutes, // すべての時間記録の合計
-            content: manualContent || null // 手動入力のcontentのみ
+            content: combinedContent || null // 基礎練と手動入力のcontentを結合
           };
           
           logger.debug('loadPracticeSessions: 既存の記録を設定します', {
             existingRecord: existingRecordData,
             totalMinutes,
+            basicPracticeContent,
             manualContent,
+            combinedContent,
             primarySessionId: primarySession.id
           });
           
@@ -802,14 +830,31 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           
           // 既存の記録をフォームに設定（合計時間を表示）
           setMinutes(totalMinutes.toString());
-          // 手動入力のcontentのみを表示（クイック記録、タイマー記録のcontentは表示しない）
-          setContent(manualContent || '');
+          // 基礎練と手動入力のcontentを表示（クイック記録、タイマー記録のcontentは表示しない）
+          setContent(combinedContent || '');
         } else {
           // 時間記録がない場合（基礎練のみ、または記録なし）
-          logger.debug('loadPracticeSessions: 時間記録がありません（基礎練のみ）');
-          setExistingRecord(null);
-          setMinutes('');
-          setContent('');
+          if (basicPracticeRecords.length > 0) {
+            // 基礎練のみがある場合
+            logger.debug('loadPracticeSessions: 基礎練のみがあります');
+            const primaryBasicPractice = basicPracticeRecords[0];
+            
+            const existingRecordData = {
+              id: primaryBasicPractice.id!,
+              minutes: 0, // 基礎練は時間を追加しない
+              content: basicPracticeContent || null
+            };
+            
+            setExistingRecord(existingRecordData);
+            setMinutes('0');
+            setContent(basicPracticeContent || '');
+          } else {
+            // 記録がない場合
+            logger.debug('loadPracticeSessions: 時間記録がありません（基礎練のみ）');
+            setExistingRecord(null);
+            setMinutes('');
+            setContent('');
+          }
         }
       } else {
         logger.debug('loadPracticeSessions: セッションが見つかりませんでした', {
@@ -1802,11 +1847,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           <View style={[styles.inputGroup, { marginTop: existingRecord ? -16 : (events && events.length > 0 ? 0 : 0) }]}>
             <Text style={styles.label}>
               練習時間
-              {existingRecord && (
-                <Text style={[styles.timerIndicator, { color: '#1976D2' }]}>
-                  {' '}(既存: {formatMinutesToHours(existingRecord.minutes)} +)
-                </Text>
-              )}
               {timerMinutes > 0 && (
                 <Text style={[styles.timerIndicator, { color: '#4CAF50' }]}>
                   {' '}(タイマー: {formatMinutesToHours(timerMinutes)})

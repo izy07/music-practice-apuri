@@ -327,13 +327,52 @@ const presetPalettes: PresetPalette[] = [
     id: 'moss',
     name: 'モス',
     colors: {
-      background: '#F1F8E9',
+      background: '#F0F4ED',
       surface: '#FFFFFF',
-      primary: '#7CB342',
-      secondary: '#DCEDC8',
-      accent: '#689F38',
-      text: '#33691E',
-      textSecondary: '#558B2F',
+      primary: '#6B8A6B',
+      secondary: '#D0D8C8',
+      accent: '#5A7A5A',
+      text: '#4A5A4A',
+      textSecondary: '#5A6A5A',
+    }
+  },
+  {
+    id: 'terracotta',
+    name: 'テラコッタ',
+    colors: {
+      background: '#F8F4F0',
+      surface: '#FFFFFF',
+      primary: '#B88A7A',
+      secondary: '#E8D8D0',
+      accent: '#9A7A6A',
+      text: '#6B5A4A',
+      textSecondary: '#8B7A6A',
+    }
+  },
+  {
+    id: 'lavender',
+    name: 'ラベンダー',
+    colors: {
+      background: '#F5F4F8',
+      surface: '#FFFFFF',
+      primary: '#9A8AAA',
+      secondary: '#E0D8E8',
+      accent: '#7A6A8A',
+      text: '#5A4A6A',
+      textSecondary: '#7A6A8A',
+    }
+  },
+  {
+    id: 'indigo',
+    name: 'インドゴ',
+    colors: {
+      background: '#F2F3F6',
+      surface: '#FFFFFF',
+      primary: '#6A7A9A',
+      secondary: '#D0D8E8',
+      accent: '#4A5A7A',
+      text: '#3A4A6A',
+      textSecondary: '#5A6A8A',
     }
   }
 ];

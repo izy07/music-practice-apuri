@@ -148,6 +148,45 @@ export const navigateWithBasePath = (router: ReturnType<typeof useRouter>, path:
 };
 
 /**
+ * カレンダー画面（メイン画面）に遷移（統一関数）
+ * 
+ * すべてのカレンダー画面への遷移をこの関数で統一することで、
+ * エラーハンドリングとログを一元管理します。
+ * 
+ * @param router Expo Router の router インスタンス
+ * @param reason 遷移理由（ログ用、オプション）
+ * @param usePush pushを使用するか（デフォルト: false、replaceを使用）
+ */
+export const navigateToCalendarScreen = (
+  router: ReturnType<typeof useRouter>,
+  reason?: string,
+  usePush: boolean = false
+): void => {
+  try {
+    const calendarPath = '/(tabs)/index';
+    
+    if (usePush) {
+      router.push(calendarPath as any);
+    } else {
+      router.replace(calendarPath as any);
+    }
+    
+    // ログは必要最小限（エラーのみ、理由がある場合のみdebug）
+    if (reason) {
+      logger.debug(`[navigateToCalendarScreen] ${reason}`);
+    }
+  } catch (error) {
+    logger.error('[navigateToCalendarScreen] カレンダー画面への遷移エラー:', error);
+    // エラー時はpushで再試行
+    try {
+      router.push('/(tabs)/index' as any);
+    } catch (fallbackError) {
+      logger.error('[navigateToCalendarScreen] フォールバック遷移も失敗:', fallbackError);
+    }
+  }
+};
+
+/**
  * ログイン画面にリダイレクト（統一関数）
  * 
  * すべてのログイン画面へのリダイレクトをこの関数で統一することで、

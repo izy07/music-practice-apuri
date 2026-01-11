@@ -50,7 +50,7 @@ describe('subscriptionLimits', () => {
     it('制限値が正しく定義されている', () => {
       expect(FREE_PLAN_LIMITS.RECORDINGS_PER_MONTH_PER_INSTRUMENT).toBe(3);
       expect(FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT).toBe(2);
-      expect(FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT).toBe(6);
+      expect(FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT).toBe(10);
       expect(FREE_PLAN_LIMITS.MAX_INSTRUMENTS).toBe(2);
     });
   });
@@ -361,11 +361,11 @@ describe('subscriptionLimits', () => {
 
       expect(result.canAdd).toBe(true);
       expect(result.currentCount).toBe(2);
-      expect(result.limit).toBe(6);
+      expect(result.limit).toBe(10);
     });
 
     it('Freeプランで曲数が制限に達している場合は追加不可', async () => {
-      const mockSongs = Array.from({ length: 6 }, (_, i) => ({
+      const mockSongs = Array.from({ length: 10 }, (_, i) => ({
         id: `song-${i + 1}`,
         instrument_id: mockInstrumentId,
       }));
@@ -380,8 +380,8 @@ describe('subscriptionLimits', () => {
       const result = await checkMyLibraryLimit(mockUserId, mockEntitlement, mockInstrumentId);
 
       expect(result.canAdd).toBe(false);
-      expect(result.currentCount).toBe(6);
-      expect(result.limit).toBe(6);
+      expect(result.currentCount).toBe(10);
+      expect(result.limit).toBe(10);
     });
   });
 });

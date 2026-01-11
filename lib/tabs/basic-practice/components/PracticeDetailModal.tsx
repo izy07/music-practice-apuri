@@ -20,6 +20,7 @@ import { getInstrumentId } from '@/lib/instrumentUtils';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
+import { formatLocalDate } from '@/lib/dateUtils';
 
 export interface PracticeDetailModalProps {
   visible: boolean;
@@ -53,7 +54,8 @@ export function PracticeDetailModal({
 
     try {
       // 基礎練の完了を記録（時間は追加しない、✅マークだけ）
-      const today = new Date().toISOString().split('T')[0];
+      // ローカル時間を使用して日付を取得（UTC時間ではなく）
+      const today = formatLocalDate(new Date());
       
       // 基礎練のみを検索（input_method = 'preset' + 楽器ID + LIMIT 1）
       const authUser = await getCurrentUser();
@@ -106,11 +108,11 @@ export function PracticeDetailModal({
         const existing = existingBasicPracticeRecords[0];
         
         // 既存のcontentから時間詳細を削除
-        const existingContent = cleanContentFromTimeDetails(existing.content);
+        const existingContent = existing.content ? cleanContentFromTimeDetails(existing.content) : '';
         
         // 重複チェック: contentに完全一致するメニュー名が含まれているかチェック
         const menuTitle = selectedMenu.title;
-        const contentParts = existingContent.split(',').map(part => part.trim());
+        const contentParts = existingContent ? existingContent.split(',').map(part => part.trim()).filter(part => part.length > 0) : [];
         const isDuplicate = contentParts.some(part => part === menuTitle);
         
         if (isDuplicate) {
@@ -123,9 +125,18 @@ export function PracticeDetailModal({
         }
         
         // 含まれていない場合: contentに追加
-        const newContent = existingContent 
-          ? `${existingContent}, ${menuTitle}`
+        // existingContentが空文字列やnullの場合でも、menuTitleを設定する
+        const newContent = existingContent && existingContent.trim().length > 0
+          ? `${existingContent.trim()}, ${menuTitle}`
           : menuTitle;
+        
+        logger.debug('基礎練記録を更新します', {
+          existingId: existing.id,
+          existingContent: existing.content,
+          cleanedContent: existingContent,
+          menuTitle,
+          newContent
+        });
         
         if (!existing.id) {
           Alert.alert('エラー', '練習記録のIDが見つかりません');
@@ -139,9 +150,15 @@ export function PracticeDetailModal({
         });
         
         if (updateError || !updatedSession) {
+          logger.error('基礎練記録の更新エラー', { updateError, updatedSession });
           Alert.alert('エラー', '練習記録の更新に失敗しました');
           return;
         }
+        
+        logger.debug('基礎練記録を更新しました', {
+          sessionId: updatedSession.id,
+          content: updatedSession.content
+        });
       } else {
         // 新規記録を作成（基礎練は時間を追加しないため、duration_minutes: 0）
         const { data: createdSession, error: createError } = await createPracticeSession({
@@ -166,7 +183,7 @@ export function PracticeDetailModal({
             action: 'practice_saved',
             content: selectedMenu.title,
             verified: false, // DB反映前なのでfalse
-            date: new Date().toISOString().split('T')[0] // 今日の日付
+            date: today // ローカル時間の今日の日付
           }
         });
         window.dispatchEvent(event);

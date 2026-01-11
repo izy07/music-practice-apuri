@@ -212,11 +212,11 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
             setUserLevel(null);
             setShowLevelModal(false);
           } else {
-            logger.warn('⚠️ キャッシュもないため、モーダルを表示', { instrumentId, cacheKey });
-            setIsFirstTime(true);
-            setHasSelectedLevel(false);
-            setUserLevel(null);
-            setShowLevelModal(true);
+          logger.warn('⚠️ キャッシュもないため、モーダルを表示', { instrumentId, cacheKey });
+          setIsFirstTime(true);
+          setHasSelectedLevel(false);
+          setUserLevel(null);
+          setShowLevelModal(true);
           }
         }
       } catch (cacheError) {
@@ -230,10 +230,10 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
           setUserLevel(null);
           setShowLevelModal(false);
         } else {
-          setIsFirstTime(true);
-          setHasSelectedLevel(false);
-          setUserLevel(null);
-          setShowLevelModal(true);
+        setIsFirstTime(true);
+        setHasSelectedLevel(false);
+        setUserLevel(null);
+        setShowLevelModal(true);
         }
       }
     }

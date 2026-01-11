@@ -10,7 +10,7 @@ import logger from '@/lib/logger';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { useSubscription } from '@/hooks/useSubscription';
 import { canSaveDataForInstrument, getActiveInstrumentIds } from '@/lib/subscriptionLimits';
-import { safeGoBack } from '@/lib/navigationUtils';
+import { safeGoBack, navigateToCalendarScreen } from '@/lib/navigationUtils';
 
 interface Instrument {
   id: string;
@@ -49,6 +49,21 @@ export default function InstrumentSelectionScreen() {
     // TODO: 将来的に追加予定の楽器: ハープ、シンセサイザー、太鼓、琴
     { id: '550e8400-e29b-41d4-a716-446655440016', name: 'その他', nameEn: 'Other', emoji: '❓' },
   ];
+
+  // 一時的に非表示にする楽器ID（編集追いつかないため）
+  const hiddenInstrumentIds = [
+    '550e8400-e29b-41d4-a716-446655440009', // クラリネット
+    '550e8400-e29b-41d4-a716-446655440007', // サックス
+    '550e8400-e29b-41d4-a716-446655440018', // ヴィオラ
+    '550e8400-e29b-41d4-a716-446655440008', // ホルン
+    '550e8400-e29b-41d4-a716-446655440013', // オーボエ
+    '550e8400-e29b-41d4-a716-446655440010', // トロンボーン
+    '550e8400-e29b-41d4-a716-446655440015', // コントラバス
+    '550e8400-e29b-41d4-a716-446655440012', // ファゴット
+  ];
+
+  // 表示する楽器をフィルタリング
+  const visibleInstruments = instruments.filter(instrument => !hiddenInstrumentIds.includes(instrument.id));
 
   // 現在の楽器IDを計算（useMemoで重複計算を防止）
   const currentInstrumentId = useMemo(() => {
@@ -107,8 +122,8 @@ export default function InstrumentSelectionScreen() {
     // 現在の楽器と同じ場合は、カレンダー画面に遷移するだけ
     // ただし、新規登録ユーザー（楽器未選択）の場合はこのチェックをスキップ
     if (currentInstrumentId && currentInstrumentId !== '' && selectedInstrumentId === currentInstrumentId) {
-      // 既に同じ楽器が選択されている場合は、カレンダー画面に遷移
-      router.replace('/(tabs)/index');
+      // 既に同じ楽器が選択されている場合は、カレンダー画面に遷移（一元化された関数を使用）
+      navigateToCalendarScreen(router, '既に同じ楽器が選択されているため、カレンダー画面に遷移');
       return;
     }
 
@@ -148,8 +163,8 @@ export default function InstrumentSelectionScreen() {
       const instrumentName = instruments.find(i => i.id === selectedInstrumentId)?.name || '楽器';
       logger.debug('楽器変更完了:', { instrumentName, selectedInstrumentId });
       
-      // カレンダー画面に遷移
-      router.replace('/(tabs)/index');
+      // カレンダー画面に遷移（一元化された関数を使用）
+      navigateToCalendarScreen(router, `楽器「${instrumentName}」を選択してカレンダー画面に遷移`);
     } catch (error) {
       logger.error('楽器保存エラー:', error);
       Alert.alert('エラー', '楽器の保存に失敗しました');
@@ -177,17 +192,66 @@ export default function InstrumentSelectionScreen() {
           <View style={[styles.freePlanInfoBanner, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
             <View style={styles.freePlanInfoContent}>
               <Text style={[styles.freePlanInfoTitle, { color: currentTheme.text }]}>
-                ⚠️ Freeプランでは楽器を2個まで使用できます
+                ⚠️ Freeプラン：楽器2個まで。
               </Text>
               <Text style={[styles.freePlanInfoSubtitle, { color: currentTheme.textSecondary }]}>
-                3個目以降はプレミアムへアップグレードが必要です
+                3個目以降はプレミアムへアップグレード
               </Text>
+              {/* 現在使用中の楽器を表示 */}
+              {activeInstrumentIds.length > 0 && (
+                <View style={[styles.activeInstrumentsContainer, { borderTopColor: currentTheme.secondary + '40' }]}>
+                  <Text style={[styles.activeInstrumentsLabel, { color: currentTheme.textSecondary }]}>
+                    現在使用中の楽器:
+                  </Text>
+                  <View style={styles.activeInstrumentsList}>
+                    {activeInstrumentIds.map((instrumentId) => {
+                      const instrument = instruments.find(i => i.id === instrumentId);
+                      if (!instrument) return null;
+                      return (
+                        <TouchableOpacity
+                          key={instrumentId}
+                          style={[styles.activeInstrumentItem, { backgroundColor: currentTheme.secondary + '20' }]}
+                          onPress={async () => {
+                            try {
+                              // 楽器を選択してカレンダー画面に遷移
+                              await setSelectedInstrument(instrumentId);
+                              
+                              // 楽器の更新が完了するまで少し待つ
+                              await new Promise(resolve => setTimeout(resolve, 100));
+                              
+                              // 認証状態を更新
+                              try {
+                                await fetchUserProfile();
+                                logger.debug('認証状態を更新しました（使用中楽器選択後）');
+                              } catch (profileError) {
+                                logger.warn('認証状態の更新に失敗しましたが、続行します:', profileError);
+                              }
+                              
+                              // カレンダー画面に遷移（一元化された関数を使用）
+                              navigateToCalendarScreen(router, `使用中楽器「${instrument.name}」を選択してカレンダー画面に遷移`);
+                            } catch (error) {
+                              logger.error('使用中楽器選択エラー:', error);
+                              Alert.alert('エラー', '楽器の選択に失敗しました');
+                            }
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.activeInstrumentEmoji}>{instrument.emoji}</Text>
+                          <Text style={[styles.activeInstrumentName, { color: currentTheme.text }]}>
+                            {instrument.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              )}
             </View>
           </View>
         )}
         
         <View style={styles.instrumentGrid}>
-          {instruments.map((instrument) => (
+          {visibleInstruments.map((instrument) => (
             <TouchableOpacity
               key={instrument.id}
               style={[
@@ -299,29 +363,6 @@ export default function InstrumentSelectionScreen() {
             })()}
           </View>
         ) : null}
-
-        {/* 現在使用中の楽器リスト */}
-        {activeInstrumentIds.length > 0 && (
-          <View style={[styles.activeInstrumentsSection, { backgroundColor: currentTheme.surface, borderColor: currentTheme.secondary }]}>
-            <Text style={[styles.activeInstrumentsTitle, { color: currentTheme.text }]}>
-              現在使用中の楽器
-            </Text>
-            <View style={styles.activeInstrumentsList}>
-              {activeInstrumentIds.map((instrumentId) => {
-                const instrument = instruments.find(i => i.id === instrumentId);
-                if (!instrument) return null;
-                return (
-                  <View key={instrumentId} style={[styles.activeInstrumentItem, { backgroundColor: currentTheme.background, borderColor: currentTheme.primary }]}>
-                    <Text style={styles.activeInstrumentEmoji}>{instrument.emoji}</Text>
-                    <Text style={[styles.activeInstrumentName, { color: currentTheme.text }]}>
-                      {instrument.name}
-                    </Text>
-                  </View>
-                );
-              })}
-            </View>
-          </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -478,6 +519,37 @@ const styles = StyleSheet.create({
   freePlanInfoSubtitle: {
     fontSize: 12,
     lineHeight: 18,
+    marginBottom: 8,
+  },
+  activeInstrumentsContainer: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+  },
+  activeInstrumentsLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  activeInstrumentsList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  activeInstrumentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  activeInstrumentEmoji: {
+    fontSize: 16,
+  },
+  activeInstrumentName: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   freePlanInfoButton: {
     paddingVertical: 8,
@@ -506,48 +578,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     fontStyle: 'italic',
-  },
-  activeInstrumentsSection: {
-    marginTop: 20,
-    marginBottom: 20,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    ...createShadowStyle({
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 3,
-    }),
-    elevation: 3,
-  },
-  activeInstrumentsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  activeInstrumentsList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  activeInstrumentItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    gap: 6,
-  },
-  activeInstrumentEmoji: {
-    fontSize: 18,
-  },
-  activeInstrumentName: {
-    fontSize: 14,
-    fontWeight: '500',
-    flex: 1,
   },
   limitInfoContainer: {
     padding: 12,

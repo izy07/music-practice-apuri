@@ -13,8 +13,9 @@ const config: ExpoConfig = {
     displayName: '楽器練習アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
     icon: './assets/images/icon.png', // アイコン画像
     infoPlist: {
-      // 年齢制限: 12+（録音機能があるため）
-      // App Store Connectで設定する必要がありますが、ここでも明示
+      // 年齢制限: 4+（教育的な目的の音楽練習アプリのため）
+      // 録音機能はユーザー自身の練習記録を保存・再生するための教育的な目的のみで使用
+      // 実際の設定はApp Store Connectで行う必要がありますが、ここでも明示
       // CFBundleDisplayNameはdisplayNameで自動設定されます
     },
   },
@@ -25,8 +26,9 @@ const config: ExpoConfig = {
     },
     package: 'com.musicpractice.app',
     label: '楽器練習アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
-    // 年齢制限: 12+（録音機能があるため）
-    // Google Play Consoleで設定する必要がありますが、ここでも明示
+    // 年齢制限: 4+（教育的な目的の音楽練習アプリのため）
+    // 録音機能はユーザー自身の練習記録を保存・再生するための教育的な目的のみで使用
+    // 実際の設定はGoogle Play Consoleで行う必要がありますが、ここでも明示
   },
   web: {
     bundler: 'metro', // WebプラットフォームでもMetroを使用（Webpackとの競合を避ける）

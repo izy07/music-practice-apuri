@@ -11,16 +11,14 @@ const REPOSITORY_CONTEXT = 'musicTermRepository';
 
 export interface MusicTerm {
   id: string;
-  term_ja: string;
-  term_en?: string | null;
-  category?: string | null;
+  term: string;
+  reading?: string | null;
+  category: string;
+  meaning_ja: string;
+  meaning_en?: string | null;
   description_ja?: string | null;
   description_en?: string | null;
-  example_usage?: string | null;
-  related_terms?: string[] | null;
-  display_order: number;
   created_at?: string;
-  updated_at?: string;
 }
 
 export interface MusicTermQuery {
@@ -58,8 +56,8 @@ export const getMusicTerms = async (
     // DBから取得
     let dbQuery = supabase
       .from('music_terms')
-      .select('id, term_ja, term_en, category, description_ja, description_en, example_usage, related_terms, display_order, created_at, updated_at')
-      .order('display_order', { ascending: true });
+      .select('id, term, reading, category, meaning_ja, meaning_en, description_ja, description_en, created_at')
+      .order('created_at', { ascending: true });
     
     if (query?.category) {
       dbQuery = dbQuery.eq('category', query.category);
@@ -77,8 +75,10 @@ export const getMusicTerms = async (
     if (query?.searchQuery && filteredData) {
       const searchLower = query.searchQuery.toLowerCase();
       filteredData = filteredData.filter((term: any) => 
-        term.term_ja.toLowerCase().includes(searchLower) ||
-        (term.term_en && term.term_en.toLowerCase().includes(searchLower)) ||
+        term.term.toLowerCase().includes(searchLower) ||
+        (term.reading && term.reading.toLowerCase().includes(searchLower)) ||
+        (term.meaning_ja && term.meaning_ja.toLowerCase().includes(searchLower)) ||
+        (term.meaning_en && term.meaning_en.toLowerCase().includes(searchLower)) ||
         (term.description_ja && term.description_ja.toLowerCase().includes(searchLower))
       );
     }
@@ -105,7 +105,7 @@ export const getMusicTermById = async (
   try {
     const { data, error } = await supabase
       .from('music_terms')
-      .select('id, term_ja, term_en, category, description_ja, description_en, example_usage, related_terms, display_order, created_at, updated_at')
+      .select('id, term, reading, category, meaning_ja, meaning_en, description_ja, description_en, created_at')
       .eq('id', termId)
       .single();
     
@@ -149,7 +149,7 @@ export const getMusicTermCategories = async (): Promise<{ data: string[] | null;
  * 音楽用語を追加
  */
 export const createMusicTerm = async (
-  term: Omit<MusicTerm, 'id' | 'created_at' | 'updated_at' | 'display_order'>
+  term: Omit<MusicTerm, 'id' | 'created_at'>
 ): Promise<{ data: MusicTerm | null; error: any }> => {
   try {
     const { data: { user } } = await supabase.auth.getUser();
@@ -157,22 +157,9 @@ export const createMusicTerm = async (
       return { data: null, error: new Error('ユーザーが認証されていません') };
     }
 
-    // display_orderを取得（最大値+1）
-    const { data: maxOrderData } = await supabase
-      .from('music_terms')
-      .select('display_order')
-      .order('display_order', { ascending: false })
-      .limit(1)
-      .single();
-
-    const displayOrder = maxOrderData?.display_order ? maxOrderData.display_order + 1 : 0;
-
     const { data, error } = await supabase
       .from('music_terms')
-      .insert({
-        ...term,
-        display_order: displayOrder,
-      })
+      .insert(term)
       .select()
       .single();
 
@@ -196,7 +183,7 @@ export const createMusicTerm = async (
  */
 export const updateMusicTerm = async (
   termId: string,
-  updates: Partial<Omit<MusicTerm, 'id' | 'created_at' | 'updated_at'>>
+  updates: Partial<Omit<MusicTerm, 'id' | 'created_at'>>
 ): Promise<{ data: MusicTerm | null; error: any }> => {
   try {
     const { data, error } = await supabase

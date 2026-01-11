@@ -696,15 +696,14 @@ const styles = StyleSheet.create({
   colorPickerContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     marginBottom: 8,
-    gap: 12,
+    gap: 8,
   },
   colorOptionContainer: {
     alignItems: 'center',
     flex: 1,
-    minWidth: 50,
-    maxWidth: 80,
+    minWidth: 0, // flex: 1で均等に配置するため、minWidthを0に設定
   },
   colorOption: {
     width: 36,

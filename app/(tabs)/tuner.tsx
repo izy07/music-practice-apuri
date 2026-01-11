@@ -394,7 +394,7 @@ export default function TunerScreen() {
     '550e8400-e29b-41d4-a716-446655440003': 'violin',    // バイオリン
     '550e8400-e29b-41d4-a716-446655440018': 'viola',     // ヴィオラ
     '550e8400-e29b-41d4-a716-446655440011': 'cello',     // チェロ
-    '550e8400-e29b-41d4-a716-446655440015': 'bass',      // コントラバス（ベース）
+    '550e8400-e29b-41d4-a716-446655440015': 'contrabass', // コントラバス
     '550e8400-e29b-41d4-a716-446655440008': 'horn',      // ホルン
     // チューバは楽器選択画面にないため、ホルンをフォールバックとして使用
     '550e8400-e29b-41d4-a716-446655440013': 'guitar',    // オーボエ（フォールバック）
@@ -417,8 +417,14 @@ export default function TunerScreen() {
   
   // 開放弦の音の連続再生用の状態
   const [playingOpenString, setPlayingOpenString] = useState<string | null>(null);
+  const playingOpenStringRef = useRef<string | null>(null); // onendedイベントで使用するためのref
   const openStringOscillatorRef = useRef<OscillatorNode | null>(null);
   const openStringGainNodeRef = useRef<GainNode | null>(null);
+  
+  // playingOpenStringRefをplayingOpenStringと同期
+  useEffect(() => {
+    playingOpenStringRef.current = playingOpenString;
+  }, [playingOpenString]);
 
   // アニメーション用の値（UI表示用）
   const tuningBarAnimation = useRef(new Animated.Value(0)).current;
@@ -530,7 +536,7 @@ export default function TunerScreen() {
       // マイク入力をAudioContextに接続
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 4096; // 高精度な周波数検出のため大きなFFTサイズ
+      analyser.fftSize = 8192; // コントラバスの低周波数検出精度向上のため、FFTサイズを8192に拡大
       analyser.smoothingTimeConstant = 0.5; // より滑らかな平滑化
       source.connect(analyser);
       analyserNodeRef.current = analyser;
@@ -751,8 +757,27 @@ export default function TunerScreen() {
       oscillator.type = 'sine';
       
       // フェードインしてから連続再生
+      // 低周波数（100Hz以下）では体感音量が小さく感じられるため、gainを上げる
+      // 周波数に応じたgain補正: 100Hz以下は1.0、それ以上は0.3
+      const baseGain = frequency <= 100 ? 1.0 : 0.3;
       gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-      gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.1);
+      gainNode.gain.linearRampToValueAtTime(baseGain, audioCtx.currentTime + 0.1);
+      
+      // 連続再生: stop()を呼ばない限り継続再生される
+      // onendedイベントを監視して、予期しない停止を検出
+      oscillator.onended = () => {
+        logger.warn('Oscillator ended unexpectedly, restarting...', { frequency, note });
+        // 予期しない停止の場合、再開を試みる（refを使用して最新の状態を参照）
+        const currentNote = playingOpenStringRef.current;
+        if (currentNote === note) {
+          setTimeout(() => {
+            // 状態を再確認してから再開
+            if (playingOpenStringRef.current === note) {
+              playOpenString(frequency, note);
+            }
+          }, 100);
+        }
+      };
       
       oscillator.start(audioCtx.currentTime);
       setPlayingOpenString(note);
@@ -781,8 +806,11 @@ export default function TunerScreen() {
             gainNode.connect(audioCtx.destination);
             oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
             oscillator.type = 'sine';
+            // 低周波数（100Hz以下）では体感音量が小さく感じられるため、gainを上げる
+            // 周波数に応じたgain補正: 100Hz以下は1.0、それ以上は0.3
+            const baseGain = frequency <= 100 ? 1.0 : 0.3;
             gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-            gainNode.gain.linearRampToValueAtTime(0.3, audioCtx.currentTime + 0.1);
+            gainNode.gain.linearRampToValueAtTime(baseGain, audioCtx.currentTime + 0.1);
             oscillator.start(audioCtx.currentTime);
             setPlayingOpenString(note);
             return;

@@ -260,8 +260,9 @@ export const autoCorrelate = (
   while (d < SIZE - 1 && c[d] > c[d + 1]) d++;
 
   // 周波数範囲制限（より厳密）
+  // コントラバスのE1 (41.20Hz)を検出するため、最低周波数を40Hzに下げる
   const minPeriod = Math.floor(sampleRate / 4000); // 最高周波数4000Hz
-  const maxPeriod = Math.floor(sampleRate / 80);   // 最低周波数80Hz
+  const maxPeriod = Math.floor(sampleRate / 40);   // 最低周波数40Hz（コントラバス対応）
 
   // 候補となるピークを複数見つける（ハーモニクス除去のため）
   const candidates: Array<{ period: number; correlation: number }> = [];
@@ -346,8 +347,9 @@ export const autoCorrelate = (
 
   const freq = sampleRate / T0;
 
-  // 周波数の範囲チェック（80Hz - 4000Hzの範囲内のみ有効）
-  if (!isFinite(freq) || freq < 80 || freq > 4000) {
+  // 周波数の範囲チェック（40Hz - 4000Hzの範囲内のみ有効）
+  // コントラバスのE1 (41.20Hz)を検出するため、最低周波数を40Hzに下げる
+  if (!isFinite(freq) || freq < 40 || freq > 4000) {
     return -1;
   }
 

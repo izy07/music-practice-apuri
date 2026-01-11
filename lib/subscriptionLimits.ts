@@ -25,7 +25,7 @@ export interface Entitlement {
 export const FREE_PLAN_LIMITS = {
   RECORDINGS_PER_MONTH_PER_INSTRUMENT: 3,
   GOALS_COUNT_PER_INSTRUMENT: 2,
-  MY_LIBRARY_SONGS_PER_INSTRUMENT: 6, // 各楽器ごとに6個まで（ステータスに関係なく）
+  MY_LIBRARY_SONGS_PER_INSTRUMENT: 10, // 各楽器ごとに10個まで（ステータスに関係なく）
   MAX_INSTRUMENTS: 2, // Freeプランで使用可能な楽器の最大数
 } as const;
 
@@ -1034,13 +1034,13 @@ export const adjustRecordingsOnDowngrade = async (
 };
 
 /**
- * プレミアム解約時の楽曲数調整（各楽器ごとに6曲まで）
+ * プレミアム解約時の楽曲数調整（各楽器ごとに10曲まで）
  * 
  * 処理フロー:
  * 1. Premiumユーザーは調整不要（早期リターン）
  * 2. 全楽曲を取得（楽器IDでフィルタリングしない）
  * 3. 楽器IDごとにグループ化
- * 4. 各楽器ごとに最新6個を保持、それ以外は削除
+ * 4. 各楽器ごとに最新10個を保持、それ以外は削除
  * 
  * @param userId ユーザーID
  * @param entitlement エンタイトルメント情報
@@ -1087,7 +1087,7 @@ export const adjustMyLibrarySongsOnDowngrade = async (
       songsByInstrument.get(instrumentId)!.push(song);
     }
 
-    // 各楽器ごとに最新6個を保持、それ以外は削除
+    // 各楽器ごとに最新10個を保持、それ以外は削除
     const songsToDelete: string[] = [];
     let totalKept = 0;
 
@@ -1099,7 +1099,7 @@ export const adjustMyLibrarySongsOnDowngrade = async (
         return dateB - dateA; // 降順（新しい順）
       });
 
-      // 各楽器ごとに最新6個を保持
+      // 各楽器ごとに最新10個を保持
       const songsToKeep = sorted.slice(0, limitPerInstrument);
       const songsToRemove = sorted.slice(limitPerInstrument);
 
@@ -1137,7 +1137,7 @@ export const adjustMyLibrarySongsOnDowngrade = async (
       }
     }
 
-    logger.info('解約時の楽曲調整が完了しました（各楽器ごとに6曲まで）:', {
+    logger.info('解約時の楽曲調整が完了しました（各楽器ごとに10曲まで）:', {
       totalSongs: songs.length,
       keptSongs: totalKept,
       deletedSongs: songsToDelete.length
@@ -1249,9 +1249,9 @@ async function ensureOneGoalPerInstrumentVisible(
  * 2. 既存の曲数を取得（楽器IDでフィルタリング）
  * 3. instrument_idカラムが存在しない場合、カラムなしで再試行（レガシーデータ対応）
  * 4. TypeScript側で楽器IDでフィルタリング（データベース側でフィルタリングできない場合のフォールバック）
- * 5. 制限値をチェック（各楽器ごとに6個まで）
+ * 5. 制限値をチェック（各楽器ごとに10個まで）
  * 
- * 注意: 各楽器ごとに6個までの制限を適用（楽器数を掛け算しない）
+ * 注意: 各楽器ごとに10個までの制限を適用（楽器数を掛け算しない）
  * 注意: instrument_idカラムが存在しない場合は、すべての曲をカウント（レガシーデータ対応）
  * 
  * @param userId ユーザーID
@@ -1270,7 +1270,7 @@ export const checkMyLibraryLimit = async (
       return { canAdd: true, currentCount: 0, limit: Infinity };
     }
 
-    // 各楽器ごとに6個まで（楽器数で掛け算しない）
+    // 各楽器ごとに10個まで（楽器数で掛け算しない）
     const limit = FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT;
 
     // 既存の曲数を取得（楽器IDでフィルタリング）

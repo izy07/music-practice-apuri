@@ -85,36 +85,52 @@ export default function LoginScreen() {
   const [slideAnim] = useState(new Animated.Value(50));
   const [pulseAnim] = useState(new Animated.Value(1));
   
-  // 認証成功後の画面遷移（簡素化版）
+  // 認証成功後の画面遷移（根本的な修正版）
+  // 【修正】useEffectで認証状態を監視し、認証成功後に確実に画面遷移を実行
+  // これにより、ログイン成功後に認証状態が更新されるまで待ってから画面遷移を実行できる
   useEffect(() => {
-    // 認証済みかつローディング完了の場合のみ処理
-    if (!isAuthenticated || isLoading || !user) {
-      return;
-    }
-
-    // ログイン画面にいることを確認
+    // ログイン画面にいることを確認（最初に確認）
     const segmentsArray = Array.isArray(segments) ? segments : [segments];
     const isInLoginScreen = segmentsArray.length >= 2 && segmentsArray[0] === 'auth' && segmentsArray[1] === 'login';
     if (!isInLoginScreen) {
       return;
     }
 
-    // ログイン処理完了
-    if (isLoggingIn) {
-      setIsLoggingIn(false);
+    // 認証済みかつローディング完了の場合のみ処理
+    if (!isAuthenticated || isLoading || !user) {
+      return;
     }
-
-    // ログイン成功時: カレンダーの日付を今日にリセット
-    if (typeof window !== 'undefined' && window.localStorage) {
-      try {
-        window.localStorage.removeItem('home_calendar_view_date');
-        window.localStorage.setItem('login_success_reset_calendar', 'true');
-      } catch (error) {
+      
+      // ログイン処理完了
+      if (isLoggingIn) {
+        setIsLoggingIn(false);
+      }
+      
+    // 【シンプル化】認証成功時に即座に画面遷移を実行（タイムアウトを削除）
+    // 認証状態は既に更新されているため、待機する必要はない
+      
+      // ログイン成功時: カレンダーの日付を今日にリセット
+      if (typeof window !== 'undefined' && window.localStorage) {
+        try {
+          window.localStorage.removeItem('home_calendar_view_date');
+          window.localStorage.setItem('login_success_reset_calendar', 'true');
+        } catch (error) {
         // エラーは無視
       }
     }
 
-    // 画面遷移を実行
+    // 既存ユーザーの判定: last_sign_in_atが存在し、created_atと異なる場合
+    const isExistingUser = user.last_sign_in_at && user.created_at && 
+      new Date(user.last_sign_in_at).getTime() > new Date(user.created_at).getTime() + 60000;
+    
+    // 既存ユーザーで楽器IDが取得できていない場合、カレンダー画面に遷移（楽器情報は後で取得される）
+    if (isExistingUser && !user.selected_instrument_id) {
+      logger.debug('[ログイン画面] 既存ユーザー → カレンダー画面に遷移', { userId: user.id });
+      router.replace('/(tabs)/index');
+      return;
+    }
+
+    // 通常の画面遷移ロジック
     const hasInstrument = hasInstrumentSelected();
     const needsTut = needsTutorial();
     const canAccess = canAccessMainApp();
@@ -125,7 +141,7 @@ export default function LoginScreen() {
       ? '/(tabs)/tutorial'
       : '/(tabs)/instrument-selection';
 
-    logger.debug('[ログイン画面] 認証成功 - 画面遷移:', targetPath);
+    logger.debug('[ログイン画面] 認証成功 → 画面遷移:', targetPath);
     router.replace(targetPath as any);
   }, [isAuthenticated, isLoading, user, router, isLoggingIn, segments, hasInstrumentSelected, needsTutorial, canAccessMainApp]);
 
@@ -279,20 +295,20 @@ export default function LoginScreen() {
         // 認証エラーの場合は新規登録画面への誘導を表示
         if (errorInfo.type === 'authentication' || errorInfo.type === 'email_not_confirmed') {
           setTimeout(() => {
-            Alert.alert(
-              'ログインできません',
-              'メールアドレスまたはパスワードが正しくない可能性があります。\n\n新規登録を行いますか？',
-              [
-                { text: 'キャンセル', style: 'cancel' },
-                {
-                  text: '新規登録',
-                  onPress: () => {
-                    logger.debug('新規登録画面に遷移');
-                    router.push('/auth/signup');
-                  },
+          Alert.alert(
+            'ログインできません',
+            'メールアドレスまたはパスワードが正しくない可能性があります。\n\n新規登録を行いますか？',
+            [
+              { text: 'キャンセル', style: 'cancel' },
+              {
+                text: '新規登録',
+                onPress: () => {
+                  logger.debug('新規登録画面に遷移');
+                  router.push('/auth/signup');
                 },
-              ]
-            );
+              },
+            ]
+          );
           }, 500);
         }
       }

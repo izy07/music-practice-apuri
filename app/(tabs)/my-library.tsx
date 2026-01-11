@@ -399,7 +399,7 @@ export default function MyLibraryScreen() {
           return;
         }
         
-        // 新規追加の場合、Freeプランの制限をチェック（楽器ごとに6個まで）
+        // 新規追加の場合、Freeプランの制限をチェック（楽器ごとに10個まで）
         // 現在選択されている楽器IDを取得
         let currentInstrumentId: string | null = null;
         if (selectedInstrument) {
@@ -975,7 +975,7 @@ export default function MyLibraryScreen() {
           disabled={libraryLimitStatus !== null && !libraryLimitStatus.canAdd}
         >
           <Plus 
-            size={30} 
+            size={36} 
             color={(libraryLimitStatus !== null && !libraryLimitStatus.canAdd) ? currentTheme.textSecondary : currentTheme.primary} 
           />
         </TouchableOpacity>
@@ -986,7 +986,7 @@ export default function MyLibraryScreen() {
         {!entitlement.isEntitled && (
           <View style={[styles.upgradeBanner, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
             <Text style={[styles.upgradeBannerTitle, { color: currentTheme.text }]}>
-              6曲まで追加可能
+              10曲まで追加可能
             </Text>
             <TouchableOpacity
               style={[styles.upgradeBannerButton, { backgroundColor: currentTheme.primary }]}
@@ -1463,7 +1463,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   addButton: {
-    padding: 8,
+    padding: 4,
   },
   content: {
     flex: 1,

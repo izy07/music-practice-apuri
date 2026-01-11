@@ -1958,16 +1958,16 @@ export default function GoalsScreen() {
                       {/* 進捗スライダー（大きく目立つように） */}
                       <View style={styles.progressSliderContainer}>
                         <View style={styles.progressSliderTrack}>
-                          <View 
-                            style={[
+                        <View 
+                          style={[
                               styles.progressSliderFill, 
-                              { 
+                            { 
                                 width: `${goal.progress_percentage || 0}%`,
-                                backgroundColor: getGoalTypeColor(goal.goal_type)
-                              }
-                            ]} 
-                          />
-                        </View>
+                              backgroundColor: getGoalTypeColor(goal.goal_type)
+                            }
+                          ]} 
+                        />
+                      </View>
                         <Text style={[styles.progressPercentageLabel, { color: getGoalTypeColor(goal.goal_type) }]}>
                           {goal.progress_percentage || 0}%
                           {goal.sub_goals && goal.sub_goals.length > 0 && 
@@ -2155,31 +2155,8 @@ export default function GoalsScreen() {
                                           // 親目標の進捗率を更新
                                           await goalRepository.updateProgress(goal.id, calculatedProgress, user.id);
                                           
-                                          // 目標リストを更新
-                                          setGoals(prevGoals => {
-                                            const updatedGoals = prevGoals.map(g => {
-                                              if (g.id === goal.id) {
-                                                return {
-                                                  ...g,
-                                                  sub_goals: updatedSubGoals,
-                                                  progress_percentage: calculatedProgress,
-                                                  is_completed: calculatedProgress === 100,
-                                                };
-                                              }
-                                              return g;
-                                            });
-                                            
-                                            // 進捗率が100%になった場合は達成済みに移動
-                                            if (calculatedProgress === 100) {
-                                              const completedGoal = updatedGoals.find(g => g.id === goal.id);
-                                              if (completedGoal) {
-                                                setCompletedGoals(prev => [completedGoal, ...prev]);
-                                                return updatedGoals.filter(g => g.id !== goal.id);
-                                              }
-                                            }
-                                            
-                                            return updatedGoals;
-                                          });
+                                          // 目標リストを更新（最新の状態を取得するため、データベースから再取得）
+                                          await loadGoals();
                                           
                                           setShowSubGoalInput({ ...showSubGoalInput, [goal.id]: false });
                                           setSubGoalInput({ ...subGoalInput, [goal.id]: '' });
@@ -2217,32 +2194,32 @@ export default function GoalsScreen() {
                       ) : (
                         /* サブ目標がない場合: 手動進捗調整ボタンとサブ目標追加ボタン */
                         <>
-                          <View style={styles.progressButtons}>
-                            <TouchableOpacity
-                              style={[
-                                styles.progressButton,
-                                styles.progressButtonMinus,
-                                { borderColor: currentTheme.textSecondary + '80' }
-                              ]}
-                              onPress={() => updateProgress(goal.id, Math.max(0, goal.progress_percentage - 10))}
-                            >
-                              <Text style={styles.progressButtonText}>-10%</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                              style={[
-                                styles.progressButton,
-                                styles.progressButtonPlus,
-                                { 
-                                  backgroundColor: getGoalTypeColor(goal.goal_type),
-                                  borderWidth: 1.5,
-                                  borderColor: getGoalTypeColor(goal.goal_type)
-                                }
-                              ]}
-                              onPress={() => updateProgress(goal.id, Math.min(100, goal.progress_percentage + 10))}
-                            >
-                              <Text style={[styles.progressButtonText, { color: '#FFFFFF' }]}>+10%</Text>
-                            </TouchableOpacity>
-                          </View>
+                      <View style={styles.progressButtons}>
+                        <TouchableOpacity
+                          style={[
+                            styles.progressButton,
+                            styles.progressButtonMinus,
+                            { borderColor: currentTheme.textSecondary + '80' }
+                          ]}
+                          onPress={() => updateProgress(goal.id, Math.max(0, goal.progress_percentage - 10))}
+                        >
+                          <Text style={styles.progressButtonText}>-10%</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={[
+                            styles.progressButton,
+                            styles.progressButtonPlus,
+                            { 
+                              backgroundColor: getGoalTypeColor(goal.goal_type),
+                              borderWidth: 1.5,
+                              borderColor: getGoalTypeColor(goal.goal_type)
+                            }
+                          ]}
+                          onPress={() => updateProgress(goal.id, Math.min(100, goal.progress_percentage + 10))}
+                        >
+                          <Text style={[styles.progressButtonText, { color: '#FFFFFF' }]}>+10%</Text>
+                        </TouchableOpacity>
+                      </View>
                           <TouchableOpacity
                             style={[styles.addSubGoalButton, { 
                               borderColor: currentTheme.primary,
@@ -2306,31 +2283,8 @@ export default function GoalsScreen() {
                                       // 親目標の進捗率を更新
                                       await goalRepository.updateProgress(goal.id, calculatedProgress, user.id);
                                       
-                                      // 目標リストを更新
-                                      setGoals(prevGoals => {
-                                        const updatedGoals = prevGoals.map(g => {
-                                          if (g.id === goal.id) {
-                                            return {
-                                              ...g,
-                                              sub_goals: updatedSubGoals,
-                                              progress_percentage: calculatedProgress,
-                                              is_completed: calculatedProgress === 100,
-                                            };
-                                          }
-                                          return g;
-                                        });
-                                        
-                                        // 進捗率が100%になった場合は達成済みに移動
-                                        if (calculatedProgress === 100) {
-                                          const completedGoal = updatedGoals.find(g => g.id === goal.id);
-                                          if (completedGoal) {
-                                            setCompletedGoals(prev => [completedGoal, ...prev]);
-                                            return updatedGoals.filter(g => g.id !== goal.id);
-                                          }
-                                        }
-                                        
-                                        return updatedGoals;
-                                      });
+                                      // 目標リストを更新（最新の状態を取得するため、データベースから再取得）
+                                      await loadGoals();
                                       
                                       setShowSubGoalInput({ ...showSubGoalInput, [goal.id]: false });
                                       setSubGoalInput({ ...subGoalInput, [goal.id]: '' });

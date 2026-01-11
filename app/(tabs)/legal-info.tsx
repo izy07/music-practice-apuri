@@ -26,7 +26,7 @@ export default function LegalInfoScreen() {
       {/* ヘッダー */}
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary }]}>
         <TouchableOpacity
-          onPress={() => safeGoBack('/(tabs)/settings')}
+          onPress={() => safeGoBack(router, '/(tabs)/privacy-settings', true)}
           style={styles.backButton}
         >
           <ChevronLeft size={24} color={currentTheme.text} />

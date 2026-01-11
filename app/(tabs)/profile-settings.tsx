@@ -1418,7 +1418,7 @@ export default function ProfileSettingsScreen() {
                           marginTop: 8,
                           flex: 1
                         }]}
-                        placeholder="例: バイオリンのストラディバリウス、フルートのYAMAHAなど"
+                        placeholder="例: ストラディバリウス、YAMAHAなど"
                         placeholderTextColor={currentTheme.textSecondary}
                         value={item.name}
                         onChangeText={(text) => {
@@ -1450,7 +1450,7 @@ export default function ProfileSettingsScreen() {
                   </View>
                 ))}
                 <Text style={[styles.helpText, { color: currentTheme.textSecondary, marginTop: 4 }]}>
-                  楽器の種類を詳しく記入してください（例：バイオリン → バイオリンのストラディバリウス）。複数の楽器を追加できます。
+                  楽器の種類を詳しく記入してください（例：バイオリン → ストラディバリウス）。複数の楽器を追加できます。
                 </Text>
               </View>
             </View>

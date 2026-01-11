@@ -256,7 +256,7 @@ export const canAccessFeature = (
     'calendar', 
     'tuner', 
     'timer',
-    'my-library',  // フリープランでも制限内で使用可能（各楽器6曲まで）
+    'my-library',  // フリープランでも制限内で使用可能（各楽器10曲まで）
     'recordings',   // フリープランでも制限内で使用可能（月3回まで）
     'goals'         // フリープランでも制限内で使用可能（楽器数×2個まで）
   ];

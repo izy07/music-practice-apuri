@@ -457,7 +457,7 @@ export default function RepresentativeSongsScreen() {
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
-          {instrument?.name}の代表曲
+          {instrument?.name}が活躍する曲
         </Text>
         <View style={{ width: 24 }} />
       </View>
@@ -798,19 +798,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   instrumentInfo: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 16,
     alignItems: 'center',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5E5',
   },
   instrumentName: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   instrumentNameEn: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '500',
   },
   content: {

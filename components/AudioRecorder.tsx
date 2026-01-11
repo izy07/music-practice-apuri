@@ -954,14 +954,14 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
           upgradeButtonText: alertConfig.upgradeButtonText,
           router,
           onCancel: () => {
-            setIsSaving(false);
-            isSavingRef.current = false;
+              setIsSaving(false);
+              isSavingRef.current = false;
           },
           onUpgrade: () => {
-            setIsSaving(false);
-            isSavingRef.current = false;
-            onClose();
-            router.push('/(tabs)/pricing-plans');
+              setIsSaving(false);
+              isSavingRef.current = false;
+              onClose();
+              router.push('/(tabs)/pricing-plans');
           },
         });
         return;
@@ -986,14 +986,14 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
           upgradeButtonText: alertConfig.upgradeButtonText,
           router,
           onCancel: () => {
-            setIsSaving(false);
-            isSavingRef.current = false;
+              setIsSaving(false);
+              isSavingRef.current = false;
           },
           onUpgrade: () => {
-            setIsSaving(false);
-            isSavingRef.current = false;
-            onClose();
-            router.push('/(tabs)/pricing-plans');
+              setIsSaving(false);
+              isSavingRef.current = false;
+              onClose();
+              router.push('/(tabs)/pricing-plans');
           },
         });
         return;
@@ -1184,7 +1184,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
                 </TouchableOpacity>
               )}
             </View>
-            
+
             {/* 最大録音時間の表示（録音前） */}
             {!isRecording && (
               <Text style={[styles.maxTimeText, { color: currentTheme.textSecondary, textAlign: 'center', marginTop: 12 }]}>
@@ -1194,15 +1194,15 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
 
             {/* 録音時間表示（録音中） */}
             {isRecording && (
-              <View style={styles.timeDisplay}>
-                <Text style={[styles.timeText, { color: currentTheme.text }]}>
+            <View style={styles.timeDisplay}>
+              <Text style={[styles.timeText, { color: currentTheme.text }]}>
                   録音中: {formatTime(recordingTime)}
-                </Text>
+              </Text>
                 <Text style={[styles.maxTimeText, { color: currentTheme.textSecondary, textAlign: 'center', marginTop: 4 }]}>
                   最大{formatTime(MAX_RECORDING_TIME)}まで
                 </Text>
               </View>
-            )}
+              )}
           </View>
         )}
 

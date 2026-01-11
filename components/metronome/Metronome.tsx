@@ -660,13 +660,6 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
             BPM調整
           </Text>
           
-          {/* BPM説明文 */}
-          <View style={styles.bpmExplanationContainer}>
-            <Text style={[styles.bpmExplanationText, { color: currentTheme.textSecondary }]}>
-              BPM調整とはbeats-per-minute (一分間の拍数)の略です。
-            </Text>
-          </View>
-          
           {/* スライダー（Web環境） */}
           {Platform.OS === 'web' && (
             <View style={styles.bpmSliderContainer}>
@@ -856,6 +849,12 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
                 </Text>
               </TouchableOpacity>
             ))}
+          </View>
+          {/* BPM説明文（音選択の下に表示） */}
+      <View style={styles.bpmExplanationContainer}>
+        <Text style={[styles.bpmExplanationText, { color: currentTheme.textSecondary }]}>
+          BPM調整とはbeats-per-minute (一分間の拍数)の略です。
+        </Text>
           </View>
         </View>
       </View>

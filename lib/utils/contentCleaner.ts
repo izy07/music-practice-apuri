@@ -5,7 +5,7 @@
 
 /**
  * contentフィールドから時間詳細を削除
- * 「（累計XX分）」「累計XX分」「+ XX分」「XX分」などの時間表現を削除
+ * 「（累計XX分）」「累計XX分」「+ XX分」「XX分」「(既存: XX時間 +)」などの時間表現を削除
  */
 export function cleanContentFromTimeDetails(content: string | null | undefined): string {
   if (!content) {
@@ -13,6 +13,8 @@ export function cleanContentFromTimeDetails(content: string | null | undefined):
   }
 
   return content
+    .replace(/\s*[（(]既存:\s*\d+[時時間]\s*\+[）)]/g, '') // 「(既存: XX時間 +)」「（既存: XX時間 +）」を削除
+    .replace(/\s*[（(]既存:\s*\d+分\s*\+[）)]/g, '') // 「(既存: XX分 +)」「（既存: XX分 +）」を削除
     .replace(/\s*\(累計\d+分\)/g, '') // 「（累計XX分）」を削除
     .replace(/\s*累計\d+分/g, '') // 「累計XX分」を削除
     .replace(/\s*\+\s*[^,]+?\d+分/g, '') // 「+ XX分」を削除

@@ -120,7 +120,7 @@ export async function fetchUserProfile(
 }
 
 /**
- * 最近使用した楽器を取得
+ * 最近使用した楽器を取得（複数のテーブルから取得を試みる）
  * @param userId ユーザーID
  * @param timeoutMs タイムアウト時間（ミリ秒、デフォルト: 10000ms）
  */
@@ -148,13 +148,82 @@ export async function fetchRecentInstrument(
       }, timeoutMs);
     });
 
-    // SupabaseクエリのPromise
-    const instrumentQueryPromise = supabase
+    // 複数のテーブルから並列で楽器IDを取得（優先順位順）
+    // 1. user_instrument_profiles（最も確実）
+    // 2. practice_sessions（練習記録から）
+    // 3. recordings（録音記録から）
+    // 4. goals（目標から）
+    const instrumentQueries = [
+      supabase
       .from('user_instrument_profiles')
       .select('instrument_id, updated_at, created_at')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false })
-      .limit(1);
+        .limit(1)
+        .then((result) => {
+          if (result.data && !result.error && Array.isArray(result.data) && result.data.length > 0) {
+            return result.data[0].instrument_id;
+          }
+          return null;
+        })
+        .catch(() => null),
+      
+      supabase
+        .from('practice_sessions')
+        .select('instrument_id, created_at')
+        .eq('user_id', userId)
+        .not('instrument_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .then((result) => {
+          if (result.data && !result.error && Array.isArray(result.data) && result.data.length > 0) {
+            return result.data[0].instrument_id;
+          }
+          return null;
+        })
+        .catch(() => null),
+      
+      supabase
+        .from('recordings')
+        .select('instrument_id, created_at')
+        .eq('user_id', userId)
+        .not('instrument_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .then((result) => {
+          if (result.data && !result.error && Array.isArray(result.data) && result.data.length > 0) {
+            return result.data[0].instrument_id;
+          }
+          return null;
+        })
+        .catch(() => null),
+      
+      supabase
+        .from('goals')
+        .select('instrument_id, created_at')
+        .eq('user_id', userId)
+        .not('instrument_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .then((result) => {
+          if (result.data && !result.error && Array.isArray(result.data) && result.data.length > 0) {
+            return result.data[0].instrument_id;
+          }
+          return null;
+        })
+        .catch(() => null),
+    ];
+
+    // すべてのクエリを並列実行し、最初に取得できた楽器IDを使用
+    const instrumentQueryPromise = Promise.all(instrumentQueries).then((results) => {
+      // 最初にnull以外の結果を返す
+      for (const instrumentId of results) {
+        if (instrumentId) {
+          return { data: [{ instrument_id: instrumentId }], error: null };
+        }
+      }
+      return { data: null, error: null };
+    });
 
     // どちらかが先に完了したら結果を返す
     const result = await Promise.race([instrumentQueryPromise, instrumentTimeoutPromise]);
@@ -195,7 +264,7 @@ export async function fetchRecentInstrument(
       clearTimeout(timeoutId);
       timeoutId = null;
     }
-    logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', error);
+    logger.debug('楽器取得エラー（続行）:', error);
     return {
       instrumentId: null,
       error,

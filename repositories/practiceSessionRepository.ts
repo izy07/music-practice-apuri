@@ -503,30 +503,31 @@ export const savePracticeSessionWithIntegration = async (
       const basicPracticeRecords = existingRecords.filter((record: any) => record.input_method === 'preset');
       const timeRecords = existingRecords.filter((record: any) => record.input_method !== 'preset');
       
-      // 基礎練の記録は保持し、時間を加算する記録のみを統合
-      if (timeRecords.length > 0) {
-        // 時間を加算する記録がある場合
-        const existing = timeRecords[0];
+      // 同じinput_methodのレコードを探す
+      const sameMethodRecords = timeRecords.filter((record: any) => record.input_method === inputMethod);
+      
+      if (sameMethodRecords.length > 0) {
+        // 同じinput_methodのレコードがある場合は、そのレコードに時間を加算
+        const existing = sameMethodRecords[0];
         
         // Nullチェック: existing.idが存在しない場合はエラー
         if (!existing?.id) {
           logger.error(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:existing-record-has-no-id`, {
             existing,
-            timeRecordsCount: timeRecords.length
+            sameMethodRecordsCount: sameMethodRecords.length
           });
           return { success: false, error: { message: '既存レコードにIDがありません', code: 'MISSING_RECORD_ID' } };
         }
         
-        // 時間を加算する記録の時間のみを合計（基礎練は除外）
-        const existingTotalMinutes = timeRecords.reduce((sum: number, record: any) => {
+        // 同じinput_methodのレコードの時間のみを合計
+        const existingTotalMinutes = sameMethodRecords.reduce((sum: number, record: any) => {
           const minutes = record?.duration_minutes;
           return sum + (typeof minutes === 'number' && minutes >= 0 ? minutes : 0);
         }, 0);
-      const totalMinutes = existingTotalMinutes + minutes;
-      
-        // 既存の記録を更新（すべての時間記録のcontentを結合）
-        // すべての時間記録のcontentを結合（基礎練は除外）
-        const allContents = timeRecords
+        const totalMinutes = existingTotalMinutes + minutes;
+        
+        // 同じinput_methodのレコードのcontentを結合
+        const allContents = sameMethodRecords
           .map((record: any) => record?.content ? cleanContentFromTimeDetails(record.content) : null)
           .filter((content: any): content is string => Boolean(content && typeof content === 'string' && content.trim() !== ''))
           .concat([existingContentPrefix])
@@ -536,90 +537,87 @@ export const savePracticeSessionWithIntegration = async (
           ? allContents.join(', ')
           : existingContentPrefix;
       
-      // inputMethodは既に検証済みの値を使用（型安全）
-      // instrument_idが指定されている場合は更新、nullの場合は既存の値を保持（既存がnullの場合はnullのまま）
-      const updateData: Partial<PracticeSession> = {
-        duration_minutes: totalMinutes,
-        content: updateContent,
-        instrument_id: instrumentId !== undefined ? instrumentId : existing.instrument_id, // 指定されていない場合は既存の値を保持
-        input_method: inputMethod, // 既に検証済みの値を使用
-      };
-      
-        logger.debug('既存記録更新:', {
-        existingInstrumentId: existing.instrument_id,
-        newInstrumentId: instrumentId,
-        updateInstrumentId: updateData.instrument_id
-      });
-      
-      logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:updating session`, {
-        input_method: updateData.input_method,
+        // inputMethodは既に検証済みの値を使用（型安全）
+        // instrument_idが指定されている場合は更新、nullの場合は既存の値を保持（既存がnullの場合はnullのまま）
+        const updateData: Partial<PracticeSession> = {
+          duration_minutes: totalMinutes,
+          content: updateContent,
+          instrument_id: instrumentId !== undefined ? instrumentId : existing.instrument_id, // 指定されていない場合は既存の値を保持
+          input_method: inputMethod, // 既に検証済みの値を使用
+        };
+        
+        logger.debug('既存記録更新（同じinput_method）:', {
+          existingInstrumentId: existing.instrument_id,
+          newInstrumentId: instrumentId,
+          updateInstrumentId: updateData.instrument_id,
+          input_method: inputMethod
+        });
+        
+        logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:updating session (same input_method)`, {
+          input_method: updateData.input_method,
           session_id: existing.id,
           preservingBasicPractice: basicPracticeRecords.length > 0
-      });
-      
-      const { error: updateError } = await updatePracticeSession(existing.id, updateData);
-      
-      if (updateError) {
-        // ErrorHandler.handle(updateError, `${REPOSITORY_CONTEXT}:savePracticeSessionWithIntegration:update`, false);
-        return { success: false, error: updateError };
-      }
-      
-        // 他の時間を加算する記録を削除（統合のため）
-        // 基礎練の記録は削除しない
-        if (timeRecords.length > 1) {
+        });
+        
+        const { error: updateError } = await updatePracticeSession(existing.id, updateData);
+        
+        if (updateError) {
+          return { success: false, error: updateError };
+        }
+        
+        // 同じinput_methodの他のレコードを削除（統合のため）
+        if (sameMethodRecords.length > 1) {
           // 型安全な配列操作: null/undefinedを除外し、型ガードを使用
-          const otherRecordIds = timeRecords
+          const otherRecordIds = sameMethodRecords
             .slice(1)
             .map((record: any) => record?.id)
             .filter((id: any): id is string => typeof id === 'string' && id.length > 0);
-        if (otherRecordIds.length > 0) {
-          logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:deleting-duplicate-records`, {
-            count: otherRecordIds.length,
-              ids: otherRecordIds,
-              preservingBasicPractice: basicPracticeRecords.length
-          });
-          
-          // リトライ機能付きで削除を実行
-          const { error: deleteError, retryCount: deleteRetryCount } = await deletePracticeSessions(
-            otherRecordIds, 
-            instrumentId,
-            {
-              maxRetries: 3,
-              baseDelay: 200
-            }
-          );
-          
-          if (deleteError) {
-            // 削除エラーは警告として記録（統合保存は成功しているため、処理は続行）
-            // ただし、データ整合性の問題が発生する可能性があるため、詳細を記録
-            logger.warn(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:delete-error`, {
-              error: deleteError,
-              deletedCount: 0,
-              failedIds: otherRecordIds,
-              retryCount: deleteRetryCount,
-              message: '統合保存は成功しましたが、重複記録の削除に失敗しました。データ整合性に問題が発生する可能性があります。'
-            });
-            // ErrorHandler.handle(deleteError, `${REPOSITORY_CONTEXT}:savePracticeSessionWithIntegration:delete-duplicates`, false);
-          } else {
-            logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:deleted-duplicate-records`, {
+          if (otherRecordIds.length > 0) {
+            logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:deleting-duplicate-records (same input_method)`, {
               count: otherRecordIds.length,
-              retryCount: deleteRetryCount || 0
+              ids: otherRecordIds,
+              input_method: inputMethod
             });
+            
+            // リトライ機能付きで削除を実行
+            const { error: deleteError, retryCount: deleteRetryCount } = await deletePracticeSessions(
+              otherRecordIds, 
+              instrumentId,
+              {
+                maxRetries: 3,
+                baseDelay: 200
+              }
+            );
+            
+            if (deleteError) {
+              logger.warn(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:delete-error`, {
+                error: deleteError,
+                deletedCount: 0,
+                failedIds: otherRecordIds,
+                retryCount: deleteRetryCount,
+                message: '統合保存は成功しましたが、重複記録の削除に失敗しました。データ整合性に問題が発生する可能性があります。'
+              });
+            } else {
+              logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:deleted-duplicate-records`, {
+                count: otherRecordIds.length,
+                retryCount: deleteRetryCount || 0
+              });
+            }
           }
         }
-      }
-      
-      logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:merged`, {
-        existing: existingTotalMinutes,
-        added: minutes,
+        
+        logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:merged (same input_method)`, {
+          existing: existingTotalMinutes,
+          added: minutes,
           total: totalMinutes,
+          input_method: inputMethod,
           preservedBasicPractice: basicPracticeRecords.length
-      });
-      
-      return { success: true };
+        });
+        
+        return { success: true };
       } else {
-        // 基礎練の記録のみがある場合、新しい時間記録を追加（基礎練は保持）
-        // 基礎練の記録は保持し、新しい時間記録を別レコードとして作成
+        // 同じinput_methodのレコードがない場合、新しい時間記録を追加
+        // 異なるinput_methodのレコードは保持し、新しい時間記録を別レコードとして作成
         const sessionData: Omit<PracticeSession, 'id' | 'created_at' | 'updated_at'> = {
           user_id: userId,
           practice_date: targetDate,
@@ -808,17 +806,25 @@ export const getPracticeSessionsByDate = async (
       .eq('user_id', userId)
       .eq('practice_date', practiceDate);
     
-    // 楽器IDでフィルタリング（統一関数を使用）
-    query = await applyInstrumentFilter(query, instrumentId, true, 'practice_sessions');
+    // 根本的な改善: applyInstrumentFilterは常に元のクエリを返すため、
+    // 直接クエリを実行し、TypeScript側でフィルタリングする
+    query = query.order('created_at', { ascending: true });
     
-    const { data, error } = await query.order('created_at', { ascending: true });
+    const { data: rawData, error } = await query;
     
     if (error) {
       // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDate`, false);
       return { data: null, error };
     }
     
-    return { data, error: null };
+    // TypeScript側で楽器フィルタリングを実行
+    const filtered = filterByInstrumentIdInMemory(
+      (rawData || []) as PracticeSession[],
+      instrumentId,
+      true
+    );
+    
+    return { data: filtered as PracticeSession[] | null, error: null };
   } catch (error) {
     // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDate:exception`, false);
     return { data: null, error: error as SupabaseError };

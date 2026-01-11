@@ -62,6 +62,59 @@ export default function PrivacyPolicyScreen() {
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>1-1. 録音データの使用方法（重要な説明）</Text>
+          <Text style={[styles.text, { fontWeight: 'bold', color: '#2E7D32' }]}>
+            本アプリは、音楽練習・学習アプリとして、録音機能を提供しています。
+          </Text>
+          <Text style={styles.text}>
+            録音データの使用方法について、以下の点を明確に説明します：
+          </Text>
+          <Text style={styles.text}>
+            （1）録音データ（演奏録音・レッスン録音）は、ユーザー自身の音楽練習記録を保存・再生するための教育的な目的のみで使用されます。
+          </Text>
+          <Text style={styles.text}>
+            （2）録音データ（演奏録音・レッスン録音）は、ユーザー自身のアカウントにのみ保存され、他のユーザーと共有されることはありません。
+          </Text>
+          <Text style={styles.text}>
+            （3）録音データ（演奏録音・レッスン録音）は、アプリの機能（練習記録の保存・再生）のみに使用され、マーケティングや広告目的では使用されません。
+          </Text>
+          <Text style={styles.text}>
+            （4）録音データ（演奏録音・レッスン録音）は、セキュアなクラウドストレージ（Supabase）に保存されますが、データは暗号化され、ユーザー本人のみがアクセス可能です。
+          </Text>
+          <Text style={styles.text}>
+            （5）録音データ（演奏録音・レッスン録音）は、アカウント削除時に自動的に削除されます。
+          </Text>
+          <Text style={styles.text}>
+            （6）レッスン録音は、音楽レッスンの記録としてユーザー自身が学習・復習するための教育的な目的のみで使用され、他のユーザーや第三者と共有されることはありません。
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>1-2. 13歳未満のユーザー（子供）のプライバシー保護</Text>
+          <Text style={[styles.text, { fontWeight: 'bold', color: '#2E7D32' }]}>
+            本アプリは、全世代向けの音楽練習アプリですが、特に13歳未満のユーザー（子供）のプライバシーを保護するため、以下の取り組みを行っています。
+          </Text>
+          <Text style={styles.text}>
+            （1）13歳未満のユーザーがアカウントを作成する際は、保護者の同意を取得します。
+          </Text>
+          <Text style={styles.text}>
+            （2）録音データを含むすべてのデータは、ユーザー自身のアカウントにのみ保存され、他のユーザーや第三者と共有されることはありません。
+          </Text>
+          <Text style={styles.text}>
+            （3）録音データは、教育的な目的（音楽練習記録の保存・再生）のみに使用され、マーケティングや広告目的では使用されません。
+          </Text>
+          <Text style={styles.text}>
+            （4）保護者は、お子様のアカウント情報や録音データの閲覧・削除をいつでもリクエストできます。
+          </Text>
+          <Text style={styles.text}>
+            （5）米国のCOPPA（Children's Online Privacy Protection Act）にも準拠しています。
+          </Text>
+          <Text style={styles.text}>
+            保護者の方からのお問い合わせは、個人情報保護管理者（app.gakki@gmail.com）までご連絡ください。
+          </Text>
+        </View>
+
+        <View style={styles.section}>
           <Text style={styles.sectionTitle}>2. 個人情報保護管理者</Text>
           <Text style={styles.text}>本アプリの個人情報保護管理者は以下の通りです。</Text>
           <Text style={styles.text}>・氏名: 音楽練習アプリ プライバシー担当者</Text>

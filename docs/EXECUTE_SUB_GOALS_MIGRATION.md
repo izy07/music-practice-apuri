@@ -1,3 +1,40 @@
+# sub_goals テーブルのマイグレーション実行方法
+
+## 問題
+
+`sub_goals`テーブルがSupabaseデータベースに存在しないため、以下のエラーが発生しています：
+
+```
+Could not find the table 'public.sub_goals' in the schema cache
+```
+
+## 解決方法
+
+### 手順
+
+1. **Supabaseダッシュボードにアクセス**
+   - https://supabase.com/dashboard
+   - プロジェクト `uteeqkpsezbabdmritkn` を選択
+
+2. **SQL Editorを開く**
+   - 左メニューから「SQL Editor」をクリック
+
+3. **マイグレーションファイルの内容をコピー**
+   - 以下のSQLをコピーしてください
+
+4. **SQL Editorに貼り付けて実行**
+   - コピーしたSQLをSQL Editorに貼り付け
+   - 「Run」ボタンをクリック
+
+5. **実行結果を確認**
+   - 成功メッセージが表示されれば完了
+   - エラーが表示された場合は、エラーメッセージを確認
+
+## 実行するSQL（コピー用）
+
+以下のSQLをコピーしてSupabaseダッシュボードのSQL Editorで実行してください：
+
+```sql
 -- ============================================
 -- sub_goals テーブルの作成
 -- 長期目標のサブ目標を管理するテーブル
@@ -73,3 +110,48 @@ COMMENT ON TABLE public.sub_goals IS '長期目標のサブ目標（最大10個�
 COMMENT ON COLUMN public.sub_goals.goal_id IS '親となる長期目標のID';
 COMMENT ON COLUMN public.sub_goals.order_index IS '表示順序（小さい順）';
 COMMENT ON COLUMN public.sub_goals.is_completed IS '完了フラグ（trueの場合、進捗率に反映される）';
+```
+
+## 実行後の確認
+
+実行後、以下のSQLでテーブルの存在を確認できます：
+
+```sql
+-- 1. テーブルの存在確認（最もシンプル）
+SELECT EXISTS (
+  SELECT 1 FROM information_schema.tables 
+  WHERE table_schema = 'public' 
+  AND table_name = 'sub_goals'
+);
+
+-- 2. テーブル構造の確認
+SELECT 
+  column_name,
+  data_type,
+  is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public' 
+  AND table_name = 'sub_goals'
+ORDER BY ordinal_position;
+
+-- 3. RLSポリシーの確認
+SELECT 
+  policyname,
+  cmd
+FROM pg_policies
+WHERE schemaname = 'public' 
+  AND tablename = 'sub_goals';
+
+-- 4. トリガーの確認
+SELECT 
+  trigger_name,
+  event_manipulation,
+  event_object_table
+FROM information_schema.triggers
+WHERE event_object_schema = 'public'
+  AND event_object_table = 'sub_goals';
+```
+
+すべてが正しく表示されれば、マイグレーションは成功しています。
+
+**注意**: 上記の確認用SQLは、マイグレーションSQLとは別に実行してください。

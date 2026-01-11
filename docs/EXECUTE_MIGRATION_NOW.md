@@ -222,33 +222,99 @@ END $$;
 実行後、以下のSQLでカラムの存在を確認できます：
 
 ```sql
+-- 各カラムの存在確認（個別に実行）
 SELECT 
-  table_name,
-  column_name,
-  CASE 
-    WHEN EXISTS (
-      SELECT 1 FROM information_schema.columns 
-      WHERE table_schema = 'public' 
-      AND table_name = t.table_name
-      AND column_name = t.column_name
-    ) THEN '✅ 存在する'
-    ELSE '❌ 存在しない'
-  END as status
-FROM (
-  VALUES 
-    ('my_songs', 'instrument_id'),
-    ('recordings', 'instrument_id'),
-    ('recordings', 'recording_type'),
-    ('practice_sessions', 'instrument_id'),
-    ('goals', 'instrument_id'),
-    ('goals', 'show_on_calendar'),
-    ('goals', 'is_completed'),
-    ('events', 'instrument_id'),
-    ('events', 'event_date'),
-    ('tasks', 'instrument_id')
-) AS t(table_name, column_name)
-ORDER BY table_name, column_name;
+  'my_songs.instrument_id' as check_column,
+  EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'my_songs'
+    AND column_name = 'instrument_id'
+  ) as exists;
+
+SELECT 
+  'recordings.instrument_id' as check_column,
+  EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'recordings'
+    AND column_name = 'instrument_id'
+  ) as exists;
+
+SELECT 
+  'recordings.recording_type' as check_column,
+  EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'recordings'
+    AND column_name = 'recording_type'
+  ) as exists;
+
+SELECT 
+  'practice_sessions.instrument_id' as check_column,
+  EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'practice_sessions'
+    AND column_name = 'instrument_id'
+  ) as exists;
+
+SELECT 
+  'goals.instrument_id' as check_column,
+  EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'goals'
+    AND column_name = 'instrument_id'
+  ) as exists;
+
+SELECT 
+  'goals.show_on_calendar' as check_column,
+  EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'goals'
+    AND column_name = 'show_on_calendar'
+  ) as exists;
+
+SELECT 
+  'goals.is_completed' as check_column,
+  EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'goals'
+    AND column_name = 'is_completed'
+  ) as exists;
+
+SELECT 
+  'events.instrument_id' as check_column,
+  EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'events'
+    AND column_name = 'instrument_id'
+  ) as exists;
+
+SELECT 
+  'events.event_date' as check_column,
+  EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'events'
+    AND column_name = 'event_date'
+  ) as exists;
+
+SELECT 
+  'tasks.instrument_id' as check_column,
+  EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' 
+    AND table_name = 'tasks'
+    AND column_name = 'instrument_id'
+  ) as exists;
 ```
 
-すべてのカラムが「✅ 存在する」と表示されれば、マイグレーションは成功しています。
+すべてのクエリで `exists` が `true` と表示されれば、マイグレーションは成功しています。
+
+**注意**: 上記の確認用SQLは、マイグレーションSQLとは別に実行してください。複数のクエリを一度に実行する場合は、セミコロン（`;`）で区切って実行してください。
 

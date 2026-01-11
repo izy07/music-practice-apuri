@@ -86,9 +86,9 @@ export default function MusicDictionaryScreen() {
       if (selectedCategory === 'all' || term.category === selectedCategory) {
         allTerms.push({
           data: {
-            term_ja: term.term_ja,
-            term_en: term.term_en || undefined,
-            description_ja: term.description_ja || '',
+            term_ja: term.term,
+            term_en: term.meaning_en || undefined,
+            description_ja: term.description_ja || term.meaning_ja || '',
             description_en: term.description_en || undefined,
           },
           isCustom: true,
@@ -151,7 +151,7 @@ export default function MusicDictionaryScreen() {
   const handleDeleteTerm = async (term: MusicTerm) => {
     Alert.alert(
       '削除確認',
-      `「${term.term_ja}」を削除しますか？`,
+      `「${term.term}」を削除しますか？`,
       [
         { text: 'キャンセル', style: 'cancel' },
         {
@@ -402,11 +402,23 @@ function AddEditTermModal({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    // visibleが変わったときのみフォームをリセット/設定（無限ループを防ぐ）
+    if (!visible) {
+      // モーダルが閉じられたときはフォームをリセット
+      setTermJa('');
+      setTermEn('');
+      setCategory('dynamics');
+      setDescriptionJa('');
+      setDescriptionEn('');
+      return;
+    }
+    
+    // モーダルが開かれたとき、termがあればフォームを設定
     if (term) {
-      setTermJa(term.term_ja);
-      setTermEn(term.term_en || '');
+      setTermJa(term.term);
+      setTermEn(term.meaning_en || '');
       setCategory((term.category as MusicTermCategory) || 'dynamics');
-      setDescriptionJa(term.description_ja || '');
+      setDescriptionJa(term.description_ja || term.meaning_ja || '');
       setDescriptionEn(term.description_en || '');
     } else {
       setTermJa('');
@@ -415,7 +427,7 @@ function AddEditTermModal({
       setDescriptionJa('');
       setDescriptionEn('');
     }
-  }, [term, visible]);
+  }, [visible]); // termを依存配列から削除（無限ループを防ぐ）
 
   // Webプラットフォームでのフォーカス管理（aria-hidden警告を防ぐため）
   useEffect(() => {
@@ -445,9 +457,10 @@ function AddEditTermModal({
       if (term) {
         // 更新
         const { error } = await updateMusicTerm(term.id, {
-          term_ja: termJa.trim(),
-          term_en: termEn.trim() || null,
+          term: termJa.trim(),
+          meaning_en: termEn.trim() || null,
           category: category,
+          meaning_ja: descriptionJa.trim(),
           description_ja: descriptionJa.trim(),
           description_en: descriptionEn.trim() || null,
         });
@@ -460,9 +473,11 @@ function AddEditTermModal({
       } else {
         // 新規追加
         const { error } = await createMusicTerm({
-          term_ja: termJa.trim(),
-          term_en: termEn.trim() || null,
+          term: termJa.trim(),
+          reading: termJa.trim(), // 読み方は用語と同じ（必須フィールド）
+          meaning_en: termEn.trim() || '',
           category: category,
+          meaning_ja: descriptionJa.trim(),
           description_ja: descriptionJa.trim(),
           description_en: descriptionEn.trim() || null,
         });

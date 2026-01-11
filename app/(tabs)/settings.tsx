@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User, Palette, Globe, ChartBar as BarChart3, BookOpen, MessageSquare, FileText, LogOut, ChevronRight, Library, Zap, Crown, Heart, Share2, Star, GraduationCap } from 'lucide-react-native';
+import { User, Palette, Globe, ChartBar as BarChart3, BookOpen, MessageSquare, FileText, LogOut, ChevronRight, Library, Zap, Crown, Heart, Share2, Star, GraduationCap, Bell, Shield } from 'lucide-react-native';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
@@ -86,7 +86,7 @@ export default function SettingsScreen() {
   };
 
 
-  const settingsItems = [
+  const settingsItems = useMemo(() => [
     {
       id: 'profile',
       title: t('profileSettings'),
@@ -144,6 +144,22 @@ export default function SettingsScreen() {
       onPress: () => router.push('/(tabs)/language-settings' as any)
     },
     {
+      id: 'notification',
+      title: t('notificationSettings'),
+      subtitle: t('notificationSettingsSubtitle'),
+      icon: Bell,
+      color: '#FF9800',
+      onPress: () => router.push('/(tabs)/notification-settings' as any)
+    },
+    {
+      id: 'privacy-settings',
+      title: t('privacySettings'),
+      subtitle: 'データ管理・セキュリティ設定',
+      icon: Shield,
+      color: '#4CAF50',
+      onPress: () => router.push('/(tabs)/privacy-settings' as any)
+    },
+    {
       id: 'support',
       title: t('feedbackTitle'),
       subtitle: t('feedbackSubtitle'),
@@ -151,7 +167,7 @@ export default function SettingsScreen() {
       color: '#E91E63',
       onPress: () => router.push('/(tabs)/support' as any)
     },
-  ];
+  ], [t, router]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme?.background || '#F7FAFC' }]} >

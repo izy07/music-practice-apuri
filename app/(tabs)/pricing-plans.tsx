@@ -72,26 +72,26 @@ export default function PricingPlansScreen() {
         {/* ヒーロー */}
         <View style={[styles.hero, { backgroundColor: currentTheme.surface }]}>
           <Crown size={28} color={currentTheme.primary} />
-          <Text style={[styles.heroTitle, { color: currentTheme.text }]}>あなたの練習を、もっと効率的に</Text>
-          <Text style={[styles.heroSubtitle, { color: currentTheme.textSecondary }]}>月額¥380 または年額¥3,600（月額換算¥300）で全ての機能が無制限で利用可能。</Text>
+          <Text style={[styles.heroTitle, { color: currentTheme.text }]}>練習を、もっと効率的に</Text>
+          <Text style={[styles.heroSubtitle, { color: currentTheme.textSecondary }]}>月額¥380（年額¥3,600）で全ての機能が無制限</Text>
         </View>
 
         {/* プラン比較 */}
         <View style={styles.plansRow}>
           {/* Free */}
           <View style={[styles.planCard, { backgroundColor: currentTheme.surface, borderColor: currentTheme.secondary }]}> 
-            <Text style={[styles.planName, { color: currentTheme.text }]}>Free</Text>
-            <Text style={[styles.price, { color: currentTheme.text }]}> 
+            <Text style={[styles.planName, { color: currentTheme.text, marginBottom: 4 }]}>Free</Text>
+            <Text style={[styles.price, { color: currentTheme.text, marginBottom: 6 }]}> 
               ¥0<span style={{ fontSize: 12 }}>/月</span>
             </Text>
-            <View style={styles.featureList}>
+            <View style={[styles.featureList, { marginBottom: 4, gap: 6 }]}>
               {[
-                '演奏録音機能（各楽器月3回まで、1回あたり3分まで）',
+                '演奏録音機能（月3回まで、1回あたり3分まで）',
                 '楽器データ（2個まで使用可能）',
-                'マイライブラリ（各楽器ごとに6曲まで）',
-                '目標設定（各楽器ごとに2つまで）',
+                'マイライブラリ（10曲まで）',
+                '目標設定（2つまで）',
               ].map((f) => (
-                <View key={f} style={styles.featureItem}>
+                <View key={f} style={[styles.featureItem, { gap: 6 }]}>
                   <CheckCircle2 size={16} color={currentTheme.primary} />
                   <Text style={[styles.featureText, { color: currentTheme.text }]}>{f}</Text>
                 </View>
@@ -108,6 +108,7 @@ export default function PricingPlansScreen() {
             <View style={styles.featureList}>
               {[
                 '全ての機能が無制限で利用可能',
+                '演奏録音機能（60分まで）',
               ].map((f) => (
                 <View key={f} style={styles.featureItem}>
                   <CheckCircle2 size={16} color={currentTheme.primary} />
@@ -134,7 +135,10 @@ export default function PricingPlansScreen() {
             <Text style={{ fontSize: 12, color: currentTheme.textSecondary }}>（月額換算¥300）</Text>
           </Text>
           <View style={styles.featureList}>
-            {['全ての機能が無制限で利用可能'].map((f) => (
+            {[
+              '全ての機能が無制限で利用可能',
+              '演奏録音機能（60分まで）',
+            ].map((f) => (
               <View key={f} style={styles.featureItem}>
                 <CheckCircle2 size={16} color={currentTheme.primary} />
                 <Text style={[styles.featureText, { color: currentTheme.text }]}>{f}</Text>
@@ -199,10 +203,10 @@ const styles = StyleSheet.create({
   },
   hero: {
     borderRadius: 16,
-    padding: 20,
+    padding: 12,
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
+    gap: 4,
+    marginBottom: 8,
   },
   refreshBadge: {
     marginTop: 8,
@@ -256,12 +260,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
-    flex: 1,
-    minHeight: 0,
     width: '100%',
   },
   featureText: {
-    flex: 1,
     flexShrink: 1,
     fontSize: 13,
     lineHeight: 18,

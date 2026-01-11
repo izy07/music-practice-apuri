@@ -271,20 +271,20 @@ export default function EventManagementSection({
           
           return (
             <View key={`event-${event.id}-${index}`} style={[styles.eventCard, { borderLeftColor: colorCode, borderLeftWidth: 4 }]}>
-              <View style={styles.eventHeader}>
-                <View style={styles.eventTitleContainer}>
+            <View style={styles.eventHeader}>
+              <View style={styles.eventTitleContainer}>
                   <View style={[styles.eventColorDot, { backgroundColor: colorCode }]} />
-                  <Text style={[styles.eventTitle, { color: theme.text }]}>{event.title}</Text>
-                  {event.date && (
-                    <Text style={[styles.eventDate, { color: theme.textSecondary }]}>
-                      {new Date(event.date).toLocaleDateString('ja-JP', { 
-                        month: 'numeric', 
-                        day: 'numeric',
-                        weekday: 'short'
-                      })}
-                    </Text>
-                  )}
-                </View>
+                <Text style={[styles.eventTitle, { color: theme.text }]}>{event.title}</Text>
+                {event.date && (
+                  <Text style={[styles.eventDate, { color: theme.textSecondary }]}>
+                    {new Date(event.date).toLocaleDateString('ja-JP', { 
+                      month: 'numeric', 
+                      day: 'numeric',
+                      weekday: 'short'
+                    })}
+                  </Text>
+                )}
+              </View>
               <View style={styles.eventActions}>
                 <TouchableOpacity
                   style={[styles.actionButton, { backgroundColor: theme.secondary }]}
