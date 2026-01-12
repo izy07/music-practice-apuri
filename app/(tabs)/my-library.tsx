@@ -393,7 +393,7 @@ export default function MyLibraryScreen() {
             upgradeButtonText: alertConfig.upgradeButtonText,
             router,
             onCancel: () => {
-              setIsSaving(false);
+                setIsSaving(false);
             },
           });
           return;
@@ -431,7 +431,7 @@ export default function MyLibraryScreen() {
             upgradeButtonText: 'アップグレード',
             router,
             onCancel: () => {
-              setIsSaving(false);
+                setIsSaving(false);
             },
           });
           return;
@@ -674,10 +674,10 @@ export default function MyLibraryScreen() {
           throw error;
         }
 
-              logger.debug('曲削除成功:', { songId: song.id });
-              
-              // 削除後にリストを再読み込み
-              await loadSongs();
+        logger.debug('曲削除成功:', { songId: song.id });
+        
+        // 削除後にリストを再読み込み
+        await loadSongs();
               
               // 制限状態を再チェック（削除後に上限が解除される可能性があるため）
               try {
@@ -691,9 +691,9 @@ export default function MyLibraryScreen() {
               } catch (error) {
                 logger.error('制限チェック更新エラー:', error);
               }
-              
-              // Web環境では簡易的なアラートを表示
-              window.alert('曲を削除しました');
+        
+        // Web環境では簡易的なアラートを表示
+        window.alert('曲を削除しました');
       } catch (error) {
         logger.error('曲削除エラー:', error);
         window.alert('曲の削除に失敗しました。もう一度お試しください。');

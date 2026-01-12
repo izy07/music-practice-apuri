@@ -283,58 +283,108 @@ export default function EventModal({
   };
 
   const handleDelete = async () => {
-    logger.debug('削除ボタンがクリックされました', event);
+    logger.debug('EventModal: 削除ボタンがクリックされました', event);
     if (!event) {
-      logger.debug('イベントが存在しません');
+      logger.debug('EventModal: イベントが存在しません');
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert('イベントが見つかりません');
+      } else {
+        Alert.alert('エラー', 'イベントが見つかりません');
+      }
       return;
     }
 
-    Alert.alert(
-      '削除の確認',
-      'このイベントを削除しますか？',
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        {
-          text: '削除',
-          style: 'destructive',
-          onPress: async () => {
-            logger.debug('削除を実行します:', event.id);
-            setLoading(true);
-            try {
-              const { data, error } = await supabase
-                .from('events')
-                .delete()
-                .eq('id', event.id)
-                .select();
-
-              logger.debug('削除結果:', { data, error });
-
-              if (error) {
-                ErrorHandler.handle(error, 'イベント削除', true);
-                throw error;
+    logger.debug('EventModal: 削除確認ダイアログを表示します');
+    
+    // Web環境ではwindow.confirmを使用
+    let confirmed = false;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      confirmed = window.confirm(`「${event.title}」を削除しますか？`);
+    } else {
+      // React Native環境ではAlert.alertを使用
+      await new Promise<void>((resolve) => {
+        Alert.alert(
+          '削除の確認',
+          `「${event.title}」を削除しますか？`,
+          [
+            { 
+              text: 'キャンセル', 
+              style: 'cancel',
+              onPress: () => {
+                logger.debug('EventModal: 削除がキャンセルされました');
+                resolve();
               }
-              
-              logger.debug('イベントを削除しました、コールバックを実行します');
-              onEventSaved();
-              logger.debug('onEventSavedコールバックを実行しました');
-              // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
-              blurActiveElement();
-              onClose();
-              
-              // 削除成功のアラートは削除後に表示
-              setTimeout(() => {
-                Alert.alert('成功', 'イベントを削除しました');
-              }, 100);
-            } catch (error) {
-              ErrorHandler.handle(error, 'イベント削除', true);
-              Alert.alert('エラー', 'イベントの削除に失敗しました');
-            } finally {
-              setLoading(false);
+            },
+            {
+              text: '削除',
+              style: 'destructive',
+              onPress: () => {
+                confirmed = true;
+                resolve();
+              }
             }
-          },
-        },
-      ]
-    );
+          ],
+          { cancelable: true, onDismiss: () => resolve() }
+        );
+      });
+    }
+    
+    if (!confirmed) {
+      logger.debug('EventModal: 削除がキャンセルされました');
+      return;
+    }
+    
+    logger.debug('EventModal: 削除を実行します', event.id);
+    setLoading(true);
+    try {
+      logger.debug('EventModal: Supabase削除クエリを実行します');
+      const { data, error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', event.id)
+        .select();
+
+      logger.debug('EventModal: 削除結果', { data, error });
+
+      if (error) {
+        logger.error('EventModal: イベント削除エラー', error);
+        ErrorHandler.handle(error, 'イベント削除', true);
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.alert('イベントの削除に失敗しました');
+        } else {
+          Alert.alert('エラー', 'イベントの削除に失敗しました');
+        }
+        setLoading(false);
+        return;
+      }
+      
+      logger.debug('EventModal: イベントを削除しました、コールバックを実行します');
+      onEventSaved();
+      logger.debug('EventModal: onEventSavedコールバックを実行しました');
+      
+      // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+      blurActiveElement();
+      onClose();
+      
+      // 削除成功のアラートは削除後に表示
+      setTimeout(() => {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          window.alert('イベントを削除しました');
+        } else {
+          Alert.alert('削除完了', 'イベントを削除しました');
+        }
+      }, 100);
+    } catch (error) {
+      logger.error('EventModal: イベント削除例外', error);
+      ErrorHandler.handle(error, 'イベント削除', true);
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert('イベントの削除に失敗しました');
+      } else {
+        Alert.alert('エラー', 'イベントの削除に失敗しました');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const resetForm = () => {
@@ -554,12 +604,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+    ...(Platform.OS === 'web' ? { zIndex: 10000 } : {}), // PracticeRecordModalの上に表示
   },
   modalContent: {
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     maxHeight: '88%',
     width: '100%',
+    ...(Platform.OS === 'web' ? { zIndex: 10001 } : {}), // PracticeRecordModalの上に表示
   },
   header: {
     flexDirection: 'row',

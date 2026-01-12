@@ -102,47 +102,56 @@ export default function BeginnerGuideScreen() {
 
     const loadGuides = async () => {
       try {
+        // 開発環境ではキャッシュを無効化（常に最新データを読み込む）
+        const isDevelopment = __DEV__ || process.env.NODE_ENV === 'development';
+        
         // まずキャッシュから読み込みを試行（オフライン対応・最優先）
+        // ただし開発環境ではキャッシュをスキップ
         let loadedFromCache = false;
-        try {
-          const cachedData = await AsyncStorage.getItem('instrumentGuides_cache');
-          if (cachedData) {
-            try {
-              const parsed = JSON.parse(cachedData);
-              // データの検証を強化
-              if (
-                parsed && 
-                typeof parsed === 'object' && 
-                !Array.isArray(parsed) &&
-                Object.keys(parsed).length > 0 &&
-                Object.values(parsed).some((guide: any) => guide && typeof guide === 'object')
-              ) {
-                instrumentGuides = parsed;
-                loadedFromCache = true;
-                if (isMounted) {
+        if (!isDevelopment) {
+          try {
+            const cachedData = await AsyncStorage.getItem('instrumentGuides_cache');
+            if (cachedData) {
+              try {
+                const parsed = JSON.parse(cachedData);
+                // データの検証を強化
+                if (
+                  parsed && 
+                  typeof parsed === 'object' && 
+                  !Array.isArray(parsed) &&
+                  Object.keys(parsed).length > 0 &&
+                  Object.values(parsed).some((guide: any) => guide && typeof guide === 'object')
+                ) {
+                  instrumentGuides = parsed;
+                  loadedFromCache = true;
+                  if (isMounted) {
       setGuidesLoaded(true);
-                  setLoadError(null);
+                    setLoadError(null);
+                  }
+                  logger.debug('✅ ガイドデータをキャッシュから読み込みました', {
+                    keys: Object.keys(parsed).length
+                  });
+                } else {
+                  logger.warn('⚠️ キャッシュデータが無効です。再読み込みします。');
+                  // 無効なキャッシュを削除
+                  await AsyncStorage.removeItem('instrumentGuides_cache').catch(() => {});
                 }
-                logger.debug('✅ ガイドデータをキャッシュから読み込みました', {
-                  keys: Object.keys(parsed).length
-                });
-              } else {
-                logger.warn('⚠️ キャッシュデータが無効です。再読み込みします。');
-                // 無効なキャッシュを削除
+              } catch (parseError) {
+                logger.warn('⚠️ キャッシュデータのパースエラー:', parseError);
+                // 破損したキャッシュを削除
                 await AsyncStorage.removeItem('instrumentGuides_cache').catch(() => {});
               }
-            } catch (parseError) {
-              logger.warn('⚠️ キャッシュデータのパースエラー:', parseError);
-              // 破損したキャッシュを削除
-              await AsyncStorage.removeItem('instrumentGuides_cache').catch(() => {});
             }
+          } catch (cacheError) {
+            logger.debug('キャッシュ読み込みエラー（無視）:', cacheError);
           }
-        } catch (cacheError) {
-          logger.debug('キャッシュ読み込みエラー（無視）:', cacheError);
+        } else {
+          logger.debug('🔧 開発環境: キャッシュをスキップして最新データを読み込みます');
         }
 
         // キャッシュから読み込めた場合は、バックグラウンドで最新データを更新
-        if (loadedFromCache) {
+        // 開発環境では常に最新データを読み込む
+        if (loadedFromCache && !isDevelopment) {
           // バックグラウンドで最新データを読み込んで更新（非ブロッキング）
           loadInstrumentGuides()
             .then((guides) => {
@@ -191,11 +200,16 @@ export default function BeginnerGuideScreen() {
           Object.values(guides).some((guide: any) => guide && typeof guide === 'object')
         ) {
           // キャッシュに保存（オフライン対応）
-          try {
-            await AsyncStorage.setItem('instrumentGuides_cache', JSON.stringify(guides));
-            logger.debug('✅ ガイドデータをキャッシュに保存しました');
-          } catch (saveError) {
-            logger.debug('キャッシュ保存エラー（無視）:', saveError);
+          // 開発環境ではキャッシュを保存しない（常に最新データを読み込むため）
+          if (!isDevelopment) {
+            try {
+              await AsyncStorage.setItem('instrumentGuides_cache', JSON.stringify(guides));
+              logger.debug('✅ ガイドデータをキャッシュに保存しました');
+            } catch (saveError) {
+              logger.debug('キャッシュ保存エラー（無視）:', saveError);
+            }
+          } else {
+            logger.debug('🔧 開発環境: キャッシュを保存しません');
           }
           
           if (isMounted) {
@@ -473,6 +487,47 @@ export default function BeginnerGuideScreen() {
                 <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>{t('famousMusicians')}</Text>
                 <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.overview.famous}</Text>
               </View>
+              
+              {/* 生産国による特徴 */}
+              {(currentGuide as any)?.productionCountry && (
+                <>
+                  <View style={styles.infoItem}>
+                    <Text style={[styles.infoLabel, { color: currentTheme.textSecondary, marginTop: 16 }]}>生産国による特徴</Text>
+                  </View>
+                  
+                  {(currentGuide as any).productionCountry.italy && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide as any).productionCountry.italy}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {(currentGuide as any).productionCountry.germany && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide as any).productionCountry.germany}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {(currentGuide as any).productionCountry.china && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide as any).productionCountry.china}
+                      </Text>
+                    </View>
+                  )}
+                  
+                  {(currentGuide as any).productionCountry.japan && (
+                    <View style={styles.infoItem}>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                        {(currentGuide as any).productionCountry.japan}
+                      </Text>
+                    </View>
+                  )}
+                </>
+              )}
             </View>
           </View>
         );
@@ -844,6 +899,9 @@ export default function BeginnerGuideScreen() {
         const isHorn = instrumentName === 'horn';
         const isTrombone = instrumentName === 'trombone';
         
+        // basicTermsが存在する場合はそれを使用、なければハードコードされた用語を使用
+        const basicTerms = (currentGuide as any)?.basicTerms;
+        
         return (
           <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
             <View style={styles.sectionHeader}>
@@ -854,6 +912,25 @@ export default function BeginnerGuideScreen() {
             </View>
             
             <View style={styles.infoGrid}>
+              {basicTerms && typeof basicTerms === 'object' ? (
+                // basicTermsから動的に用語を表示
+                Object.entries(basicTerms).map(([key, value]) => {
+                  if (typeof value !== 'string') return null;
+                  // 用語名と説明を分割（例: "ペグ：説明文" → "ペグ" と "説明文"）
+                  const parts = value.split('：');
+                  const termName = parts[0] || key;
+                  const termDescription = parts.slice(1).join('：') || value;
+                  
+                  return (
+                    <View key={key} style={styles.infoItem}>
+                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>{termName}</Text>
+                      <Text style={[styles.infoText, { color: currentTheme.text }]}>{termDescription}</Text>
+                    </View>
+                  );
+                })
+              ) : (
+                // フォールバック: ハードコードされた用語を表示
+                <>
               {isStringInstrument && (
                 <>
                   <View style={styles.infoItem}>
@@ -1193,6 +1270,8 @@ export default function BeginnerGuideScreen() {
                     <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>スライドポジション</Text>
                     <Text style={[styles.infoText, { color: currentTheme.text }]}>スライドの位置。第1ポジション（最も短い）から第7ポジション（最も長い）まであり、位置で音程が決まります。</Text>
                   </View>
+                </>
+              )}
                 </>
               )}
             </View>

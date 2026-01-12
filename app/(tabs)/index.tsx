@@ -12,6 +12,7 @@ import EventManagementSection from './components/calendar/EventManagementSection
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { useCalendarData } from '@/hooks/tabs/useCalendarData';
 import { supabase } from '@/lib/supabase';
+import { ErrorHandler } from '@/lib/errorHandler';
 import { saveRecording } from '@/lib/database';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
@@ -109,6 +110,7 @@ const initialUIState: UIState = {
 
 export default function CalendarScreen() {
   const router = useRouter();
+  const [allEvents, setAllEvents] = useState<{ [key: string]: Array<{id: string, title: string, description?: string, color?: string | null, date?: string}> }>({});
   const { isAuthenticated, isLoading, isInitialized, user } = useAuthAdvanced();
   const { currentTheme, practiceSettings, selectedInstrument, isInitializing: isInstrumentInitializing } = useInstrumentTheme();
   const { entitlement } = useSubscription();
@@ -190,6 +192,7 @@ export default function CalendarScreen() {
     loadEvents,
     loadRecordingsData,
     loadShortTermGoal,
+    loadAllEvents,
   } = useCalendarData(currentDate);
 
   // 認証チェック
@@ -198,6 +201,17 @@ export default function CalendarScreen() {
       return; // 認証されていない場合は早期リターン
     }
   }, [isLoading, isAuthenticated]);
+
+  // 全イベントを読み込む（イベント管理セクション用）
+  useEffect(() => {
+    const loadAllEventsData = async () => {
+      if (isAuthenticated && !isLoading && loadAllEvents) {
+        const allEventsData = await loadAllEvents();
+        setAllEvents(allEventsData || {});
+      }
+    };
+    loadAllEventsData();
+  }, [isAuthenticated, isLoading, loadAllEvents]);
 
   // ネットワーク状態監視
   useEffect(() => {
@@ -742,6 +756,7 @@ export default function CalendarScreen() {
               content: content || undefined,
               inputMethod: 'manual',
               practiceDate: practiceRecord.practice_date, // 選択された日付を指定
+              replaceMinutes: true, // 既存の時間を置き換える（加算しない）
             }
           );
           
@@ -819,7 +834,7 @@ export default function CalendarScreen() {
             // すべてのキャッシュキーを検索して削除（より確実に）
             const cacheKeyPattern = `practice_data_cache_${user.id}_`;
             const allKeys = await AsyncStorage.getAllKeys();
-            const practiceCacheKeys = allKeys.filter(key => key.startsWith(cacheKeyPattern));
+            const practiceCacheKeys = allKeys.filter((key: string) => key.startsWith(cacheKeyPattern));
             logger.debug(`[savePracticeRecord] 検出されたキャッシュキー:`, {
               allKeysCount: allKeys.length,
               practiceCacheKeysCount: practiceCacheKeys.length,
@@ -1151,13 +1166,6 @@ export default function CalendarScreen() {
             </Text>
           </View>
 
-          {/* Total Practice Time - Simplified */}
-          <View style={[styles.totalSummaryContainer, { backgroundColor: currentTheme.surface }]}>
-            <Text style={[styles.summaryText, { color: currentTheme.text }]}>
-              総合計練習時間: <Text style={[styles.highlightText, { color: currentTheme.primary }]}>{formatMinutesToHours(totalPracticeTime)}</Text>
-            </Text>
-          </View>
-
                   {/* Success Message */}
         {uiState.successMessage ? (
           <View style={styles.successMessageContainer}>
@@ -1177,16 +1185,28 @@ export default function CalendarScreen() {
         {/* イベント管理セクション */}
         <EventManagementSection
           currentTheme={currentTheme}
-          events={events}
+          events={allEvents}
           onAddEvent={() => setShowEventModal(true)}
           onEditEvent={(event) => {
             setSelectedEvent(event);
             setShowEventModal(true);
           }}
           onEventDeleted={async () => {
-            await loadEvents();
-            setSuccessMessage('イベントを削除しました！');
-            setTimeout(() => setSuccessMessage(''), 3000);
+            try {
+              // イベントデータを再読み込み
+              await loadEvents();
+              // 全イベントも再読み込み
+              if (loadAllEvents) {
+                const allEventsData = await loadAllEvents();
+                setAllEvents(allEventsData || {});
+              }
+              // 練習データも再読み込み（カレンダー表示を更新）
+              await refreshPracticeData();
+              setSuccessMessage('イベントを削除しました！');
+              setTimeout(() => setSuccessMessage(''), 3000);
+            } catch (error) {
+              logger.error('イベント削除後のデータ再読み込みエラー:', error);
+            }
           }}
         />
       </ScrollView>
@@ -1250,6 +1270,56 @@ export default function CalendarScreen() {
           setSelectedEvent(event);
           setShowEventModal(true);
         }}
+        onEventDelete={async (event) => {
+          // イベント削除
+          try {
+            logger.debug('カレンダー画面: イベント削除開始', { eventId: event.id, eventTitle: event.title });
+            const { error } = await supabase
+              .from('events')
+              .delete()
+              .eq('id', event.id);
+
+            if (error) {
+              logger.error('カレンダー画面: イベント削除エラー:', error);
+              throw error;
+            }
+            
+            logger.info('カレンダー画面: イベントを削除しました', event.id);
+            
+            // イベントデータを再読み込み
+            logger.debug('カレンダー画面: イベントデータを再読み込みします');
+            await loadEvents();
+            if (loadAllEvents) {
+              const allEventsData = await loadAllEvents();
+              setAllEvents(allEventsData || {});
+              logger.debug('カレンダー画面: 全イベントデータを再読み込みしました', Object.keys(allEventsData || {}).length);
+            }
+            
+            // 練習データも再読み込み（カレンダー表示を更新）
+            logger.debug('カレンダー画面: 練習データを再読み込みします');
+            await refreshPracticeData();
+            
+            // 練習記録画面のデータも更新
+            logger.debug('カレンダー画面: 練習記録画面のデータを更新します');
+            setPracticeRecordRefreshKey(prev => prev + 1);
+            
+            setSuccessMessage('イベントを削除しました！');
+            setTimeout(() => setSuccessMessage(''), 3000);
+            
+            // 削除成功のアラートを表示
+            Alert.alert('削除完了', 'イベントを削除しました');
+          } catch (error) {
+            logger.error('カレンダー画面: イベントの削除エラー:', error);
+            ErrorHandler.handle(error, 'イベントの削除', true);
+            Alert.alert('エラー', 'イベントの削除に失敗しました');
+          }
+        }}
+        onEventCreate={(date) => {
+          // イベント作成モーダルを開く（PracticeRecordModalは開いたまま）
+          setSelectedDate(date);
+          setSelectedEvent(null);
+          setShowEventModal(true);
+        }}
       />
 
       <EventModal
@@ -1258,7 +1328,7 @@ export default function CalendarScreen() {
           setShowEventModal(false);
           setSelectedEvent(null);
         }}
-        selectedDate={undefined}
+        selectedDate={uiState.selectedDate || undefined}
         event={uiState.selectedEvent ? {
           id: uiState.selectedEvent!.id,
           title: uiState.selectedEvent!.title,
@@ -1277,6 +1347,11 @@ export default function CalendarScreen() {
             try {
               await loadEvents();
               logger.debug('loadEvents完了（1回目）');
+              // 全イベントも再読み込み
+              if (loadAllEvents) {
+                const allEventsData = await loadAllEvents();
+                setAllEvents(allEventsData || {});
+              }
             } catch (error) {
               logger.error('イベント読み込みエラー（1回目）:', error);
             }
@@ -1286,6 +1361,11 @@ export default function CalendarScreen() {
               try {
                 await loadEvents();
                 logger.debug('loadEvents完了（2回目）');
+                // 全イベントも再読み込み
+                if (loadAllEvents) {
+                  const allEventsData = await loadAllEvents();
+                  setAllEvents(allEventsData || {});
+                }
           setSuccessMessage('イベントを保存しました！');
           setTimeout(() => setSuccessMessage(''), 3000);
               } catch (error) {
@@ -1511,7 +1591,6 @@ const styles = StyleSheet.create({
     paddingLeft: getScaledSpacing(16), // 左側の余白を追加
     paddingBottom: getScaledSpacing(6), // 下部のパディングを減らす
     borderRadius: 12,
-    marginBottom: getScaledSpacing(-4), // 負のマージンで総合計に近づける
     marginHorizontal: getScaledSpacing(4), // 左右のマージンも追加
   },
   summaryText: {
@@ -1558,21 +1637,6 @@ const styles = StyleSheet.create({
     
     
     elevation: 6,
-  },
-  totalSummaryContainer: {
-    marginTop: getScaledSpacing(-4), // 負のマージンで今月の合計に近づける
-    padding: getScaledSpacing(12),
-    paddingLeft: getScaledSpacing(16), // 左側の余白を追加
-    paddingTop: getScaledSpacing(6), // 上部のパディングを減らす
-    paddingBottom: getScaledSpacing(6), // 下部のパディングを減らす
-    borderRadius: 12,
-    marginBottom: getScaledSpacing(4), // 下部のマージンを減らす
-    marginHorizontal: getScaledSpacing(4), // 左右のマージンも追加
-  },
-  totalSummaryText: {
-    fontSize: 13,
-    textAlign: 'center',
-    color: '#666666',
   },
 
   fabLabel: {

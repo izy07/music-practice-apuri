@@ -1258,6 +1258,100 @@ export function useCalendarData(currentDate: Date) {
     };
   }, [loadPracticeData, loadTotalPracticeTime, loadEvents, loadRecordingsData, loadShortTermGoal]);
 
+  /**
+   * 全てのイベントデータを読み込む（月に関係なく全期間）
+   * 
+   * 処理フロー:
+   * 1. 認証状態を確認（既に取得済みのuserを使用）
+   * 2. 楽器IDを取得（DBフィルタリングで使用）
+   * 3. オンライン時はDBから取得（eventsテーブル、全期間のデータ）
+   * 4. TypeScript側で楽器フィルタリング
+   * 
+   * 注意: イベント管理セクションで使用（月をまたいで全てのイベントを表示）
+   * 
+   * @param userParam オプション: ユーザー情報（テスト用、通常は未指定）
+   */
+  const loadAllEvents = useCallback(async (userParam?: { id: string }) => {
+    try {
+      const currentUser = userParam ?? user;
+      if (!currentUser) {
+        return {};
+      }
+
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, currentUser.selected_instrument_id);
+      
+      const { supabase } = await import('@/lib/supabase');
+      
+      const query = supabase
+        .from('events')
+        .select('id, title, description, date, color, instrument_id')
+        .eq('user_id', currentUser.id)
+        .eq('is_completed', false)
+        .order('date', { ascending: true });
+      
+      const { data: rawData, error } = await query;
+      
+      type EventWithInstrumentId = {
+        id: string;
+        title: string;
+        description?: string;
+        date: string;
+        color?: string | null;
+        instrument_id?: string | null;
+      };
+      
+      if (error) {
+        if (error.code === 'PGRST205' || error.code === 'PGRST116' || error.message?.includes('Could not find the table')) {
+          logger.info('eventsテーブルが存在しません。マイグレーションを実行してください。');
+          return {};
+        }
+        ErrorHandler.handle(error, '全イベント読み込み', false);
+        logger.error('全イベント読み込みエラー:', error);
+        return {};
+      }
+
+      if (!rawData) {
+        return {};
+      }
+
+      // TypeScript側で楽器フィルタリングを実行
+      const filtered = filterByInstrumentIdInMemory(
+        rawData as EventWithInstrumentId[],
+        currentInstrumentId,
+        true
+      );
+      
+      // 日付文字列をキーとしたイベントデータを作成
+      const allEvents: EventData = {};
+      filtered.forEach((row: EventWithInstrumentId) => {
+        const dateStr = row.date;
+        if (!allEvents[dateStr]) {
+          allEvents[dateStr] = [];
+        }
+        allEvents[dateStr].push({
+          id: row.id,
+          title: row.title,
+          description: row.description || undefined,
+          date: row.date,
+          color: row.color || null,
+        });
+      });
+      
+      logger.debug('[useCalendarData.loadAllEvents] 全イベントデータ取得に成功しました', {
+        rawCount: rawData.length,
+        filteredCount: filtered.length,
+        instrumentId: currentInstrumentId,
+        eventsByDay: Object.keys(allEvents).length
+      });
+      
+      return allEvents;
+    } catch (error) {
+      ErrorHandler.handle(error, '全イベントデータの読み込み', false);
+      logger.error('全イベントデータの読み込みエラー:', error);
+      return {};
+    }
+  }, [selectedInstrument, user]);
+
   return {
     practiceData,
     recordingsData,
@@ -1272,6 +1366,7 @@ export function useCalendarData(currentDate: Date) {
     loadEvents,
     loadRecordingsData,
     loadShortTermGoal,
+    loadAllEvents,
   };
 }
 

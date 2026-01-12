@@ -19,6 +19,7 @@ export interface MusicTerm {
   description_ja?: string | null;
   description_en?: string | null;
   created_at?: string;
+  user_id?: string | null; // ユーザーID（ユーザーが作成した用語の場合）
 }
 
 export interface MusicTermQuery {
@@ -56,7 +57,7 @@ export const getMusicTerms = async (
     // DBから取得
     let dbQuery = supabase
       .from('music_terms')
-      .select('id, term, reading, category, meaning_ja, meaning_en, description_ja, description_en, created_at')
+      .select('id, term, reading, category, meaning_ja, meaning_en, description_ja, description_en, created_at, user_id')
       .order('created_at', { ascending: true });
     
     if (query?.category) {
@@ -105,7 +106,7 @@ export const getMusicTermById = async (
   try {
     const { data, error } = await supabase
       .from('music_terms')
-      .select('id, term, reading, category, meaning_ja, meaning_en, description_ja, description_en, created_at')
+      .select('id, term, reading, category, meaning_ja, meaning_en, description_ja, description_en, created_at, user_id')
       .eq('id', termId)
       .single();
     
@@ -159,7 +160,7 @@ export const createMusicTerm = async (
 
     const { data, error } = await supabase
       .from('music_terms')
-      .insert(term)
+      .insert({ ...term, user_id: user.id })
       .select()
       .single();
 

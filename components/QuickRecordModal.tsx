@@ -42,6 +42,8 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
   const router = useRouter();
   const [isRecording, setIsRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [stopSignal, setStopSignal] = useState<{ shouldStop: boolean }>({ shouldStop: false });
 
   // 既存記録との統合処理（リポジトリを使用）
   const savePracticeRecordWithIntegration = async (minutes: number) => {
@@ -130,6 +132,17 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
     let disposeFn: (() => Promise<void>) | null = null;
     
     try {
+      // APIキーの事前チェック
+      const apiKey = process.env.EXPO_PUBLIC_WHISPER_API_KEY || process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+      if (!apiKey) {
+        Alert.alert(
+          '音声認識の設定が必要です',
+          '音声入力機能を使用するには、OpenAI APIキーの設定が必要です。\n\n.env.localファイルに以下を追加してください：\n\nEXPO_PUBLIC_OPENAI_API_KEY=sk-***\n\n設定後、開発サーバーを再起動してください。\n\n時間選択もご利用いただけます。',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
       // マイク権限の確認
       const granted = await SttService.requestMicPermission();
       if (!granted) {
@@ -143,10 +156,18 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
       
       setIsRecording(true);
       setProcessing(true);
+      setRecordingSeconds(0);
+      setStopSignal({ shouldStop: false });
       
-      // 音声録音を開始（最大10秒間）
+      // 音声録音を開始（最大10秒間、手動停止対応）
       try {
-        const recordResult = await SttService.recordAudio(10);
+        const recordResult = await SttService.recordAudio(
+          10,
+          (seconds) => {
+            setRecordingSeconds(seconds);
+          },
+          stopSignal
+        );
         disposeFn = recordResult.dispose;
         const uri = recordResult.uri;
         
@@ -156,7 +177,17 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
         try {
           transcriptionResult = await SttService.transcribe(uri);
         } catch (transcribeError) {
-          logger.error('音声認識エラー:', transcribeError);
+          // 詳細なエラー情報をログに記録
+          const errorDetails = {
+            error: transcribeError,
+            message: transcribeError instanceof Error ? transcribeError.message : String(transcribeError),
+            name: transcribeError instanceof Error ? transcribeError.name : undefined,
+            stack: transcribeError instanceof Error ? transcribeError.stack : undefined,
+            type: typeof transcribeError,
+            stringified: JSON.stringify(transcribeError, Object.getOwnPropertyNames(transcribeError)),
+          };
+          logger.error('音声認識エラー:', errorDetails);
+          
           const errorMessage = transcribeError instanceof Error ? transcribeError.message : String(transcribeError);
           
           // APIキー関連のエラー
@@ -268,10 +299,13 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
     }
   };
 
-  // 音声録音の停止（実際には録音が開始されたら自動で停止するため、UIの更新のみ）
+  // 音声録音の手動停止
   const stopRecording = async () => {
-    setIsRecording(false);
-    setProcessing(false);
+    if (isRecording) {
+      setStopSignal({ shouldStop: true });
+      setIsRecording(false);
+      // 録音停止後、処理中状態を維持（音声認識処理中）
+    }
   };
 
 
@@ -385,18 +419,32 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
           <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
             {/* 音声入力（全プラットフォーム対応） */}
             <View style={styles.voiceInputContainer}>
-              <TouchableOpacity
-                style={styles.voiceInputButton}
-                onPress={startRecording}
-                disabled={processing || isRecording}
-              >
-                {isRecording ? <Square size={20} color={currentTheme.primary} /> : <Mic size={20} color={currentTheme.primary} />}
-                <Text style={styles.voiceInputText}>
-                  {processing ? '処理中...' : isRecording ? '録音中...' : '音声入力（自動記録）'}
-                </Text>
-              </TouchableOpacity>
+              {isRecording ? (
+                <TouchableOpacity
+                  style={[styles.voiceInputButton, styles.recordingButton]}
+                  onPress={stopRecording}
+                >
+                  <Square size={20} color="#FFFFFF" />
+                  <Text style={[styles.voiceInputText, styles.recordingText]}>
+                    停止 ({10 - recordingSeconds}秒)
+                  </Text>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.voiceInputButton}
+                  onPress={startRecording}
+                  disabled={processing}
+                >
+                  <Mic size={20} color={currentTheme.primary} />
+                  <Text style={styles.voiceInputText}>
+                    {processing ? '処理中...' : '音声入力（自動記録）'}
+                  </Text>
+                </TouchableOpacity>
+              )}
               <Text style={styles.voiceInputHint}>
-                「5分練習しました」や「1時間練習しました」のように話してください（10秒以内）
+                {isRecording 
+                  ? '話し終わったら「停止」ボタンを押してください'
+                  : '「5分練習しました」や「1時間練習しました」のように話してください（最大10秒）'}
               </Text>
             </View>
 
@@ -543,10 +591,17 @@ const styles = StyleSheet.create({
     borderColor: '#8B4513',
     gap: 6,
   },
+  recordingButton: {
+    backgroundColor: '#FF4444',
+    borderColor: '#FF4444',
+  },
   voiceInputText: {
     fontSize: 16,
     fontWeight: '500',
     color: '#8B4513',
+  },
+  recordingText: {
+    color: '#FFFFFF',
   },
   voiceInputHint: {
     fontSize: 12,

@@ -273,15 +273,19 @@ export default function MusicDictionaryScreen() {
                 <Text style={[styles.categorySectionTitle, { color: currentTheme.text }]}>
                   {categoryInfo?.label || categoryKey}
                 </Text>
-                {terms.map((item, index) => (
-                  <TermCard
-                    key={item.isCustom ? item.dbTerm?.id : `default-${categoryKey}-${index}`}
-                    item={item}
-                    currentTheme={currentTheme}
-                    onEdit={item.isCustom && item.dbTerm ? () => handleEditTerm(item.dbTerm!) : undefined}
-                    onDelete={item.isCustom && item.dbTerm ? () => handleDeleteTerm(item.dbTerm!) : undefined}
-                  />
-                ))}
+                {terms.map((item, index) => {
+                  // ユーザーが作成した用語のみ編集・削除ボタンを表示
+                  const isUserCreated = item.isCustom && item.dbTerm && item.dbTerm.user_id === user?.id;
+                  return (
+                    <TermCard
+                      key={item.isCustom ? item.dbTerm?.id : `default-${categoryKey}-${index}`}
+                      item={item}
+                      currentTheme={currentTheme}
+                      onEdit={isUserCreated ? () => handleEditTerm(item.dbTerm!) : undefined}
+                      onDelete={isUserCreated ? () => handleDeleteTerm(item.dbTerm!) : undefined}
+                    />
+                  );
+                })}
               </View>
             );
           })
@@ -294,15 +298,19 @@ export default function MusicDictionaryScreen() {
               </Text>
             </View>
           ) : (
-            displayTerms.map((item, index) => (
-              <TermCard
-                key={item.isCustom ? item.dbTerm?.id : `default-${selectedCategory}-${index}`}
-                item={item}
-                currentTheme={currentTheme}
-                onEdit={item.isCustom && item.dbTerm ? () => handleEditTerm(item.dbTerm!) : undefined}
-                onDelete={item.isCustom && item.dbTerm ? () => handleDeleteTerm(item.dbTerm!) : undefined}
-              />
-            ))
+            displayTerms.map((item, index) => {
+              // ユーザーが作成した用語のみ編集・削除ボタンを表示
+              const isUserCreated = item.isCustom && item.dbTerm && item.dbTerm.user_id === user?.id;
+              return (
+                <TermCard
+                  key={item.isCustom ? item.dbTerm?.id : `default-${selectedCategory}-${index}`}
+                  item={item}
+                  currentTheme={currentTheme}
+                  onEdit={isUserCreated ? () => handleEditTerm(item.dbTerm!) : undefined}
+                  onDelete={isUserCreated ? () => handleDeleteTerm(item.dbTerm!) : undefined}
+                />
+              );
+            })
           )
         )}
       </ScrollView>

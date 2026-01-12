@@ -269,7 +269,8 @@ export const autoCorrelate = (
   
   for (let i = Math.max(d, minPeriod); i < Math.min(SIZE, maxPeriod); i += step) {
     // ピークを検出（前後の値より大きい）
-    if (i > 0 && i < SIZE - 1 && c[i] > c[i - 1] && c[i] > c[i + 1] && c[i] > 0.3) {
+    // 相関値の閾値を下げて、より多くの候補を検出（0.3 → 0.2）
+    if (i > 0 && i < SIZE - 1 && c[i] > c[i - 1] && c[i] > c[i + 1] && c[i] > 0.2) {
       candidates.push({ period: i, correlation: c[i] });
     }
   }
@@ -283,26 +284,27 @@ export const autoCorrelate = (
   let fundamentalPeriod = -1;
   let fundamentalCorrelation = -1;
 
+  // シンプルなアプローチ：最も相関値の高い候補から順に、ハーモニクスでないものを選択
+  // 基本周波数は通常、最も低い周波数で最も強い相関を持つ
   for (const candidate of candidates) {
-    // 既に見つかった基本周波数の整数倍（ハーモニクス）かチェック
-    if (fundamentalPeriod > 0) {
-      const ratio = candidate.period / fundamentalPeriod;
-      // 2倍、3倍、4倍などのハーモニクスの可能性をチェック
-      if (Math.abs(ratio - Math.round(ratio)) < 0.1) {
-        continue; // ハーモニクスの可能性が高いのでスキップ
-      }
-    }
-
-    // 他の候補がこの候補の整数倍（ハーモニクス）かチェック
-    // 基本周波数は、他の周波数の整数倍にならないはず
+    // この候補が他の候補のハーモニクス（整数倍）かどうかをチェック
     let isHarmonic = false;
+    
+    // より低い周波数（長いperiod）の候補が存在するかチェック
+    // 基本周波数は通常、最も低い周波数（最も長いperiod）である
     for (const other of candidates) {
       if (other.period === candidate.period) continue;
-      const ratio = other.period / candidate.period;
-      // 2倍、3倍、4倍などのハーモニクスの可能性をチェック
-      if (ratio > 1 && Math.abs(ratio - Math.round(ratio)) < 0.1) {
-        isHarmonic = true;
-        break;
+      
+      // この候補が他の候補のハーモニクス（整数倍）かチェック
+      // つまり、other.period < candidate.period かつ candidate.period / other.period が整数に近い場合
+      if (other.period < candidate.period) {
+        const ratio = candidate.period / other.period;
+        // 2倍、3倍、4倍などのハーモニクスの可能性をチェック
+        if (ratio > 1.5 && ratio < 10 && Math.abs(ratio - Math.round(ratio)) < 0.2) {
+          // この候補は他の候補のハーモニクスである可能性が高い
+          isHarmonic = true;
+          break;
+        }
       }
     }
 
@@ -314,13 +316,16 @@ export const autoCorrelate = (
     }
   }
 
-  // 候補が見つからなかった場合は、最も相関値の高いものを使用
+  // 候補が見つからなかった場合は、最も相関値の高いものを使用（フォールバック）
+  // ただし、相関値が低すぎる場合は無効とする
   if (fundamentalPeriod === -1 && candidates.length > 0) {
+    // 最も相関値の高い候補を選択
     fundamentalPeriod = candidates[0].period;
     fundamentalCorrelation = candidates[0].correlation;
   }
 
-  if (fundamentalPeriod === -1 || fundamentalCorrelation < 0.4) return -1;
+  // 相関値の閾値を下げて、より多くの周波数を検出（0.4 → 0.3）
+  if (fundamentalPeriod === -1 || fundamentalCorrelation < 0.3) return -1;
 
   let T0 = fundamentalPeriod;
 

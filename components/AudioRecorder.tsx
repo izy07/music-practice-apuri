@@ -42,9 +42,11 @@ interface AudioRecorderProps {
   onBack?: () => void; // 戻るボタンのカスタム動作
   selectedDate?: Date | null; // 保存日（未指定なら現在時刻）
   initialRecordingType?: 'performance' | 'lesson'; // 初期録音種類
+  isRerecording?: boolean; // 再録音フラグ（trueの場合、月間録音制限のチェックをスキップ）
+  existingRecordingId?: string; // 再録音する既存の録音ID（再録音時に削除する）
 }
 
-export default function AudioRecorder({ visible, onSave, onClose, onRecordingSaved, onBack, selectedDate, initialRecordingType }: AudioRecorderProps) {
+export default function AudioRecorder({ visible, onSave, onClose, onRecordingSaved, onBack, selectedDate, initialRecordingType, isRerecording = false, existingRecordingId }: AudioRecorderProps) {
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const router = useRouter();
   const { entitlement } = useSubscription();
@@ -968,9 +970,19 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       }
       
       // Freeプランの場合、月間録音回数をチェック（今月の日付のみ、楽器ごと）
+      // 再録音の場合は月間録音制限のチェックをスキップ
       // 楽器IDを取得（selectedInstrumentから取得、プロファイルの値とは異なる可能性がある）
       const currentInstrumentId = getInstrumentId(selectedInstrument);
-      const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, recordedAt, currentInstrumentId);
+      let limitCheck = { canRecord: true, currentCount: 0, limit: 0 };
+      if (!isRerecording) {
+        limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, recordedAt, currentInstrumentId);
+      } else {
+        logger.debug('再録音のため、月間録音制限のチェックをスキップします', {
+          existingRecordingId,
+          isRerecording
+        });
+      }
+      
       if (!limitCheck.canRecord) {
         const normalizedResult = normalizeLimitResult(limitCheck, 'record_monthly');
         const alertConfig = getDefaultAlertConfig('record_monthly');
@@ -1004,8 +1016,23 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         duration: finalDuration,
         hasFilePath: !!filePath,
         recordedAt: recordedAt.toISOString(),
-        monthlyLimitCheck: limitCheck
+        monthlyLimitCheck: limitCheck,
+        isRerecording,
+        existingRecordingId
       });
+      
+      // 再録音の場合は、既存の録音を削除してから新しい録音を保存
+      if (isRerecording && existingRecordingId) {
+        logger.debug('再録音: 既存の録音を削除します', { existingRecordingId });
+        const { deleteRecording } = await import('@/lib/database');
+        const deleteResult = await deleteRecording(existingRecordingId);
+        if (deleteResult.error) {
+          logger.error('再録音: 既存の録音削除エラー', deleteResult.error);
+          // 削除エラーでも続行（新しい録音は保存する）
+        } else {
+          logger.debug('再録音: 既存の録音を削除しました', { existingRecordingId });
+        }
+      }
       
       const { data: savedRecording, error: saveError } = await saveRecording({
         user_id: user.id,

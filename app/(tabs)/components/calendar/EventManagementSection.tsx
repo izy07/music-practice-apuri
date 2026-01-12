@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Platform } from 'react-native';
 import { Calendar, Plus, Edit3, Trash2, Filter } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { logger } from '@/lib/logger';
@@ -59,34 +59,78 @@ export default function EventManagementSection({
   const theme = currentTheme || defaultTheme;
 
   const handleDeleteEvent = async (event: Event) => {
-    Alert.alert(
-      '削除の確認',
-      'このイベントを削除しますか？',
-      [
-        { text: 'キャンセル', style: 'cancel' },
-        {
-          text: '削除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const { error } = await supabase
-                .from('events')
-                .delete()
-                .eq('id', event.id);
-
-              if (error) throw error;
-              
-              onEventDeleted();
-              logger.info('イベントを削除しました');
-            } catch (error) {
-              ErrorHandler.handle(error, 'イベントの削除', true);
-              logger.error('イベントの削除エラー:', error);
-              Alert.alert('エラー', 'イベントの削除に失敗しました');
+    logger.debug('イベント管理一覧: 削除ボタンがクリックされました', event);
+    
+    // Web環境ではwindow.confirmを使用
+    let confirmed = false;
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      confirmed = window.confirm(`「${event.title}」を削除しますか？`);
+    } else {
+      // React Native環境ではAlert.alertを使用
+      await new Promise<void>((resolve) => {
+        Alert.alert(
+          '削除の確認',
+          `「${event.title}」を削除しますか？`,
+          [
+            { 
+              text: 'キャンセル', 
+              style: 'cancel',
+              onPress: () => {
+                logger.debug('イベント管理一覧: 削除がキャンセルされました');
+                resolve();
+              }
+            },
+            {
+              text: '削除',
+              style: 'destructive',
+              onPress: () => {
+                confirmed = true;
+                resolve();
+              }
             }
-          },
-        },
-      ]
-    );
+          ],
+          { cancelable: true, onDismiss: () => resolve() }
+        );
+      });
+    }
+    
+    if (!confirmed) {
+      logger.debug('イベント管理一覧: 削除がキャンセルされました');
+      return;
+    }
+    
+    try {
+      logger.debug('イベント管理一覧: イベント削除開始', event.id);
+      const { error } = await supabase
+        .from('events')
+        .delete()
+        .eq('id', event.id);
+
+      if (error) {
+        logger.error('イベント管理一覧: イベント削除エラー:', error);
+        throw error;
+      }
+      
+      logger.info('イベント管理一覧: イベントを削除しました', event.id);
+      
+      // コールバックを呼び出してデータを更新
+      await onEventDeleted();
+      
+      // 削除成功のアラートを表示
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert('イベントを削除しました');
+      } else {
+        Alert.alert('削除完了', 'イベントを削除しました');
+      }
+    } catch (error) {
+      ErrorHandler.handle(error, 'イベントの削除', true);
+      logger.error('イベント管理一覧: イベントの削除エラー:', error);
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        window.alert('イベントの削除に失敗しました');
+      } else {
+        Alert.alert('エラー', 'イベントの削除に失敗しました');
+      }
+    }
   };
 
   // eventsは { [dateStr: string]: Event[] } の形式なので、各イベントに日付を追加

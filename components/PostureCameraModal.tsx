@@ -41,16 +41,36 @@ const { width, height } = Dimensions.get('window');
 
 export default function PostureCameraModal({ visible, onClose, instrumentName }: PostureCameraModalProps) {
   const { currentTheme } = useInstrumentTheme();
-  const [permission, requestPermission] = useCameraPermissions ? useCameraPermissions() : [{ granted: false }, () => {}];
+  
+  // useCameraPermissionsフックを使用
+  // Platform.OSが'web'でない場合、useCameraPermissionsは常に存在する
+  const [permission, requestPermission] = useCameraPermissions 
+    ? useCameraPermissions() 
+    : [{ granted: false, canAskAgain: false }, async () => ({ granted: false, canAskAgain: false })];
+  
   const [facing, setFacing] = useState<any>('front');
   const [isRecording, setIsRecording] = useState(false);
   const cameraRef = useRef<any>(null);
 
-  useEffect(() => {
-    if (visible && !permission?.granted) {
-      requestPermission();
+  // 権限要求処理
+  const handleRequestPermission = async () => {
+    if (!useCameraPermissions) {
+      Alert.alert('エラー', 'カメラ機能が利用できません');
+      return;
     }
-  }, [visible, permission, requestPermission]);
+    
+    try {
+      logger.debug('カメラ権限を要求中...');
+      const result = await requestPermission();
+      logger.debug('カメラ権限の要求結果:', result);
+      // useCameraPermissionsフックが自動的に状態を更新するため、
+      // ここでは明示的に状態を更新する必要はありません
+    } catch (error) {
+      logger.error('カメラ権限の要求でエラーが発生しました:', error);
+      ErrorHandler.handle(error, 'カメラ権限の要求', false);
+      Alert.alert('エラー', 'カメラ権限の要求に失敗しました');
+    }
+  };
 
   // Webプラットフォームでのフォーカス管理（aria-hidden警告を防ぐため）
   useEffect(() => {
@@ -108,7 +128,7 @@ export default function PostureCameraModal({ visible, onClose, instrumentName }:
             </Text>
             <TouchableOpacity
               style={[styles.permissionButton, { backgroundColor: currentTheme.primary }]}
-              onPress={requestPermission}
+              onPress={handleRequestPermission}
             >
               <Text style={styles.permissionButtonText}>権限を許可</Text>
             </TouchableOpacity>
@@ -192,19 +212,25 @@ export default function PostureCameraModal({ visible, onClose, instrumentName }:
 
           {/* カメラビュー */}
           <View style={styles.cameraContainer}>
-            <CameraView
-              ref={cameraRef}
-              style={styles.camera}
-              facing={facing}
-            >
-              {/* 姿勢ガイドライン */}
-              <View style={styles.guidelineContainer}>
-                <View style={[styles.guideline, { borderColor: '#FFD700' }]} />
-                <Text style={[styles.guidelineText, { color: '#FFFFFF' }]}>
-                  楽器を構えてください
-                </Text>
+            {CameraView ? (
+              <CameraView
+                ref={cameraRef}
+                style={styles.camera}
+                facing={facing}
+              >
+                {/* 姿勢ガイドライン */}
+                <View style={styles.guidelineContainer}>
+                  <View style={[styles.guideline, { borderColor: '#FFD700' }]} />
+                  <Text style={[styles.guidelineText, { color: '#FFFFFF' }]}>
+                    楽器を構えてください
+                  </Text>
+                </View>
+              </CameraView>
+            ) : (
+              <View style={[styles.camera, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}>
+                <Text style={{ color: '#FFF', fontSize: 16 }}>カメラが利用できません</Text>
               </View>
-            </CameraView>
+            )}
           </View>
 
           {/* コントロール */}

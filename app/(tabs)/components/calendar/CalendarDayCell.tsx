@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useRef } from 'react';
+import React, { memo, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { getEventColorCode, EventColor } from '@/lib/eventColors';
 
@@ -44,31 +44,11 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
     onEventPress
   } = props;
   
-  // イベントがタップされたかを追跡するためのref
-  const eventPressedRef = useRef(false);
-  
   const handlePress = useCallback(() => {
-    // イベントのタイトル部分がタップされた場合は何もしない
-    if (eventPressedRef.current) {
-      eventPressedRef.current = false;
-      return;
-    }
     // 日付セルをタップすると練習記録画面を開く（イベントがあっても開く）
     const selectedDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
     onDatePress(selectedDate);
   }, [currentDate, day, onDatePress]);
-
-  const handleEventPress = useCallback(() => {
-    // イベントのタイトル部分をタップするとイベント編集画面を開く
-    eventPressedRef.current = true; // イベントがタップされたことを記録
-    if (dayEvents && dayEvents.length > 0) {
-      onEventPress(dayEvents[0]);
-    }
-    // 少し遅延を入れてリセット（親要素のonPressが呼ばれないようにする）
-    setTimeout(() => {
-      eventPressedRef.current = false;
-    }, 100);
-  }, [dayEvents, onEventPress]);
 
   return (
     <TouchableOpacity
@@ -83,6 +63,7 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
       accessibilityLabel={`${currentDate.getFullYear()}年${currentDate.getMonth() + 1}月${day}日${isToday ? '、今日' : ''}${hasPracticeRecord ? '、練習記録あり' : ''}${hasRecording ? '、録音あり' : ''}${hasBasicPractice ? '、基礎練あり' : ''}${dayEvents && dayEvents.length > 0 ? `、イベント: ${dayEvents[0].title}` : ''}`}
       accessibilityHint="日付をタップして練習記録を追加します"
     >
+      {/* 日付を上部に配置 */}
       <Text style={[
         styles.dayText,
         isSunday && styles.sundayText,
@@ -90,6 +71,35 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
       ]}>
         {day}
       </Text>
+      
+      {/* イベントを中央に配置 */}
+      {dayEvents && dayEvents.length > 0 && (() => {
+        const event = dayEvents[0];
+        const eventColor = getEventColorCode(event.color);
+        return (
+        <View
+            style={[
+              styles.eventIndicator,
+              {
+                backgroundColor: '#FFFFFF',
+                borderColor: eventColor,
+              },
+            ]}
+        >
+            <Text 
+              style={[
+                styles.eventIndicatorText,
+                { color: eventColor },
+              ]} 
+              numberOfLines={1}
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.6}
+            >
+              {event.title}
+          </Text>
+        </View>
+        );
+      })()}
       
       <View style={styles.indicatorsContainer}>
         {hasPracticeRecord && hasRecording ? (
@@ -106,38 +116,6 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
           </>
         )}
       </View>
-      
-      {dayEvents && dayEvents.length > 0 && (() => {
-        const event = dayEvents[0];
-        const eventColor = getEventColorCode(event.color);
-        return (
-        <TouchableOpacity
-            style={[
-              styles.eventIndicator,
-              {
-                backgroundColor: '#FFFFFF',
-                borderColor: eventColor,
-              },
-            ]}
-          onPress={handleEventPress}
-          activeOpacity={0.7}
-          delayPressIn={0} // 子要素のイベントを優先的に処理
-          accessibilityRole="button"
-            accessibilityLabel={`イベント: ${event.title}`}
-          accessibilityHint="イベントの詳細を表示します"
-        >
-            <Text 
-              style={[
-                styles.eventIndicatorText,
-                { color: eventColor },
-              ]} 
-              numberOfLines={1}
-            >
-              {event.title}
-          </Text>
-        </TouchableOpacity>
-        );
-      })()}
       
       {/* 基礎練メニューで「練習した！」ボタンが押された場合、✅マークを表示 */}
       {hasBasicPractice && (
@@ -167,14 +145,15 @@ CalendarDayCell.displayName = 'CalendarDayCell';
 const styles = StyleSheet.create({
   dayCell: {
     width: '13.5%',
-    height: 50,
-    justifyContent: 'center',
+    height: 55,
+    justifyContent: 'flex-start',
     alignItems: 'center',
     borderRadius: 8,
     margin: 1,
     backgroundColor: '#E8E8E8',
     position: 'relative',
-    paddingVertical: 6,
+    paddingVertical: 2,
+    paddingTop: 4,
   },
   todayCell: {
     backgroundColor: '#E3F2FD',
@@ -182,10 +161,14 @@ const styles = StyleSheet.create({
     borderColor: '#2196F3',
   },
   dayText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '500',
     color: '#333333',
     textAlign: 'center',
+    position: 'absolute',
+    top: 4,
+    left: 0,
+    right: 0,
   },
   sundayText: {
     color: '#FF6B6B',
@@ -220,23 +203,25 @@ const styles = StyleSheet.create({
   },
   eventIndicator: {
     position: 'absolute',
-    bottom: 2,
-    left: 2,
-    right: 2,
+    top: 20,
+    left: 1,
+    right: 1,
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 2,
+    paddingHorizontal: 1,
     paddingVertical: 1,
     borderRadius: 2,
     borderWidth: 1,
+    minHeight: 14,
     maxHeight: 18,
     justifyContent: 'center',
     alignItems: 'center',
   },
   eventIndicatorText: {
-    fontSize: 7,
+    fontSize: 6,
     fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 9,
+    lineHeight: 8,
+    flexShrink: 1,
   },
   checkmarkContainer: {
     position: 'absolute',
@@ -248,6 +233,17 @@ const styles = StyleSheet.create({
   checkmark: {
     fontSize: 12,
     lineHeight: 12,
+  },
+  eventCreateButton: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
 });
 

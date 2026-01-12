@@ -553,6 +553,15 @@ export default function StatisticsScreen() {
       return null;
     }
 
+    // 総合計練習時間を計算（基礎練を除外）
+    const allValidRecords = practiceRecords.filter(r => 
+      (r.duration_minutes ?? 0) > 0 && r.input_method !== 'preset'
+    );
+    const totalPracticeTime = allValidRecords.reduce((sum, r) => {
+      const minutes = r.duration_minutes ?? 0;
+      return sum + minutes;
+    }, 0);
+
     // 1. 平均練習時間
     // duration_minutesが0の記録を除外
     const validRecords = practiceRecords.filter(r => (r.duration_minutes ?? 0) > 0);
@@ -640,8 +649,8 @@ export default function StatisticsScreen() {
     // duration_minutesが0の記録を除外
     const intensityStats = {
       short: 0, // 30分未満
-      medium: 0, // 30分-60分
-      long: 0, // 60分以上
+      medium: 0, // 30-180分未満
+      long: 0, // 180分以上
     };
     practiceRecords.forEach(record => {
       // duration_minutesがnullやundefinedの場合、0として扱う
@@ -649,7 +658,7 @@ export default function StatisticsScreen() {
       // duration_minutesが0より大きい場合のみ統計に含める
       if (minutes > 0) {
         if (minutes < 30) intensityStats.short++;
-        else if (minutes < 60) intensityStats.medium++;
+        else if (minutes < 180) intensityStats.medium++;
       else intensityStats.long++;
       }
     });
@@ -670,6 +679,7 @@ export default function StatisticsScreen() {
       intensityStats,
       totalPracticeDays,
       totalPracticeCount,
+      totalPracticeTime,
     };
   }, [practiceRecords]);
 
@@ -968,6 +978,12 @@ export default function StatisticsScreen() {
           {getAdditionalStats && (
             <View style={styles.analysisSection}>
               <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>{t('basicStats')}</Text>
+              <View style={styles.analysisRow}>
+                <Text style={[styles.analysisLabel, { color: SecondaryText }]}>総合計練習時間</Text>
+                <Text style={[styles.analysisValue, { color: TextColor }]}>
+                  {formatMinutesToHours(getAdditionalStats.totalPracticeTime)}
+                </Text>
+              </View>
               <View style={styles.analysisRow}>
                 <Text style={[styles.analysisLabel, { color: SecondaryText }]}>{t('averagePracticeTime')}</Text>
                 <Text style={[styles.analysisValue, { color: TextColor }]}>

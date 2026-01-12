@@ -645,227 +645,207 @@ export default function RecordingsLibraryScreen() {
         </View>
 
         {/* 検索バー */}
-        {recordings.length > 0 && (
-          <View style={[styles.searchContainer, { backgroundColor: currentTheme.surface }]}>
-            <Search size={20} color={currentTheme.textSecondary} />
-            <TextInput
-              style={[styles.searchInput, { color: currentTheme.text }]}
-              placeholder="タイトルで検索..."
-              placeholderTextColor={currentTheme.textSecondary}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              nativeID="recordings-search-input"
-              accessibilityLabel="録音検索"
-            />
-            {searchQuery.trim() && (
-              <TouchableOpacity
-                onPress={() => setSearchQuery('')}
-                style={styles.clearButton}
-              >
-                <X size={18} color={currentTheme.textSecondary} />
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
+        <View style={[styles.searchContainer, { backgroundColor: currentTheme.surface }]}>
+          <Search size={20} color={currentTheme.textSecondary} />
+          <TextInput
+            style={[styles.searchInput, { color: currentTheme.text }]}
+            placeholder="タイトルで検索..."
+            placeholderTextColor={currentTheme.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            nativeID="recordings-search-input"
+            accessibilityLabel="録音検索"
+          />
+          {searchQuery.trim() && (
+            <TouchableOpacity
+              onPress={() => setSearchQuery('')}
+              style={styles.clearButton}
+            >
+              <X size={18} color={currentTheme.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* 録音種類フィルター */}
-        {recordings.length > 0 && (
-          <View style={[styles.timeFilterContainer, { backgroundColor: currentTheme.surface }]}>
-            <Text style={[styles.timeFilterTitle, { color: currentTheme.text }]}>
-              録音種類
-            </Text>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.timeFilterButtons}
+        <View style={[styles.timeFilterContainer, { backgroundColor: currentTheme.surface }]}>
+          <Text style={[styles.timeFilterTitle, { color: currentTheme.text }]}>
+            録音種類
+          </Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.timeFilterButtons}
+          >
+            <TouchableOpacity
+              style={[
+                styles.timeFilterButton,
+                {
+                  backgroundColor: recordingTypeFilter === 'all' ? currentTheme.primary : currentTheme.secondary,
+                }
+              ]}
+              onPress={() => setRecordingTypeFilter('all')}
             >
-              <TouchableOpacity
-                style={[
-                  styles.timeFilterButton,
-                  {
-                    backgroundColor: recordingTypeFilter === 'all' ? currentTheme.primary : currentTheme.secondary,
-                  }
-                ]}
-                onPress={() => setRecordingTypeFilter('all')}
-              >
-                <Text style={[
-                  styles.timeFilterButtonText,
-                  { color: recordingTypeFilter === 'all' ? currentTheme.surface : currentTheme.text }
-                ]}>
-                  全て
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.timeFilterButton,
-                  {
-                    backgroundColor: recordingTypeFilter === 'performance' ? currentTheme.primary : currentTheme.secondary,
-                  }
-                ]}
-                onPress={() => setRecordingTypeFilter('performance')}
-              >
-                <Text style={[
-                  styles.timeFilterButtonText,
-                  { color: recordingTypeFilter === 'performance' ? currentTheme.surface : currentTheme.text }
-                ]}>
-                  演奏録音
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.timeFilterButton,
-                  {
-                    backgroundColor: recordingTypeFilter === 'lesson' ? currentTheme.primary : currentTheme.secondary,
-                  }
-                ]}
-                onPress={() => setRecordingTypeFilter('lesson')}
-              >
-                <Text style={[
-                  styles.timeFilterButtonText,
-                  { color: recordingTypeFilter === 'lesson' ? currentTheme.surface : currentTheme.text }
-                ]}>
-                  レッスン録音
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        )}
+              <Text style={[
+                styles.timeFilterButtonText,
+                { color: recordingTypeFilter === 'all' ? currentTheme.surface : currentTheme.text }
+              ]}>
+                全て
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.timeFilterButton,
+                {
+                  backgroundColor: recordingTypeFilter === 'performance' ? currentTheme.primary : currentTheme.secondary,
+                }
+              ]}
+              onPress={() => setRecordingTypeFilter('performance')}
+            >
+              <Text style={[
+                styles.timeFilterButtonText,
+                { color: recordingTypeFilter === 'performance' ? currentTheme.surface : currentTheme.text }
+              ]}>
+                演奏録音
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.timeFilterButton,
+                {
+                  backgroundColor: recordingTypeFilter === 'lesson' ? currentTheme.primary : currentTheme.secondary,
+                }
+              ]}
+              onPress={() => setRecordingTypeFilter('lesson')}
+            >
+              <Text style={[
+                styles.timeFilterButtonText,
+                { color: recordingTypeFilter === 'lesson' ? currentTheme.surface : currentTheme.text }
+              ]}>
+                レッスン録音
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
 
         {/* 聴き比べモード：時間フィルター */}
-        {recordings.length > 0 && (
-          <View style={[styles.timeFilterContainer, { backgroundColor: currentTheme.surface }]}>
-            <Text style={[styles.timeFilterTitle, { color: currentTheme.text }]}>
-              聴き比べモード
-            </Text>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.timeFilterButtons}
+        <View style={[styles.timeFilterContainer, { backgroundColor: currentTheme.surface }]}>
+          <Text style={[styles.timeFilterTitle, { color: currentTheme.text }]}>
+            聴き比べモード
+          </Text>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.timeFilterButtons}
+          >
+            <TouchableOpacity
+              style={[
+                styles.timeFilterButton,
+                {
+                  backgroundColor: timeFilter === 'all' ? currentTheme.primary : currentTheme.secondary,
+                }
+              ]}
+              onPress={() => setTimeFilter('all')}
             >
-              <TouchableOpacity
-                style={[
-                  styles.timeFilterButton,
-                  {
-                    backgroundColor: timeFilter === 'all' ? currentTheme.primary : currentTheme.secondary,
-                  }
-                ]}
-                onPress={() => setTimeFilter('all')}
-              >
-                <Text style={[
-                  styles.timeFilterButtonText,
-                  { color: timeFilter === 'all' ? currentTheme.surface : currentTheme.text }
-                ]}>
-                  全て
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.timeFilterButton,
-                  {
-                    backgroundColor: timeFilter === '1week' ? currentTheme.primary : currentTheme.secondary,
-                  }
-                ]}
-                onPress={() => handleTimeFilter('1week')}
-              >
-                <Text style={[
-                  styles.timeFilterButtonText,
-                  { color: timeFilter === '1week' ? currentTheme.surface : currentTheme.text }
-                ]}>
-                  1週間前
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.timeFilterButton,
-                  {
-                    backgroundColor: timeFilter === '1month' ? currentTheme.primary : currentTheme.secondary,
-                  }
-                ]}
-                onPress={() => handleTimeFilter('1month')}
-              >
-                <Text style={[
-                  styles.timeFilterButtonText,
-                  { color: timeFilter === '1month' ? currentTheme.surface : currentTheme.text }
-                ]}>
-                  1ヶ月前
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.timeFilterButton,
-                  {
-                    backgroundColor: timeFilter === '3months' ? currentTheme.primary : currentTheme.secondary,
-                  }
-                ]}
-                onPress={() => handleTimeFilter('3months')}
-              >
-                <Text style={[
-                  styles.timeFilterButtonText,
-                  { color: timeFilter === '3months' ? currentTheme.surface : currentTheme.text }
-                ]}>
-                  3ヶ月前
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.timeFilterButton,
-                  {
-                    backgroundColor: timeFilter === '6months' ? currentTheme.primary : currentTheme.secondary,
-                  }
-                ]}
-                onPress={() => handleTimeFilter('6months')}
-              >
-                <Text style={[
-                  styles.timeFilterButtonText,
-                  { color: timeFilter === '6months' ? currentTheme.surface : currentTheme.text }
-                ]}>
-                  半年前
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.timeFilterButton,
-                  {
-                    backgroundColor: timeFilter === '1year' ? currentTheme.primary : currentTheme.secondary,
-                  }
-                ]}
-                onPress={() => handleTimeFilter('1year')}
-              >
-                <Text style={[
-                  styles.timeFilterButtonText,
-                  { color: timeFilter === '1year' ? currentTheme.surface : currentTheme.text }
-                ]}>
-                  1年前
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        )}
+              <Text style={[
+                styles.timeFilterButtonText,
+                { color: timeFilter === 'all' ? currentTheme.surface : currentTheme.text }
+              ]}>
+                全て
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.timeFilterButton,
+                {
+                  backgroundColor: timeFilter === '1week' ? currentTheme.primary : currentTheme.secondary,
+                }
+              ]}
+              onPress={() => handleTimeFilter('1week')}
+            >
+              <Text style={[
+                styles.timeFilterButtonText,
+                { color: timeFilter === '1week' ? currentTheme.surface : currentTheme.text }
+              ]}>
+                1週間前
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.timeFilterButton,
+                {
+                  backgroundColor: timeFilter === '1month' ? currentTheme.primary : currentTheme.secondary,
+                }
+              ]}
+              onPress={() => handleTimeFilter('1month')}
+            >
+              <Text style={[
+                styles.timeFilterButtonText,
+                { color: timeFilter === '1month' ? currentTheme.surface : currentTheme.text }
+              ]}>
+                1ヶ月前
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.timeFilterButton,
+                {
+                  backgroundColor: timeFilter === '3months' ? currentTheme.primary : currentTheme.secondary,
+                }
+              ]}
+              onPress={() => handleTimeFilter('3months')}
+            >
+              <Text style={[
+                styles.timeFilterButtonText,
+                { color: timeFilter === '3months' ? currentTheme.surface : currentTheme.text }
+              ]}>
+                3ヶ月前
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.timeFilterButton,
+                {
+                  backgroundColor: timeFilter === '6months' ? currentTheme.primary : currentTheme.secondary,
+                }
+              ]}
+              onPress={() => handleTimeFilter('6months')}
+            >
+              <Text style={[
+                styles.timeFilterButtonText,
+                { color: timeFilter === '6months' ? currentTheme.surface : currentTheme.text }
+              ]}>
+                半年前
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.timeFilterButton,
+                {
+                  backgroundColor: timeFilter === '1year' ? currentTheme.primary : currentTheme.secondary,
+                }
+              ]}
+              onPress={() => handleTimeFilter('1year')}
+            >
+              <Text style={[
+                styles.timeFilterButtonText,
+                { color: timeFilter === '1year' ? currentTheme.surface : currentTheme.text }
+              ]}>
+                1年前
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
 
-        {recordings.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Music size={64} color={currentTheme.textSecondary} />
-            <Text style={[styles.emptyTitle, { color: currentTheme.text }]}>
-              録音がありません
-            </Text>
-            <Text style={[styles.emptySubtitle, { color: currentTheme.textSecondary }]}>
-              録音機能を使って演奏を録音してみましょう
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.recordingsContainer}>
-            {sortedRecordings.length === 0 && timeFilter !== 'all' ? (
-              <View style={styles.emptyContainer}>
-                <Calendar size={64} color={currentTheme.textSecondary} />
-                <Text style={[styles.emptyTitle, { color: currentTheme.text }]}>
-                  該当する録音がありません
-                </Text>
-                <Text style={[styles.emptySubtitle, { color: currentTheme.textSecondary }]}>
-                  選択した期間に録音はありません
-                </Text>
-              </View>
-            ) : (
-              sortedRecordings.map((recording) => (
+        {/* 録音リスト */}
+        <View style={styles.recordingsContainer}>
+          {sortedRecordings.length === 0 ? (
+            <View style={styles.emptyContainer}>
+              <Text style={[styles.emptyTitle, { color: currentTheme.text }]}>
+                0件です
+              </Text>
+            </View>
+          ) : (
+            sortedRecordings.map((recording) => (
                 <View
                   key={recording.id}
                   style={[styles.recordingCard, { backgroundColor: currentTheme.surface }]}

@@ -412,6 +412,7 @@ export const savePracticeSessionWithIntegration = async (
     inputMethod?: 'manual' | 'preset' | 'voice' | 'timer';
     existingContentPrefix?: string;
     practiceDate?: string; // 練習日付（指定がない場合は今日）
+    replaceMinutes?: boolean; // trueの場合、既存の時間を置き換える（デフォルト: false = 加算）
   } = {}
 ): Promise<{ success: boolean; error?: SupabaseError }> => {
   try {
@@ -420,7 +421,8 @@ export const savePracticeSessionWithIntegration = async (
       content = '練習記録',
       inputMethod: rawInputMethod,
       existingContentPrefix = '練習記録',
-      practiceDate
+      practiceDate,
+      replaceMinutes = false // デフォルトは加算
     } = options;
     
     // 練習日付が指定されていない場合は今日の日付を使用
@@ -519,23 +521,30 @@ export const savePracticeSessionWithIntegration = async (
           return { success: false, error: { message: '既存レコードにIDがありません', code: 'MISSING_RECORD_ID' } };
         }
         
-        // 同じinput_methodのレコードの時間のみを合計
+        // 同じinput_methodのレコードの時間を計算（replaceMinutesがtrueの場合は置き換え、falseの場合は加算）
         const existingTotalMinutes = sameMethodRecords.reduce((sum: number, record: any) => {
           const minutes = record?.duration_minutes;
           return sum + (typeof minutes === 'number' && minutes >= 0 ? minutes : 0);
         }, 0);
-        const totalMinutes = existingTotalMinutes + minutes;
+        const totalMinutes = replaceMinutes ? minutes : existingTotalMinutes + minutes;
         
-        // 同じinput_methodのレコードのcontentを結合
-        const allContents = sameMethodRecords
-          .map((record: any) => record?.content ? cleanContentFromTimeDetails(record.content) : null)
-          .filter((content: any): content is string => Boolean(content && typeof content === 'string' && content.trim() !== ''))
-          .concat([existingContentPrefix])
-          .filter((content: string, index: number, arr: string[]) => arr.indexOf(content) === index); // 重複を除去
-        
-        const updateContent = allContents.length > 0 
-          ? allContents.join(', ')
-          : existingContentPrefix;
+        // contentの処理: contentオプションが指定されている場合はそれを使用、そうでない場合は既存のcontentと結合
+        let updateContent: string;
+        if (content && content !== '練習記録' && content !== existingContentPrefix) {
+          // contentオプションが指定されている場合は、それを使用（既存のcontentは無視）
+          updateContent = content;
+        } else {
+          // contentオプションが指定されていない場合は、既存のcontentと結合
+          const allContents = sameMethodRecords
+            .map((record: any) => record?.content ? cleanContentFromTimeDetails(record.content) : null)
+            .filter((content: any): content is string => Boolean(content && typeof content === 'string' && content.trim() !== ''))
+            .concat([existingContentPrefix])
+            .filter((content: string, index: number, arr: string[]) => arr.indexOf(content) === index); // 重複を除去
+          
+          updateContent = allContents.length > 0 
+            ? allContents.join(', ')
+            : existingContentPrefix;
+        }
       
         // inputMethodは既に検証済みの値を使用（型安全）
         // instrument_idが指定されている場合は更新、nullの場合は既存の値を保持（既存がnullの場合はnullのまま）

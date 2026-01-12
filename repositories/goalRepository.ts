@@ -169,20 +169,20 @@ export const initializeGoalRepository = async (forceRecheck: boolean = false): P
       
       // instrument_idカラムの存在確認（必要に応じて）
       if (supportsInstrumentId) {
-      try {
-        const { error } = await supabase
-          .from('goals')
-          .select('instrument_id')
-          .limit(1);
-        
-        if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('instrument_id'))) {
+        try {
+          const { error } = await supabase
+            .from('goals')
+            .select('instrument_id')
+            .limit(1);
+          
+          if (error && (error.code === 'PGRST204' || error.code === '42703' || error.message?.includes('instrument_id'))) {
             supportsInstrumentId = false;
             if (typeof window !== 'undefined') {
               try {
                 window.localStorage.setItem('disable_instrument_id', '1');
               } catch {}
             }
-        }
+          }
         } catch {
           // エラーは無視（デフォルトはtrue）
         }

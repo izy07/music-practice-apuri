@@ -55,35 +55,23 @@ BEGIN
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'G線のアリア' AND composer = 'ヨハン・セバスチャン・バッハ');
   
   INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
-  SELECT violin_id, 'チャルダッシュ', 'ヴィットーリオ・モンティ', 'ロマン派', 'クラシック', 3, 'https://youtu.be/rXd1S2oiaTg?si=W-l35GBLXG1J11wW', 'ハンガリーの民族舞踊をモチーフにした華麗な作品。バイオリンの技巧を存分に発揮できる。', true, 4
+  SELECT violin_id, 'チャルダッシュ', 'ヴィットーリオ・モンティ', 'ロマン派', 'クラシック', 3, 'https://youtu.be/gNZo4aTfkaw?si=37XRhEXg4z_1IhLl', 'ハンガリーの民族舞踊をモチーフにした華麗な作品。バイオリンの技巧を存分に発揮できる。桐朋祭2020「超絶技巧選手権」より、飯塚歩夢による演奏。', true, 4
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'チャルダッシュ' AND composer = 'ヴィットーリオ・モンティ');
   
   INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
-  SELECT violin_id, 'ツィゴイネルワイゼン', 'パブロ・デ・サラサーテ', 'ロマン派', 'クラシック', 5, 'https://www.youtube.com/watch?v=example_zigeuner', 'ジプシーの音楽を題材にした超絶技巧の名曲。バイオリニストの登竜門として知られる。', true, 5
+  SELECT violin_id, 'ツィゴイネルワイゼン', 'パブロ・デ・サラサーテ', 'ロマン派', 'クラシック', 5, 'https://youtu.be/wEmbFSiJzEQ?si=48Lz3BNu62B8SZs3', 'ジプシーの音楽を題材にした超絶技巧の名曲。バイオリニストの登竜門として知られる。イツハク・パールマンによる演奏。', true, 5
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'ツィゴイネルワイゼン' AND composer = 'パブロ・デ・サラサーテ');
   
   INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
-  SELECT violin_id, 'カプリース第24番', 'ニコロ・パガニーニ', 'ロマン派', 'クラシック', 5, 'https://www.youtube.com/watch?v=example_caprice24', 'パガニーニの24のカプリースの中でも最も有名な作品。超絶技巧の集大成。', true, 6
+  SELECT violin_id, 'カプリース第24番', 'ニコロ・パガニーニ', 'ロマン派', 'クラシック', 5, 'https://youtu.be/jzgMDRZormQ?si=EX7QwVmDGV7TpUOu', 'パガニーニの24のカプリースの中でも最も有名な作品。超絶技巧の集大成。Ellingmintによる演奏。', true, 6
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'カプリース第24番' AND composer = 'ニコロ・パガニーニ');
-  
-  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
-  SELECT violin_id, '四季「春」', 'アントニオ・ヴィヴァルディ', 'バロック', 'クラシック', 2, 'https://www.youtube.com/watch?v=example_spring', 'バロック時代の名作。春の訪れを美しく表現した協奏曲。', true, 7
-  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = '四季「春」' AND composer = 'アントニオ・ヴィヴァルディ');
   
   INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
   SELECT violin_id, '愛の挨拶', 'エドワード・エルガー', 'ロマン派', 'クラシック', 2, 'https://www.youtube.com/watch?v=example_salut', '結婚式でよく演奏される美しい旋律。ロマンチックで親しみやすい作品。', true, 8
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = '愛の挨拶' AND composer = 'エドワード・エルガー');
   
   INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
-  SELECT violin_id, 'ハバネラ', 'ジョルジュ・ビゼー', 'ロマン派', 'オペラ', 3, 'https://www.youtube.com/watch?v=example_habanera', 'カルメンの有名なアリアをバイオリン用に編曲。情熱的で印象的な旋律。', true, 9
-  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'ハバネラ' AND composer = 'ジョルジュ・ビゼー');
-  
-  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
-  SELECT violin_id, 'ユーモレスク', 'アントニン・ドヴォルザーク', 'ロマン派', 'クラシック', 2, 'https://www.youtube.com/watch?v=example_humoresque', 'チェコの作曲家による親しみやすい小品。美しい旋律が印象的。', true, 10
-  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'ユーモレスク' AND composer = 'アントニン・ドヴォルザーク');
-  
-  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
-  SELECT violin_id, 'メンデルスゾーンのバイオリン協奏曲 第1楽章', 'フェリックス・メンデルスゾーン', 'ロマン派', '協奏曲', 4, 'https://www.youtube.com/watch?v=example_mendelssohn', 'ロマン派の名協奏曲。美しい旋律と技巧的なパッセージが魅力。', true, 11
+  SELECT violin_id, 'メンデルスゾーンのバイオリン協奏曲 第1楽章', 'フェリックス・メンデルスゾーン', 'ロマン派', '協奏曲', 4, 'https://www.youtube.com/watch?v=example_mendelssohn', 'ロマン派の名協奏曲。美しい旋律と技巧的なパッセージが魅力。', true, 9
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'メンデルスゾーンのバイオリン協奏曲 第1楽章' AND composer = 'フェリックス・メンデルスゾーン');
   
   INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
@@ -94,7 +82,19 @@ BEGIN
   SELECT violin_id, '二つのバイオリンのための協奏曲', 'ヨハン・セバスチャン・バッハ', 'バロック', '協奏曲', 4, 'https://youtu.be/P_4rbNHsPaQ?si=2f2uIoBmkNSbPY87', 'バッハの二重協奏曲。二つのバイオリンが美しく絡み合う名作。', true, 13
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = '二つのバイオリンのための協奏曲' AND composer = 'ヨハン・セバスチャン・バッハ');
   
-  RAISE NOTICE 'バイオリンの代表曲13曲を確認・挿入しました';
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT violin_id, '死の舞踏', 'カミーユ・サン＝サーンス', 'ロマン派', '交響詩', 4, 'https://youtu.be/jzgMDRZormQ?si=EX7QwVmDGV7TpUOu', '中世の人々を魅了したテーマ。サン＝サーンスの交響詩「死の舞踏」。高松あいによるバイオリン演奏。', true, 14
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = '死の舞踏' AND composer = 'カミーユ・サン＝サーンス');
+  
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT violin_id, 'Autumn Leaves', 'ジョゼフ・コズマ', '現代', 'ジャズ', 3, 'https://youtu.be/IprPq6eGxAU?si=YHVVLS8uV8767xYD', 'ジャズスタンダード。バイオリンによるジャズ演奏。Retawによるスロー・スウィングバージョン。', true, 15
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = 'Autumn Leaves' AND composer = 'ジョゼフ・コズマ');
+  
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT violin_id, '四季「冬」', 'アントニオ・ヴィヴァルディ', 'バロック', '協奏曲', 3, 'https://youtu.be/ZPdk5GaIDjo?si=4t0RLMrmotJ-p6uF', 'ヴィヴァルディの「四季」より「冬」。バロック時代の名作協奏曲。Voices of Musicによる演奏。', true, 16
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = violin_id AND title = '四季「冬」' AND composer = 'アントニオ・ヴィヴァルディ');
+  
+  RAISE NOTICE 'バイオリンの代表曲15曲を確認・挿入しました';
 END $$;
 
 -- ============================================
@@ -197,6 +197,10 @@ BEGIN
   SELECT saxophone_id, 'ケアレス・ウィスパー', 'ジョージ・マイケル', '現代', 'ポップス', 3, 'https://www.youtube.com/watch?v=YyknBTm_YyM', 'サックスの美しいソロが印象的な名曲。', true, 2
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = saxophone_id AND title = 'ケアレス・ウィスパー' AND composer = 'ジョージ・マイケル');
   
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT saxophone_id, '名探偵コナン メインテーマ', '大野克夫', '現代', 'テレビ音楽', 3, 'https://youtu.be/g6dm2vjOaFY?si=3_3J-QjAFHRP-nQi', '名探偵コナンのテーマ曲。サックスが活躍する吹奏楽編曲。浜松市消防音楽隊による演奏。', true, 3
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = saxophone_id AND title = '名探偵コナン メインテーマ' AND composer = '大野克夫');
+  
   -- チェロの見せ場がある代表曲
   INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
   SELECT cello_id, '無伴奏チェロ組曲 第1番 プレリュード', 'ヨハン・セバスチャン・バッハ', 'バロック', '組曲', 4, 'https://www.youtube.com/watch?v=YyknBTm_YyM', 'バッハの無伴奏チェロ組曲。チェロの表現力の極致。', true, 1
@@ -218,6 +222,10 @@ BEGIN
   INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
   SELECT clarinet_id, 'クラリネット五重奏曲', 'ヴォルフガング・アマデウス・モーツァルト', '古典派', '室内楽', 4, 'https://www.youtube.com/watch?v=YyknBTm_YyM', 'モーツァルトの室内楽の名作。クラリネットの表現力が光る。', true, 2
   WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = clarinet_id AND title = 'クラリネット五重奏曲' AND composer = 'ヴォルフガング・アマデウス・モーツァルト');
+  
+  INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 
+  SELECT clarinet_id, 'sing sing sing', 'ベニー・グッドマン', '近代', 'ジャズ', 3, 'https://youtu.be/Z_KzTUlHUC0?si=U6osY-xTMd6yPyks', 'スイングジャズの名曲。クラリネットのソロが印象的。水戸第一高校吹奏楽部による演奏。', true, 3
+  WHERE NOT EXISTS (SELECT 1 FROM representative_songs WHERE instrument_id = clarinet_id AND title = 'sing sing sing' AND composer = 'ベニー・グッドマン');
   
   -- オーボエの見せ場がある代表曲
   INSERT INTO representative_songs (instrument_id, title, composer, era, genre, difficulty_level, youtube_url, description_ja, is_popular, display_order) 

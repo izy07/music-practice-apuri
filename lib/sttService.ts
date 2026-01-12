@@ -119,7 +119,11 @@ export class SttService {
     return true;
   }
 
-  static async recordAudio(maxSeconds: number = 10): Promise<{ uri: string; dispose: () => Promise<void> }> {
+  static async recordAudio(
+    maxSeconds: number = 10,
+    onProgress?: (seconds: number) => void,
+    stopSignal?: { shouldStop: boolean }
+  ): Promise<{ uri: string; dispose: () => Promise<void> }> {
     if (Platform.OS === 'web') {
       // Web環境での音声録音
       const webRecorder = new WebAudioRecorderImpl();
@@ -127,8 +131,21 @@ export class SttService {
       try {
         await webRecorder.start();
         
-        // 指定時間録音
-        await new Promise((r) => setTimeout(r, Math.max(1, Math.min(maxSeconds, 30)) * 1000));
+        // 指定時間録音（手動停止対応）
+        const startTime = Date.now();
+        const maxMs = Math.max(1, Math.min(maxSeconds, 30)) * 1000;
+        
+        while (Date.now() - startTime < maxMs) {
+          if (stopSignal?.shouldStop) {
+            break;
+          }
+          await new Promise((r) => setTimeout(r, 100)); // 100msごとにチェック
+          
+          const elapsed = Math.floor((Date.now() - startTime) / 1000);
+          if (onProgress) {
+            onProgress(elapsed);
+          }
+        }
         
         const audioBlob = await webRecorder.stop();
         
@@ -153,7 +170,21 @@ export class SttService {
     await recorder.prepareToRecordAsync();
     await recorder.startAsync();
     
-    await new Promise((r) => setTimeout(r, Math.max(1, Math.min(maxSeconds, 30)) * 1000));
+    // ネイティブ環境でも手動停止対応
+    const startTime = Date.now();
+    const maxMs = Math.max(1, Math.min(maxSeconds, 30)) * 1000;
+    
+    while (Date.now() - startTime < maxMs) {
+      if (stopSignal?.shouldStop) {
+        break;
+      }
+      await new Promise((r) => setTimeout(r, 100));
+      
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      if (onProgress) {
+        onProgress(elapsed);
+      }
+    }
     
     const uri = await recorder.stopAsync();
     const dispose = async () => {
@@ -188,18 +219,73 @@ export class SttService {
     form.append('response_format', 'json');
     form.append('language', 'ja');
 
-    const res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: apiUrl.includes('openai.com') ? { Authorization: `Bearer ${apiKey}` } : { 'x-api-key': apiKey },
-      body: form as any,
-    });
+    let res: Response;
+    try {
+      res = await fetch(apiUrl, {
+        method: 'POST',
+        headers: apiUrl.includes('openai.com') ? { Authorization: `Bearer ${apiKey}` } : { 'x-api-key': apiKey },
+        body: form as any,
+      });
+    } catch (fetchError: any) {
+      logger.error('STT API リクエストエラー:', {
+        error: fetchError,
+        message: fetchError?.message,
+        name: fetchError?.name,
+        stack: fetchError?.stack,
+        apiUrl: apiUrl.substring(0, 50) + '...', // URLの一部のみログに記録
+        hasApiKey: !!apiKey,
+      });
+      throw new Error(`STT API リクエストに失敗しました: ${fetchError?.message || String(fetchError)}`);
+    }
 
     if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`STT failed: ${res.status} ${text}`);
+      let errorText: string;
+      try {
+        errorText = await res.text();
+      } catch (textError) {
+        errorText = `レスポンスの読み取りに失敗: ${textError}`;
+      }
+      
+      logger.error('STT API エラーレスポンス:', {
+        status: res.status,
+        statusText: res.statusText,
+        errorText: errorText.substring(0, 500), // 最初の500文字のみ
+        apiUrl: apiUrl.substring(0, 50) + '...',
+      });
+      
+      // エラーメッセージを解析
+      let errorMessage = `STT failed: ${res.status}`;
+      try {
+        const errorJson = JSON.parse(errorText);
+        if (errorJson.error?.message) {
+          errorMessage = errorJson.error.message;
+        } else if (errorJson.message) {
+          errorMessage = errorJson.message;
+        } else {
+          errorMessage = errorText.substring(0, 200);
+        }
+      } catch {
+        errorMessage = errorText.substring(0, 200);
+      }
+      
+      throw new Error(errorMessage);
     }
-    const json = await res.json();
+    
+    let json: any;
+    try {
+      json = await res.json();
+    } catch (parseError: any) {
+      logger.error('STT API レスポンスのパースエラー:', {
+        error: parseError,
+        status: res.status,
+      });
+      throw new Error(`STT API レスポンスの解析に失敗しました: ${parseError?.message || String(parseError)}`);
+    }
+    
     const text: string = json.text || json.data?.text || '';
+    if (!text) {
+      logger.warn('STT API レスポンスにテキストが含まれていません:', json);
+    }
     return { text };
   }
 }
