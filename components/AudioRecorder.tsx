@@ -24,6 +24,7 @@ import { getInstrumentId } from '@/lib/instrumentUtils';
 import logger from '@/lib/logger';
 import audioResourceManager from '@/lib/audioResourceManager';
 import { showFeatureLimitAlert, normalizeLimitResult, getDefaultAlertConfig } from '@/lib/featureAccessHelpers';
+import { isErrorWithCode } from '@/lib/errorHandlingHelpers';
 
 const { width } = Dimensions.get('window');
 
@@ -321,11 +322,11 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         });
         microphoneStreamRef.current = stream;
         logger.debug('マイクアクセスを取得しました');
-      } catch (error: any) {
+      } catch (error: unknown) {
         logger.error('マイクアクセスの取得エラー:', error);
-        const errorMessage = error?.message || 'マイクアクセスの取得に失敗しました';
-        const errorName = error?.name || '';
-        const errorCode = error?.code || '';
+        const errorMessage = error instanceof Error ? error.message : 'マイクアクセスの取得に失敗しました';
+        const errorName = error instanceof Error ? error.name : '';
+        const errorCode = isErrorWithCode(error) ? error.code : '';
         
         if (errorMessage.includes('既に') || errorName === 'NotAllowedError') {
           Alert.alert('マイク使用中', errorMessage + '\n\n他の機能（チューナー、クイック記録など）がマイクを使用している可能性があります。');
@@ -601,9 +602,10 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
             stopRecording('auto');
           }
         }, 250); // UI更新を250ms間隔にしてCPU負荷を軽減
-      } catch (startError: any) {
+      } catch (startError: unknown) {
         logger.error('MediaRecorder.start()エラー:', startError);
-        Alert.alert('録音開始エラー', '録音を開始できませんでした。\n\nエラー: ' + (startError?.message || '不明なエラー'));
+        const errorMessage = startError instanceof Error ? startError.message : '不明なエラー';
+        Alert.alert('録音開始エラー', '録音を開始できませんでした。\n\nエラー: ' + errorMessage);
         // エラー時のクリーンアップ
         if (stream) {
           stream.getTracks().forEach(track => track.stop());
@@ -613,7 +615,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         return;
       }
 
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('録音開始処理のエラー:', error);
       ErrorHandler.handle(error, 'Recording start', true);
       
@@ -800,9 +802,9 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       await audioElement.play();
       setIsPlaying(true);
       logger.debug('音声再生を開始しました');
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('再生開始エラー:', error);
-      const errorMessage = error?.message || '不明なエラー';
+      const errorMessage = error instanceof Error ? error.message : '不明なエラー';
       Alert.alert('再生エラー', `音声の再生に失敗しました: ${errorMessage}`);
       setIsPlaying(false);
       if (audioElementRef.current) {

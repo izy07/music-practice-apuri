@@ -26,13 +26,31 @@ import { setCurrentRoute } from '@/lib/navigationHistory';
 
 const { width } = Dimensions.get('window');
 
+// 残り時間の割合に応じて色を決定する関数
+function getProgressColor(progress: number): string {
+  // progressは経過した時間の割合（0-1）
+  // 残り時間の割合 = 1 - progress
+  const remainingRatio = 1 - progress;
+  
+  if (remainingRatio >= 0.75) {
+    // 残り時間が多い（75%以上）: 青系
+    return '#2196F3';
+  } else if (remainingRatio >= 0.25) {
+    // 残り時間が中程度（25-75%）: オレンジ系
+    return '#FF9800';
+  } else {
+    // 残り時間が少ない（25%以下）: 赤系
+    return '#F44336';
+  }
+}
+
 // アニメーション付き円形プログレスバーコンポーネント
 function AnimatedCircularProgress({ 
   progress, 
   size = 280, 
   strokeWidth = 12, 
   color = '#00D4FF',
-  backgroundColor = '#2A2A2A'
+  backgroundColor = '#E0E0E0'
 }: {
   progress: number; // 0-1の値
   size?: number;
@@ -242,7 +260,7 @@ const customTimeReducer = (state: CustomTimeState, action: CustomTimeAction): Cu
     case 'SET_HOURS':
       return { ...state, hours: Math.max(0, Math.min(99, action.payload)) };
     case 'SET_MINUTES':
-      return { ...state, minutes: Math.max(0, Math.min(59, action.payload)) };
+      return { ...state, minutes: Math.max(0, Math.min(99, action.payload)) };
     case 'SET_SECONDS':
       return { ...state, seconds: Math.max(0, Math.min(59, action.payload)) };
     case 'RESET':
@@ -292,6 +310,18 @@ export default function TimerScreen() {
     setCurrentRoute('/(tabs)/timer');
     return () => {
       // アンマウント時はクリアしない（他の画面に遷移する際に使用するため）
+    };
+  }, []);
+
+  // クリーンアップ: タイマーをクリア（メモリリーク防止）
+  useEffect(() => {
+    return () => {
+      // サウンド再生用のタイマーをクリア
+      soundTimerRefs.current.forEach(timer => clearTimeout(timer));
+      soundTimerRefs.current = [];
+      // その他のタイマーをクリア
+      miscTimerRefs.current.forEach(timer => clearTimeout(timer));
+      miscTimerRefs.current = [];
     };
   }, []);
   
@@ -370,9 +400,9 @@ export default function TimerScreen() {
     
     const numValue = parseInt(cleanedText, 10);
     if (!isNaN(numValue)) {
-      // 最大値59に制限
-      if (numValue > 59) {
-        setTimerMinutes('59');
+      // 最大値99に制限（60分以上も入力可能）
+      if (numValue > 99) {
+        setTimerMinutes('99');
       } else {
         setTimerMinutes(cleanedText);
       }
@@ -398,7 +428,7 @@ export default function TimerScreen() {
     if (timerMinutes) {
       const numValue = parseInt(timerMinutes, 10);
       if (!isNaN(numValue) && numValue >= 0) {
-        const clamped = Math.min(59, Math.max(0, numValue));
+        const clamped = Math.min(99, Math.max(0, numValue));
         setTimerMinutes(clamped.toString());
       } else {
         setTimerMinutes('');
@@ -422,7 +452,7 @@ export default function TimerScreen() {
     soundType: 'beep',
   });
   
-  // 固定値: 音量とバイブレーション（UIから削除された設定）
+  // 固定値: 音量とバイブレーション
   const VOLUME = 0.7;
   const VIBRATE_ON = true;
   
@@ -450,6 +480,10 @@ export default function TimerScreen() {
   const timerPresetRef = useRef<number>(0); // タイマー設定時間を保存
   const wasTimerRunningRef = useRef<boolean>(false); // 前回のタイマー実行状態を保存
   const audioContextRef = useRef<AudioContext | null>(null); // AudioContextを保存
+  // タイマー完了時のサウンド再生用のタイマーIDを保持（メモリリーク防止）
+  const soundTimerRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // その他のsetTimeout用のタイマーIDを保持（メモリリーク防止）
+  const miscTimerRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
   
   const {
     timerSeconds,
@@ -492,15 +526,22 @@ export default function TimerScreen() {
     // サウンド再生
     if (settings.soundOn) {
       logger.debug('タイマー完了サウンド通知を再生');
-      setTimeout(() => {
+      // 既存のタイマーをクリア（メモリリーク防止）
+      soundTimerRefs.current.forEach(timer => clearTimeout(timer));
+      soundTimerRefs.current = [];
+      
+      const timer1 = setTimeout(() => {
         playSynthNotification();
-        setTimeout(() => {
+        const timer2 = setTimeout(() => {
           playSynthNotification();
+          const timer3 = setTimeout(() => {
+            playSynthNotification();
+          }, 1000);
+          soundTimerRefs.current.push(timer3);
         }, 500);
-        setTimeout(() => {
-          playSynthNotification();
-        }, 1000);
+        soundTimerRefs.current.push(timer2);
       }, 100);
+      soundTimerRefs.current.push(timer1);
     } else {
       logger.debug('サウンド通知は無効');
     }
@@ -1289,7 +1330,13 @@ export default function TimerScreen() {
       if (totalSeconds > 0) {
         logger.debug('Setting timer preset to:', totalSeconds);
         setTimerPreset(totalSeconds);
-        setTimeout(() => startTimer(), 100);
+        // 既存のタイマーをクリア（メモリリーク防止）
+        if (miscTimerRefs.current.length > 0) {
+          miscTimerRefs.current.forEach(timer => clearTimeout(timer));
+          miscTimerRefs.current = [];
+        }
+        const timer = setTimeout(() => startTimer(), 100);
+        miscTimerRefs.current.push(timer);
       } else {
         Alert.alert('エラー', 'タイマー時間を設定してください');
       }
@@ -1360,28 +1407,55 @@ export default function TimerScreen() {
 
   // タイマー入力モーダル用の関数
   const handleTimerInputApply = () => {
-    const hours = timerHours ? parseInt(timerHours, 10) : 0;
-    const minutes = timerMinutes ? parseInt(timerMinutes, 10) : 0;
+    // 空文字列の場合は0として扱う
+    // ただし、分だけ入力されている場合は時間を0にする（誤入力を防ぐ）
+    const hoursValue = timerHours && timerHours.trim() !== '' ? timerHours.trim() : '0';
+    const minutesValue = timerMinutes && timerMinutes.trim() !== '' ? timerMinutes.trim() : '0';
+    
+    const hours = parseInt(hoursValue, 10);
+    const minutes = parseInt(minutesValue, 10);
     const seconds = 0; // 秒は0に固定
 
-    if (hours > 0 || minutes > 0) {
-      const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+    logger.debug('handleTimerInputApply called:', { timerHours, timerMinutes, hoursValue, minutesValue, hours, minutes, isNaNHours: isNaN(hours), isNaNMinutes: isNaN(minutes) });
+
+    // 時間または分が0より大きい場合のみ適用
+    // 分だけ入力されている場合は時間を0にする（誤入力を防ぐ）
+    const finalHours = (!isNaN(hours) && hours > 0) ? hours : 0;
+    const finalMinutes = (!isNaN(minutes) && minutes > 0) ? minutes : 0;
+
+    if (finalHours > 0 || finalMinutes > 0) {
+      const totalSeconds = finalHours * 3600 + finalMinutes * 60 + seconds;
+      
+      logger.debug('タイマー入力から設定:', { finalHours, finalMinutes, seconds, totalSeconds });
       
       // カスタム時間の状態を更新
-      dispatchCustomTime({ type: 'SET_HOURS', payload: hours });
-      dispatchCustomTime({ type: 'SET_MINUTES', payload: minutes });
+      dispatchCustomTime({ type: 'SET_HOURS', payload: finalHours });
+      dispatchCustomTime({ type: 'SET_MINUTES', payload: finalMinutes });
       dispatchCustomTime({ type: 'SET_SECONDS', payload: seconds });
       
       // タイマーに設定（setTimerPresetはタイマーの秒数を直接更新する）
-      logger.debug('タイマー入力から設定:', { hours, minutes, seconds, totalSeconds });
-      timerPresetRef.current = totalSeconds;
+      // timerPresetRefはsetTimerPreset内で更新されるので、ここでは設定不要
       setTimerPreset(totalSeconds); // これでtimerSecondsが更新される
       
-      setShowTimerInputModal(false);
-      setTimerHours('');
-      setTimerMinutes('');
+      // タイマーが更新されるまで少し待ってからモーダルを閉じる
+      // 既存のタイマーをクリア（メモリリーク防止）
+      if (miscTimerRefs.current.length > 0) {
+        miscTimerRefs.current.forEach(timer => clearTimeout(timer));
+        miscTimerRefs.current = [];
+      }
+      const timer = setTimeout(() => {
+        setShowTimerInputModal(false);
+        setTimerHours('');
+        setTimerMinutes('');
+        
+        // 成功メッセージを表示
+        const timeStr = `${finalHours > 0 ? finalHours + (t('hours') || '時間') : ''}${finalMinutes > 0 ? finalMinutes + (t('minutes') || '分') : ''}`;
+        Alert.alert(t('settingsCompleted') || '設定完了', t('timerSetTo')?.replace('{time}', timeStr) || `タイマーを${timeStr}に設定しました`);
+      }, 100);
+      miscTimerRefs.current.push(timer);
     } else {
-      Alert.alert(t('error'), t('pleaseSetValidTime'));
+      logger.warn('タイマー入力が無効:', { finalHours, finalMinutes });
+      Alert.alert(t('error') || 'エラー', t('pleaseSetValidTime') || '有効な時間を設定してください');
     }
   };
 
@@ -1390,6 +1464,17 @@ export default function TimerScreen() {
     setTimerHours('');
     setTimerMinutes('');
   };
+
+  // モーダルが開いた時に分のフィールドに自動的にフォーカスを当てる
+  useEffect(() => {
+    if (showTimerInputModal) {
+      // モーダルが開いたら少し待ってから分のフィールドにフォーカス
+      const timer = setTimeout(() => {
+        timerMinutesInputRef.current?.focus();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [showTimerInputModal]);
 
   const currentSeconds = timerSeconds;
   const isRunning = isTimerRunning;
@@ -1473,14 +1558,14 @@ export default function TimerScreen() {
                 progress={progress}
                 size={280}
                 strokeWidth={10}
-                color={currentTheme.primary}
-                backgroundColor="#2A2A2A"
+                color={getProgressColor(progress)}
+                backgroundColor="#E8E8E8"
               />
               
               {/* 中央のタイマー表示 */}
               <View style={styles.timerCenterContent}>
                 <Text style={[styles.timerTitle, { color: currentTheme.text }]}>タイマー</Text>
-                <Text style={[styles.timerDisplay, { color: currentTheme.primary }]}>
+                <Text style={[styles.timerDisplay, { color: getProgressColor(progress) }]}>
                   {formatTime(currentSeconds)}
                 </Text>
                 
@@ -1522,7 +1607,13 @@ export default function TimerScreen() {
                       if (totalSeconds > 0) {
                         logger.debug('Control button: Setting timer preset to:', totalSeconds);
                         setTimerPreset(totalSeconds);
-                        setTimeout(() => startTimer(), 100);
+                        // 既存のタイマーをクリア（メモリリーク防止）
+                        if (miscTimerRefs.current.length > 0) {
+                          miscTimerRefs.current.forEach(timer => clearTimeout(timer));
+                          miscTimerRefs.current = [];
+                        }
+                        const timer = setTimeout(() => startTimer(), 100);
+                        miscTimerRefs.current.push(timer);
                       } else {
                         Alert.alert(t('error'), t('pleaseSetTimerTime') || 'タイマー時間を設定してください');
                       }
@@ -1974,14 +2065,18 @@ export default function TimerScreen() {
 
               <TouchableOpacity
                 onPress={handleTimerInputApply}
+                disabled={(!timerHours || isNaN(parseInt(timerHours, 10)) || parseInt(timerHours, 10) === 0) && (!timerMinutes || isNaN(parseInt(timerMinutes, 10)) || parseInt(timerMinutes, 10) === 0)}
                 style={{
                   paddingVertical: 16,
                   paddingHorizontal: 32,
                   borderRadius: 40,
-                  backgroundColor: currentTheme.primary,
+                  backgroundColor: ((!timerHours || isNaN(parseInt(timerHours, 10)) || parseInt(timerHours, 10) === 0) && (!timerMinutes || isNaN(parseInt(timerMinutes, 10)) || parseInt(timerMinutes, 10) === 0)) 
+                    ? '#666666' 
+                    : currentTheme.primary,
                   justifyContent: 'center',
                   alignItems: 'center',
                   minWidth: 120,
+                  opacity: ((!timerHours || isNaN(parseInt(timerHours, 10)) || parseInt(timerHours, 10) === 0) && (!timerMinutes || isNaN(parseInt(timerMinutes, 10)) || parseInt(timerMinutes, 10) === 0)) ? 0.5 : 1,
                 }}
               >
                 <Text style={{

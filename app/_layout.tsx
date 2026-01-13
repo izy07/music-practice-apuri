@@ -1,4 +1,7 @@
 // メインのレイアウトファイル - アプリ全体の構造と認証ルーティングを管理
+// Expo Routerのサーバーサイドレンダリングを無効化（開発環境でのエラーを回避）
+export const unstable_serverRendering = false;
+
 import React, { useRef, useEffect } from 'react';
 import { View, LogBox, AppState } from 'react-native';
 import { Stack } from 'expo-router'; // 画面遷移のスタックナビゲーター
@@ -20,6 +23,7 @@ import { checkDatabaseSchema } from '@/lib/databaseSchemaChecker'; // データ�
 import { initializeGoalRepository } from '@/repositories/goalRepository'; // 目標リポジトリの初期化
 import audioResourceManager from '@/lib/audioResourceManager'; // オーディオリソース管理
 import { isOnline } from '@/lib/offlineStorage'; // ネットワーク状態確認
+import Constants from 'expo-constants'; // 設定値取得用
 
 // Web環境ではexpo-status-barをインポートしない
 type StatusBarComponent = React.ComponentType<{ style: 'dark' | 'light' | 'auto' }>;
@@ -136,37 +140,49 @@ function RootLayoutContent() {
   }, []);
 
   // ネットワーク切断検出：ネットワークが切断されたらログイン画面にリダイレクト（統合版）
+  // Web環境ではnavigator.onLineを使用、ネイティブ環境では将来的にNetInfoを統合可能
   React.useEffect(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') {
-      return;
-    }
-
-    const handleOffline = () => {
-      if (!isOnline()) {
-        const currentSegments = Platform.OS === 'web' ? segmentsRef.current : segments;
-        const isInAuthGroup = currentSegments[0] === 'auth';
-        
-        // ログイン画面にいない場合のみリダイレクト
-        if (!isInAuthGroup && isReady && isInitialized) {
-          redirectToLogin(router, 'ネットワーク切断を検出');
+    // Web環境でのオフライン検出
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const handleOffline = () => {
+        if (!isOnline()) {
+          const currentSegments = segmentsRef.current;
+          const isInAuthGroup = currentSegments[0] === 'auth';
+          
+          // ログイン画面にいない場合のみリダイレクト
+          if (!isInAuthGroup && isReady && isInitialized) {
+            redirectToLogin(router, 'ネットワーク切断を検出');
+          }
         }
-      }
-    };
+      };
 
-    // 初回チェック
-    handleOffline();
+      const handleOnline = () => {
+        // オンライン復帰時の処理（必要に応じて実装）
+        logger.debug('ネットワーク接続が復旧しました');
+      };
 
-    // ネットワーク状態の変化を監視
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('offline', handleOffline);
-    };
+      // 初回チェック
+      handleOffline();
+
+      // ネットワーク状態の変化を監視
+      window.addEventListener('offline', handleOffline);
+      window.addEventListener('online', handleOnline);
+      return () => {
+        window.removeEventListener('offline', handleOffline);
+        window.removeEventListener('online', handleOnline);
+      };
+    }
+    
+    // ネイティブ環境でのオフライン検出（将来的にNetInfoを統合可能）
+    // TODO: ネイティブ環境でのオフライン検出を実装する場合は、@react-native-community/netinfoを使用
+    // 現時点では、ネイティブ環境ではオフライン検出を行わない（Web環境のみ対応）
   }, [isReady, isInitialized, router, segments]);
   
   // segmentsが変更されたらrefを更新
   React.useEffect(() => {
     segmentsRef.current = segments;
   }, [segments]);
+
 
   // データベーススキーマの整合性をチェック（認証完了後、一度だけ実行）
   // 初期スキーマに含まれているテーブル/カラムは毎回チェックする必要がないため、チェック処理は削除
@@ -721,9 +737,6 @@ function RootLayoutContent() {
       
       {/* メインアプリの画面（タブナビゲーション） */}
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      
-      {/* 組織関連の画面 */}
-      <Stack.Screen name="organization-dashboard" options={{ headerShown: false }} />
       
       {/* その他の画面 */}
       <Stack.Screen name="attendance" options={{ headerShown: false }} />

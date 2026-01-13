@@ -8,18 +8,9 @@ import { formatLocalDate } from '@/lib/dateUtils';
 import logger from '@/lib/logger';
 import { cleanContentFromTimeDetails, appendToContent } from '@/lib/utils/contentCleaner';
 import { applyInstrumentFilter, filterByInstrumentIdInMemory } from './common/instrumentFilter';
+import { isSupabaseError, SupabaseError } from '@/lib/errorHandlingHelpers';
 
 const REPOSITORY_CONTEXT = 'practiceSessionRepository';
-
-/**
- * Supabaseエラー型
- */
-type SupabaseError = {
-  code?: string;
-  message?: string;
-  details?: string;
-  hint?: string;
-} | null;
 
 export interface PracticeSession {
   id?: string;
@@ -74,8 +65,13 @@ export const getTodayPracticeSessions = async (
     
     return { data, error: null };
   } catch (error) {
-    // エラーをそのまま返す
-    return { data: null, error: error as SupabaseError };
+    // エラーを型安全に変換
+    const supabaseError: SupabaseError | null = isSupabaseError(error) 
+      ? error 
+      : (error instanceof Error 
+          ? { code: 'UNKNOWN_ERROR', message: error.message } 
+          : { code: 'UNKNOWN_ERROR', message: '不明なエラーが発生しました' });
+    return { data: null, error: supabaseError };
   }
 };
 
@@ -105,6 +101,7 @@ export const createPracticeSession = async (
       instrument_id?: string | null;
       content?: string | null;
       audio_url?: string | null;
+      video_url?: string | null;
     } = {
       user_id: session.user_id,
       practice_date: session.practice_date,
@@ -123,6 +120,9 @@ export const createPracticeSession = async (
     }
     if (session.audio_url !== undefined) {
       insertPayload.audio_url = session.audio_url;
+    }
+    if (session.video_url !== undefined) {
+      insertPayload.video_url = session.video_url;
     }
     
     // デバッグログ: 実際に送信される値を確認
@@ -217,7 +217,12 @@ export const createPracticeSession = async (
     return { data, error: null };
   } catch (error) {
     // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:createPracticeSession:exception`, false);
-    return { data: null, error: error as SupabaseError };
+    const supabaseError: SupabaseError | null = isSupabaseError(error) 
+      ? error 
+      : (error instanceof Error 
+          ? { code: 'UNKNOWN_ERROR', message: error.message } 
+          : { code: 'UNKNOWN_ERROR', message: '不明なエラーが発生しました' });
+    return { data: null, error: supabaseError };
   }
 };
 
@@ -296,7 +301,12 @@ export const updatePracticeSession = async (
     return { data, error: null };
   } catch (error) {
     // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:updatePracticeSession:exception`, false);
-    return { data: null, error: error as SupabaseError };
+    const supabaseError: SupabaseError | null = isSupabaseError(error) 
+      ? error 
+      : (error instanceof Error 
+          ? { code: 'UNKNOWN_ERROR', message: error.message } 
+          : { code: 'UNKNOWN_ERROR', message: '不明なエラーが発生しました' });
+    return { data: null, error: supabaseError };
   }
 };
 
@@ -340,13 +350,17 @@ export const deletePracticeSessions = async (
         return { error: null, retryCount };
       }
 
-      lastError = error;
+      lastError = isSupabaseError(error) 
+        ? error 
+        : (error instanceof Error 
+            ? { code: 'UNKNOWN_ERROR', message: error.message } 
+            : { code: 'UNKNOWN_ERROR', message: '不明なエラーが発生しました' });
       
       // リトライ不可なエラーの場合は即座に終了
-      const isNonRetryableError = error.code === 'PGRST205' || // テーブル不存在
+      const isNonRetryableError = lastError && (lastError.code === 'PGRST205' || // テーブル不存在
                                    error.code === 'PGRST116' || // レコード不存在
                                    error.code === '23503' ||   // 外部キー制約違反
-                                   error.code === '23505';     // 一意制約違反
+                                   error.code === '23505');     // 一意制約違反
       
       if (isNonRetryableError) {
         logger.warn(`[${REPOSITORY_CONTEXT}] deletePracticeSessions:non-retryable-error`, {
@@ -372,7 +386,11 @@ export const deletePracticeSessions = async (
         continue;
       }
     } catch (error) {
-      lastError = error as SupabaseError;
+      lastError = isSupabaseError(error) 
+        ? error 
+        : (error instanceof Error 
+            ? { code: 'UNKNOWN_ERROR', message: error.message } 
+            : { code: 'UNKNOWN_ERROR', message: '不明なエラーが発生しました' });
       retryCount++;
       
       if (retryCount < maxRetries) {
@@ -413,6 +431,8 @@ export const savePracticeSessionWithIntegration = async (
     existingContentPrefix?: string;
     practiceDate?: string; // 練習日付（指定がない場合は今日）
     replaceMinutes?: boolean; // trueの場合、既存の時間を置き換える（デフォルト: false = 加算）
+    audioUrl?: string | null;
+    videoUrl?: string | null;
   } = {}
 ): Promise<{ success: boolean; error?: SupabaseError }> => {
   try {
@@ -422,7 +442,9 @@ export const savePracticeSessionWithIntegration = async (
       inputMethod: rawInputMethod,
       existingContentPrefix = '練習記録',
       practiceDate,
-      replaceMinutes = false // デフォルトは加算
+      replaceMinutes = false, // デフォルトは加算
+      audioUrl = null,
+      videoUrl = null
     } = options;
     
     // 練習日付が指定されていない場合は今日の日付を使用
@@ -555,6 +577,14 @@ export const savePracticeSessionWithIntegration = async (
           input_method: inputMethod, // 既に検証済みの値を使用
         };
         
+        // audio_urlとvideo_urlを更新（指定されている場合）
+        if (audioUrl !== null) {
+          updateData.audio_url = audioUrl || undefined;
+        }
+        if (videoUrl !== null) {
+          updateData.video_url = videoUrl || undefined;
+        }
+        
         logger.debug('既存記録更新（同じinput_method）:', {
           existingInstrumentId: existing.instrument_id,
           newInstrumentId: instrumentId,
@@ -662,6 +692,8 @@ export const savePracticeSessionWithIntegration = async (
         content: content || null,
         input_method: inputMethod, // 既に検証済みの値を使用
         instrument_id: instrumentId || null,
+        audio_url: audioUrl || undefined,
+        video_url: videoUrl || undefined,
       };
       
       logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration: 新規記録作成開始`, {
@@ -717,7 +749,12 @@ export const savePracticeSessionWithIntegration = async (
     }
   } catch (error) {
     // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:savePracticeSessionWithIntegration:exception`, false);
-    return { success: false, error: error as SupabaseError };
+    const supabaseError: SupabaseError | null = isSupabaseError(error) 
+      ? error 
+      : (error instanceof Error 
+          ? { code: 'UNKNOWN_ERROR', message: error.message } 
+          : { code: 'UNKNOWN_ERROR', message: '不明なエラーが発生しました' });
+    return { success: false, error: supabaseError };
   }
 };
 
@@ -763,12 +800,17 @@ export const getPracticeSessionsByDateRange = async (
         endDate,
         instrumentId,
         limit,
-        code: (error as any)?.code,
-        message: (error as any)?.message,
-        details: (error as any)?.details,
-        hint: (error as any)?.hint,
+        code: isSupabaseError(error) ? error.code : 'UNKNOWN_ERROR',
+        message: isSupabaseError(error) ? error.message : (error instanceof Error ? error.message : '不明なエラー'),
+        details: isSupabaseError(error) ? error.details : undefined,
+        hint: isSupabaseError(error) ? error.hint : undefined,
       });
-      return { data: null, error: error as SupabaseError };
+      const supabaseError: SupabaseError | null = isSupabaseError(error) 
+        ? error 
+        : (error instanceof Error 
+            ? { code: 'UNKNOWN_ERROR', message: error.message } 
+            : { code: 'UNKNOWN_ERROR', message: '不明なエラーが発生しました' });
+      return { data: null, error: supabaseError };
     }
     
     // TypeScript側で楽器フィルタリングを実行
@@ -784,7 +826,7 @@ export const getPracticeSessionsByDateRange = async (
       instrumentId,
     });
     
-    return { data: filtered as PracticeSession[] | null, error: null as any };
+    return { data: filtered as PracticeSession[] | null, error: null };
   } catch (error) {
     // 例外も詳細にログ出力
     logger.error('[practiceSessionRepository.getPracticeSessionsByDateRange] 例外が発生しました', {
@@ -795,7 +837,12 @@ export const getPracticeSessionsByDateRange = async (
       limit,
       error: error instanceof Error ? error.message : String(error),
     });
-    return { data: null, error: error as SupabaseError };
+    const supabaseError: SupabaseError | null = isSupabaseError(error) 
+      ? error 
+      : (error instanceof Error 
+          ? { code: 'UNKNOWN_ERROR', message: error.message } 
+          : { code: 'UNKNOWN_ERROR', message: '不明なエラーが発生しました' });
+    return { data: null, error: supabaseError };
   }
 };
 
@@ -836,7 +883,12 @@ export const getPracticeSessionsByDate = async (
     return { data: filtered as PracticeSession[] | null, error: null };
   } catch (error) {
     // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDate:exception`, false);
-    return { data: null, error: error as SupabaseError };
+    const supabaseError: SupabaseError | null = isSupabaseError(error) 
+      ? error 
+      : (error instanceof Error 
+          ? { code: 'UNKNOWN_ERROR', message: error.message } 
+          : { code: 'UNKNOWN_ERROR', message: '不明なエラーが発生しました' });
+    return { data: null, error: supabaseError };
   }
 };
 

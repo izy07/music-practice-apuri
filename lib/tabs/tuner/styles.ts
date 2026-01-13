@@ -9,6 +9,7 @@ export const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 1,
+    paddingBottom: 65, // タブバーの高さ
   },
   modeToggleContainer: {
     flexDirection: 'row',
@@ -746,6 +747,53 @@ export const styles = StyleSheet.create({
     marginTop: 2,
     textAlign: 'center',
   },
+  scaleNotesScroll: {
+    marginTop: 8,
+  },
+  scaleNotesContainer: {
+    marginTop: 8,
+  },
+  scaleNotesRowScroll: {
+    marginBottom: 4,
+  },
+  scaleNotesRow: {
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: 0,
+  },
+  scaleNoteButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    minHeight: 40,
+    minWidth: 50,
+  },
+  scaleNoteButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  transposingInfoContent: {
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 8,
+  },
+  transposingInfoTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  transposingInfoDescription: {
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  scaleNotePlayingIndicator: {
+    fontSize: 10,
+    marginTop: 2,
+  },
   stopButton: {
     width: '100%',
     paddingVertical: 12,
@@ -872,7 +920,7 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 8,
-    marginBottom: 8,
+    marginBottom: 4, // 開始ボタンとの間隔を縮小
   },
   simpleCents: {
     fontSize: 18,
@@ -884,6 +932,7 @@ export const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 48,
     borderRadius: 24,
+    marginTop: -16, // 開始ボタンをさらに上に移動
     elevation: 4,
     ...createShadowStyle({
       shadowColor: '#000',

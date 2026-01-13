@@ -358,11 +358,21 @@ export default function MyLibraryScreen() {
         
         logger.debug('更新成功');
         
+        // ローカル状態を更新（再取得を避ける）
+        setSongs(prevSongs => 
+          prevSongs.map(s => s.id === editingSong.id ? {
+            ...s,
+            title: formData.title.trim(),
+            artist: formData.artist.trim() || '',
+            genre: genreValue || '',
+            difficulty: formData.difficulty,
+            status: statusValue,
+            notes: formData.notes || ''
+          } : s)
+        );
+        
         // 更新されたステータスに合わせてフィルターを自動調整
         setFilterStatus(statusValue as 'want_to_play' | 'learning' | 'played' | 'mastered');
-        
-        // リストを再読み込み（モーダルを閉じる前に実行してデータを確実に取得）
-        await loadSongs();
         
         // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
         if (Platform.OS === 'web') {
@@ -480,9 +490,15 @@ export default function MyLibraryScreen() {
         });
         
         // まずinstrument_idを含めて試行
-        const { data: insertData, error: insertError } = await supabase
+        let insertData: any[] | null = null;
+        const { data: initialInsertData, error: insertError } = await supabase
           .from('my_songs')
-          .insert(songData);
+          .insert(songData)
+          .select();
+        
+        if (initialInsertData) {
+          insertData = initialInsertData;
+        }
 
         // カラムが存在しないエラーの場合、該当カラムを除外して再試行
         if (insertError) {
@@ -506,7 +522,8 @@ export default function MyLibraryScreen() {
               
               const retryResult = await supabase
                 .from('my_songs')
-                .insert(handled.payload);
+                .insert(handled.payload)
+                .select();
               
               if (retryResult.error) {
                 logger.error('[my-library] 曲追加エラー詳細（再試行後）:', {
@@ -525,6 +542,11 @@ export default function MyLibraryScreen() {
               logger.info('[my-library] カラムを除外して曲の追加に成功しました', {
                 excludedColumns: handled.excludedColumns
               });
+              
+              // 再試行時のレスポンスデータを設定
+              if (retryResult.data && retryResult.data.length > 0) {
+                insertData = retryResult.data;
+              }
             } else {
               logger.error('[my-library] handleColumnErrorがnullを返しました', {
                 errorCode: insertError.code,
@@ -550,11 +572,45 @@ export default function MyLibraryScreen() {
         
         logger.debug('追加成功');
         
+        // データベースからのレスポンスで新しい曲を取得
+        const newSongData = insertData && insertData.length > 0 ? insertData[0] : null;
+        
+        // ローカル状態を更新（再取得を避ける）
+        if (newSongData) {
+          // 楽器フィルタリングを適用（現在の楽器と一致する場合のみ追加）
+          const { filterByInstrumentIdInMemory } = await import('@/repositories/common/instrumentFilter');
+          interface SongFromDB {
+            id: string;
+            title: string;
+            artist: string;
+            genre: string | null;
+            difficulty: 'beginner' | 'intermediate' | 'advanced';
+            status: 'want_to_play' | 'learning' | 'played' | 'mastered';
+            notes: string | null;
+            created_at: string;
+            updated_at: string;
+            instrument_id?: string | null;
+          }
+          const filteredNewSong = filterByInstrumentIdInMemory([newSongData as SongFromDB], currentInstrumentId, true);
+          
+          if (filteredNewSong.length > 0) {
+            const newSong: Song = {
+              id: newSongData.id,
+              title: newSongData.title,
+              artist: newSongData.artist || '',
+              genre: newSongData.genre || '',
+              difficulty: newSongData.difficulty,
+              status: newSongData.status,
+              notes: newSongData.notes || '',
+              created_at: newSongData.created_at || new Date().toISOString(),
+              updated_at: newSongData.updated_at || new Date().toISOString()
+            };
+            setSongs(prevSongs => [newSong, ...prevSongs]);
+          }
+        }
+        
         // 保存されたステータスに合わせてフィルターを自動調整
         setFilterStatus(statusValue as 'want_to_play' | 'learning' | 'played' | 'mastered');
-        
-        // リストを再読み込み（モーダルを閉じる前に実行してデータを確実に取得）
-        await loadSongs();
         
         // 制限状態を再チェック
         const updatedLimitCheck = await checkMyLibraryLimit(user.id, entitlement, currentInstrumentId);
@@ -604,11 +660,13 @@ export default function MyLibraryScreen() {
 
       logger.debug('ステータス変更成功:', { songId: song.id, newStatus });
       
+      // ローカル状態を更新（再取得を避ける）
+      setSongs(prevSongs => 
+        prevSongs.map(s => s.id === song.id ? { ...s, status: newStatus } : s)
+      );
+      
       // 選択されたステータスのフィルターに自動切り替え
       setFilterStatus(newStatus);
-      
-      // リストを再読み込み
-      await loadSongs();
       
       Alert.alert('成功', `ステータスを「${getStatusText(newStatus)}」に変更しました`);
     } catch (error) {
@@ -1457,10 +1515,16 @@ const styles = StyleSheet.create({
   },
   backButton: {
     padding: 8,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
+    flex: 1,
+    textAlign: 'center',
   },
   addButton: {
     padding: 4,

@@ -19,7 +19,6 @@ export interface MusicTerm {
   description_ja?: string | null;
   description_en?: string | null;
   created_at?: string;
-  user_id?: string | null; // ユーザーID（ユーザーが作成した用語の場合）
 }
 
 export interface MusicTermQuery {
@@ -57,7 +56,7 @@ export const getMusicTerms = async (
     // DBから取得
     let dbQuery = supabase
       .from('music_terms')
-      .select('id, term, reading, category, meaning_ja, meaning_en, description_ja, description_en, created_at, user_id')
+      .select('id, term, reading, category, meaning_ja, meaning_en, description_ja, description_en, created_at')
       .order('created_at', { ascending: true });
     
     if (query?.category) {
@@ -106,7 +105,7 @@ export const getMusicTermById = async (
   try {
     const { data, error } = await supabase
       .from('music_terms')
-      .select('id, term, reading, category, meaning_ja, meaning_en, description_ja, description_en, created_at, user_id')
+      .select('id, term, reading, category, meaning_ja, meaning_en, description_ja, description_en, created_at')
       .eq('id', termId)
       .single();
     
@@ -150,18 +149,13 @@ export const getMusicTermCategories = async (): Promise<{ data: string[] | null;
  * 音楽用語を追加
  */
 export const createMusicTerm = async (
-  term: Omit<MusicTerm, 'id' | 'created_at'>
+  term: Omit<MusicTerm, 'id' | 'created_at' | 'user_id'>
 ): Promise<{ data: MusicTerm | null; error: any }> => {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      return { data: null, error: new Error('ユーザーが認証されていません') };
-    }
-
     const { data, error } = await supabase
       .from('music_terms')
-      .insert({ ...term, user_id: user.id })
-      .select()
+      .insert(term)
+      .select('id, term, reading, category, meaning_ja, meaning_en, description_ja, description_en, created_at')
       .single();
 
     if (error) {

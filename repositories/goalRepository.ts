@@ -2,7 +2,7 @@
  * 目標（goals）関連のリポジトリ
  */
 import { supabase } from '@/lib/supabase';
-import { Goal } from '@/app/(tabs)/goals/types';
+import { Goal, SubGoal } from '@/lib/tabs/goals/types';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { subGoalRepository } from './subGoalRepository';
@@ -32,7 +32,7 @@ export const checkShowOnCalendarSupport = async (forceCheck: boolean = false): P
   // 既にチェック済みの場合は即座に返す（強制チェックの場合は除く）
   const isFirstCheck = supportsShowOnCalendar === null;
     if (!isFirstCheck && !forceCheck) {
-    return supportsShowOnCalendar;
+    return supportsShowOnCalendar ?? true;
   }
   
   // 初期化中の場合、初期化の完了を待つ
@@ -507,33 +507,39 @@ export const goalRepository = {
         show_on_calendar: g.show_on_calendar ?? false,
       }));
       
-      // 長期目標の場合、サブ目標も取得
-      const goalsWithSubGoals = await Promise.all(
-        goalsWithDefaults.map(async (g: any) => {
-          if (g.goal_type === 'personal_long') {
-            try {
-              const subGoals = await subGoalRepository.getSubGoalsByGoalId(g.id, userId);
-              // サブ目標がある場合は進捗率を自動計算
-              if (subGoals && subGoals.length > 0) {
-                const calculatedProgress = subGoalRepository.calculateProgressFromSubGoals(subGoals);
-                return {
-                  ...g,
-                  sub_goals: subGoals,
-                  progress_percentage: calculatedProgress,
-                  // 進捗率が100%の場合は完了としてマーク
-                  is_completed: calculatedProgress === 100,
-                };
-              }
-              return { ...g, sub_goals: [] };
-            } catch (error) {
-              // サブ目標取得エラーは無視（既存機能に影響しない）
-              logger.debug('サブ目標取得エラー（無視）:', error);
-              return { ...g, sub_goals: [] };
-            }
+      // 長期目標の場合、サブ目標も取得（一括取得でパフォーマンス最適化）
+      const longTermGoalIds = goalsWithDefaults
+        .filter((g: any) => g.goal_type === 'personal_long')
+        .map((g: any) => g.id);
+      
+      let subGoalsMap = new Map<string, SubGoal[]>();
+      if (longTermGoalIds.length > 0) {
+        try {
+          subGoalsMap = await subGoalRepository.getSubGoalsByGoalIds(longTermGoalIds, userId);
+        } catch (error) {
+          // サブ目標取得エラーは無視（既存機能に影響しない）
+          logger.debug('サブ目標一括取得エラー（無視）:', error);
+        }
+      }
+      
+      const goalsWithSubGoals = goalsWithDefaults.map((g: any) => {
+        if (g.goal_type === 'personal_long') {
+          const subGoals = subGoalsMap.get(g.id) || [];
+          // サブ目標がある場合は進捗率を自動計算
+          if (subGoals && subGoals.length > 0) {
+            const calculatedProgress = subGoalRepository.calculateProgressFromSubGoals(subGoals);
+            return {
+              ...g,
+              sub_goals: subGoals,
+              progress_percentage: calculatedProgress,
+              // 進捗率が100%の場合は完了としてマーク
+              is_completed: calculatedProgress === 100,
+            };
           }
-          return g;
-        })
-      );
+          return { ...g, sub_goals: [] };
+        }
+        return g;
+      });
       
       // DBから取得した値をそのまま使用
       return goalsWithSubGoals.filter((g: any) => !g.is_completed);
@@ -680,32 +686,38 @@ export const goalRepository = {
         show_on_calendar: g.show_on_calendar ?? false,
       }));
       
-      // 長期目標の場合、サブ目標も取得
-      const goalsWithSubGoals = await Promise.all(
-        goalsWithDefaults.map(async (g: any) => {
-          if (g.goal_type === 'personal_long') {
-            try {
-              const subGoals = await subGoalRepository.getSubGoalsByGoalId(g.id, userId);
-              // サブ目標がある場合は進捗率を自動計算
-              if (subGoals && subGoals.length > 0) {
-                const calculatedProgress = subGoalRepository.calculateProgressFromSubGoals(subGoals);
-                return {
-                  ...g,
-                  sub_goals: subGoals,
-                  progress_percentage: calculatedProgress,
-                  is_completed: calculatedProgress === 100,
-                };
-              }
-              return { ...g, sub_goals: [] };
-            } catch (error) {
-              // サブ目標取得エラーは無視（既存機能に影響しない）
-              logger.debug('サブ目標取得エラー（無視）:', error);
-              return { ...g, sub_goals: [] };
-            }
+      // 長期目標の場合、サブ目標も取得（一括取得でパフォーマンス最適化）
+      const longTermGoalIds = goalsWithDefaults
+        .filter((g: any) => g.goal_type === 'personal_long')
+        .map((g: any) => g.id);
+      
+      let subGoalsMap = new Map<string, SubGoal[]>();
+      if (longTermGoalIds.length > 0) {
+        try {
+          subGoalsMap = await subGoalRepository.getSubGoalsByGoalIds(longTermGoalIds, userId);
+        } catch (error) {
+          // サブ目標取得エラーは無視（既存機能に影響しない）
+          logger.debug('サブ目標一括取得エラー（無視）:', error);
+        }
+      }
+      
+      const goalsWithSubGoals = goalsWithDefaults.map((g: any) => {
+        if (g.goal_type === 'personal_long') {
+          const subGoals = subGoalsMap.get(g.id) || [];
+          // サブ目標がある場合は進捗率を自動計算
+          if (subGoals && subGoals.length > 0) {
+            const calculatedProgress = subGoalRepository.calculateProgressFromSubGoals(subGoals);
+            return {
+              ...g,
+              sub_goals: subGoals,
+              progress_percentage: calculatedProgress,
+              is_completed: calculatedProgress === 100,
+            };
           }
-          return g;
-        })
-      );
+          return { ...g, sub_goals: [] };
+        }
+        return g;
+      });
       
       return goalsWithSubGoals.filter((g: any) => g.is_completed === true);
     }
@@ -819,7 +831,7 @@ export const goalRepository = {
     title: string;
     description?: string;
     target_date?: string;
-    goal_type: 'personal_short' | 'personal_long' | 'group';
+    goal_type: 'personal_short' | 'personal_long';
     instrument_id?: string | null;
   }): Promise<string | null> {
     // 最初の目標かどうかをチェック（instrument_idカラムが存在する場合のみフィルタリング）
@@ -1038,6 +1050,50 @@ export const goalRepository = {
   },
 
   /**
+   * 目標を更新（タイトル、説明、目標日など）
+   */
+  async updateGoal(
+    goalId: string,
+    userId: string,
+    updates: {
+      title?: string;
+      description?: string | null;
+      target_date?: string | null;
+      goal_type?: 'personal_short' | 'personal_long';
+    }
+  ): Promise<void> {
+    const updateData: any = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (updates.title !== undefined) {
+      updateData.title = updates.title.trim();
+    }
+    if (updates.description !== undefined) {
+      updateData.description = updates.description?.trim() || null;
+    }
+    if (updates.target_date !== undefined) {
+      updateData.target_date = updates.target_date || null;
+    }
+    if (updates.goal_type !== undefined) {
+      updateData.goal_type = updates.goal_type;
+    }
+
+    const { error } = await supabase
+      .from('goals')
+      .update(updateData)
+      .eq('id', goalId)
+      .eq('user_id', userId);
+
+    if (error) {
+      logger.error('[goalRepository.updateGoal] エラー:', error);
+      throw error;
+    }
+
+    logger.debug('[goalRepository.updateGoal] 成功:', { goalId, updates });
+  },
+
+  /**
    * 目標を達成としてマーク
    */
   async completeGoal(goalId: string, userId: string): Promise<void> {
@@ -1117,6 +1173,34 @@ export const goalRepository = {
   async uncompleteGoal(goalId: string, userId: string): Promise<void> {
     const updateData: any = {};
     
+    // まず目標の情報を取得（goal_typeを確認するため）
+    const { data: goalData, error: fetchError } = await supabase
+      .from('goals')
+      .select('goal_type')
+      .eq('id', goalId)
+      .eq('user_id', userId)
+      .single();
+    
+    if (fetchError) {
+      logger.error('目標の取得エラー:', fetchError);
+      throw fetchError;
+    }
+    
+    // サブ目標がある場合（長期目標の場合）、サブ目標の状態から進捗率を再計算
+    let progressPercentage = 90; // デフォルト値
+    if (goalData?.goal_type === 'personal_long') {
+      try {
+        const subGoals = await subGoalRepository.getSubGoalsByGoalId(goalId, userId);
+        if (subGoals && subGoals.length > 0) {
+          // サブ目標の状態から進捗率を計算
+          progressPercentage = subGoalRepository.calculateProgressFromSubGoals(subGoals);
+        }
+      } catch (error) {
+        logger.debug('サブ目標取得エラー（進捗率計算をスキップ）:', error);
+        // エラー時はデフォルト値（90%）を使用
+      }
+    }
+    
     // is_completedカラムが存在する場合のみ追加
     if (supportsIsCompleted) {
       updateData.is_completed = false;
@@ -1125,8 +1209,8 @@ export const goalRepository = {
     // completed_atカラムをnullに設定（エラー時は除外）
     updateData.completed_at = null;
     
-    // 進捗が100%の場合は90%に戻す（10%単位で動かしているため、90%に設定）
-    updateData.progress_percentage = 90;
+    // 進捗率を設定（サブ目標がある場合は再計算した値、ない場合は90%）
+    updateData.progress_percentage = progressPercentage;
     
     let { error } = await supabase
       .from('goals')
@@ -1140,7 +1224,7 @@ export const goalRepository = {
       
       if (isCompletedError) {
         // is_completedまたはcompleted_atカラムが存在しない場合、除外して再試行
-        const retryData: any = { progress_percentage: 90 };
+        const retryData: any = { progress_percentage: progressPercentage };
         
         // completed_atのエラーの場合、除外
         if (error.message?.includes('completed_at')) {

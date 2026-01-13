@@ -213,6 +213,18 @@ const defaultInstruments: Instrument[] = [
     textSecondary: '#2F4F4F',
   },
   {
+    id: '550e8400-e29b-41d4-a716-446655440016',
+    name: 'その他',
+    nameEn: 'Other',
+    primary: '#4682B4',
+    secondary: '#87CEEB',
+    accent: '#2F4F4F',
+    background: '#E0F6FF',
+    surface: '#FFFFFF',
+    text: '#2F4F4F',
+    textSecondary: '#4682B4',
+  },
+  {
     id: '550e8400-e29b-41d4-a716-446655440017',
     name: 'その他',
     nameEn: 'Other',

@@ -266,7 +266,7 @@ export const useIdleTimeout = ({
         }
 
         // タイマーをリセット（保存された時刻がある場合はそれを使用、ない場合は現在時刻を使用）
-        resetTimer();
+      resetTimer();
       };
 
       loadLastActivity();

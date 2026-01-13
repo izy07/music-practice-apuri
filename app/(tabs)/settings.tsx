@@ -9,6 +9,7 @@ import { useLanguage } from '@/components/LanguageContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { setCurrentRoute } from '@/lib/navigationHistory';
+import { asSafeRoutePath } from '@/lib/navigationHelpers';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -93,7 +94,7 @@ export default function SettingsScreen() {
       subtitle: t('profileSettingsSubtitle'),
       icon: User,
       color: '#4CAF50',
-      onPress: () => router.push('/(tabs)/profile-settings' as any)
+      onPress: () => router.push(asSafeRoutePath('/(tabs)/profile-settings'))
     },
     {
       id: 'my-library',
@@ -101,7 +102,7 @@ export default function SettingsScreen() {
       subtitle: t('myLibrarySubtitle'),
       icon: Library,
       color: '#9C27B0',
-      onPress: () => router.push('/(tabs)/my-library' as any)
+      onPress: () => router.push(asSafeRoutePath('/(tabs)/my-library'))
     },
     {
       id: 'recordings-library',
@@ -109,7 +110,7 @@ export default function SettingsScreen() {
       subtitle: t('recordingsLibrarySubtitle'),
       icon: BookOpen,
       color: '#607D8B',
-      onPress: () => router.push('/(tabs)/recordings-library' as any)
+      onPress: () => router.push(asSafeRoutePath('/(tabs)/recordings-library'))
     },
     {
       id: 'main-settings',
@@ -117,7 +118,7 @@ export default function SettingsScreen() {
       subtitle: '楽器の選択と外観設定',
       icon: Zap,
       color: '#FF6B35',
-      onPress: () => router.push('/(tabs)/main-settings' as any)
+      onPress: () => router.push(asSafeRoutePath('/(tabs)/main-settings'))
     },
     {
       id: 'tutorial',
@@ -125,7 +126,7 @@ export default function SettingsScreen() {
       subtitle: t('tutorialSubtitle'),
       icon: GraduationCap,
       color: '#9C27B0',
-      onPress: () => router.push('/(tabs)/app-guide' as any)
+      onPress: () => router.push(asSafeRoutePath('/(tabs)/app-guide'))
     },
     {
       id: 'pricing',
@@ -133,7 +134,7 @@ export default function SettingsScreen() {
       subtitle: 'プレミアム・年額プラン',
       icon: Crown,
       color: '#FFD700',
-      onPress: () => router.push('/(tabs)/pricing-plans' as any)
+      onPress: () => router.push(asSafeRoutePath('/(tabs)/pricing-plans'))
     },
     {
       id: 'language',
@@ -141,7 +142,7 @@ export default function SettingsScreen() {
       subtitle: t('languageSettingsSubtitle'),
       icon: Globe,
       color: '#2196F3',
-      onPress: () => router.push('/(tabs)/language-settings' as any)
+      onPress: () => router.push(asSafeRoutePath('/(tabs)/language-settings'))
     },
     {
       id: 'notification',
@@ -149,7 +150,7 @@ export default function SettingsScreen() {
       subtitle: t('notificationSettingsSubtitle'),
       icon: Bell,
       color: '#FF9800',
-      onPress: () => router.push('/(tabs)/notification-settings' as any)
+      onPress: () => router.push(asSafeRoutePath('/(tabs)/notification-settings'))
     },
     {
       id: 'privacy-settings',
@@ -157,7 +158,7 @@ export default function SettingsScreen() {
       subtitle: 'データ管理・セキュリティ設定',
       icon: Shield,
       color: '#4CAF50',
-      onPress: () => router.push('/(tabs)/privacy-settings' as any)
+      onPress: () => router.push(asSafeRoutePath('/(tabs)/privacy-settings'))
     },
     {
       id: 'support',
@@ -165,7 +166,7 @@ export default function SettingsScreen() {
       subtitle: t('feedbackSubtitle'),
       icon: Heart,
       color: '#E91E63',
-      onPress: () => router.push('/(tabs)/support' as any)
+      onPress: () => router.push(asSafeRoutePath('/(tabs)/support'))
     },
   ], [t, router]);
 
@@ -220,6 +221,7 @@ export default function SettingsScreen() {
           </View>
         </View>
       </ScrollView>
+
     </SafeAreaView>
   );
 }
@@ -231,6 +233,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
+    paddingBottom: 65, // タブバーの高さ
   },
   title: {
     fontSize: 24,

@@ -1,6 +1,7 @@
 // Supabaseクライアント設定 - データベース接続と認証を管理
 import { createClient } from '@supabase/supabase-js'; // Supabaseクライアント作成関数
 import { Platform } from 'react-native'; // プラットフォーム判定（iOS/Android/Web）
+import Constants from 'expo-constants'; // Expo設定から値を取得
 import logger from './logger';
 import { ErrorHandler } from './errorHandler';
 
@@ -25,11 +26,23 @@ try {
 const envLanIp = process.env.EXPO_PUBLIC_SUPABASE_LAN_IP || null;
 const resolvedLocalHost = envLanIp || autoLanIp || defaultLocalHost;
 const localUrl = `http://${resolvedLocalHost}:${localPort}`;
-const localKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0'; // ローカル用の匿名キー
+// ローカル用の匿名キー（環境変数から取得、デフォルトはローカルSupabaseの標準キー）
+const localKey = process.env.EXPO_PUBLIC_SUPABASE_LOCAL_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
-// クラウドSupabase設定（本番用）
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://uteeqkpsezbabdmritkn.supabase.co'; // クラウドSupabaseのURL
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0ZWVxa3BzZXpiYWJkbXJpdGtuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDQyNDUsImV4cCI6MjA3MDcyMDI0NX0.3wITO5E53yW2spDHi99ngaA0SRqnsJbAYzdT7DDa1tM'; // クラウド用の匿名キー
+// クラウドSupabase設定（本番用）- 環境変数またはapp.config.tsのextraから取得（必須）
+// 優先順位: 環境変数 > app.config.tsのextra
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || Constants.expoConfig?.extra?.supabaseUrl;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || Constants.expoConfig?.extra?.supabaseAnonKey;
+
+// 本番環境では環境変数が必須
+if (process.env.NODE_ENV === 'production') {
+  if (!supabaseUrl) {
+    throw new Error('EXPO_PUBLIC_SUPABASE_URL環境変数が設定されていません');
+  }
+  if (!supabaseAnonKey) {
+    throw new Error('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数が設定されていません');
+  }
+}
 
 // 実行環境でURLを選択
 const isDev = process.env.NODE_ENV !== 'production';
@@ -43,12 +56,13 @@ const useLocalOnWeb = process.env.EXPO_PUBLIC_USE_LOCAL_SUPABASE_WEB === 'true';
 
 // WebはPC上で動作するためローカル優先、ネイティブはクラウド優先
 // Webは常にクラウドを使用（ローカルは明示的に実装しない）
+// 本番環境では環境変数が必須、開発環境ではローカルフォールバック可
 const finalUrl = isWeb
-  ? supabaseUrl
-  : (isDev ? (useLocalOnNative ? localUrl : supabaseUrl) : supabaseUrl);
+  ? (supabaseUrl || (() => { throw new Error('EXPO_PUBLIC_SUPABASE_URL環境変数が設定されていません'); })())
+  : (isDev ? (useLocalOnNative ? localUrl : (supabaseUrl || localUrl)) : (supabaseUrl || (() => { throw new Error('EXPO_PUBLIC_SUPABASE_URL環境変数が設定されていません'); })()));
 const finalKey = isWeb
-  ? supabaseAnonKey
-  : (isDev ? (useLocalOnNative ? localKey : supabaseAnonKey) : supabaseAnonKey);
+  ? (supabaseAnonKey || (() => { throw new Error('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数が設定されていません'); })())
+  : (isDev ? (useLocalOnNative ? localKey : (supabaseAnonKey || localKey)) : (supabaseAnonKey || (() => { throw new Error('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数が設定されていません'); })()));
 
 // 開発環境でのみ接続情報をログ出力（本番では機密情報を隠す）
 if (isDev) {
@@ -131,6 +145,50 @@ const getSupabaseClient = () => {
     // カスタムfetch関数：ネットワークエラーを適切にハンドリング
     const customFetch = async (url: string, options?: RequestInit): Promise<Response> => {
       try {
+        // 429エラー（レート制限）のリトライ処理
+        const isAuthRefreshRequest = url.includes('/auth/v1/token') && url.includes('grant_type=refresh_token');
+        
+        // リフレッシュトークンリクエストの場合、レート制限をチェック
+        if (isAuthRefreshRequest) {
+          const lastRefreshKey = 'last_token_refresh_time';
+          const minRefreshInterval = 60000; // 1分間隔（60秒）
+          
+          if (typeof window !== 'undefined') {
+            const lastRefreshTime = window.localStorage.getItem(lastRefreshKey);
+            const now = Date.now();
+            
+            if (lastRefreshTime) {
+              const timeSinceLastRefresh = now - parseInt(lastRefreshTime, 10);
+              if (timeSinceLastRefresh < minRefreshInterval) {
+                logger.warn('トークンリフレッシュのレート制限: リフレッシュ間隔が短すぎます', {
+                  timeSinceLastRefresh,
+                  minRefreshInterval,
+                  waitTime: minRefreshInterval - timeSinceLastRefresh
+                });
+                // 429エラーとして返す（リトライを促す）
+                return new Response(
+                  JSON.stringify({
+                    error: 'rate_limit_exceeded',
+                    error_description: 'Too Many Requests. Please wait before retrying.',
+                    message: 'トークンリフレッシュのレート制限に達しました。しばらく待ってから再試行してください。'
+                  }),
+                  {
+                    status: 429,
+                    statusText: 'Too Many Requests',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Retry-After': String(Math.ceil((minRefreshInterval - timeSinceLastRefresh) / 1000)),
+                    },
+                  }
+                );
+              }
+            }
+            
+            // リフレッシュ時刻を記録
+            window.localStorage.setItem(lastRefreshKey, String(now));
+          }
+        }
+        
         // タイムアウト機能付きでfetchを実行
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 30000); // 30秒でタイムアウト
@@ -142,6 +200,24 @@ const getSupabaseClient = () => {
           });
           
           clearTimeout(timeoutId);
+          
+          // 429エラーの処理
+          if (response.status === 429) {
+            const retryAfter = response.headers.get('Retry-After');
+            const retryAfterSeconds = retryAfter ? parseInt(retryAfter, 10) : 60;
+            
+            logger.warn('Supabase API レート制限に達しました（429エラー）', {
+              url,
+              method: options?.method,
+              retryAfter: retryAfterSeconds,
+              isAuthRefresh: isAuthRefreshRequest
+            });
+            
+            // リフレッシュトークンリクエストの場合、エラーレスポンスを返す
+            if (isAuthRefreshRequest) {
+              return response;
+            }
+          }
           
           // 400エラーの詳細をログ出力（user_profiles更新エラーのデバッグ用）
           if (response.status === 400) {

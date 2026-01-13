@@ -51,6 +51,67 @@ export const subGoalRepository = {
   },
 
   /**
+   * 複数の目標IDに紐づくサブ目標を一括取得（パフォーマンス最適化）
+   * 
+   * @param goalIds 目標IDの配列
+   * @param userId ユーザーID
+   * @returns 目標IDごとにグループ化されたサブ目標のマップ
+   */
+  async getSubGoalsByGoalIds(goalIds: string[], userId: string): Promise<Map<string, SubGoal[]>> {
+    try {
+      if (goalIds.length === 0) {
+        return new Map();
+      }
+
+      const { data, error } = await supabase
+        .from('sub_goals')
+        .select('*')
+        .in('goal_id', goalIds)
+        .eq('user_id', userId)
+        .order('order_index', { ascending: true });
+
+      if (error) {
+        logger.error('サブ目標の一括取得エラー:', error);
+        throw error;
+      }
+
+      // 目標IDごとにグループ化
+      const subGoalsMap = new Map<string, SubGoal[]>();
+      
+      (data || []).forEach((item: any) => {
+        const subGoal: SubGoal = {
+          id: item.id,
+          goal_id: item.goal_id,
+          user_id: item.user_id,
+          title: item.title,
+          description: item.description || undefined,
+          is_completed: item.is_completed || false,
+          completed_at: item.completed_at || undefined,
+          order_index: item.order_index || 0,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+        };
+
+        const existing = subGoalsMap.get(item.goal_id) || [];
+        existing.push(subGoal);
+        subGoalsMap.set(item.goal_id, existing);
+      });
+
+      // 各目標IDに対して空配列を設定（サブ目標がない場合も含める）
+      goalIds.forEach(goalId => {
+        if (!subGoalsMap.has(goalId)) {
+          subGoalsMap.set(goalId, []);
+        }
+      });
+
+      return subGoalsMap;
+    } catch (error) {
+      ErrorHandler.handle(error, 'サブ目標一括取得', false);
+      throw error;
+    }
+  },
+
+  /**
    * サブ目標を作成
    */
   async createSubGoal(
@@ -173,21 +234,37 @@ export const subGoalRepository = {
           const subGoals = await this.getSubGoalsByGoalId(goalId, userId);
           const calculatedProgress = this.calculateProgressFromSubGoals(subGoals);
 
+          // show_on_calendarカラムの存在を確認
+          const { checkShowOnCalendarSupport } = await import('./goalRepository');
+          const supportsShowOnCalendar = await checkShowOnCalendarSupport();
+
           // 親目標の進捗率を更新
+          const updateData: any = { 
+            progress_percentage: calculatedProgress,
+            updated_at: new Date().toISOString(),
+            // 進捗率が100%の場合は完了としてマーク
+            ...(calculatedProgress === 100 ? { is_completed: true, completed_at: new Date().toISOString() } : { is_completed: false, completed_at: null }),
+          };
+
+          // 進捗率が100%になった場合、カレンダー表示を解除
+          if (calculatedProgress === 100 && supportsShowOnCalendar) {
+            updateData.show_on_calendar = false;
+          }
+
           const { error: updateError } = await supabase
             .from('goals')
-            .update({ 
-              progress_percentage: calculatedProgress,
-              updated_at: new Date().toISOString(),
-              // 進捗率が100%の場合は完了としてマーク
-              ...(calculatedProgress === 100 ? { is_completed: true, completed_at: new Date().toISOString() } : { is_completed: false, completed_at: null }),
-            })
+            .update(updateData)
             .eq('id', goalId)
             .eq('user_id', userId);
 
           if (updateError) {
             logger.error('親目標の進捗率更新エラー:', updateError);
             // エラーはログに記録するが、サブ目標の更新は成功しているので続行
+          } else if (calculatedProgress === 100 && supportsShowOnCalendar) {
+            // カレンダー表示更新イベントを発火
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
+            }
           }
         } catch (progressError) {
           logger.error('進捗率計算エラー:', progressError);
@@ -243,21 +320,37 @@ export const subGoalRepository = {
       const subGoals = await this.getSubGoalsByGoalId(goalId, userId);
       const calculatedProgress = this.calculateProgressFromSubGoals(subGoals);
 
+      // show_on_calendarカラムの存在を確認
+      const { checkShowOnCalendarSupport } = await import('./goalRepository');
+      const supportsShowOnCalendar = await checkShowOnCalendarSupport();
+
       // 親目標の進捗率を更新
+      const updateData: any = { 
+        progress_percentage: calculatedProgress,
+        updated_at: new Date().toISOString(),
+        // 進捗率が100%の場合は完了としてマーク
+        ...(calculatedProgress === 100 ? { is_completed: true, completed_at: new Date().toISOString() } : { is_completed: false, completed_at: null }),
+      };
+
+      // 進捗率が100%になった場合、カレンダー表示を解除
+      if (calculatedProgress === 100 && supportsShowOnCalendar) {
+        updateData.show_on_calendar = false;
+      }
+
       const { error: updateError } = await supabase
         .from('goals')
-        .update({ 
-          progress_percentage: calculatedProgress,
-          updated_at: new Date().toISOString(),
-          // 進捗率が100%の場合は完了としてマーク
-          ...(calculatedProgress === 100 ? { is_completed: true, completed_at: new Date().toISOString() } : { is_completed: false, completed_at: null }),
-        })
+        .update(updateData)
         .eq('id', goalId)
         .eq('user_id', userId);
 
       if (updateError) {
         logger.error('親目標の進捗率更新エラー:', updateError);
         // エラーはログに記録するが、サブ目標の更新は成功しているので続行
+      } else if (calculatedProgress === 100 && supportsShowOnCalendar) {
+        // カレンダー表示更新イベントを発火
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
+        }
       }
 
       return { subGoal: updatedSubGoal, updatedProgress: calculatedProgress };

@@ -46,7 +46,7 @@ export default function InstrumentSelectionScreen() {
     { id: '550e8400-e29b-41d4-a716-446655440010', name: 'トロンボーン', nameEn: 'Trombone', emoji: '🎺' },
     { id: '550e8400-e29b-41d4-a716-446655440015', name: 'コントラバス', nameEn: 'Contrabass', emoji: '🎻' },
     { id: '550e8400-e29b-41d4-a716-446655440012', name: 'ファゴット', nameEn: 'Bassoon', emoji: '🎵' },
-    // TODO: 将来的に追加予定の楽器: ハープ、シンセサイザー、太鼓、琴
+    // 注意: 将来的に追加予定の楽器（ハープ、シンセサイザー、太鼓、琴）は実装時に追加
     { id: '550e8400-e29b-41d4-a716-446655440016', name: 'その他', nameEn: 'Other', emoji: '❓' },
   ];
 

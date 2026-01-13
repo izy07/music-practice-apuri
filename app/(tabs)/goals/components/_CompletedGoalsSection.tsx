@@ -6,19 +6,7 @@ import React, { memo, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Trophy } from 'lucide-react-native';
 import { useThemeColors } from '@/hooks/useThemeColors';
-
-interface Goal {
-  id: string;
-  title: string;
-  description?: string;
-  target_date?: string;
-  progress_percentage: number;
-  goal_type: 'personal_short' | 'personal_long' | 'group';
-  is_active: boolean;
-  is_completed: boolean;
-  completed_at?: string;
-  show_on_calendar?: boolean;
-}
+import { Goal } from '@/lib/tabs/goals/types';
 
 interface Props {
   completedGoals: Goal[];

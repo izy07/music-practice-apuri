@@ -20,9 +20,7 @@ export const CompletedGoalsSection: React.FC<CompletedGoalsSectionProps> = ({
   onUpdateProgress,
   onDeleteGoal,
 }) => {
-  const personalCompletedGoals = completedGoals.filter(goal => goal.goal_type !== 'group');
-
-  if (personalCompletedGoals.length === 0) {
+  if (completedGoals.length === 0) {
     return null;
   }
 
@@ -35,7 +33,7 @@ export const CompletedGoalsSection: React.FC<CompletedGoalsSectionProps> = ({
         </Text>
       </View>
       <View style={styles.goalsList}>
-        {personalCompletedGoals.map((goal) => (
+        {completedGoals.map((goal) => (
           <CompletedGoalCard
             key={goal.id}
             goal={goal}

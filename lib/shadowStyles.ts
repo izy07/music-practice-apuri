@@ -13,7 +13,7 @@ interface ShadowStyleParams {
  * すべてのプラットフォームでboxShadowを使用（shadow*プロパティは非推奨のため）
  * iOSとAndroidではboxShadowがサポートされていない場合のフォールバックとして、従来の方法も提供
  */
-export function createShadowStyle(params: ShadowStyleParams): ViewStyle {
+export function createShadowStyle(params: ShadowStyleParams): any {
   const {
     shadowColor = '#000',
     shadowOffset = { width: 0, height: 2 },

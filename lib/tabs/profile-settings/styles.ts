@@ -339,6 +339,10 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     marginBottom: 6,
   },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
   inputWrapperOld: {
     position: 'relative',
   },
@@ -388,9 +392,9 @@ export const styles = StyleSheet.create({
   dateInputSmall: {
     borderWidth: 2,
     borderRadius: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 8,
-    width: 85,
+    width: 70,
     flexShrink: 0,
     fontSize: 15,
     fontWeight: '500',
@@ -398,10 +402,19 @@ export const styles = StyleSheet.create({
   dateInputXs: {
     borderWidth: 2,
     borderRadius: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 8,
-    width: 65,
+    width: 50,
     flexShrink: 0,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  dateInputFull: {
+    borderWidth: 2,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    width: '100%',
     fontSize: 15,
     fontWeight: '500',
   },
@@ -489,7 +502,7 @@ export const styles = StyleSheet.create({
   // 新しいスタイル
   inputRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 8,
     marginBottom: 4,
   },
@@ -536,6 +549,7 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
+    marginTop: 4, // テキスト入力の上部パディングと揃える
   },
   careerItem: {
     padding: 8,
@@ -647,5 +661,54 @@ export const styles = StyleSheet.create({
   experienceSubtext: {
     fontSize: 12,
     fontStyle: 'italic',
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 8,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 4,
+      elevation: 3,
+    }),
+  },
+  deleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  // 日付選択モーダルのスタイル
+  datePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  datePickerContent: {
+    width: '90%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 16,
+    maxHeight: '80%',
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  calendarCloseButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

@@ -10,7 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bell, Clock, Settings } from 'lucide-react-native';
+import { Bell, Clock, Settings, BarChart3 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -18,6 +18,7 @@ import { safeGoBack } from '@/lib/navigationUtils';
 
 interface NotificationSettings {
   practice_reminders: boolean;
+  weekly_summary: boolean;
 }
 
 export default function NotificationSettingsScreen() {
@@ -25,6 +26,7 @@ export default function NotificationSettingsScreen() {
   const { currentTheme } = useInstrumentTheme();
   const [settings, setSettings] = useState<NotificationSettings>({
     practice_reminders: true,
+    weekly_summary: false,
   });
 
   useEffect(() => {
@@ -55,7 +57,11 @@ export default function NotificationSettingsScreen() {
 
           // notification_settingsカラムが存在する場合のみ設定を更新
           if (data && 'notification_settings' in data && data.notification_settings) {
-            setSettings({ ...settings, ...data.notification_settings });
+            const loadedSettings = data.notification_settings as Partial<NotificationSettings>;
+            setSettings({
+              practice_reminders: loadedSettings.practice_reminders ?? true,
+              weekly_summary: loadedSettings.weekly_summary ?? false,
+            });
           }
         } catch (queryError) {
           // すべてのエラーを無視（カラムが存在しない場合などは正常な動作）
@@ -168,6 +174,19 @@ export default function NotificationSettingsScreen() {
             <Switch
               value={settings.practice_reminders}
               onValueChange={() => toggleSetting('practice_reminders')}
+              trackColor={{ false: currentTheme.secondary, true: currentTheme.primary }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingInfo}>
+              <BarChart3 size={18} color={currentTheme.textSecondary} />
+              <Text style={[styles.settingLabel, { color: currentTheme.text }]}>週間サマリー</Text>
+            </View>
+            <Switch
+              value={settings.weekly_summary}
+              onValueChange={() => toggleSetting('weekly_summary')}
               trackColor={{ false: currentTheme.secondary, true: currentTheme.primary }}
               thumbColor="#FFFFFF"
             />

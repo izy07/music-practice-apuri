@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { computeEntitlement, ensureSubscription, getSubscription, UserSubscription } from '@/lib/subscriptionService';
 import logger from '@/lib/logger';
@@ -26,6 +27,8 @@ export const useSubscription = () => {
   
   // 前回のentitlement状態を保持（解約検知用）
   const previousEntitlementRef = useRef<{ isEntitled: boolean } | null>(null);
+  // リフレッシュフラグ（強制的に最新データを取得するかどうか）
+  const isRefreshingRef = useRef<boolean>(false);
 
   const loadSubscription = useCallback(async () => {
     try {
@@ -41,7 +44,11 @@ export const useSubscription = () => {
       }
 
       // サブスクリプション情報を取得（エラー時は適切にスローされる）
-      const sub = await ensureSubscription(user.id);
+      // refreshが呼ばれた場合は、強制的に最新データを取得
+      const sub = await ensureSubscription(user.id, isRefreshingRef.current);
+      if (isRefreshingRef.current) {
+        isRefreshingRef.current = false; // フラグをリセット
+      }
       setSubscription(sub);
       
       // エンタイトルメントを計算
@@ -107,15 +114,40 @@ export const useSubscription = () => {
 
   const refresh = useCallback(async () => {
     try {
+      isRefreshingRef.current = true; // リフレッシュフラグを設定
       setLoading(true);
       await loadSubscription();
+      logger.debug('サブスクリプション状態をリフレッシュしました');
     } catch (e: unknown) {
+      isRefreshingRef.current = false; // エラー時もフラグをリセット
       logger.error('サブスクリプション状態の更新中にエラーが発生しました', e);
       ErrorHandler.handle(e, 'refreshSubscription', false);
     } finally {
       setLoading(false);
     }
   }, [loadSubscription]);
+
+  // アプリがフォアグラウンドに戻った時にサブスクリプション状態を自動リフレッシュ
+  useEffect(() => {
+    // Web環境ではAppStateが利用できない場合があるため、チェックする
+    if (typeof AppState === 'undefined') {
+      return;
+    }
+
+    const subscription = AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+      // バックグラウンドからフォアグラウンドに戻った時のみリフレッシュ
+      if (nextAppState === 'active') {
+        logger.debug('アプリがフォアグラウンドに戻りました。サブスクリプション状態をリフレッシュします。');
+        refresh().catch((error) => {
+          logger.warn('フォアグラウンド復帰時のサブスクリプション状態リフレッシュに失敗しました（続行）:', error);
+        });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [refresh]);
 
   return { 
     subscription, 

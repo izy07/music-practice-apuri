@@ -84,6 +84,34 @@ import { createShadowStyle } from '@/lib/shadowStyles';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ErrorHandler } from '@/lib/errorHandler';
 
+// 移調楽器情報
+const TRANSPOSING_INSTRUMENT_INFO: Record<string, { key: string; description: string }> = {
+  clarinet: {
+    key: 'B♭',
+    description: '一般的に使用されているのは、「B♭クラリネット」という調の楽器です。\n\nクラリネットの指使いで、クラリネットの楽譜を見て、「ドレミファソラシド」を吹くと、鳴っている音は「シ♭ドレミ♭ファソラシ♭」になります。'
+  },
+  saxophone: {
+    key: 'B♭',
+    description: '一般的に使用されているのは、「B♭サックス」という調の楽器です。\n\nサックスの指使いで、サックスの楽譜を見て、「ドレミファソラシド」を吹くと、鳴っている音は「シ♭ドレミ♭ファソラシ♭」になります。'
+  },
+  trumpet: {
+    key: 'B♭',
+    description: '一般的に使用されているのは、「B♭トランペット」という調の楽器です。\n\nトランペットの指使いで、トランペットの楽譜を見て、「ドレミファソラシド」を吹くと、鳴っている音は「シ♭ドレミ♭ファソラシ♭」になります。'
+  },
+  horn: {
+    key: 'F',
+    description: '一般的に使用されているのは、「Fホルン」という調の楽器です。\n\nホルンの指使いで、ホルンの楽譜を見て、「ドレミファソラシド」を吹くと、鳴っている音は「ファソラシ♭ドレミファ」になります。'
+  },
+  trombone: {
+    key: 'B♭',
+    description: '一般的に使用されているのは、「B♭トロンボーン」という調の楽器です。\n\nトロンボーンのスライドポジションで、トロンボーンの楽譜を見て、「ドレミファソラシド」を吹くと、鳴っている音は「シ♭ドレミ♭ファソラシ♭」になります。'
+  },
+  tuba: {
+    key: 'B♭',
+    description: '一般的に使用されているのは、「B♭チューバ」という調の楽器です。\n\nチューバの指使いで、チューバの楽譜を見て、「ドレミファソラシド」を吹くと、鳴っている音は「シ♭ドレミ♭ファソラシ♭」になります。'
+  }
+};
+
 export default function BeginnerGuideScreen() {
   const router = useRouter();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
@@ -303,7 +331,7 @@ export default function BeginnerGuideScreen() {
       '550e8400-e29b-41d4-a716-446655440013': 'oboe',      // オーボエ
       '550e8400-e29b-41d4-a716-446655440014': 'harp',      // ハープ
       '550e8400-e29b-41d4-a716-446655440015': 'contrabass', // コントラバス
-      '550e8400-e29b-41d4-a716-446655440016': 'guitar',    // その他（ギターとして）
+      '550e8400-e29b-41d4-a716-446655440016': 'other',    // その他
       '550e8400-e29b-41d4-a716-446655440018': 'viola',     // ヴィオラ
       '550e8400-e29b-41d4-a716-446655440019': 'guitar',    // 琴（ギターとして）
       '550e8400-e29b-41d4-a716-446655440020': 'piano',     // シンセサイザー（ピアノとして）
@@ -626,6 +654,11 @@ export default function BeginnerGuideScreen() {
         );
 
       case 'fingering':
+        // fingeringが存在しない場合は何も表示しない
+        if (!currentGuide.fingering) {
+          return null;
+        }
+        
         return (
           <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
             <View style={styles.sectionHeader}>
@@ -636,15 +669,19 @@ export default function BeginnerGuideScreen() {
             </View>
             
             <View style={styles.infoGrid}>
-              <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>基本的な運指表</Text>
-                <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.fingering.basic}</Text>
-              </View>
+              {currentGuide.fingering.basic && (
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>基本的な運指表</Text>
+                  <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.fingering.basic}</Text>
+                </View>
+              )}
               
-              <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>運指表の使い方</Text>
-                <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.fingering.chart}</Text>
-              </View>
+              {currentGuide.fingering.chart && (
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>運指表の使い方</Text>
+                  <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.fingering.chart}</Text>
+                </View>
+              )}
               
               {/* なぜ英語で表記されているのか（stringInfoがない場合） */}
               {(currentGuide.fingering as any)?.noteNames && !(currentGuide.fingering as any)?.stringInfo && (
@@ -750,6 +787,20 @@ export default function BeginnerGuideScreen() {
                   </View>
                 </ScrollView>
               </View>
+              
+              {/* 移調楽器について */}
+              {(() => {
+                const instrumentKey = getInstrumentKey();
+                const transposingInfo = TRANSPOSING_INSTRUMENT_INFO[instrumentKey];
+                return transposingInfo ? (
+                  <View style={styles.infoItem}>
+                    <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>移調楽器について</Text>
+                    <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                      {transposingInfo.description}
+                    </Text>
+                  </View>
+                ) : null;
+              })()}
               
               {/* 弦楽器の各弦説明 */}
               {(currentGuide.fingering as any)?.stringInfo && (
@@ -864,10 +915,12 @@ export default function BeginnerGuideScreen() {
                 </>
               )}
               
-              <View style={styles.infoItem}>
-                <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>{t('tips')}</Text>
-                <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.fingering.tips}</Text>
-              </View>
+              {currentGuide.fingering?.tips && (
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>{t('tips')}</Text>
+                  <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.fingering.tips}</Text>
+                </View>
+              )}
               
               {/* 運指表の画像 */}
               {(currentGuide.fingering as any)?.image && (

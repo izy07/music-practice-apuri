@@ -26,6 +26,7 @@ import { ErrorHandler } from '@/lib/errorHandler';
 import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import { checkMonthlyRecordingLimit, checkDailyRecordingLimit, getMaxRecordingDuration, getMaxDailyRecordings } from '@/lib/subscriptionLimits';
+import { isSupabaseError } from '@/lib/errorHandlingHelpers';
 
 // ドラムロール風のボタンベースピッカー（Web環境対応）
 function WheelPicker({ value, onChange, max, highlightColor }: { value: number; onChange: (v: number) => void; max: number; highlightColor: string }) {
@@ -196,6 +197,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   const mobileAudioPlayer = useAudioPlayer && Platform.OS !== 'web' ? useAudioPlayer() : null;
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [practiceBreakdown, setPracticeBreakdown] = useState<Array<{ method: string; minutes: number }>>([]);
+  const [basicPracticeRecords, setBasicPracticeRecords] = useState<Array<{ id: string; content: string | null }>>([]);
   const [isRecordingJustSaved, setIsRecordingJustSaved] = useState(false); // 録音保存直後フラグ
   const [formStateBeforeRecording, setFormStateBeforeRecording] = useState<{
     minutes: string;
@@ -765,7 +767,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         // エラーログを出力（既存記録の読み込み失敗は致命的ではないが、ログは残す）
         logger.warn('loadPracticeSessions: 練習記録の取得に失敗', {
           error: error.message,
-          code: (error as any)?.code,
+          code: isSupabaseError(error) ? error.code : undefined,
           userId: user.id,
           practiceDate,
           instrumentId
@@ -791,11 +793,16 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         });
         
         // 基礎練（preset）と時間記録（manual, voice, timer）を分離
-        const basicPracticeRecords = sessions.filter(s => s.input_method === 'preset');
+        const basicPracticeRecordsData = sessions.filter(s => s.input_method === 'preset').map(s => ({
+          id: s.id!,
+          content: s.content
+        }));
+        setBasicPracticeRecords(basicPracticeRecordsData);
+        const basicPracticeRecordsLocal = sessions.filter(s => s.input_method === 'preset');
         const timeRecords = sessions.filter(s => s.input_method !== 'preset');
         logger.debug('loadPracticeSessions: 時間記録（preset除外後）', {
           timeRecordsCount: timeRecords.length,
-          basicPracticeCount: basicPracticeRecords.length,
+          basicPracticeCount: basicPracticeRecordsLocal.length,
           timeRecords: timeRecords.map(s => ({
             id: s.id,
             input_method: s.input_method,
@@ -829,8 +836,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         setPracticeBreakdown(breakdownArray);
         
         // 基礎練のcontentを取得
-        const basicPracticeContent = basicPracticeRecords.length > 0
-          ? basicPracticeRecords
+        const basicPracticeContent = basicPracticeRecordsLocal.length > 0
+          ? basicPracticeRecordsLocal
               .map(s => s.content ? cleanContentFromTimeDetails(s.content) : null)
               .filter((c): c is string => Boolean(c && typeof c === 'string' && c.trim() !== ''))
               .join(', ')
@@ -917,10 +924,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           setContent(combinedContent || '');
         } else {
           // 時間記録がない場合（基礎練のみ、または記録なし）
-          if (basicPracticeRecords.length > 0) {
+          if (basicPracticeRecordsLocal.length > 0) {
             // 基礎練のみがある場合
             logger.debug('loadPracticeSessions: 基礎練のみがあります');
-            const primaryBasicPractice = basicPracticeRecords[0];
+            const primaryBasicPractice = basicPracticeRecordsLocal[0];
             
             const existingRecordData = {
               id: primaryBasicPractice.id!,
@@ -947,6 +954,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         });
         setExistingRecord(null);
         setTimerMinutes(0);
+        setBasicPracticeRecords([]);
         // フォームをリセット
         setMinutes('');
         setContent('');
@@ -964,6 +972,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       // エラー時も既存の記録をクリア
       setExistingRecord(null);
       setTimerMinutes(0);
+      setBasicPracticeRecords([]);
       setMinutes('');
       setContent('');
       setPracticeBreakdown([]);
@@ -1707,6 +1716,72 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
     }
   };
 
+  const deleteBasicPracticeMark = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('エラー', 'ログインが必要です');
+        return;
+      }
+
+      if (basicPracticeRecords.length === 0) {
+        Alert.alert('情報', '削除できる基礎練マークがありません');
+        return;
+      }
+
+      Alert.alert(
+        '基礎練マークの削除',
+        '基礎練習済みマークを削除しますか？',
+        [
+          { text: 'キャンセル', style: 'cancel' },
+          { 
+            text: '削除', 
+            style: 'destructive', 
+            onPress: async () => {
+              try {
+                // 基礎練マーク（preset）の練習記録を削除
+                const sessionIds = basicPracticeRecords.map(r => r.id);
+                const { error } = await supabase
+                  .from('practice_sessions')
+                  .delete()
+                  .in('id', sessionIds);
+
+                if (error) {
+                  Alert.alert('エラー', '基礎練マークの削除に失敗しました');
+                  return;
+                }
+
+                // ローカル状態を更新
+                setBasicPracticeRecords([]);
+                
+                // 練習記録を再読み込み
+                await loadPracticeSessions();
+
+                // コールバックを呼び出してデータを更新
+                onRecordingSaved?.();
+
+                Alert.alert('削除完了', '基礎練マークを削除しました', [
+                  { text: 'OK', onPress: () => {
+                    // 他の記録がない場合はモーダルを閉じる
+                    if (!existingRecord && existingRecordings.length === 0) {
+                      onClose();
+                    }
+                  }}
+                ]);
+              } catch (error) {
+                logger.error('Error deleting basic practice mark:', error);
+                Alert.alert('エラー', '基礎練マークの削除に失敗しました');
+              }
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      logger.error('Error in deleteBasicPracticeMark:', error);
+      Alert.alert('エラー', '削除処理に失敗しました');
+    }
+  };
+
   const deleteBoth = async () => {
     Alert.alert(
       '完全削除の確認',
@@ -2244,7 +2319,11 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                           }}
                         >
                           <Mic size={20} color="#8B4513" />
-                          <Text style={styles.recordButtonText}>録音で記録{slotIndex + 1}</Text>
+                          <Text style={styles.recordButtonText}>
+                            {entitlement?.isEntitled 
+                              ? `録音${slotIndex + 1}で記録（60分まで）`
+                              : `録音${slotIndex + 1}で記録（3分まで）`}
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     );
@@ -2392,7 +2471,9 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                           </Text>
                         ) : (
                           <Text style={styles.mediaOptionSubtext}>
-                            音声を録音して保存
+                            {entitlement?.isEntitled 
+                              ? '60分まで可能'
+                              : '録音1で記録、フリープランは3分まで。プレミアムなら2個、60分まで可能'}
                           </Text>
                         )}
                       </TouchableOpacity>
@@ -2603,6 +2684,18 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             <Text style={styles.deleteModalMessage}>削除したい項目を選択してください。</Text>
             
             <View style={styles.deleteModalButtons}>
+              {basicPracticeRecords.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.deleteModalButton, styles.deleteModalButtonDestructive]}
+                  onPress={() => {
+                    setShowDeleteModal(false);
+                    deleteBasicPracticeMark();
+                  }}
+                >
+                  <Text style={styles.deleteModalButtonText}>基礎練マークを削除</Text>
+                </TouchableOpacity>
+              )}
+              
               {existingRecord && (
                 <TouchableOpacity
                   style={[styles.deleteModalButton, styles.deleteModalButtonDestructive]}

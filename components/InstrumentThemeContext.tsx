@@ -259,18 +259,18 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
           AsyncStorage.getItem(isCustomThemeKey),
         ]);
         
-        if (storedIsCustomTheme === 'true' && storedCustomTheme) {
-          try {
-            const parsedTheme = JSON.parse(storedCustomTheme);
-            setCustomThemeState(parsedTheme);
-            setIsCustomTheme(true);
-            setCurrentThemeState(parsedTheme);
-            if (!cancelled) {
-              setIsInitializing(false);
-            }
-            return;
-          } catch (parseError) {
-            logger.error('カスタムテーマのパースエラー:', parseError);
+      if (storedIsCustomTheme === 'true' && storedCustomTheme) {
+        try {
+          const parsedTheme = JSON.parse(storedCustomTheme);
+          setCustomThemeState(parsedTheme);
+          setIsCustomTheme(true);
+          setCurrentThemeState(parsedTheme);
+          if (!cancelled) {
+            setIsInitializing(false);
+          }
+          return;
+        } catch (parseError) {
+          logger.error('カスタムテーマのパースエラー:', parseError);
           }
         }
       }
@@ -329,13 +329,13 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
               }
             } else {
               // カスタムテーマがない場合は楽器のデフォルトテーマを使用
-              setDbInstruments(prevInstruments => {
-                const dbInstrument = prevInstruments.find(inst => inst.id === instrumentIdToUse);
-                if (dbInstrument) {
-                  setCurrentThemeState(dbInstrument);
-                }
-                return prevInstruments;
-              });
+            setDbInstruments(prevInstruments => {
+              const dbInstrument = prevInstruments.find(inst => inst.id === instrumentIdToUse);
+              if (dbInstrument) {
+                setCurrentThemeState(dbInstrument);
+              }
+              return prevInstruments;
+            });
               setCustomThemeState(null);
               setIsCustomTheme(false);
             }
@@ -542,10 +542,10 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         }
       } else {
         // カスタムテーマがない場合は楽器のデフォルトテーマを使用
-        const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
-                           defaultInstruments.find(inst => inst.id === instrumentId);
-        if (instrument) {
-          setCurrentThemeState(instrument);
+      const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
+                         defaultInstruments.find(inst => inst.id === instrumentId);
+      if (instrument) {
+        setCurrentThemeState(instrument);
         }
         setCustomThemeState(null);
         setIsCustomTheme(false);
@@ -609,9 +609,9 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
   // selectedInstrumentまたはuser.selected_instrument_idが変更されたらテーマを更新
   useEffect(() => {
     const updateThemeForInstrument = async () => {
-      const { getEffectiveInstrumentId } = require('@/lib/instrumentUtils');
-      const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
-      if (!instrumentId) return;
+    const { getEffectiveInstrumentId } = require('@/lib/instrumentUtils');
+    const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+    if (!instrumentId) return;
 
       // その楽器のカスタムテーマを確認
       const customThemeKey = `${getKey(STORAGE_KEYS.customTheme)}:${instrumentId}`;
@@ -635,13 +635,13 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       }
       
       // カスタムテーマがない場合は楽器のデフォルトテーマを使用
-      const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
-                         defaultInstruments.find(inst => inst.id === instrumentId);
-      if (instrument && instrument.id !== currentTheme.id) {
-        setCurrentThemeState(instrument);
+    const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
+                       defaultInstruments.find(inst => inst.id === instrumentId);
+    if (instrument && instrument.id !== currentTheme.id) {
+      setCurrentThemeState(instrument);
         setCustomThemeState(null);
         setIsCustomTheme(false);
-      }
+    }
     };
     
     updateThemeForInstrument();

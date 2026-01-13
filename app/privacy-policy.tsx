@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ArrowLeft } from 'lucide-react-native';
+import { safeGoBack } from '@/lib/navigationUtils';
 
 const colors = {
   primary: '#2E7D32',
@@ -29,7 +30,8 @@ export default function PrivacyPolicyScreen() {
   const router = useRouter();
 
   const goBack = () => {
-    router.back();
+    // プライバシー設定画面から開いた場合は、プライバシー設定画面に戻る
+    safeGoBack(router, '/(tabs)/privacy-settings', true);
   };
 
   return (

@@ -144,12 +144,13 @@ CalendarDayCell.displayName = 'CalendarDayCell';
 
 const styles = StyleSheet.create({
   dayCell: {
-    width: '13.5%',
+    width: '14.28%',
     height: 55,
     justifyContent: 'flex-start',
     alignItems: 'center',
     borderRadius: 8,
-    margin: 1,
+    marginHorizontal: 0,
+    marginVertical: 0.5,
     backgroundColor: '#E8E8E8',
     position: 'relative',
     paddingVertical: 2,

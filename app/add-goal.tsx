@@ -16,6 +16,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { showFeatureLimitAlert, normalizeLimitResult, getDefaultAlertConfig } from '@/lib/featureAccessHelpers';
 import { subGoalRepository } from '@/repositories/subGoalRepository';
+import type { Instrument } from '@/services/instrumentService';
 
 interface NewGoal {
   title: string;
@@ -65,7 +66,7 @@ export default function AddGoalScreen() {
 
         // 既に上限に達している場合は警告を表示
         if (!limitCheck.canCreate) {
-          const { instrumentService, Instrument } = require('@/services/instrumentService');
+          const { instrumentService } = require('@/services/instrumentService');
           const defaultInstruments = instrumentService.getDefaultInstruments();
           const instrument = defaultInstruments.find((i: Instrument) => i.id === instrumentId);
           const instrumentName = instrument?.name || 'この楽器';
@@ -144,32 +145,41 @@ export default function AddGoalScreen() {
       }
       
       // Freeプランの場合、目標設定数をチェック（各楽器ごとに2個まで）
-      const limitCheck = await checkGoalLimit(user.id, instrumentId, entitlement);
-      if (!limitCheck.canCreate) {
-        // 楽器名を取得（メッセージに含めるため）
-        const { instrumentService, Instrument } = require('@/services/instrumentService');
-        const defaultInstruments = instrumentService.getDefaultInstruments();
-        const instrument = defaultInstruments.find((i: Instrument) => i.id === instrumentId);
-        const instrumentName = instrument?.name || 'この楽器';
-        
-        const normalizedResult = normalizeLimitResult(limitCheck, 'goal_create');
-        const alertConfig = getDefaultAlertConfig('goal_create');
-        
-        showFeatureLimitAlert({
-          result: {
-            ...normalizedResult,
-            title: alertConfig.defaultTitle,
-            reason: `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
-          },
-          defaultTitle: alertConfig.defaultTitle,
-          defaultMessage: normalizedResult.reason || `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
-          upgradeButtonText: alertConfig.upgradeButtonText,
-          router,
-          onCancel: () => {
-            setIsLoading(false);
-          },
-        });
-        return;
+      // プレミアムユーザーはチェック不要
+      logger.debug('目標作成: entitlement状態を確認', { 
+        isEntitled: entitlement?.isEntitled,
+        entitlement: entitlement 
+      });
+      if (!entitlement?.isEntitled) {
+        logger.debug('目標作成: フリープランユーザーのため制限チェックを実行');
+        const limitCheck = await checkGoalLimit(user.id, instrumentId, entitlement);
+        logger.debug('目標作成: 制限チェック結果', limitCheck);
+        if (!limitCheck.canCreate) {
+          // 楽器名を取得（メッセージに含めるため）
+          const { instrumentService } = require('@/services/instrumentService');
+          const defaultInstruments = instrumentService.getDefaultInstruments();
+          const instrument = defaultInstruments.find((i: Instrument) => i.id === instrumentId);
+          const instrumentName = instrument?.name || 'この楽器';
+          
+          const normalizedResult = normalizeLimitResult(limitCheck, 'goal_create');
+          const alertConfig = getDefaultAlertConfig('goal_create');
+          
+          showFeatureLimitAlert({
+            result: {
+              ...normalizedResult,
+              title: alertConfig.defaultTitle,
+              reason: `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
+            },
+            defaultTitle: alertConfig.defaultTitle,
+            defaultMessage: normalizedResult.reason || `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
+            upgradeButtonText: alertConfig.upgradeButtonText,
+            router,
+            onCancel: () => {
+              setIsLoading(false);
+            },
+          });
+          return;
+        }
       }
       
       const result = await goalService.createGoal(user.id, {
@@ -214,7 +224,7 @@ export default function AddGoalScreen() {
         const AsyncStorage = require('@react-native-async-storage/async-storage').default;
         const cacheKeyPattern = `short_term_goals_cache_${user.id}_`;
         const allKeys = await AsyncStorage.getAllKeys();
-        const goalCacheKeys = allKeys.filter(key => key.startsWith(cacheKeyPattern));
+        const goalCacheKeys = allKeys.filter((key: string) => key.startsWith(cacheKeyPattern));
         if (goalCacheKeys.length > 0) {
           await AsyncStorage.multiRemove(goalCacheKeys);
           logger.debug('目標追加後、カレンダー画面の目標キャッシュをクリアしました');
@@ -364,7 +374,7 @@ export default function AddGoalScreen() {
                     color: newGoal.target_date ? currentTheme.text : currentTheme.textSecondary 
                   }
                 ]}>
-                  {newGoal.target_date ? newGoal.target_date : '日付を選択してください'}
+                  {newGoal.target_date ? newGoal.target_date : '日付を選択'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
@@ -503,12 +513,12 @@ export default function AddGoalScreen() {
             style={[
               styles.saveButton, 
               { 
-                backgroundColor: (isLoading || (goalLimitStatus && !goalLimitStatus.canCreate)) ? currentTheme.textSecondary : currentTheme.primary,
-                opacity: (isLoading || (goalLimitStatus && !goalLimitStatus.canCreate)) ? 0.6 : 1
+                backgroundColor: (isLoading || (!entitlement?.isEntitled && goalLimitStatus && !goalLimitStatus.canCreate)) ? currentTheme.textSecondary : currentTheme.primary,
+                opacity: (isLoading || (!entitlement?.isEntitled && goalLimitStatus && !goalLimitStatus.canCreate)) ? 0.6 : 1
               }
             ]} 
             onPress={saveGoal}
-            disabled={isLoading || (goalLimitStatus !== null && !goalLimitStatus.canCreate)}
+            disabled={isLoading || (!entitlement?.isEntitled && goalLimitStatus !== null && !goalLimitStatus.canCreate)}
           >
             <Plus size={20} color="#FFFFFF" />
             <Text style={styles.saveButtonText}>
@@ -791,10 +801,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
     borderRadius: 8,
-    gap: 6,
+    gap: 4,
   },
   addSubGoalButtonText: {
     color: '#FFFFFF',

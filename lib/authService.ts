@@ -68,9 +68,10 @@ export async function signUp(
         email: result.email,
       },
     };
-  } catch (error: any) {
-    logger.error('[AuthService] signUp例外:', { error: error.message || error });
-    const errorMessage = getAuthErrorMessage(error) || error.message || '新規登録に失敗しました';
+  } catch (error: unknown) {
+    const errorObj = error as { message?: string } | null;
+    logger.error('[AuthService] signUp例外:', { error: errorObj?.message || error });
+    const errorMessage = getAuthErrorMessage(error) || errorObj?.message || '新規登録に失敗しました';
     return {
       success: false,
       error: errorMessage,

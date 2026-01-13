@@ -200,8 +200,8 @@ export const updateSelectedInstrument = async (
         if (isWeb) {
           await staticEnsureInstrumentExists(instrumentId);
         } else {
-          const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
-          await ensureInstrumentExists(instrumentId);
+        const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
+        await ensureInstrumentExists(instrumentId);
         }
       }
       
@@ -301,8 +301,8 @@ export const updateSelectedInstrument = async (
             if (isWeb) {
               await staticEnsureInstrumentExists(instrumentId);
             } else {
-              const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
-              await ensureInstrumentExists(instrumentId);
+            const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
+            await ensureInstrumentExists(instrumentId);
             }
             
             // 楽器作成後に少し待機（データベースの反映を待つ）

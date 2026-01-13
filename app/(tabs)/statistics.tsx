@@ -3,9 +3,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Alert } from 'react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
-import { ArrowLeft, ChevronLeft, ChevronRight } from 'lucide-react-native';
+import { ArrowLeft, ChevronLeft, ChevronRight, Calendar, X } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import Svg, { Rect, G, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Rect, G, Text as SvgText } from 'react-native-svg';
+import { Modal } from 'react-native';
+import EventCalendar from '@/components/EventCalendar';
+import { formatLocalDate } from '@/lib/dateUtils';
 import { supabase } from '@/lib/supabase';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { UI, DATA, STATISTICS } from '@/lib/constants';
@@ -46,9 +49,6 @@ function BarChart({ data, maxValue, barColor, weekdays, disableSlicing }: { data
   const labelArea = UI.CHART_LABEL_AREA; // ラベル表示領域（下部）
   const barArea = chartHeight - labelArea; // 棒グラフの高さ領域
   const heightScale = UI.CHART_HEIGHT_SCALE; // 棒の長さを短く（75%）
-  const avgValue = sliced.length ? Math.round(sliced.reduce((s, d) => s + d.minutes, 0) / Math.max(1, sliced.filter(d=>d.minutes>0).length)) : 0;
-  const avgY = Math.max(UI.MIN_BAR_HEIGHT, Math.round((avgValue / safeMax) * (barArea - 10) * heightScale));
-  const avgYPos = barArea - avgY; // 上からの位置
   const barWidth = Math.max(UI.MIN_BAR_WIDTH, Math.floor((chartWidth - barGap * (sliced.length - 1)) / Math.max(1, sliced.length)));
 
   // ラベルは最大10個まで間引き
@@ -59,19 +59,6 @@ function BarChart({ data, maxValue, barColor, weekdays, disableSlicing }: { data
     <View style={{ alignItems: 'center' }}>
       <Svg width={chartWidth} height={chartHeight}>
         <G>
-          {/* 平均ラインを表示 */}
-          {avgValue > 0 && (
-            <Line
-              x1={0}
-              y1={avgYPos}
-              x2={chartWidth}
-              y2={avgYPos}
-              stroke="#9CA3AF"
-              strokeWidth={2}
-              strokeDasharray="4 4"
-              opacity={0.7}
-            />
-          )}
           {sliced.map((d, i) => {
             const h = Math.max(UI.MIN_BAR_HEIGHT, Math.round((d.minutes / safeMax) * (barArea - 10) * heightScale));
             const x = i * (barWidth + barGap);
@@ -112,6 +99,12 @@ export default function StatisticsScreen() {
   const [anchorDate, setAnchorDate] = useState(new Date()); // 週/月の基準日
   const [practiceRecords, setPracticeRecords] = useState<PracticeRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // 日付範囲フィルタリング
+  const [dateFilterStart, setDateFilterStart] = useState<string | null>(null);
+  const [dateFilterEnd, setDateFilterEnd] = useState<string | null>(null);
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
   // 前回の楽器IDを保持（楽器変更を検出するため）
   const previousInstrumentIdRef = useRef<string | null>(null);
@@ -251,6 +244,11 @@ export default function StatisticsScreen() {
   }, [user, selectedInstrument, fetchPracticeRecords]);
 
 
+  // データ更新用タイマーIDを保持（メモリリーク防止）
+  const dataUpdateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 練習記録更新イベント用タイマーIDを保持（メモリリーク防止）
+  const practiceRecordUpdateTimerRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
+
   // 画面に戻ってきたときにデータを再読み込み
   useFocusEffect(
     React.useCallback(() => {
@@ -269,14 +267,25 @@ export default function StatisticsScreen() {
             // 60秒以内に記録があった場合、楽器IDが一致する場合は強制更新
             if (lastInstrumentId === (currentInstrumentId || 'null')) {
               // データベースの反映を待つため、十分な遅延を設けてから更新
-              setTimeout(async () => {
+              // 既存のタイマーをクリア（メモリリーク防止）
+              if (dataUpdateTimerRef.current) {
+                clearTimeout(dataUpdateTimerRef.current);
+              }
+              dataUpdateTimerRef.current = setTimeout(async () => {
                 try {
                   await fetchPracticeRecords();
                 } catch (error) {
                   logger.error('統計画面: useFocusEffect データ更新エラー:', error);
                 }
+                dataUpdateTimerRef.current = null;
               }, 1500);
-              return;
+              // クリーンアップ関数を返す（メモリリーク防止）
+              return () => {
+                if (dataUpdateTimerRef.current) {
+                  clearTimeout(dataUpdateTimerRef.current);
+                  dataUpdateTimerRef.current = null;
+                }
+              };
             }
           }
         } catch (e) {
@@ -300,10 +309,24 @@ export default function StatisticsScreen() {
       const cachedData = practiceDataCache.get<PracticeRecord[]>(cacheKey);
       if (cachedData) {
         // キャッシュがある場合はスキップ（前回取得から60秒以内の場合のみ）
-        return;
+        // クリーンアップ関数を返す（メモリリーク防止）
+        return () => {
+          if (dataUpdateTimerRef.current) {
+            clearTimeout(dataUpdateTimerRef.current);
+            dataUpdateTimerRef.current = null;
+          }
+        };
       }
       
       fetchPracticeRecords();
+      
+      // クリーンアップ関数を返す（メモリリーク防止）
+      return () => {
+        if (dataUpdateTimerRef.current) {
+          clearTimeout(dataUpdateTimerRef.current);
+          dataUpdateTimerRef.current = null;
+        }
+      };
     }, [user, selectedInstrument, fetchPracticeRecords])
   );
 
@@ -324,7 +347,11 @@ export default function StatisticsScreen() {
       
       // データベースの反映を待つため、十分な遅延を設けてから更新
       // 複数回試行して確実にデータを取得する
-      setTimeout(async () => {
+      // 既存のタイマーをクリア（メモリリーク防止）
+      practiceRecordUpdateTimerRefs.current.forEach(timer => clearTimeout(timer));
+      practiceRecordUpdateTimerRefs.current = [];
+      
+      const timer1 = setTimeout(async () => {
         try {
           // まず1回目の更新を試行
           await fetchPracticeRecords();
@@ -334,7 +361,7 @@ export default function StatisticsScreen() {
         
         // verifiedでない場合は、さらに待機してから2回目の更新を試行（キャッシュを無効化）
         if (!isVerified) {
-          setTimeout(async () => {
+          const timer2 = setTimeout(async () => {
             try {
               // キャッシュを無効化してから取得
               const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
@@ -354,6 +381,7 @@ export default function StatisticsScreen() {
               logger.error('統計画面: 2回目のデータ更新エラー:', error);
             }
           }, 1000);
+          practiceRecordUpdateTimerRefs.current.push(timer2);
         } else {
           // verifiedの場合はキャッシュを無効化してから取得
           const currentInstrumentId = getInstrumentId(selectedInstrument);
@@ -375,11 +403,14 @@ export default function StatisticsScreen() {
 
     return () => {
       window.removeEventListener('practiceRecordUpdated', handlePracticeRecordUpdated as EventListener);
+      // タイマーをクリア（メモリリーク防止）
+      practiceRecordUpdateTimerRefs.current.forEach(timer => clearTimeout(timer));
+      practiceRecordUpdateTimerRefs.current = [];
     };
   }, [fetchPracticeRecords, user, selectedInstrument]);
 
 
-  // 日別（当週：月〜日）- メモ化で最適化
+  // 日別（当週：月〜日）- メモ化で最適化（フィルタリングされたデータを使用）
   const weeklyData = useMemo<DayData[]>(() => {
     const arr: DayData[] = [];
     const base = new Date(anchorDate);
@@ -391,7 +422,7 @@ export default function StatisticsScreen() {
     
     // 練習記録を日付でマップ化（O(1)アクセス）
     const recordsByDate = new Map<string, number>();
-    practiceRecords.forEach(record => {
+    filteredPracticeRecords.forEach(record => {
       const dateStr = record.practice_date;
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = record.duration_minutes ?? 0;
@@ -410,7 +441,7 @@ export default function StatisticsScreen() {
       arr.push({ dateLabel: String(d.getDate()), minutes: dayMinutes });
     }
     return arr;
-  }, [practiceRecords, anchorDate]);
+  }, [filteredPracticeRecords, anchorDate]);
 
   // 月別（当月を6日ごとに5区分）
   const monthlyData = useMemo<DayData[]>(() => {
@@ -429,7 +460,7 @@ export default function StatisticsScreen() {
     
     // 練習記録を日付でマップ化（O(1)アクセス）
     const recordsByDate = new Map<string, number>();
-    practiceRecords.forEach(record => {
+    filteredPracticeRecords.forEach(record => {
       const dateStr = record.practice_date;
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = record.duration_minutes ?? 0;
@@ -447,7 +478,7 @@ export default function StatisticsScreen() {
       }
       return { dateLabel: bin.label, minutes: totalMinutes };
     });
-  }, [practiceRecords, anchorDate]);
+  }, [filteredPracticeRecords, anchorDate]);
 
   // 年別（月単位）- メモ化で最適化（常に1月〜12月の順に表示）
   const yearlyData = useMemo<DayData[]>(() => {
@@ -455,7 +486,7 @@ export default function StatisticsScreen() {
     
     // 練習記録を月でマップ化（O(1)アクセス）
     const recordsByMonth = new Map<string, number>();
-    practiceRecords.forEach(record => {
+    filteredPracticeRecords.forEach(record => {
       const monthKey = record.practice_date.substring(0, 7); // YYYY-MM
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = record.duration_minutes ?? 0;
@@ -479,7 +510,7 @@ export default function StatisticsScreen() {
     }
     
     return arr;
-  }, [practiceRecords, anchorDate]);
+  }, [filteredPracticeRecords, anchorDate]);
 
   // 年別（年単位）- メモ化で最適化
   const yearlyStatsData = useMemo<DayData[]>(() => {
@@ -487,7 +518,7 @@ export default function StatisticsScreen() {
     
     // 練習記録を年でマップ化（O(1)アクセス）
     const recordsByYear = new Map<string, number>();
-    practiceRecords.forEach(record => {
+    filteredPracticeRecords.forEach(record => {
       const yearKey = record.practice_date.substring(0, 4); // YYYY
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = record.duration_minutes ?? 0;
@@ -516,13 +547,13 @@ export default function StatisticsScreen() {
     }
     
     return arr;
-  }, [practiceRecords]);
+  }, [filteredPracticeRecords]);
 
   // 練習方法別統計を計算 - メモ化で最適化
   const getInputMethodStats = useMemo(() => {
     const methodStats: { [key: string]: { count: number; totalMinutes: number } } = {};
     
-    practiceRecords.forEach(record => {
+    filteredPracticeRecords.forEach(record => {
       const method = record.input_method || 'その他';
       if (!methodStats[method]) {
         methodStats[method] = { count: 0, totalMinutes: 0 };
@@ -538,23 +569,41 @@ export default function StatisticsScreen() {
     return Object.entries(methodStats)
       .map(([method, stats]) => ({ method, ...stats }))
       .sort((a, b) => b.totalMinutes - a.totalMinutes);
-  }, [practiceRecords]);
+  }, [filteredPracticeRecords]);
 
-  // 最近の練習記録を取得 - メモ化で最適化
+  // 最近の練習記録を取得 - メモ化で最適化（フィルタリングされたデータを使用）
   const getRecentRecords = useMemo(() => {
-    return [...practiceRecords].sort((a, b) => 
+    return [...filteredPracticeRecords].sort((a, b) => 
       new Date(b.practice_date).getTime() - new Date(a.practice_date).getTime()
     ).slice(0, 5);
-  }, [practiceRecords]);
+  }, [filteredPracticeRecords]);
 
-  // 詳細分析用の追加統計を計算
+  // 日付範囲でフィルタリングされた練習記録
+  const filteredPracticeRecords = useMemo(() => {
+    if (!dateFilterStart && !dateFilterEnd) {
+      return practiceRecords;
+    }
+    
+    return practiceRecords.filter(record => {
+      const recordDate = record.practice_date;
+      if (dateFilterStart && recordDate < dateFilterStart) {
+        return false;
+      }
+      if (dateFilterEnd && recordDate > dateFilterEnd) {
+        return false;
+      }
+      return true;
+    });
+  }, [practiceRecords, dateFilterStart, dateFilterEnd]);
+
+  // 詳細分析用の追加統計を計算（フィルタリングされたデータを使用）
   const getAdditionalStats = useMemo(() => {
-    if (!practiceRecords || practiceRecords.length === 0) {
+    if (!filteredPracticeRecords || filteredPracticeRecords.length === 0) {
       return null;
     }
 
     // 総合計練習時間を計算（基礎練を除外）
-    const allValidRecords = practiceRecords.filter(r => 
+    const allValidRecords = filteredPracticeRecords.filter(r => 
       (r.duration_minutes ?? 0) > 0 && r.input_method !== 'preset'
     );
     const totalPracticeTime = allValidRecords.reduce((sum, r) => {
@@ -564,7 +613,7 @@ export default function StatisticsScreen() {
 
     // 1. 平均練習時間
     // duration_minutesが0の記録を除外
-    const validRecords = practiceRecords.filter(r => (r.duration_minutes ?? 0) > 0);
+    const validRecords = filteredPracticeRecords.filter(r => (r.duration_minutes ?? 0) > 0);
     const totalMinutes = validRecords.reduce((sum, r) => {
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = r.duration_minutes ?? 0;
@@ -574,7 +623,7 @@ export default function StatisticsScreen() {
 
     // 2. 最長連続練習日
     // duration_minutesが0の記録を除外
-    const sortedRecords = [...practiceRecords]
+    const sortedRecords = [...filteredPracticeRecords]
       .filter(r => (r.duration_minutes ?? 0) > 0)
       .sort((a, b) => 
       new Date(a.practice_date).getTime() - new Date(b.practice_date).getTime()
@@ -609,7 +658,7 @@ export default function StatisticsScreen() {
     // 3. 週間練習パターン（曜日別）
     // duration_minutesが0の記録を除外
     const weeklyPattern: { [key: string]: number } = {};
-    practiceRecords.forEach(record => {
+    filteredPracticeRecords.forEach(record => {
       // duration_minutesが0より大きい場合のみ統計に含める
       const minutes = record.duration_minutes ?? 0;
       if (minutes > 0) {
@@ -624,7 +673,7 @@ export default function StatisticsScreen() {
     // 4. 月別練習傾向（最近6ヶ月）
     // duration_minutesが0の記録を除外
     const monthlyTendency: { [key: string]: number } = {};
-    practiceRecords.forEach(record => {
+    filteredPracticeRecords.forEach(record => {
       const date = new Date(record.practice_date);
       const yearMonth = `${date.getFullYear()}年${date.getMonth() + 1}月`;
       // duration_minutesがnullやundefinedの場合、0として扱う
@@ -642,7 +691,7 @@ export default function StatisticsScreen() {
 
     // 5. 練習頻度（週に何回）
     // duration_minutesが0の記録を除外
-    const validRecordsCount = practiceRecords.filter(r => (r.duration_minutes ?? 0) > 0).length;
+    const validRecordsCount = filteredPracticeRecords.filter(r => (r.duration_minutes ?? 0) > 0).length;
     const recordsPerWeek = Math.round((validRecordsCount / 30) * 7);
 
     // 6. 練習強度別統計（短時間/中時間/長時間）
@@ -652,7 +701,7 @@ export default function StatisticsScreen() {
       medium: 0, // 30-180分未満
       long: 0, // 180分以上
     };
-    practiceRecords.forEach(record => {
+    filteredPracticeRecords.forEach(record => {
       // duration_minutesがnullやundefinedの場合、0として扱う
       const minutes = record.duration_minutes ?? 0;
       // duration_minutesが0より大きい場合のみ統計に含める
@@ -681,7 +730,7 @@ export default function StatisticsScreen() {
       totalPracticeCount,
       totalPracticeTime,
     };
-  }, [practiceRecords]);
+  }, [filteredPracticeRecords]);
 
   const { data, maxValue, summary } = useMemo(() => {
     if (span === 'daily') {
@@ -970,6 +1019,59 @@ export default function StatisticsScreen() {
           </View>
         )}
 
+        {/* 日付範囲フィルタリング（日別画面のみ、詳細分析の上に配置） */}
+        {span === 'daily' && (
+          <View style={[styles.dateFilterCard, { backgroundColor: Surface }]}>
+            <Text style={[styles.dateFilterTitle, { color: TextColor }]}>日付範囲で絞り込み</Text>
+            <View style={styles.dateFilterRow}>
+              <View style={styles.dateFilterItem}>
+                <Text style={[styles.dateFilterLabel, { color: SecondaryText }]}>開始日</Text>
+                <TouchableOpacity
+                  style={[styles.dateFilterButton, { backgroundColor: Background, borderColor: SecondaryText }]}
+                  onPress={() => setShowStartDatePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Calendar size={16} color={Primary} />
+                  <Text style={[styles.dateFilterButtonText, { color: dateFilterStart ? TextColor : SecondaryText }]}>
+                    {dateFilterStart ? dateFilterStart : '選択'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <View style={styles.dateFilterItem}>
+                <Text style={[styles.dateFilterLabel, { color: SecondaryText }]}>終了日</Text>
+                <TouchableOpacity
+                  style={[styles.dateFilterButton, { backgroundColor: Background, borderColor: SecondaryText }]}
+                  onPress={() => setShowEndDatePicker(true)}
+                  activeOpacity={0.7}
+                >
+                  <Calendar size={16} color={Primary} />
+                  <Text style={[styles.dateFilterButtonText, { color: dateFilterEnd ? TextColor : SecondaryText }]}>
+                    {dateFilterEnd ? dateFilterEnd : '選択'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {(dateFilterStart || dateFilterEnd) && (
+                <TouchableOpacity
+                  style={[styles.dateFilterResetButton, { backgroundColor: Primary }]}
+                  onPress={() => {
+                    setDateFilterStart(null);
+                    setDateFilterEnd(null);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <X size={16} color="#FFFFFF" />
+                  <Text style={styles.dateFilterResetButtonText}>リセット</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {(dateFilterStart || dateFilterEnd) && (
+              <Text style={[styles.dateFilterInfo, { color: SecondaryText }]}>
+                {filteredPracticeRecords.length}件の記録を表示中
+              </Text>
+            )}
+          </View>
+        )}
+
         {/* 詳細分析セクション */}
         <View style={[styles.detailAnalysisCard, { backgroundColor: Surface }]}>
           <Text style={[styles.detailAnalysisTitle, { color: TextColor }]}>{t('detailedAnalysis')}</Text>
@@ -1089,6 +1191,58 @@ export default function StatisticsScreen() {
           )}
         </View>
       </ScrollView>
+
+      {/* 開始日選択モーダル */}
+      <Modal
+        visible={showStartDatePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowStartDatePicker(false)}
+      >
+        <View style={styles.datePickerOverlay}>
+          <View style={[styles.datePickerContent, { backgroundColor: Surface }]}>
+            <View style={styles.datePickerHeader}>
+              <Text style={[styles.datePickerTitle, { color: TextColor }]}>開始日を選択</Text>
+              <TouchableOpacity onPress={() => setShowStartDatePicker(false)}>
+                <X size={24} color={SecondaryText} />
+              </TouchableOpacity>
+            </View>
+            <EventCalendar
+              onDateSelect={(date: Date) => {
+                const formattedDate = formatLocalDate(date);
+                setDateFilterStart(formattedDate);
+                setShowStartDatePicker(false);
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* 終了日選択モーダル */}
+      <Modal
+        visible={showEndDatePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowEndDatePicker(false)}
+      >
+        <View style={styles.datePickerOverlay}>
+          <View style={[styles.datePickerContent, { backgroundColor: Surface }]}>
+            <View style={styles.datePickerHeader}>
+              <Text style={[styles.datePickerTitle, { color: TextColor }]}>終了日を選択</Text>
+              <TouchableOpacity onPress={() => setShowEndDatePicker(false)}>
+                <X size={24} color={SecondaryText} />
+              </TouchableOpacity>
+            </View>
+            <EventCalendar
+              onDateSelect={(date: Date) => {
+                const formattedDate = formatLocalDate(date);
+                setDateFilterEnd(formattedDate);
+                setShowEndDatePicker(false);
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -1214,6 +1368,85 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  dateFilterCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    marginTop: 8,
+  },
+  dateFilterTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  dateFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+  },
+  dateFilterItem: {
+    flex: 1,
+  },
+  dateFilterLabel: {
+    fontSize: 12,
+    marginBottom: 4,
+  },
+  dateFilterButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 6,
+  },
+  dateFilterButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  dateFilterResetButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 6,
+    marginLeft: 8,
+  },
+  dateFilterResetButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  dateFilterInfo: {
+    fontSize: 12,
+    marginTop: 8,
+  },
+  datePickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  datePickerContent: {
+    width: '90%',
+    maxWidth: 400,
+    borderRadius: 16,
+    padding: 16,
+    maxHeight: '80%',
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
   },
   detailAnalysisCard: {
     borderRadius: 16,

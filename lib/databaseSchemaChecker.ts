@@ -25,14 +25,14 @@ export async function checkNotificationSettingsColumnExists(): Promise<boolean> 
       if (columnCheckError.code === '42703' || columnCheckError.message?.includes('notification_settings')) {
         logger.debug('notification_settingsカラムが存在しません');
         return false;
-      }
-      
+    }
+
       // PGRST205エラー（テーブルが存在しない）の場合もカラムは存在しない
       if (columnCheckError.code === 'PGRST205' || columnCheckError.code === '42P01') {
         logger.debug('user_settingsテーブルが存在しません（カラムも存在しない）');
         return false;
-      }
-      
+    }
+
       // その他のエラー（RLSポリシーなど）の場合は、カラムが存在すると仮定
       // （実際の使用時にエラーが発生した場合はその時点で処理）
       logger.debug('notification_settingsカラムの存在チェックでエラーが発生しましたが、カラムは存在すると仮定します:', {

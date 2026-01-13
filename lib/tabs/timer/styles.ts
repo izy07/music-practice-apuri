@@ -9,7 +9,7 @@ export const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingBottom: 80,
+    paddingBottom: 65, // タブバーの高さ
   },
   modeToggle: {
     flexDirection: 'row',

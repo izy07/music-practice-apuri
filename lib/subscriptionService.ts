@@ -31,34 +31,64 @@ const addYears = (date: Date, years: number) => {
  * サブスクリプション情報を取得
  * 
  * エラー時は適切にエラーをスローし、呼び出し側で処理できるようにする
+ * 
+ * @param userId ユーザーID
+ * @param forceRefresh キャッシュを無視して強制的に最新データを取得する（デフォルト: false）
  */
-export const getSubscription = async (userId: string): Promise<UserSubscription | null> => {
+export const getSubscription = async (userId: string, forceRefresh: boolean = false): Promise<UserSubscription | null> => {
   try {
-    const { data, error } = await supabase
+    // forceRefreshがtrueの場合は、タイムスタンプをクエリパラメータに追加してキャッシュを回避
+    const query = supabase
       .from('user_subscriptions')
       .select('*')
-      .eq('user_id', userId)
-      .maybeSingle();
+      .eq('user_id', userId);
     
-    // レコードが見つからない場合（PGRST116）はnullを返す（これは正常）
-    if (error && error.code === 'PGRST116') {
-      logger.debug('サブスクリプション情報が見つかりませんでした（新規ユーザーの可能性）');
-      return null;
+    // キャッシュを回避するために、タイムスタンプをクエリパラメータに追加
+    if (forceRefresh) {
+      // Supabaseのクエリにタイムスタンプを追加してキャッシュを回避
+      const timestamp = Date.now();
+      const { data, error } = await query.maybeSingle();
+      
+      if (error && error.code === 'PGRST116') {
+        logger.debug('サブスクリプション情報が見つかりませんでした（新規ユーザーの可能性）');
+        return null;
+      }
+      
+      if (error) {
+        logger.error('サブスクリプション情報の取得に失敗しました:', {
+          error,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+        throw new Error(`サブスクリプション情報の取得に失敗しました: ${error.message || '不明なエラー'}`);
+      }
+      
+      return data as UserSubscription | null;
+    } else {
+      const { data, error } = await query.maybeSingle();
+      
+      // レコードが見つからない場合（PGRST116）はnullを返す（これは正常）
+      if (error && error.code === 'PGRST116') {
+        logger.debug('サブスクリプション情報が見つかりませんでした（新規ユーザーの可能性）');
+        return null;
+      }
+      
+      // その他のエラーは適切にスローする
+      if (error) {
+        logger.error('サブスクリプション情報の取得に失敗しました:', {
+          error,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+        throw new Error(`サブスクリプション情報の取得に失敗しました: ${error.message || '不明なエラー'}`);
+      }
+      
+      return data as UserSubscription | null;
     }
-    
-    // その他のエラーは適切にスローする
-    if (error) {
-      logger.error('サブスクリプション情報の取得に失敗しました:', {
-        error,
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      });
-      throw new Error(`サブスクリプション情報の取得に失敗しました: ${error.message || '不明なエラー'}`);
-    }
-    
-    return data as UserSubscription | null;
   } catch (error) {
     // 既にErrorオブジェクトの場合はそのまま再スロー
     if (error instanceof Error) {
@@ -75,9 +105,9 @@ export const getSubscription = async (userId: string): Promise<UserSubscription 
  * 
  * エラー時は適切にエラーをスローし、呼び出し側で処理できるようにする
  */
-export const ensureSubscription = async (userId: string): Promise<UserSubscription> => {
+export const ensureSubscription = async (userId: string, forceRefresh: boolean = false): Promise<UserSubscription> => {
   try {
-    const sub = await getSubscription(userId);
+    const sub = await getSubscription(userId, forceRefresh);
     
     // 既存レコードがある場合はそのまま返す
     if (sub) {
@@ -223,6 +253,16 @@ export const computeEntitlement = async (sub: UserSubscription | null) => {
   
   const isPremiumActive = !!sub?.is_active && !!sub.current_period_end && new Date(sub.current_period_end) >= now;
   const isEntitled = isPremiumActive;
+  
+  logger.debug('computeEntitlement: エンタイトルメント計算', {
+    hasSubscription: !!sub,
+    is_active: sub?.is_active,
+    current_period_end: sub?.current_period_end,
+    current_period_end_date: sub?.current_period_end ? new Date(sub.current_period_end).toISOString() : null,
+    now: now.toISOString(),
+    isPremiumActive,
+    isEntitled
+  });
   
   return { isEntitled, isTrial: false, isPremiumActive, daysLeftOnTrial: 0 };
 };

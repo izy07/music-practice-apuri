@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert, Platform } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInstrumentTheme } from './InstrumentThemeContext';
 import { useLanguage } from './LanguageContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
@@ -15,6 +16,7 @@ import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
 export default function InstrumentHeader() {
   const router = useRouter();
   const segments = useSegments();
+  const insets = useSafeAreaInsets();
   const { selectedInstrument, currentTheme, setSelectedInstrument, dbInstruments } = useInstrumentTheme();
   const { language } = useLanguage();
   const { isAuthenticated, user } = useAuthAdvanced();
@@ -406,7 +408,7 @@ export default function InstrumentHeader() {
   };
 
   return (
-    <View style={styles.headerContainer}>
+    <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
 
       <TouchableOpacity
         style={[
@@ -672,32 +674,32 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 8,
+    marginTop: 8,
+    marginBottom: 6,
   },
   container: {
     flex: 1,
     marginRight: 4,
     borderRadius: 20,
     borderWidth: 1.5,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 60,
-    maxHeight: 60,
+    minHeight: 56,
+    maxHeight: 56,
     elevation: 3,
   },
   learningToolsButton: {
     flex: 1,
     borderRadius: 20,
     borderWidth: 1.5,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 60,
-    maxHeight: 60,
+    minHeight: 56,
+    maxHeight: 56,
     elevation: 3,
   },
   learningToolsButtonText: {

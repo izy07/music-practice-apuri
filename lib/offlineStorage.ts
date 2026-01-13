@@ -1,8 +1,18 @@
 import logger from './logger';
 import { ErrorHandler } from './errorHandler';
+import { PracticeSession, Goal, Recording } from '@/types/models';
+
+// AsyncStorageの型定義
+interface AsyncStorageType {
+  setItem: (key: string, value: string) => Promise<void>;
+  getItem: (key: string) => Promise<string | null>;
+  getAllKeys: () => Promise<string[]>;
+  multiGet: (keys: string[]) => Promise<[string, string | null][]>;
+  multiRemove: (keys: string[]) => Promise<void>;
+}
 
 // Web環境での互換性のためのAsyncStorageの代替実装
-let AsyncStorage: any;
+let AsyncStorage: AsyncStorageType;
 
 if (typeof window !== 'undefined') {
   // Web環境ではlocalStorageを使用
@@ -55,11 +65,11 @@ if (typeof window !== 'undefined') {
   } catch (error) {
     // AsyncStorageが利用できない場合のフォールバック
     AsyncStorage = {
-      setItem: () => Promise.resolve(),
-      getItem: () => Promise.resolve(null),
-      getAllKeys: () => Promise.resolve([]),
-      multiGet: () => Promise.resolve([]),
-      multiRemove: () => Promise.resolve()
+      setItem: async () => Promise.resolve(),
+      getItem: async () => Promise.resolve(null),
+      getAllKeys: async () => Promise.resolve([]),
+      multiGet: async () => Promise.resolve([]),
+      multiRemove: async () => Promise.resolve()
     };
   }
 }
@@ -67,7 +77,7 @@ if (typeof window !== 'undefined') {
 // オフライン対応のためのローカルストレージユーティリティ
 export class OfflineStorage {
   // 練習記録の保存
-  static async savePracticeRecord(record: any) {
+  static async savePracticeRecord(record: Partial<PracticeSession> & { user_id: string; practice_date: string; duration_minutes: number }) {
     try {
       const key = `practice_${Date.now()}`;
       await AsyncStorage.setItem(key, JSON.stringify({
@@ -90,9 +100,9 @@ export class OfflineStorage {
       const practiceKeys = keys.filter((key: string) => key.startsWith('practice_'));
       const records = await AsyncStorage.multiGet(practiceKeys);
       return records
-        .map(([key, value]: [string, string | null]) => value ? JSON.parse(value) : null)
-        .filter((record: any) => record !== null)
-        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        .map(([key, value]: [string, string | null]) => value ? JSON.parse(value) as PracticeSession & { created_at: string } : null)
+        .filter((record): record is PracticeSession & { created_at: string } => record !== null)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     } catch (error) {
       ErrorHandler.handle(error, 'ローカル取得', false);
       return [];
@@ -100,7 +110,7 @@ export class OfflineStorage {
   }
 
   // 目標の保存
-  static async saveGoal(goal: any) {
+  static async saveGoal(goal: Partial<Goal> & { title: string; user_id: string }) {
     try {
       const key = `goal_${Date.now()}`;
       await AsyncStorage.setItem(key, JSON.stringify({
@@ -123,12 +133,12 @@ export class OfflineStorage {
       const goalKeys = keys.filter((key: string) => key.startsWith('goal_'));
       const records = await AsyncStorage.multiGet(goalKeys);
       const allGoals = records
-        .map(([key, value]: [string, string | null]) => value ? JSON.parse(value) : null)
-        .filter((record: any) => record !== null);
+        .map(([key, value]: [string, string | null]) => value ? JSON.parse(value) as Goal & { created_at: string } : null)
+        .filter((record): record is Goal & { created_at: string } => record !== null);
       
       // instrument_idでフィルタリング（指定された場合のみ）
       if (instrumentId !== undefined) {
-        const filteredGoals = allGoals.filter((goal: any) => {
+        const filteredGoals = allGoals.filter((goal) => {
           const goalInstrumentId = goal.instrument_id;
           if (instrumentId === null) {
             return goalInstrumentId === null || goalInstrumentId === undefined;
@@ -136,10 +146,10 @@ export class OfflineStorage {
             return goalInstrumentId === instrumentId;
           }
         });
-        return filteredGoals.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        return filteredGoals.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       }
       
-      return allGoals.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      return allGoals.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     } catch (error) {
       ErrorHandler.handle(error, 'ローカル目標取得', false);
       return [];
@@ -147,7 +157,7 @@ export class OfflineStorage {
   }
 
   // 録音データの保存
-  static async saveRecording(recording: any) {
+  static async saveRecording(recording: Partial<Recording> & { user_id: string; title: string; file_path: string }) {
     try {
       const key = `recording_${Date.now()}`;
       await AsyncStorage.setItem(key, JSON.stringify({
@@ -170,9 +180,9 @@ export class OfflineStorage {
       const recordingKeys = keys.filter((key: string) => key.startsWith('recording_'));
       const records = await AsyncStorage.multiGet(recordingKeys);
       return records
-        .map(([key, value]: [string, string | null]) => value ? JSON.parse(value) : null)
-        .filter((record: any) => record !== null)
-        .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        .map(([key, value]: [string, string | null]) => value ? JSON.parse(value) as Recording & { created_at: string } : null)
+        .filter((record): record is Recording & { created_at: string } => record !== null)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     } catch (error) {
       ErrorHandler.handle(error, 'ローカル録音取得', false);
       return [];
@@ -180,7 +190,7 @@ export class OfflineStorage {
   }
 
   // 設定の保存
-  static async saveSettings(settings: any) {
+  static async saveSettings(settings: Record<string, unknown>) {
     try {
       await AsyncStorage.setItem('user_settings', JSON.stringify(settings));
       return { success: true };
@@ -254,15 +264,19 @@ export class OfflineStorage {
 }
 
 // ネットワーク状態の確認
-export const isOnline = () => {
-  if (typeof navigator !== 'undefined') {
+// Web環境ではnavigator.onLineを使用、ネイティブ環境では常にtrueを返す（将来的にNetInfoを統合可能）
+export const isOnline = (): boolean => {
+  if (typeof navigator !== 'undefined' && 'onLine' in navigator) {
     return navigator.onLine;
   }
+  // ネイティブ環境では、将来的に@react-native-community/netinfoを統合可能
+  // 現時点では、オフライン検出はWeb環境のみ対応
+  // TODO: ネイティブ環境でのオフライン検出を実装する場合は、NetInfoを使用
   return true; // デフォルトはオンライン
 };
 
 // オフライン対応のデータ取得
-export const getDataOffline = async (key: string, fallback: any = null) => {
+export const getDataOffline = async <T = unknown>(key: string, fallback: T | null = null): Promise<T | null> => {
   try {
     if (isOnline()) {
       // オンライン時はサーバーから取得を試行

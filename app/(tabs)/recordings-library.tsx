@@ -57,10 +57,8 @@ export default function RecordingsLibraryScreen() {
   const [recordingTypeFilter, setRecordingTypeFilter] = useState<'all' | 'performance' | 'lesson'>('all'); // 録音種類フィルター
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // 録音種類フィルターが変更された時にデータを再読み込み
-  useEffect(() => {
-    loadRecordings();
-  }, [entitlement, recordingTypeFilter]);
+  // 録音種類フィルターはクライアント側でフィルタリングするため、再読み込み不要
+  // 初回読み込みと楽器変更時のみデータを読み込む
 
   // Audioオブジェクトのクリーンアップ（メモリリーク防止）
   useEffect(() => {
@@ -117,7 +115,8 @@ export default function RecordingsLibraryScreen() {
         const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
         logger.debug('録音データ取得開始', { userId: user.id, instrumentId, selectedInstrument, userSelectedInstrumentId: user?.selected_instrument_id });
         
-        const { data, error } = await listAllRecordings(user.id, instrumentId, undefined, recordingTypeFilter === 'all' ? null : recordingTypeFilter);
+        // すべての録音データを取得（録音種類フィルターはクライアント側で適用）
+        const { data, error } = await listAllRecordings(user.id, instrumentId, undefined, null);
         if (error) {
           logger.error('録音データ取得エラー:', error);
           ErrorHandler.handle(error, '録音データ読み込み', true);
@@ -473,9 +472,16 @@ export default function RecordingsLibraryScreen() {
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
   };
 
-  // 時間フィルターに基づいて録音をフィルタリング
+  // 時間フィルター、録音種類フィルター、検索クエリに基づいて録音をフィルタリング
   const getFilteredRecordings = (filter: TimeFilter = timeFilter) => {
     let filtered = recordings;
+
+    // 録音種類フィルター適用（クライアント側でフィルタリング）
+    if (recordingTypeFilter !== 'all') {
+      filtered = filtered.filter(recording => {
+        return recording.recording_type === recordingTypeFilter;
+      });
+    }
 
     // 時間フィルター適用
     if (filter !== 'all') {
@@ -638,7 +644,7 @@ export default function RecordingsLibraryScreen() {
               </Text>
               <Text style={[styles.subtitle, { color: currentTheme.textSecondary }]}>
                 {sortedRecordings.length}件の録音
-                {(timeFilter !== 'all' || searchQuery.trim()) ? ` (全${recordings.length}件)` : null}
+                {((timeFilter !== 'all' || searchQuery.trim() !== '') && recordings.length !== sortedRecordings.length) ? ` (全${recordings.length}件)` : ''}
               </Text>
             </View>
           </View>
@@ -683,7 +689,16 @@ export default function RecordingsLibraryScreen() {
                   backgroundColor: recordingTypeFilter === 'all' ? currentTheme.primary : currentTheme.secondary,
                 }
               ]}
-              onPress={() => setRecordingTypeFilter('all')}
+              onPress={() => {
+                setRecordingTypeFilter('all');
+                // フィルター適用後、先頭にスクロール
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollTo({ 
+                    y: 0, 
+                    animated: true 
+                  });
+                }, 100);
+              }}
             >
               <Text style={[
                 styles.timeFilterButtonText,
@@ -699,7 +714,16 @@ export default function RecordingsLibraryScreen() {
                   backgroundColor: recordingTypeFilter === 'performance' ? currentTheme.primary : currentTheme.secondary,
                 }
               ]}
-              onPress={() => setRecordingTypeFilter('performance')}
+              onPress={() => {
+                setRecordingTypeFilter('performance');
+                // フィルター適用後、先頭にスクロール
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollTo({ 
+                    y: 0, 
+                    animated: true 
+                  });
+                }, 100);
+              }}
             >
               <Text style={[
                 styles.timeFilterButtonText,
@@ -715,7 +739,16 @@ export default function RecordingsLibraryScreen() {
                   backgroundColor: recordingTypeFilter === 'lesson' ? currentTheme.primary : currentTheme.secondary,
                 }
               ]}
-              onPress={() => setRecordingTypeFilter('lesson')}
+              onPress={() => {
+                setRecordingTypeFilter('lesson');
+                // フィルター適用後、先頭にスクロール
+                setTimeout(() => {
+                  scrollViewRef.current?.scrollTo({ 
+                    y: 0, 
+                    animated: true 
+                  });
+                }, 100);
+              }}
             >
               <Text style={[
                 styles.timeFilterButtonText,
@@ -920,7 +953,6 @@ export default function RecordingsLibraryScreen() {
               ))
             )}
           </View>
-        )}
       </ScrollView>
     </SafeAreaView>
   );

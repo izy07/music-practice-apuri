@@ -41,7 +41,8 @@ export default function PrivacySettingsScreen() {
   };
 
   const handlePrivacyPolicy = () => {
-    router.push('/privacy-policy');
+    // タブ内のプライバシーポリシー画面に遷移（戻るボタンで確実に戻れるように）
+    router.push('/(tabs)/privacy-policy');
   };
 
   const handleTermsOfService = () => {
@@ -400,10 +401,25 @@ export default function PrivacySettingsScreen() {
                 使用中の楽器のデータを個別に削除できます。
               </Text>
               {activeInstrumentIds.map((instrumentId) => {
-                // 楽器名を取得（デフォルト楽器リストから）
+                // 楽器名を取得（デフォルト楽器リストから、見つからない場合はデータベースから取得を試みる）
                 const defaultInstruments = instrumentService.getDefaultInstruments();
-                const instrument = defaultInstruments.find(i => i.id === instrumentId);
-                if (!instrument) return null;
+                let instrument = defaultInstruments.find(i => i.id === instrumentId);
+                let instrumentName = instrument?.name || `楽器 (${instrumentId.slice(0, 8)}...)`;
+                let instrumentEmoji = instrument?.emoji || '🎵';
+                
+                // デフォルトリストにない場合は、データベースから取得を試みる（非同期なので表示は後で更新される可能性がある）
+                if (!instrument) {
+                  // 非同期でデータベースから取得を試みるが、UIは即座に表示
+                  instrumentService.getInstrumentById(instrumentId).then(result => {
+                    if (result.success && result.data) {
+                      // 楽器名が見つかった場合は、必要に応じてUIを更新できるが、
+                      // 今回は削除ボタンが表示されていれば問題ないので、ログのみ
+                      logger.debug('楽器情報をデータベースから取得:', result.data.name);
+                    }
+                  }).catch(err => {
+                    logger.debug('楽器情報の取得エラー（無視）:', err);
+                  });
+                }
                 
                 const isDeletingThis = isDeletingInstrument === instrumentId;
                 return (
@@ -428,9 +444,9 @@ export default function PrivacySettingsScreen() {
                       </>
                     ) : (
                       <>
-                        <Text style={styles.instrumentDeleteEmoji}>{instrument.emoji || '🎵'}</Text>
+                        <Text style={styles.instrumentDeleteEmoji}>{instrumentEmoji}</Text>
                         <Text style={styles.instrumentDeleteButtonText}>
-                          {instrument.name}のデータを削除
+                          {instrumentName}のデータを削除
                         </Text>
                       </>
                     )}

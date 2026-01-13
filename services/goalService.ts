@@ -18,7 +18,7 @@ export interface CreateGoalParams {
   title: string;
   description?: string;
   target_date?: string;
-  goal_type: 'personal_short' | 'personal_long' | 'group';
+  goal_type: 'personal_short' | 'personal_long';
   instrument_id?: string | null;
 }
 

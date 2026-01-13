@@ -1240,6 +1240,100 @@
       flex-wrap: nowrap !important;
     }
     
+    /* タブバーのラベルを確実に表示 */
+    [class*="tab-bar"] button [class*="label"],
+    [class*="TabBar"] button [class*="label"],
+    [role="tablist"] button [class*="label"],
+    [class*="tab-bar"] button span,
+    [class*="TabBar"] button span,
+    [role="tablist"] button span,
+    [class*="tab-bar"] button [class*="text"],
+    [class*="TabBar"] button [class*="text"],
+    [role="tablist"] button [class*="text"],
+    [class*="tab-bar"] button > *:not(svg):not([class*="icon"]),
+    [class*="TabBar"] button > *:not(svg):not([class*="icon"]),
+    [role="tablist"] button > *:not(svg):not([class*="icon"]) {
+      display: block !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+      font-size: 11px !important;
+      font-weight: 500 !important;
+      margin-top: 3px !important;
+      text-align: center !important;
+      line-height: 1.2 !important;
+      height: auto !important;
+      min-height: 14px !important;
+      max-height: none !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+      white-space: normal !important;
+    }
+    
+    /* タブボタン内のコンテナを縦に配置 */
+    [class*="tab-bar"] button,
+    [class*="TabBar"] button,
+    [role="tablist"] button {
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+      padding-top: 4px !important;
+      padding-bottom: 8px !important;
+      min-height: 60px !important;
+      height: auto !important;
+    }
+    
+    /* タブバー内のURLやデバッグ情報を完全に非表示 */
+    [class*="tab-bar"] button [href*="supabase"],
+    [class*="TabBar"] button [href*="supabase"],
+    [role="tablist"] button [href*="supabase"],
+    [class*="tab-bar"] button [href*="auth"],
+    [class*="TabBar"] button [href*="auth"],
+    [role="tablist"] button [href*="auth"],
+    [class*="tab-bar"] button a,
+    [class*="TabBar"] button a,
+    [role="tablist"] button a,
+    [class*="tab-bar"] button [href],
+    [class*="TabBar"] button [href],
+    [role="tablist"] button [href] {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+      width: 0 !important;
+      height: 0 !important;
+      pointer-events: none !important;
+      position: absolute !important;
+      left: -9999px !important;
+    }
+    
+    /* カスタムタブ以外のすべての子要素を非表示 */
+    [class*="tab-bar"] button:not([data-custom-tab]) *,
+    [class*="TabBar"] button:not([data-custom-tab]) *,
+    [role="tablist"] button:not([data-custom-tab]) * {
+      display: none !important;
+      visibility: hidden !important;
+      opacity: 0 !important;
+    }
+    
+    /* カスタムタブの子要素のみ表示 */
+    [class*="tab-bar"] button[data-custom-tab="true"] > *,
+    [class*="TabBar"] button[data-custom-tab="true"] > *,
+    [role="tablist"] button[data-custom-tab="true"] > * {
+      display: flex !important;
+      visibility: visible !important;
+      opacity: 1 !important;
+    }
+    
+    /* タブバー内のテキストノード（URLなど）を非表示 */
+    [class*="tab-bar"] button::before,
+    [class*="TabBar"] button::before,
+    [role="tablist"] button::before,
+    [class*="tab-bar"] button::after,
+    [class*="TabBar"] button::after,
+    [role="tablist"] button::after {
+      content: none !important;
+      display: none !important;
+    }
+    
     /* すべてのタブアイテムを均等に配置し、右側余白を削除 */
     [role="tablist"] > *,
     [class*="tab-bar"] > *,

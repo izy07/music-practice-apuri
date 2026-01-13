@@ -25,13 +25,11 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { autoCorrelate, getNoteFromFrequency, smoothValue, getTuningColor } from '@/lib/tunerAudioProcessor';
 import { getUserSettings } from '@/repositories/userSettingsRepository';
 import { getCurrentUser } from '@/lib/authService';
-import { DEFAULT_A4_FREQUENCY } from '@/lib/tunerUtils';
+import { DEFAULT_A4_FREQUENCY, getFrequency, NOTE_NAMES, NOTE_NAMES_JA } from '@/lib/tunerUtils';
 import { saveTunerSettings } from '@/lib/database';
 import { setCurrentRoute } from '@/lib/navigationHistory';
 
-// プロ仕様の音名と周波数対応
-const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const NOTE_NAMES_JA = ['ド', 'ド#', 'レ', 'レ#', 'ミ', 'ファ', 'ファ#', 'ソ', 'ソ#', 'ラ', 'ラ#', 'シ'];
+// プロ仕様の音名と周波数対応（tunerUtilsからインポート）
 
 // プロ仕様の周波数検出精度設定
 const TUNING_PRECISION = {
@@ -141,7 +139,11 @@ const INSTRUMENT_TUNINGS = {
       { note: 'E2', frequency: 82.41, string: 'E音' },
       { note: 'B♭2', frequency: 116.54, string: 'B♭音' },
       { note: 'E3', frequency: 164.81, string: 'E音' }
-    ]
+    ],
+    transposingInfo: {
+      key: 'B♭',
+      description: '一般的に使用されているのは、「B♭トロンボーン」という調の楽器です。\n\nトロンボーンのスライドポジションで、トロンボーンの楽譜を見て、「ドレミファソラシド」を吹くと、鳴っている音は「シ♭ドレミ♭ファソラシ♭」になります。'
+    }
   },
   trumpet: {
     name: 'トランペット',
@@ -155,7 +157,11 @@ const INSTRUMENT_TUNINGS = {
       { note: 'C3', frequency: 130.81, string: 'C音' },
       { note: 'E♭3', frequency: 155.56, string: 'E♭音' },
       { note: 'F3', frequency: 174.61, string: 'F音' }
-    ]
+    ],
+    transposingInfo: {
+      key: 'B♭',
+      description: '一般的に使用されているのは、「B♭トランペット」という調の楽器です。\n\nトランペットの指使いで、トランペットの楽譜を見て、「ドレミファソラシド」を吹くと、鳴っている音は「シ♭ドレミ♭ファソラシ♭」になります。'
+    }
   },
   horn: {
     name: 'フレンチホルン',
@@ -169,7 +175,11 @@ const INSTRUMENT_TUNINGS = {
       { note: 'C3', frequency: 130.81, string: 'C音' },
       { note: 'F3', frequency: 174.61, string: 'F音' },
       { note: 'C4', frequency: 261.63, string: 'C音' }
-    ]
+    ],
+    transposingInfo: {
+      key: 'F',
+      description: '一般的に使用されているのは、「Fホルン」という調の楽器です。\n\nホルンの指使いで、ホルンの楽譜を見て、「ドレミファソラシド」を吹くと、鳴っている音は「ファソラシ♭ドレミファ」になります。'
+    }
   },
   tuba: {
     name: 'チューバ',
@@ -183,7 +193,11 @@ const INSTRUMENT_TUNINGS = {
       { note: 'E♭1', frequency: 38.89, string: 'E♭音' },
       { note: 'F1', frequency: 43.65, string: 'F音' },
       { note: 'B♭1', frequency: 58.27, string: 'B♭音' }
-    ]
+    ],
+    transposingInfo: {
+      key: 'B♭',
+      description: '一般的に使用されているのは、「B♭チューバ」という調の楽器です。\n\nチューバの指使いで、チューバの楽譜を見て、「ドレミファソラシド」を吹くと、鳴っている音は「シ♭ドレミ♭ファソラシ♭」になります。'
+    }
   },
   flute: {
     name: 'フルート',
@@ -211,7 +225,11 @@ const INSTRUMENT_TUNINGS = {
       { note: 'C4', frequency: 261.63, string: 'C音' },
       { note: 'E4', frequency: 329.63, string: 'E音' },
       { note: 'G4', frequency: 392.00, string: 'G音' }
-    ]
+    ],
+    transposingInfo: {
+      key: 'B♭',
+      description: '一般的に使用されているのは、「B♭クラリネット」という調の楽器です。\n\nクラリネットの指使いで、クラリネットの楽譜を見て、「ドレミファソラシド」を吹くと、鳴っている音は「シ♭ドレミ♭ファソラシ♭」になります。'
+    }
   },
   saxophone: {
     name: 'サックス',
@@ -225,7 +243,11 @@ const INSTRUMENT_TUNINGS = {
       { note: 'C4', frequency: 261.63, string: 'C音' },
       { note: 'D4', frequency: 293.66, string: 'D音' },
       { note: 'E4', frequency: 329.63, string: 'E音' }
-    ]
+    ],
+    transposingInfo: {
+      key: 'B♭',
+      description: '一般的に使用されているのは、「B♭サックス」という調の楽器です。\n\nサックスの指使いで、サックスの楽譜を見て、「ドレミファソラシド」を吹くと、鳴っている音は「シ♭ドレミ♭ファソラシ♭」になります。'
+    }
   },
   oboe: {
     name: 'オーボエ',
@@ -315,7 +337,7 @@ const INSTRUMENT_TUNINGS = {
 
 // 弦楽器かどうかを判定する関数
 const isStringInstrument = (instrument: string): boolean => {
-  const stringInstruments = ['guitar', 'bass', 'violin', 'viola', 'cello', 'double_bass', 'contrabass', 'harp'];
+  const stringInstruments = ['guitar', 'bass', 'violin', 'viola', 'cello', 'double_bass', 'contrabass', 'harp', 'koto'];
   return stringInstruments.includes(instrument);
 };
 
@@ -407,7 +429,7 @@ export default function TunerScreen() {
     '550e8400-e29b-41d4-a716-446655440020': 'piano',     // シンセサイザー（ピアノとして）
     '550e8400-e29b-41d4-a716-446655440021': 'guitar',    // 太鼓（フォールバック）
     '550e8400-e29b-41d4-a716-446655440019': 'guitar',    // 琴（フォールバック）
-    '550e8400-e29b-41d4-a716-446655440016': 'guitar'     // その他（フォールバック）
+    '550e8400-e29b-41d4-a716-446655440016': 'guitar'     // その他（フォールバック：ギターとして）
   }), []);
   
   const selectedInstrument = useMemo(() => 
@@ -421,10 +443,43 @@ export default function TunerScreen() {
   const openStringOscillatorRef = useRef<OscillatorNode | null>(null);
   const openStringGainNodeRef = useRef<GainNode | null>(null);
   
+  // 音階の音の連続再生用の状態
+  const [playingScaleNote, setPlayingScaleNote] = useState<string | null>(null);
+  const playingScaleNoteRef = useRef<string | null>(null);
+  const scaleNoteOscillatorRef = useRef<OscillatorNode | null>(null);
+  const scaleNoteGainNodeRef = useRef<GainNode | null>(null);
+  
   // playingOpenStringRefをplayingOpenStringと同期
   useEffect(() => {
     playingOpenStringRef.current = playingOpenString;
   }, [playingOpenString]);
+  
+  // playingScaleNoteRefをplayingScaleNoteと同期
+  useEffect(() => {
+    playingScaleNoteRef.current = playingScaleNote;
+  }, [playingScaleNote]);
+  
+  // 音階データを生成（C3からC6まで、オクターブごとにグループ化）
+  const scaleNotesByOctave = useMemo(() => {
+    const octaves: { [octave: number]: Array<{ note: string; noteJa: string; octave: number; frequency: number; displayName: string }> } = {};
+    // C3からC6まで（3オクターブ + 1音）
+    for (let octave = 3; octave <= 6; octave++) {
+      octaves[octave] = [];
+      for (let i = 0; i < NOTE_NAMES.length; i++) {
+        const note = NOTE_NAMES[i];
+        const noteJa = NOTE_NAMES_JA[i];
+        const frequency = getFrequency(note, octave, DEFAULT_A4_FREQUENCY);
+        const displayName = `${noteJa}${octave}`;
+        octaves[octave].push({ note, noteJa, octave, frequency, displayName });
+        
+        // C6まで到達したら終了
+        if (octave === 6 && note === 'C') {
+          break;
+        }
+      }
+    }
+    return octaves;
+  }, []);
 
   // アニメーション用の値（UI表示用）
   const tuningBarAnimation = useRef(new Animated.Value(0)).current;
@@ -718,6 +773,7 @@ export default function TunerScreen() {
 
       // 既に再生中の場合は停止してから新しい音を再生
       stopOpenString();
+      stopScaleNote(); // 音階の音も停止
       
       // クリーンアップが完了するまで少し待つ
       await new Promise(resolve => setTimeout(resolve, 50));
@@ -879,6 +935,132 @@ export default function TunerScreen() {
       setPlayingOpenString(null);
     }
   };
+  
+  // 音階の音を連続再生する関数
+  const playScaleNote = async (frequency: number, noteKey: string) => {
+    try {
+      // Webプラットフォームでない場合は警告
+      if (Platform.OS !== 'web') {
+        Alert.alert(t('notSupported'), t('openStringWebOnly'));
+        return;
+      }
+
+      // 既に再生中の場合は停止してから新しい音を再生
+      stopScaleNote();
+      stopOpenString(); // 開放弦の音も停止
+      
+      // クリーンアップが完了するまで少し待つ
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      // AudioContextを取得（既に存在する場合は再利用）
+      let audioCtx = audioContextRef.current;
+      if (!audioCtx || audioCtx.state === 'closed') {
+        audioCtx = await audioResourceManager.acquireAudioContext(OWNER_NAME);
+        if (!audioCtx) {
+          Alert.alert('エラー', 'オーディオリソースを取得できませんでした。他の機能が使用中かもしれません。');
+          return;
+        }
+        audioContextRef.current = audioCtx;
+      }
+      
+      // AudioContextがsuspended状態の場合は再開
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+      
+      const oscillator = audioCtx.createOscillator();
+      const gainNode = audioCtx.createGain();
+      
+      // オシレーターをリソース管理サービスに登録
+      audioResourceManager.registerOscillator(OWNER_NAME, oscillator);
+      
+      // 参照を保存
+      scaleNoteOscillatorRef.current = oscillator;
+      scaleNoteGainNodeRef.current = gainNode;
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
+      
+      oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+      oscillator.type = 'sine';
+      
+      // フェードインしてから連続再生
+      // 音量を上げる（低周波数は1.0、それ以上は0.6に変更）
+      const baseGain = frequency <= 100 ? 1.0 : 0.6;
+      gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+      gainNode.gain.linearRampToValueAtTime(baseGain, audioCtx.currentTime + 0.1);
+      
+      // 連続再生: stop()を呼ばない限り継続再生される
+      oscillator.onended = () => {
+        logger.warn('Scale note oscillator ended unexpectedly, restarting...', { frequency, noteKey });
+        const currentNote = playingScaleNoteRef.current;
+        if (currentNote === noteKey) {
+          setTimeout(() => {
+            if (playingScaleNoteRef.current === noteKey) {
+              playScaleNote(frequency, noteKey);
+            }
+          }, 100);
+        }
+      };
+      
+      oscillator.start(audioCtx.currentTime);
+      setPlayingScaleNote(noteKey);
+      
+      logger.debug(`Playing scale note continuously: ${noteKey} at ${frequency}Hz`);
+    } catch (error) {
+      ErrorHandler.handle(error, '音階の音再生', true);
+      Alert.alert('エラー', '音の再生に失敗しました。');
+    }
+  };
+  
+  // 音階の音を停止する関数
+  const stopScaleNote = () => {
+    try {
+      setPlayingScaleNote(null);
+      
+      if (scaleNoteOscillatorRef.current && scaleNoteGainNodeRef.current && audioContextRef.current) {
+        const audioCtx = audioContextRef.current;
+        const oscillator = scaleNoteOscillatorRef.current;
+        const gainNode = scaleNoteGainNodeRef.current;
+        
+        try {
+          audioResourceManager.unregisterOscillator(OWNER_NAME, oscillator);
+        } catch (e) {
+          logger.debug('Unregister scale note oscillator error:', e);
+        }
+        
+        try {
+          gainNode.gain.cancelScheduledValues(audioCtx.currentTime);
+          gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        } catch (e) {
+          logger.warn('Scale note gain node stop error:', e);
+        }
+        
+        try {
+          oscillator.stop();
+          oscillator.disconnect();
+        } catch (e) {
+          logger.debug('Scale note oscillator already stopped:', e);
+        }
+        
+        try {
+          gainNode.disconnect();
+        } catch (e) {
+          logger.debug('Scale note gainNode disconnect error:', e);
+        }
+        
+        scaleNoteOscillatorRef.current = null;
+        scaleNoteGainNodeRef.current = null;
+        
+        logger.debug('Stopped scale note immediately');
+      }
+    } catch (error) {
+      ErrorHandler.handle(error, '音階の音停止', false);
+      scaleNoteOscillatorRef.current = null;
+      scaleNoteGainNodeRef.current = null;
+      setPlayingScaleNote(null);
+    }
+  };
 
   // 画面にフォーカスが当たった時にリソースを取得
   useFocusEffect(
@@ -894,6 +1076,7 @@ export default function TunerScreen() {
         // 画面から離れる時にリソースを解放
         stopListening(); // チューナーを停止
         stopOpenString(); // 開放弦の音を停止
+        stopScaleNote(); // 音階の音も停止
         audioResourceManager.releaseAllResources(OWNER_NAME);
       };
     }, [])
@@ -1062,7 +1245,8 @@ export default function TunerScreen() {
                   style={[
                     styles.simpleStartButton,
                     { 
-                      backgroundColor: isListening ? currentTheme.secondary : currentTheme.primary 
+                      backgroundColor: isListening ? currentTheme.secondary : currentTheme.primary,
+                      marginTop: -16, // 開始ボタンを上に移動
                     },
                   ]}
                   onPress={isListening ? stopListening : startListening}
@@ -1179,6 +1363,138 @@ export default function TunerScreen() {
                     })}
                   </View>
                 </View>
+                
+                {/* 音階を聞く */}
+                <View style={[styles.openStringContent, { marginTop: 16 }]}>
+                  <Text style={[styles.openStringTitle, { color: currentTheme.text }]}>
+                    音階を聞く
+                  </Text>
+                  
+                  {/* 停止ボタン（固定表示） */}
+                  {playingScaleNote && (
+                    <TouchableOpacity
+                      style={[
+                        styles.stopButton,
+                        { backgroundColor: '#FF4444', borderColor: '#FF4444' }
+                      ]}
+                      onPress={stopScaleNote}
+                    >
+                      <Text style={[styles.stopButtonText, { color: '#FFFFFF' }]}>
+                        停止 ({playingScaleNote ? (() => {
+                          // scaleNotesByOctaveから該当する音を検索
+                          for (let octave = 3; octave <= 6; octave++) {
+                            const notes = scaleNotesByOctave[octave] || [];
+                            const found = notes.find(n => `${n.note}${n.octave}` === playingScaleNote);
+                            if (found) return found.displayName;
+                          }
+                          return '';
+                        })() : ''})
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                  
+                  <View style={styles.scaleNotesContainer}>
+                    {[3, 4, 5].map((octave) => {
+                      const notes = scaleNotesByOctave[octave] || [];
+                      return (
+                        <ScrollView
+                          key={octave}
+                          horizontal
+                          showsHorizontalScrollIndicator={false}
+                          style={styles.scaleNotesRowScroll}
+                          contentContainerStyle={styles.scaleNotesRow}
+                        >
+                          {notes.map((scaleNote, index) => {
+                            const noteKey = `${scaleNote.note}${scaleNote.octave}`;
+                            const isPlaying = playingScaleNote === noteKey;
+                            return (
+                              <TouchableOpacity
+                                key={index}
+                                style={[
+                                  styles.scaleNoteButton,
+                                  { 
+                                    backgroundColor: isPlaying ? '#4CAF50' : currentTheme.primary,
+                                    borderColor: isPlaying ? '#4CAF50' : currentTheme.primary,
+                                  }
+                                ]}
+                                onPress={() => {
+                                  if (isPlaying) {
+                                    stopScaleNote();
+                                  } else {
+                                    playScaleNote(scaleNote.frequency, noteKey);
+                                  }
+                                }}
+                              >
+                                <Text style={[styles.scaleNoteButtonText, { color: currentTheme.surface }]}>
+                                  {noteDisplayMode === 'ja' ? scaleNote.displayName : `${scaleNote.note}${scaleNote.octave}`}
+                                </Text>
+                                {isPlaying && (
+                                  <Text style={[styles.scaleNotePlayingIndicator, { color: currentTheme.surface }]}>
+                                    🔊
+                                  </Text>
+                                )}
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </ScrollView>
+                      );
+                    })}
+                    {/* C6の行（Cのみ） */}
+                    {scaleNotesByOctave[6] && scaleNotesByOctave[6].length > 0 && (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        style={styles.scaleNotesRowScroll}
+                        contentContainerStyle={styles.scaleNotesRow}
+                      >
+                        {scaleNotesByOctave[6].map((scaleNote, index) => {
+                          const noteKey = `${scaleNote.note}${scaleNote.octave}`;
+                          const isPlaying = playingScaleNote === noteKey;
+                          return (
+                            <TouchableOpacity
+                              key={index}
+                              style={[
+                                styles.scaleNoteButton,
+                                { 
+                                  backgroundColor: isPlaying ? '#4CAF50' : currentTheme.primary,
+                                  borderColor: isPlaying ? '#4CAF50' : currentTheme.primary,
+                                }
+                              ]}
+                              onPress={() => {
+                                if (isPlaying) {
+                                  stopScaleNote();
+                                } else {
+                                  playScaleNote(scaleNote.frequency, noteKey);
+                                }
+                              }}
+                            >
+                              <Text style={[styles.scaleNoteButtonText, { color: currentTheme.surface }]}>
+                                {noteDisplayMode === 'ja' ? scaleNote.displayName : `${scaleNote.note}${scaleNote.octave}`}
+                              </Text>
+                              {isPlaying && (
+                                <Text style={[styles.scaleNotePlayingIndicator, { color: currentTheme.surface }]}>
+                                  🔊
+                                </Text>
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    )}
+                  </View>
+                </View>
+                
+                {/* 移調楽器について */}
+                {INSTRUMENT_TUNINGS[selectedInstrument].transposingInfo && (
+                  <View style={[styles.transposingInfoContent, { backgroundColor: currentTheme.surface, borderWidth: 1, borderColor: currentTheme.secondary }]}>
+                    <Text style={[styles.transposingInfoTitle, { color: currentTheme.text }]}>
+                      移調楽器について
+                    </Text>
+                    <Text style={[styles.transposingInfoDescription, { color: currentTheme.text }]}>
+                      {INSTRUMENT_TUNINGS[selectedInstrument].transposingInfo?.description}
+                    </Text>
+                  </View>
+                )}
               </View>
             </>
           ) : (
@@ -1223,6 +1539,7 @@ export default function TunerScreen() {
           </View>
         )}
       </ScrollView>
+
 
     </SafeAreaView>
   );

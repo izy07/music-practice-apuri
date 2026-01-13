@@ -337,19 +337,6 @@ const presetPalettes: PresetPalette[] = [
     }
   },
   {
-    id: 'terracotta',
-    name: 'テラコッタ',
-    colors: {
-      background: '#F8F4F0',
-      surface: '#FFFFFF',
-      primary: '#B88A7A',
-      secondary: '#E8D8D0',
-      accent: '#9A7A6A',
-      text: '#6B5A4A',
-      textSecondary: '#8B7A6A',
-    }
-  },
-  {
     id: 'lavender',
     name: 'ラベンダー',
     colors: {
@@ -373,6 +360,110 @@ const presetPalettes: PresetPalette[] = [
       accent: '#4A5A7A',
       text: '#3A4A6A',
       textSecondary: '#5A6A8A',
+    }
+  },
+  {
+    id: 'steel-blue',
+    name: 'スチールブルー',
+    colors: {
+      background: '#E0F6FF',
+      surface: '#FFFFFF',
+      primary: '#4682B4',
+      secondary: '#87CEEB',
+      accent: '#2F4F4F',
+      text: '#2F4F4F',
+      textSecondary: '#4682B4',
+    }
+  },
+  {
+    id: 'steel-blue-dark',
+    name: 'ダークスチールブルー',
+    colors: {
+      background: '#D1E7F0',
+      surface: '#FFFFFF',
+      primary: '#5A8FA8',
+      secondary: '#7FB3C5',
+      accent: '#3D5F6F',
+      text: '#2C4A5A',
+      textSecondary: '#4A6B7A',
+    }
+  },
+  {
+    id: 'deep-red',
+    name: 'ディープレッド',
+    colors: {
+      background: '#FEE2E2',
+      surface: '#FFFFFF',
+      primary: '#DC2626',
+      secondary: '#FCA5A5',
+      accent: '#B91C1C',
+      text: '#991B1B',
+      textSecondary: '#7F1D1D',
+    }
+  },
+  {
+    id: 'violet',
+    name: 'バイオレット',
+    colors: {
+      background: '#F5F3FF',
+      surface: '#FFFFFF',
+      primary: '#8B5CF6',
+      secondary: '#DDD6FE',
+      accent: '#7C3AED',
+      text: '#6D28D9',
+      textSecondary: '#5B21B6',
+    }
+  },
+  {
+    id: 'ocean-blue',
+    name: 'オーシャンブルー',
+    colors: {
+      background: '#E0F2FE',
+      surface: '#FFFFFF',
+      primary: '#0EA5E9',
+      secondary: '#BAE6FD',
+      accent: '#0284C7',
+      text: '#0369A1',
+      textSecondary: '#075985',
+    }
+  },
+  {
+    id: 'midnight-blue',
+    name: 'ミッドナイトブルー',
+    colors: {
+      background: '#E8EAED',
+      surface: '#FFFFFF',
+      primary: '#1E3A8A',
+      secondary: '#C7D2FE',
+      accent: '#1E40AF',
+      text: '#1E293B',
+      textSecondary: '#334155',
+    }
+  },
+  {
+    id: 'amber',
+    name: 'アンバー',
+    colors: {
+      background: '#FFFBEB',
+      surface: '#FFFFFF',
+      primary: '#F59E0B',
+      secondary: '#FDE68A',
+      accent: '#D97706',
+      text: '#92400E',
+      textSecondary: '#78350F',
+    }
+  },
+  {
+    id: 'rose',
+    name: 'ローズ',
+    colors: {
+      background: '#FFF1F2',
+      surface: '#FFFFFF',
+      primary: '#F43F5E',
+      secondary: '#FECDD3',
+      accent: '#E11D48',
+      text: '#BE123C',
+      textSecondary: '#9F1239',
     }
   }
 ];

@@ -52,7 +52,7 @@ export interface Goal {
   description?: string;
   target_date?: string;
   progress_percentage: number;
-  goal_type: 'personal_short' | 'personal_long' | 'group';
+  goal_type: 'personal_short' | 'personal_long';
   is_active: boolean;
   is_completed: boolean;
   completed_at?: string;

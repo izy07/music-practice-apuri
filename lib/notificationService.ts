@@ -21,9 +21,6 @@ export interface NotificationSettings {
   daily_practice: boolean;
   weekly_summary: boolean;
   achievement_notifications: boolean;
-  organization_attendance_available: boolean;
-  organization_schedule_added: boolean;
-  organization_task_added: boolean;
   sound_notifications: boolean;
   vibration_notifications: boolean;
   quiet_hours_enabled: boolean;
@@ -153,9 +150,6 @@ export class NotificationService {
       daily_practice: true,
       weekly_summary: false,
       achievement_notifications: false, // 目標・達成通知はデフォルトで無効
-      organization_attendance_available: true,
-      organization_schedule_added: true,
-      organization_task_added: true,
       sound_notifications: true,
       vibration_notifications: true,
       quiet_hours_enabled: false,
@@ -328,41 +322,6 @@ export class NotificationService {
     return this.sendNotification(
       '🎉 達成！',
       `おめでとうございます！${achievement}を達成しました。`
-    );
-  }
-
-  // 出席登録可能日通知
-  async sendAttendanceAvailableNotification(organizationName: string, practiceDate: string, scheduleTitle: string): Promise<boolean> {
-    if (!this.settings?.organization_attendance_available) return false;
-
-    return this.sendNotification(
-      '📋 出席登録可能になりました',
-      `${organizationName}の「${scheduleTitle}」の出席登録が可能になりました。`
-    );
-  }
-
-  // 練習日程追加通知
-  async sendScheduleAddedNotification(organizationName: string, scheduleTitle: string, practiceDate: string): Promise<boolean> {
-    if (!this.settings?.organization_schedule_added) return false;
-
-    const dateStr = new Date(practiceDate).toLocaleDateString('ja-JP', {
-      month: 'long',
-      day: 'numeric',
-    });
-
-    return this.sendNotification(
-      '📅 新しい練習日程が追加されました',
-      `${organizationName}に「${scheduleTitle}」（${dateStr}）が追加されました。`
-    );
-  }
-
-  // 課題追加通知
-  async sendTaskAddedNotification(organizationName: string, taskTitle: string): Promise<boolean> {
-    if (!this.settings?.organization_task_added) return false;
-
-    return this.sendNotification(
-      '📝 新しい課題が追加されました',
-      `${organizationName}に「${taskTitle}」が追加されました。`
     );
   }
 

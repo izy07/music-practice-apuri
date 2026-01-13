@@ -33,8 +33,9 @@ function normalizeEmail(email: string): string {
 /**
  * エラーメッセージを日本語に変換（根本的に厳密な判定）
  */
-function translateError(error: any): string {
-  if (!error || !error.message) {
+function translateError(error: unknown): string {
+  const errorObj = error as { message?: string; code?: string } | null;
+  if (!errorObj || !errorObj.message) {
     return '新規登録に失敗しました。しばらく待ってから再度お試しください。';
   }
 
@@ -365,7 +366,8 @@ export async function signUpNew(
 
     // エラーチェック
     if (error) {
-      logger.error('[signUpNew] 新規登録エラー:', { error: (error as any).message, code: (error as any).status });
+      const errorObj = error as { message?: string; status?: number } | null;
+      logger.error('[signUpNew] 新規登録エラー:', { error: errorObj?.message, code: errorObj?.status });
       return {
         success: false,
         error: translateError(error),
@@ -417,8 +419,9 @@ export async function signUpNew(
       userId,
       email: normalizedEmail,
     };
-  } catch (error: any) {
-    logger.error('[signUpNew] 新規登録例外:', { error: error?.message || error });
+  } catch (error: unknown) {
+    const errorObj = error as { message?: string } | null;
+    logger.error('[signUpNew] 新規登録例外:', { error: errorObj?.message || error });
     return {
       success: false,
       error: translateError(error),

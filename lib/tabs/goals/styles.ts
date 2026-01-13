@@ -11,7 +11,7 @@ export const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 4,
-    paddingTop: 4,
+    paddingTop: 2,
     paddingBottom: 40,
     alignItems: 'center',
   },
@@ -19,8 +19,8 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 20,
+    marginTop: 12,
+    marginBottom: 12,
   },
   title: {
     fontSize: 24,
@@ -43,11 +43,30 @@ export const styles = StyleSheet.create({
     marginBottom: 20,
     elevation: 4,
   },
+  formHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
   formTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#333333',
-    marginBottom: 16,
+    flex: 1,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'transparent',
+  },
+  closeButtonText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#666666',
   },
   inputGroup: {
     marginBottom: 16,
@@ -108,7 +127,7 @@ export const styles = StyleSheet.create({
   },
   goalCard: {
     borderRadius: 12,
-    padding: 12,
+    padding: 10,
     borderWidth: 1,
     borderColor: '#E5E5E5',
     marginBottom: 4,
@@ -117,25 +136,24 @@ export const styles = StyleSheet.create({
     marginLeft: 0,
     marginRight: 0,
     paddingTop: 0,
-    paddingBottom: 12,
-    paddingLeft: 12,
-    paddingRight: 12,
+    paddingBottom: 10,
+    paddingLeft: 10,
+    paddingRight: 10,
     width: '100%',
     maxWidth: 500,
-    ...createShadowStyle({
+    ...(createShadowStyle({
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.05,
       shadowRadius: 4,
       elevation: 2,
-    }),
-    elevation: 2,
+    }) as any),
   },
   goalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
     position: 'relative',
     zIndex: 1,
   },
@@ -153,14 +171,14 @@ export const styles = StyleSheet.create({
   goalTitle: {
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 4,
-    lineHeight: 22,
+    marginBottom: 2,
+    lineHeight: 20,
     letterSpacing: -0.2,
   },
   goalDescription: {
     fontSize: 13,
-    marginBottom: 4,
-    lineHeight: 18,
+    marginBottom: 2,
+    lineHeight: 16,
   },
   progressText: {
     fontSize: 14,
@@ -176,13 +194,13 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#FF4444',
     zIndex: 10,
-    ...createShadowStyle({
+    ...(createShadowStyle({
       shadowColor: '#FF4444',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.2,
       shadowRadius: 4,
       elevation: 2,
-    }),
+    }) as any),
     elevation: 2,
   },
   deleteButtonText: {
@@ -196,8 +214,8 @@ export const styles = StyleSheet.create({
   },
   // 新しいセクション用のスタイル
   section: {
-    marginBottom: 8,
-    padding: 12,
+    marginBottom: 4,
+    padding: 8,
     borderRadius: 12,
     elevation: 3,
     width: '96%',
@@ -207,7 +225,7 @@ export const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 4,
     gap: 12,
   },
   sectionTitle: {
@@ -215,12 +233,12 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
   },
   goalTypes: {
-    gap: 10,
+    gap: 6,
     marginBottom: 0,
     alignItems: 'center',
   },
   goalTypeCard: {
-    padding: 12,
+    padding: 8,
     borderWidth: 2,
     borderRadius: 10,
     backgroundColor: '#F8F9FA',
@@ -230,7 +248,7 @@ export const styles = StyleSheet.create({
   goalTypeTitle: {
     fontSize: 15,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   goalTypeDescription: {
     fontSize: 13,
@@ -241,7 +259,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 18,
     borderRadius: 20,
     gap: 8,
@@ -249,6 +267,7 @@ export const styles = StyleSheet.create({
     width: '95%',
     maxWidth: 400,
     marginBottom: 0,
+    marginTop: 4,
   },
 
   targetSongCard: {
@@ -377,14 +396,13 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 0,
     borderRadius: 6,
     gap: 2,
-    ...createShadowStyle({
+    ...(createShadowStyle({
       shadowColor: '#4CAF50',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.2,
       shadowRadius: 4,
       elevation: 3,
-    }),
-    elevation: 3,
+    }) as any),
   },
   actionButtonText: {
     fontSize: 12,
@@ -894,24 +912,24 @@ export const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#E5E5E5',
     overflow: 'hidden',
-    ...createShadowStyle({
+    ...(createShadowStyle({
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
       shadowOpacity: 0.1,
       shadowRadius: 2,
       elevation: 1,
-    }),
+    }) as any),
   },
   progressSliderFill: {
     height: '100%',
     borderRadius: 8,
-    ...createShadowStyle({
+    ...(createShadowStyle({
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.2,
       shadowRadius: 4,
       elevation: 2,
-    }),
+    }) as any),
   },
   progressPercentageLabel: {
     fontSize: 16,
@@ -943,13 +961,13 @@ export const styles = StyleSheet.create({
     gap: 2,
     marginLeft: 0,
     minHeight: 28,
-    ...createShadowStyle({
+    ...(createShadowStyle({
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.08,
       shadowRadius: 6,
       elevation: 2,
-    }),
+    }) as any),
   },
   completeButtonText: {
     fontSize: 11,
@@ -965,13 +983,13 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 28,
     borderRadius: 16,
     gap: 8,
-    ...createShadowStyle({
+    ...(createShadowStyle({
       shadowColor: '#4CAF50',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.2,
       shadowRadius: 8,
       elevation: 3,
-    })
+    }) as any)
   },
   achievementBadgeSuccess: {
     backgroundColor: '#4CAF50',
@@ -1200,9 +1218,9 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    gap: 3,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
     borderRadius: 6,
     borderWidth: 1,
     marginTop: 8,

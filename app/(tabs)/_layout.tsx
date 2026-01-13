@@ -1,10 +1,11 @@
+import React from 'react';
 import { Tabs } from 'expo-router';
 import { Calendar, Timer, Target, Zap, Settings } from 'lucide-react-native';
 import { useLanguage } from '../../components/LanguageContext';
 import { useInstrumentTheme } from '../../components/InstrumentThemeContext';
 import { useSegments } from 'expo-router';
 import { useAuthAdvanced } from '../../hooks/useAuthAdvanced';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, TouchableOpacity, Text, Platform } from 'react-native';
 
 // タブのアイコンとタイトルを定義
 // カレンダー（index）を真ん中の3番目に配置
@@ -62,9 +63,7 @@ const HIDDEN_TABS = [
   'score-auto-scroll',
   'help-support',
   'basic-practice',
-  'room',
   'support',
-  'org-overview',
   'share', // 音楽団体管理画面を非表示
 ] as const;
 
@@ -92,6 +91,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={({ route }) => {
         const isVisible = VISIBLE_TAB_NAMES.includes(route.name as any);
+        const isHidden = (HIDDEN_TABS as readonly string[]).includes(route.name);
         
         return {
           headerShown: false,
@@ -103,41 +103,49 @@ export default function TabLayout() {
             backgroundColor: currentTheme.surface,
             borderTopWidth: 1,
             borderTopColor: currentTheme.secondary,
-            height: 70,
-            paddingTop: 10,
-            paddingBottom: 10,
+            height: 70, // ラベルを表示するために高さを増やす
+            paddingTop: 6,
+            paddingBottom: 8, // 下部にパディングを追加してラベルを表示
             paddingHorizontal: 0,
             paddingLeft: 0,
             paddingRight: 0,
             margin: 0,
             marginLeft: 0,
             marginRight: 0,
+            marginBottom: 0,
             width: '100%',
             maxWidth: '100%',
             minWidth: '100%',
             elevation: 8,
             display: shouldHideTabBar ? 'none' : 'flex',
+            position: 'absolute',
+            bottom: 0,
+            left: 0,
+            right: 0,
+            zIndex: 1000, // 他の要素の上に表示
+            overflow: 'hidden', // 余計な要素が表示されないように
           },
           
           // タブアイテムのスタイル
           tabBarItemStyle: {
             flex: isVisible ? 1 : 0, // 表示タブは均等に幅を占める、非表示タブはスペースを取らない
-            paddingVertical: isVisible ? 6 : 0,
+            paddingVertical: isVisible ? 4 : 0,
             paddingHorizontal: 0,
             margin: 0,
             minWidth: isVisible ? 0 : 0,
             maxWidth: isVisible ? '100%' : 0,
             width: isVisible ? undefined : 0,
-            height: isVisible ? undefined : 0,
-            display: isVisible ? 'flex' : 'none',
-            justifyContent: 'center',
+            height: isVisible ? 'auto' : 0, // ラベルを表示するためにautoに設定
+            minHeight: isVisible ? 60 : 0, // ラベルを表示するための最小高さを増やす
+            justifyContent: 'flex-start', // ラベルを表示するためにflex-startに変更
             alignItems: 'center',
+            flexDirection: 'column', // アイコンとラベルを縦に配置
           },
           
           // タブコンテンツのスタイル
           tabBarContentStyle: {
             flexDirection: 'row',
-            alignItems: 'center',
+            alignItems: 'flex-start', // ラベルを表示するためにflex-startに変更
             justifyContent: 'flex-start', // 左から均等に配置
             width: '100%',
             maxWidth: '100%',
@@ -149,34 +157,43 @@ export default function TabLayout() {
             marginLeft: 0,
             marginRight: 0,
             gap: 0,
-            overflow: 'hidden',
+            overflow: 'visible', // ラベルを表示するためにvisibleに変更
           },
           
-          // ラベルのスタイル
+          // ラベルのスタイル（表示タブでは常にラベルを表示）
           tabBarLabelStyle: {
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: '500',
-            marginTop: 4,
+            marginTop: 3,
             marginBottom: 0,
             textAlign: 'center',
+            display: 'flex', // ラベルを確実に表示
+            visibility: 'visible', // ラベルを確実に表示
+            opacity: 1, // ラベルを確実に表示
+            height: 'auto', // ラベルの高さを自動調整
+            minHeight: 14, // 最小高さを設定
           },
           
           // アイコンのスタイル
           tabBarIconStyle: {
             margin: 0,
             padding: 0,
-            width: 32,
-            height: 32,
+            width: 24,
+            height: 24,
           },
           
           // その他の設定
-          tabBarShowIcon: true,
-          tabBarShowLabel: true,
+          tabBarShowIcon: false, // デフォルトのアイコンを非表示（カスタムボタンで表示）
+          tabBarShowLabel: false, // デフォルトのラベルを非表示（カスタムボタンで表示）
           tabBarScrollEnabled: false, // スクロールを無効化
           tabBarHideOnKeyboard: false,
           
-          // 非表示タブは完全に非表示
-          tabBarButton: isVisible ? undefined : () => null,
+          // 非表示タブは完全に非表示（個別のタブ設定で上書きされる）
+          // メインタブでは個別のtabBarButton設定が優先される
+          tabBarButton: isHidden ? () => null : undefined,
+          // デフォルトのアイコンとラベルを完全に無効化
+          tabBarIcon: () => null,
+          tabBarLabel: '',
         };
       }}
       initialRouteName="index"
@@ -184,43 +201,129 @@ export default function TabLayout() {
       {/* メインタブ - アイコンとタイトルを定義 */}
       {TAB_CONFIG.map((tab) => {
         const IconComponent = tab.icon;
+        const tabTitle = t(tab.titleKey);
         return (
           <Tabs.Screen
             key={tab.name}
             name={tab.name}
             options={{
-              title: t(tab.titleKey),
-              tabBarIcon: ({ size, color }) => (
-                <View style={{ alignItems: 'center', justifyContent: 'center' }}>
-                  <IconComponent size={size ? size * 1.3 : 32} color={color} />
-                </View>
-              ),
+              title: tabTitle,
+              tabBarLabel: '', // ラベルはカスタムボタンで表示するため空にする
+              tabBarShowLabel: false, // デフォルトのラベルを非表示
+              tabBarIcon: () => null, // デフォルトのアイコンを非表示（カスタムボタンで表示）
+              // カスタムボタンでラベルを確実に表示（デフォルト要素を完全に無効化）
+              tabBarButton: (props: any) => {
+                const { onPress, accessibilityState } = props;
+                const focused = accessibilityState?.selected;
+                const iconColor = focused ? currentTheme.primary : currentTheme.textSecondary;
+                
+                // デフォルトのchildrenを無視して、完全にカスタムレンダリング
+                return (
+                  <TouchableOpacity
+                    onPress={onPress}
+                    activeOpacity={0.7}
+                    data-custom-tab="true"
+                    style={{
+                      flex: 1,
+                      alignItems: 'center',
+                      justifyContent: 'flex-start',
+                      paddingTop: 4,
+                      paddingBottom: Platform.OS === 'ios' ? 8 : 8,
+                      minHeight: 60,
+                      height: 'auto',
+                      overflow: 'hidden',
+                      position: 'relative',
+                      zIndex: 1,
+                    }}
+                  >
+                    <View 
+                      style={{
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginBottom: 2,
+                        overflow: 'hidden',
+                        width: 24,
+                        height: 24,
+                      }}
+                    >
+                      <IconComponent size={24} color={iconColor} />
+                    </View>
+                    <Text
+                      style={{
+                        fontSize: 11,
+                        fontWeight: '500',
+                        color: iconColor,
+                        textAlign: 'center',
+                        marginTop: 3,
+                        lineHeight: 14,
+                        width: '100%',
+                      }}
+                      numberOfLines={1}
+                    >
+                      {tabTitle}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              },
             }}
           />
         );
       })}
 
       {/* 非表示タブ（タブバーに表示されない画面）- tabBarButton: () => nullで完全に非表示 */}
-      {HIDDEN_TABS.map((tabName) => (
-        <Tabs.Screen
-          key={tabName}
-          name={tabName as any}
-          options={{
-            tabBarButton: () => null, // タブバーから完全に除外
-            tabBarItemStyle: { 
-              display: 'none',
-              width: 0,
-              height: 0,
-              padding: 0,
-              margin: 0,
-              minWidth: 0,
-              maxWidth: 0,
-              flex: 0,
-            },
-            tabBarShowLabel: false,
-          }}
-        />
-      ))}
+      {HIDDEN_TABS.map((tabName) => {
+        // 各画面のタイトルをマッピング
+        const titleMap: Record<string, string> = {
+          'my-library': t('myLibrary'),
+          'feedback': t('feedback'),
+          'beginner-guide': t('guide'),
+          'basic-practice': '基礎練',
+          'profile-settings': t('profileSettings'),
+          'recordings-library': t('recordingsLibrary'),
+          'main-settings': t('appearance'),
+          'language-settings': t('languageSettings'),
+          'notification-settings': t('notificationSettings'),
+          'privacy-settings': t('privacySettings'),
+          'pricing-plans': '料金プラン',
+          'help-support': t('help'),
+          'note-training': '音名トレーニング',
+          'music-dictionary': '音楽用語辞典',
+          'statistics': t('statistics'),
+          'instrument-selection': '楽器選択',
+          'tutorial': t('tutorial'),
+          'terms-of-service': t('terms'),
+          'privacy-policy': t('privacy'),
+          'legal-info': '法的情報',
+          'score-auto-scroll': '楽譜自動スクロール',
+          'support': t('help'),
+          'share': t('share'),
+        };
+        
+        const screenTitle = titleMap[tabName] || tabName;
+        
+        return (
+          <Tabs.Screen
+            key={tabName}
+            name={tabName as any}
+            options={{
+              title: screenTitle, // 画面タイトルを設定
+              headerTitle: screenTitle, // ヘッダータイトルも設定
+              tabBarButton: () => null, // タブバーから完全に除外
+              tabBarItemStyle: { 
+                display: 'none',
+                width: 0,
+                height: 0,
+                padding: 0,
+                margin: 0,
+                minWidth: 0,
+                maxWidth: 0,
+                flex: 0,
+              },
+              tabBarShowLabel: false,
+            }}
+          />
+        );
+      })}
     </Tabs>
   );
 }

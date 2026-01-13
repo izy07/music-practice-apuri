@@ -20,6 +20,16 @@ export interface Entitlement {
 }
 
 /**
+ * プレミアムユーザーかどうかを判定するヘルパー関数
+ * 
+ * @param entitlement エンタイトルメント情報
+ * @returns プレミアムユーザーかどうか
+ */
+export const isPremiumUser = (entitlement: Entitlement | null | undefined): boolean => {
+  return !!entitlement?.isEntitled;
+};
+
+/**
  * Freeプランの制限値（楽器1個あたり）
  */
 export const FREE_PLAN_LIMITS = {
@@ -247,7 +257,8 @@ export const canSaveDataForInstrument = async (
 ): Promise<{ canSave: boolean; reason?: string }> => {
   try {
     // Premiumユーザーは無制限
-    if (entitlement?.isEntitled) {
+    const isPremium = isPremiumUser(entitlement);
+    if (isPremium) {
       return { canSave: true };
     }
 
@@ -317,7 +328,8 @@ export const isCurrentMonth = (date: Date | string | null | undefined): boolean 
  * @returns 最大録音時間（秒）
  */
 export const getMaxRecordingDuration = (entitlement: Entitlement | null | undefined): number => {
-  if (entitlement?.isEntitled) {
+  const isPremium = isPremiumUser(entitlement);
+  if (isPremium) {
     return 3600; // プレミアム: 60分
   }
   return 180; // フリープラン: 3分
@@ -330,7 +342,8 @@ export const getMaxRecordingDuration = (entitlement: Entitlement | null | undefi
  * @returns 1日の最大録音数
  */
 export const getMaxDailyRecordings = (entitlement: Entitlement | null | undefined): number => {
-  if (entitlement?.isEntitled) {
+  const isPremium = isPremiumUser(entitlement);
+  if (isPremium) {
     return 2; // プレミアム: 2個
   }
   return 1; // フリープラン: 1個
@@ -389,12 +402,13 @@ export const checkDailyRecordingLimit = async (
       targetDate: targetDate.toISOString()
     });
 
+    const isPremium = isPremiumUser(entitlement);
     return { 
       canRecord, 
       currentCount, 
       limit: maxDaily,
       reason: !canRecord 
-        ? `本日は既に${maxDaily}個の録音があります。${entitlement?.isEntitled ? '明日以降録音できます。' : '明日以降またはプレミアムで録音できます。'}`
+        ? `本日は既に${maxDaily}個の録音があります。${isPremium ? '明日以降録音できます。' : '明日以降またはプレミアムで録音できます。'}`
         : undefined
     };
   } catch (error) {
@@ -426,7 +440,8 @@ export const checkMonthlyRecordingLimit = async (
 ): Promise<{ canRecord: boolean; currentCount: number; limit: number; reason?: string }> => {
   try {
     // Premiumユーザーは無制限
-    if (entitlement?.isEntitled) {
+    const isPremium = isPremiumUser(entitlement);
+    if (isPremium) {
       return { canRecord: true, currentCount: 0, limit: Infinity };
     }
 
@@ -527,7 +542,19 @@ export const checkGoalLimit = async (
 ): Promise<{ canCreate: boolean; currentCount: number; limit: number }> => {
   try {
     // Premiumユーザーは無制限
-    if (entitlement?.isEntitled) {
+    const isPremium = isPremiumUser(entitlement);
+    logger.debug('checkGoalLimit: プレミアムユーザーチェック', {
+      userId,
+      instrumentId,
+      isPremium,
+      entitlement,
+      isEntitled: entitlement?.isEntitled
+    });
+    if (isPremium) {
+      logger.debug('checkGoalLimit: プレミアムユーザーのため無制限で許可', {
+        userId,
+        instrumentId
+      });
       return { canCreate: true, currentCount: 0, limit: Infinity };
     }
 
@@ -699,7 +726,8 @@ export const adjustAllDataOnDowngrade = async (
 }> => {
   try {
     // Premiumユーザーは調整不要
-    if (entitlement?.isEntitled) {
+    const isPremium = isPremiumUser(entitlement);
+    if (isPremium) {
       logger.debug('プレミアムユーザーのため、全データ調整をスキップします');
       return {
         goals: { adjusted: false, totalGoals: 0, keptGoals: 0 },
@@ -757,7 +785,8 @@ export const adjustGoalsOnDowngrade = async (
 ): Promise<{ adjusted: boolean; totalGoals: number; keptGoals: number }> => {
   try {
     // Premiumユーザーは調整不要
-    if (entitlement?.isEntitled) {
+    const isPremium = isPremiumUser(entitlement);
+    if (isPremium) {
       logger.debug('プレミアムユーザーのため、目標調整をスキップします');
       return { adjusted: false, totalGoals: 0, keptGoals: 0 };
     }
@@ -921,7 +950,8 @@ export const adjustRecordingsOnDowngrade = async (
 ): Promise<{ adjusted: boolean; totalRecordings: number; keptRecordings: number }> => {
   try {
     // Premiumユーザーは調整不要
-    if (entitlement?.isEntitled) {
+    const isPremium = isPremiumUser(entitlement);
+    if (isPremium) {
       logger.debug('プレミアムユーザーのため、録音調整をスキップします');
       return { adjusted: false, totalRecordings: 0, keptRecordings: 0 };
     }
@@ -1052,7 +1082,8 @@ export const adjustMyLibrarySongsOnDowngrade = async (
 ): Promise<{ adjusted: boolean; totalSongs: number; keptSongs: number }> => {
   try {
     // Premiumユーザーは調整不要
-    if (entitlement?.isEntitled) {
+    const isPremium = isPremiumUser(entitlement);
+    if (isPremium) {
       logger.debug('プレミアムユーザーのため、楽曲調整をスキップします');
       return { adjusted: false, totalSongs: 0, keptSongs: 0 };
     }
@@ -1266,7 +1297,8 @@ export const checkMyLibraryLimit = async (
 ): Promise<{ canAdd: boolean; currentCount: number; limit: number }> => {
   try {
     // Premiumユーザーは無制限
-    if (entitlement?.isEntitled) {
+    const isPremium = isPremiumUser(entitlement);
+    if (isPremium) {
       return { canAdd: true, currentCount: 0, limit: Infinity };
     }
 

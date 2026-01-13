@@ -34,6 +34,11 @@ export interface AuthUser {
   selected_instrument_id?: string | null; // 楽器選択状態
   tutorial_completed?: boolean;
   onboarding_completed?: boolean;
+  user_metadata?: {
+    name?: string;
+    display_name?: string;
+    [key: string]: unknown;
+  };
 }
 
 // 認証状態の型定義
@@ -485,11 +490,15 @@ export const useAuthAdvanced = (): AuthHookReturn => {
 
   // サイレントリフレッシュ（失効前に更新）
   useEffect(() => {
-    let timer: any;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     let lastRefreshTime = 0; // 最後のリフレッシュ時刻を記録（レート制限対策）
     const MIN_REFRESH_INTERVAL = 5 * 60 * 1000; // 最低5分間隔でリフレッシュ（レート制限対策）
+    let isCancelled = false; // コンポーネントがアンマウントされたかどうかを追跡（メモリリーク防止）
     
     const setup = async () => {
+      // コンポーネントがアンマウントされている場合は処理をスキップ
+      if (isCancelled) return;
+      
       try {
         const { data } = await supabase.auth.getSession();
         const exp = data.session?.expires_at; // seconds
@@ -497,7 +506,14 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         const nowSec = Math.floor(Date.now() / 1000);
         const diffMs = (exp - nowSec - TIMEOUT.SESSION_REFRESH_BUFFER_SEC) * 1000;
         if (diffMs > 0) {
+          // 既存のタイマーをクリア（メモリリーク防止）
+          if (timer) {
+            clearTimeout(timer);
+            timer = null;
+          }
           timer = setTimeout(async () => {
+            // コンポーネントがアンマウントされている場合は処理をスキップ
+            if (isCancelled) return;
             try {
               // レート制限対策: 最後のリフレッシュから5分以上経過している場合のみ実行
               const timeSinceLastRefresh = Date.now() - lastRefreshTime;
@@ -507,6 +523,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                   minInterval: MIN_REFRESH_INTERVAL
                 });
                 // 次のリフレッシュタイミングを再計算
+                if (isCancelled) return;
                 const remainingTime = MIN_REFRESH_INTERVAL - timeSinceLastRefresh;
                 timer = setTimeout(() => setup(), remainingTime);
                 return;
@@ -519,6 +536,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                   logger.warn('セッションリフレッシュのレート制限に達しました。5分後に再試行します。', error);
                   lastRefreshTime = Date.now();
                   // 5分後に再試行
+                  if (isCancelled) return;
                   timer = setTimeout(() => setup(), MIN_REFRESH_INTERVAL);
                   return;
                 }
@@ -544,28 +562,33 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                   logger.debug('セッションリフレッシュエラー:', error);
                   // エラーが発生した場合も、一定時間後に再試行
                   lastRefreshTime = Date.now();
+                  if (isCancelled) return;
                   timer = setTimeout(() => setup(), MIN_REFRESH_INTERVAL);
                 }
               } else {
                 // リフレッシュ成功
                 lastRefreshTime = Date.now();
                 // 次のリフレッシュタイミングを再計算
-                setup();
+                if (!isCancelled) {
+                  setup();
+                }
               }
-            } catch (e: any) {
+            } catch (e: unknown) {
+              const errorObj = e as { status?: number; code?: string; message?: string } | null;
               // 429エラーの場合
-              if (e?.status === 429 || e?.code === 'over_request_rate_limit' || e?.message?.includes('Too Many Requests')) {
+              if (errorObj?.status === 429 || errorObj?.code === 'over_request_rate_limit' || errorObj?.message?.includes('Too Many Requests')) {
                 logger.warn('セッションリフレッシュのレート制限に達しました（例外）。5分後に再試行します。', e);
                 lastRefreshTime = Date.now();
+                if (isCancelled) return;
                 timer = setTimeout(() => setup(), MIN_REFRESH_INTERVAL);
                 return;
               }
               
               // 予期しないエラーの場合
               if (
-                e?.message?.includes('Invalid Refresh Token') ||
-                e?.message?.includes('Refresh Token Not Found') ||
-                e?.message?.includes('refresh_token_not_found')
+                errorObj?.message?.includes('Invalid Refresh Token') ||
+                errorObj?.message?.includes('Refresh Token Not Found') ||
+                errorObj?.message?.includes('refresh_token_not_found')
               ) {
                 logger.warn('リフレッシュトークンが無効です。セッションをクリアします。', e);
                 if (signOutRef.current) {
@@ -580,6 +603,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                 logger.debug('セッションリフレッシュ例外:', e);
                 // エラーが発生した場合も、一定時間後に再試行
                 lastRefreshTime = Date.now();
+                if (isCancelled) return;
                 timer = setTimeout(() => setup(), MIN_REFRESH_INTERVAL);
               }
             }
@@ -594,15 +618,19 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     // セッションリフレッシュは、タイマーベースの自動リフレッシュのみに依存する
     
     return () => {
-      if (timer) clearTimeout(timer);
+      isCancelled = true; // コンポーネントがアンマウントされたことをマーク
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
     };
   }, [router]);
 
   // handleAuthenticatedUserの参照を保持（onAuthStateChangeのuseEffectで使用）
-  const handleAuthenticatedUserRef = useRef<((user: any) => Promise<AuthUser | null>) | null>(null);
+  const handleAuthenticatedUserRef = useRef<((user: { id: string; email?: string; user_metadata?: Record<string, unknown> }) => Promise<AuthUser | null>) | null>(null);
   
   // 内部用の認証済みユーザー処理
-  const handleAuthenticatedUser = useCallback(async (user: any): Promise<AuthUser | null> => {
+  const handleAuthenticatedUser = useCallback(async (user: { id: string; email?: string; user_metadata?: Record<string, unknown> }): Promise<AuthUser | null> => {
     const userId = user.id;
     
     // 既に処理中の場合は、そのPromiseを返す（同じユーザーIDに対する処理を共有）
@@ -638,8 +666,10 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       // ユーザープロフィールを取得（最小限のカラムのみで取得してパフォーマンスを最適化）
       // タイムアウトを10秒に短縮して、ログイン処理を高速化
       // ネットワークが遅い場合でも、タイムアウト後はフォールバック処理でログインを完了できる
-      let profile: any = null;
-      let profileError: any = null;
+      type ProfileData = { id: string; user_id: string; display_name: string | null; selected_instrument_id: string | null } | null;
+      type ProfileError = { code: string; message: string; status?: number } | null;
+      let profile: ProfileData = null;
+      let profileError: ProfileError = null;
       
       // profilePromiseをtryブロックの外で定義（タイムアウト後のバックグラウンド処理で使用するため）
       const profilePromise = supabase
@@ -667,13 +697,14 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         const result = await Promise.race([profilePromise, timeoutPromise]);
         profile = result.data;
         profileError = result.error;
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Promise.raceでエラーが発生した場合（通常は発生しないはず）
         logger.error('プロフィール取得で予期しないエラーが発生しました:', error);
+        const errorObj = error as { code?: string; message?: string; status?: number };
         profileError = { 
-          code: error?.code || 'UNKNOWN_ERROR', 
-          message: error?.message || 'プロフィール取得でエラーが発生しました',
-          status: error?.status,
+          code: errorObj?.code || 'UNKNOWN_ERROR', 
+          message: errorObj?.message || 'プロフィール取得でエラーが発生しました',
+          status: errorObj?.status,
         };
       }
       

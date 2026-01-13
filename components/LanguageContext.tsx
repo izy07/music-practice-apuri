@@ -173,7 +173,7 @@ const translations = {
     myLibrary: 'マイライブラリ',
     myLibrarySubtitle: '楽曲を整理する',
     recordingsLibrary: '録音ライブラリ',
-    recordingsLibrarySubtitle: '演奏履歴を時系列で確認',
+    recordingsLibrarySubtitle: '演奏を時系列で確認',
     mainFeatures: '主要機能',
     mainFeaturesSubtitle: '楽器選択・外観設定',
     tutorial: 'チュートリアル',

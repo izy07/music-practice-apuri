@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo, useReducer } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -132,6 +132,10 @@ export default function CalendarScreen() {
   const lastDataFetchTimeRef = useRef<number>(0);
   const lastMonthRef = useRef<{ year: number; month: number } | null>(null);
   const lastInstrumentRef = useRef<string | null>(null);
+  // イベント保存後のデータ更新用タイマーIDを保持（メモリリーク防止）
+  const eventUpdateTimerRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
+  // 成功メッセージ表示用タイマーIDを保持（メモリリーク防止）
+  const successMessageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // 練習記録更新処理の重複実行を防ぐためのフラグ
   const isUpdatingRef = useRef(false);
@@ -414,13 +418,19 @@ export default function CalendarScreen() {
                 timeDiff: Date.now() - parseInt(lastTimestamp)
               });
               // データベースの反映を待つため、少し遅延させてから更新（1回のみ）
-              setTimeout(async () => {
+              // 既存のタイマーをクリア（メモリリーク防止）
+              if (loadAllDataTimeoutRef.current) {
+                clearTimeout(loadAllDataTimeoutRef.current);
+              }
+              loadAllDataTimeoutRef.current = setTimeout(async () => {
                 try {
                   await loadAllData();
                   lastDataFetchTimeRef.current = Date.now();
                   logger.debug('useFocusEffect: 強制データ更新完了');
+                  loadAllDataTimeoutRef.current = null;
                 } catch (error) {
                   logger.error('useFocusEffect: 強制データ更新エラー:', error);
+                  loadAllDataTimeoutRef.current = null;
                 }
               }, 500); // 1500msから500msに短縮
               return;
@@ -698,10 +708,11 @@ export default function CalendarScreen() {
         user_id: user.id,
         practice_date: formatLocalDate(practiceDate),
         duration_minutes: minutes,
-        content: content || null,
-        audio_url: audioUrl || null,
-        input_method: 'manual',
-        instrument_id: currentInstrumentId || null
+        content: content || undefined,
+        audio_url: audioUrl || undefined,
+        video_url: videoUrl || undefined,
+        input_method: 'manual' as const,
+        instrument_id: currentInstrumentId || undefined
       };
 
       // 録音や動画URLがある場合は録音ライブラリにも保存
@@ -757,6 +768,8 @@ export default function CalendarScreen() {
               inputMethod: 'manual',
               practiceDate: practiceRecord.practice_date, // 選択された日付を指定
               replaceMinutes: true, // 既存の時間を置き換える（加算しない）
+              audioUrl: audioUrl || null,
+              videoUrl: videoUrl || null,
             }
           );
           
@@ -1304,7 +1317,11 @@ export default function CalendarScreen() {
             setPracticeRecordRefreshKey(prev => prev + 1);
             
             setSuccessMessage('イベントを削除しました！');
-            setTimeout(() => setSuccessMessage(''), 3000);
+            // 既存のタイマーをクリア（メモリリーク防止）
+            if (successMessageTimerRef.current) {
+              clearTimeout(successMessageTimerRef.current);
+            }
+            successMessageTimerRef.current = setTimeout(() => setSuccessMessage(''), 3000);
             
             // 削除成功のアラートを表示
             Alert.alert('削除完了', 'イベントを削除しました');
@@ -1343,7 +1360,11 @@ export default function CalendarScreen() {
           
           // データベースへの反映を待つため、少し遅延を設けてから更新
           // 複数回試行して確実にデータを取得する
-          setTimeout(async () => {
+          // 既存のタイマーをクリア（メモリリーク防止）
+          eventUpdateTimerRefs.current.forEach(timer => clearTimeout(timer));
+          eventUpdateTimerRefs.current = [];
+          
+          const timer1 = setTimeout(async () => {
             try {
               await loadEvents();
               logger.debug('loadEvents完了（1回目）');
@@ -1357,7 +1378,7 @@ export default function CalendarScreen() {
             }
             
             // さらに待機してから2回目の更新を試行（データベース反映の遅延に対応）
-            setTimeout(async () => {
+            const timer2 = setTimeout(async () => {
               try {
                 await loadEvents();
                 logger.debug('loadEvents完了（2回目）');
@@ -1366,13 +1387,19 @@ export default function CalendarScreen() {
                   const allEventsData = await loadAllEvents();
                   setAllEvents(allEventsData || {});
                 }
-          setSuccessMessage('イベントを保存しました！');
-          setTimeout(() => setSuccessMessage(''), 3000);
+                setSuccessMessage('イベントを保存しました！');
+                // 既存のタイマーをクリア（メモリリーク防止）
+                if (successMessageTimerRef.current) {
+                  clearTimeout(successMessageTimerRef.current);
+                }
+                successMessageTimerRef.current = setTimeout(() => setSuccessMessage(''), 3000);
               } catch (error) {
                 logger.error('イベント読み込みエラー（2回目）:', error);
               }
             }, 500);
+            eventUpdateTimerRefs.current.push(timer2);
           }, 300);
+          eventUpdateTimerRefs.current.push(timer1);
         }}
       />
 
@@ -1388,6 +1415,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 12, // パディングを少し増やす
+    paddingBottom: 65, // タブバーの高さ
   },
   calendarContainer: {
     borderRadius: 12,
@@ -1483,23 +1511,27 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     maxHeight: 350, // カレンダーの最大高さを増加
     paddingVertical: getScaledSpacing(4),
-    justifyContent: 'space-between',
-    paddingHorizontal: getScaledSpacing(4),
+    justifyContent: 'flex-start',
+    paddingHorizontal: getScaledSpacing(0.5), // dayHeadersと同じパディングを適用
     marginBottom: getScaledSpacing(6), // カレンダーとサマリーの間隔をさらに短く
     minHeight: 0, // 最小高さをリセット
   },
   emptyDay: {
-    width: '13.5%',
+    width: '14.28%',
     height: 28, // 固定値で短く
-    margin: getScaledSpacing(1),
+    marginHorizontal: 0,
+    marginVertical: getScaledSpacing(0.25),
+    paddingHorizontal: 0, // calendarGridのpaddingHorizontalで調整するため0に
   },
   dayCell: {
-    width: '13.5%',
+    width: '14.28%',
     height: 28, // 固定値で短く
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: getScaledSize(8),
-    margin: getScaledSpacing(1),
+    marginHorizontal: 0,
+    marginVertical: getScaledSpacing(0.25),
+    paddingHorizontal: 0, // calendarGridのpaddingHorizontalで調整するため0に
     backgroundColor: '#E8E8E8',
     position: 'relative',
     paddingVertical: 2, // 固定値で短く

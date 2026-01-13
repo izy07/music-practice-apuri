@@ -12,7 +12,7 @@ import { ErrorHandler } from '@/lib/errorHandler';
 export default function PricingPlansScreen() {
   const router = useRouter();
   const { currentTheme } = useInstrumentTheme();
-  const { entitlement } = useSubscription();
+  const { entitlement, refresh } = useSubscription();
   
   const handlePurchase = async (plan: 'premium_monthly' | 'premium_yearly') => {
     try {
@@ -26,7 +26,16 @@ export default function PricingPlansScreen() {
       logger.debug('購入処理開始:', { plan, userId: user.id });
       await purchaseSubscription(user.id, plan);
       logger.debug('購入処理成功');
-      Alert.alert('完了', 'プレミアムが有効になりました。アプリを再起動してください。');
+      
+      // サブスクリプション状態を即座にリフレッシュ
+      try {
+        await refresh();
+        logger.debug('サブスクリプション状態をリフレッシュしました');
+      } catch (refreshError) {
+        logger.warn('サブスクリプション状態のリフレッシュに失敗しました（続行）:', refreshError);
+      }
+      
+      Alert.alert('完了', 'プレミアムが有効になりました。');
     } catch (e) {
       // エラーを適切に記録
       const errorMessage = e instanceof Error ? e.message : String(e);
@@ -86,10 +95,11 @@ export default function PricingPlansScreen() {
             </Text>
             <View style={[styles.featureList, { marginBottom: 4, gap: 6 }]}>
               {[
-                '演奏録音機能（月3回まで、1回あたり3分まで）',
+                '演奏録音機能（1日一回3分まで月3回）',
                 '楽器データ（2個まで使用可能）',
                 'マイライブラリ（10曲まで）',
                 '目標設定（2つまで）',
+                '広告削除',
               ].map((f) => (
                 <View key={f} style={[styles.featureItem, { gap: 6 }]}>
                   <CheckCircle2 size={16} color={currentTheme.primary} />
@@ -108,7 +118,7 @@ export default function PricingPlansScreen() {
             <View style={styles.featureList}>
               {[
                 '全ての機能が無制限で利用可能',
-                '演奏録音機能（60分まで）',
+                '演奏録音機能（一日に2個、60分まで）',
               ].map((f) => (
                 <View key={f} style={styles.featureItem}>
                   <CheckCircle2 size={16} color={currentTheme.primary} />
@@ -137,7 +147,7 @@ export default function PricingPlansScreen() {
           <View style={styles.featureList}>
             {[
               '全ての機能が無制限で利用可能',
-              '演奏録音機能（60分まで）',
+              '演奏録音機能（一日に2個、60分まで）',
             ].map((f) => (
               <View key={f} style={styles.featureItem}>
                 <CheckCircle2 size={16} color={currentTheme.primary} />

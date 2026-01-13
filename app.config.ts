@@ -32,13 +32,14 @@ const config: ExpoConfig = {
   },
   web: {
     bundler: 'metro', // WebプラットフォームでもMetroを使用（Webpackとの競合を避ける）
-    output: 'static', // 静的エクスポート用（GitHub Pagesデプロイに必要）
+    // output: 'static'を削除（開発環境ではサーバーサイドレンダリングエラーが発生するため）
+    // 本番環境での静的エクスポート時のみ設定する
     favicon: './assets/images/favicon.png', // PNG形式を使用（jimp-compactがWebPをサポートしていないため）
     icon: './assets/images/icon.png', // PWAマニフェスト用アイコン（GitHubのデフォルトアイコンを防ぐ）
     // GitHub Pages用のベースパス設定
     baseUrl: process.env.EXPO_PUBLIC_WEB_BASE || '/',
-    // 出力ディレクトリを明示的に指定（Expo Routerのデフォルトはweb-build）
-    // 注意: expo exportコマンドの--output-dirオプションが動作しない場合のフォールバック
+    // jsEngine: 'jsc'を削除（Expo Routerが無視してHermesパラメータを追加するため）
+    // Metro設定でHermesを無効化する
   },
   plugins: [
     'expo-router', 

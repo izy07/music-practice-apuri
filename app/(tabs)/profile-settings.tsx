@@ -1,5 +1,5 @@
 import React, { useState, useEffect, Fragment, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Image, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Image, Platform, Linking, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, User, Music, Target, Plus, Minus, Edit, Trash2, Award, Users, Clock, MapPin, Camera, Calendar } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -18,6 +18,8 @@ import PastOrgEditorModal from '@/components/profile-settings/PastOrgEditorModal
 import AwardEditorModal from '@/components/profile-settings/AwardEditorModal';
 import PerformanceEditorModal from '@/components/profile-settings/PerformanceEditorModal';
 import AgeSelectorModal from '@/components/profile-settings/AgeSelectorModal';
+import EventCalendar from '@/components/EventCalendar';
+import { formatLocalDate } from '@/lib/dateUtils';
 import { styles } from '@/lib/tabs/profile-settings/styles';
 // DateTimePickerは環境によって未導入の場合があるため動的ロード
 let DateTimePicker: any;
@@ -28,8 +30,9 @@ try {
 
 export default function ProfileSettingsScreen() {
   const router = useRouter();
-  const { isAuthenticated, isLoading, fetchUserProfile } = useAuthAdvanced();
+  const { isAuthenticated, isLoading, fetchUserProfile, signOut } = useAuthAdvanced();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // 全てのuseStateフックを最初に呼び出す
   const [loading, setLoading] = useState(false);
@@ -58,9 +61,23 @@ export default function ProfileSettingsScreen() {
   const [pastOrganizations, setPastOrganizations] = useState<Array<{id: string, name: string, role: string, startDate: string, endDate: string}>>([]);
   const [awards, setAwards] = useState<Array<{id: string, title: string, organization: string, date: string, description: string}>>([]);
   const [performances, setPerformances] = useState<Array<{id: string, title: string, venue: string, date: string, role: string, description: string}>>([]);
-  const [instrumentTypes, setInstrumentTypes] = useState<Array<{id: string, name: string}>>([
-    { id: '1', name: '' },
-  ]);
+  // 楽器情報の型定義
+  type InstrumentInfo = {
+    id: string;
+    name: string;
+    maker: string;
+    model: string;
+    purchaseDate: string | null;
+    purchasePrice?: string;
+    notes?: string;
+  };
+  
+  const [instrumentTypes, setInstrumentTypes] = useState<Array<InstrumentInfo>>([]);
+  const [showInstrumentInfo, setShowInstrumentInfo] = useState(false);
+  
+  // 購入日選択モーダルの状態
+  const [showInstrumentDatePicker, setShowInstrumentDatePicker] = useState(false);
+  const [instrumentDatePickerIndex, setInstrumentDatePickerIndex] = useState<number | null>(null);
   const [showBreakPeriodModal, setShowBreakPeriodModal] = useState(false);
   const [showPastOrganizationModal, setShowPastOrganizationModal] = useState(false);
   const [showAwardModal, setShowAwardModal] = useState(false);
@@ -164,15 +181,45 @@ export default function ProfileSettingsScreen() {
               if (instrumentData.music_experience_years !== undefined) {
                 setMusicExperienceYears(instrumentData.music_experience_years);
               }
+              // 楽器情報の読み込み（既存データとの互換性維持）
               if (instrumentData.custom_instrument_name) {
-                const types = instrumentData.custom_instrument_name.split(',').filter((name: string) => name.trim() !== '');
-                setInstrumentTypes(
-                  types.length > 0 
-                    ? types.map((name: string, index: number) => ({ id: (index + 1).toString(), name: name.trim() }))
-                    : [
-                        { id: '1', name: '' },
-                      ]
-                );
+                try {
+                  // 新しいJSON形式を試行
+                  const parsed = JSON.parse(instrumentData.custom_instrument_name);
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                    // JSON形式のデータ
+                    const instruments = parsed.map((item: any, index: number) => ({
+                      id: item.id || (index + 1).toString(),
+                      name: item.name || '',
+                      maker: item.maker || '',
+                      model: item.model || '',
+                      purchaseDate: item.purchaseDate || null,
+                      purchasePrice: item.purchasePrice || '',
+                      notes: item.notes || '',
+                    }));
+                    setInstrumentTypes(instruments);
+                    setShowInstrumentInfo(true);
+                  } else {
+                    throw new Error('Invalid JSON format');
+                  }
+                } catch {
+                  // 既存のカンマ区切り文字列形式（後方互換性）
+                  const types = instrumentData.custom_instrument_name.split(',').filter((name: string) => name.trim() !== '');
+                  if (types.length > 0) {
+                    setInstrumentTypes(
+                      types.map((name: string, index: number) => ({ 
+                        id: (index + 1).toString(), 
+                        name: name.trim(),
+                        maker: '',
+                        model: '',
+                        purchaseDate: null,
+                        purchasePrice: '',
+                        notes: '',
+                      }))
+                    );
+                    setShowInstrumentInfo(true);
+                  }
+                }
               }
               if (instrumentData.career_data) {
                 const careerData = instrumentData.career_data;
@@ -210,13 +257,12 @@ export default function ProfileSettingsScreen() {
               const customInstrumentName = (profile as any).custom_instrument_name;
               if (customInstrumentName) {
                 const types = customInstrumentName.split(',').filter((name: string) => name.trim() !== '');
-                setInstrumentTypes(
-                  types.length > 0 
-                    ? types.map((name: string, index: number) => ({ id: (index + 1).toString(), name: name.trim() }))
-                    : [
-                        { id: '1', name: '' },
-                      ]
-                );
+                if (types.length > 0) {
+                  setInstrumentTypes(
+                    types.map((name: string, index: number) => ({ id: (index + 1).toString(), name: name.trim(), maker: '', model: '', purchaseDate: null, purchasePrice: '', notes: '' }))
+                  );
+                  setShowInstrumentInfo(true);
+                }
               }
               
               // 経歴・実績データを読み込み（Supabaseから）
@@ -471,12 +517,55 @@ export default function ProfileSettingsScreen() {
     try {
       logger.debug('takePhoto関数が開始されました');
 
+      // まず現在の権限状態を確認
+      const currentPermission = await ImagePicker.getCameraPermissionsAsync();
+      logger.debug('現在のカメラ権限状態:', currentPermission);
+
+      // 権限を要求
       logger.debug('カメラの権限をリクエスト中...');
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      logger.debug('カメラの権限ステータス:', status);
+      const { status, canAskAgain } = await ImagePicker.requestCameraPermissionsAsync();
+      logger.debug('カメラの権限ステータス:', { status, canAskAgain });
+      
       if (status !== 'granted') {
-        logger.debug('カメラの権限が拒否されました');
-        Alert.alert('権限が必要です', '写真を撮影するためにカメラ権限が必要です');
+        logger.debug('カメラの権限が拒否されました', { status, canAskAgain });
+        
+        // 権限が拒否され、再度要求できない場合は設定画面への誘導を提案
+        if (!canAskAgain && Platform.OS !== 'web') {
+          Alert.alert(
+            'カメラ権限が必要です',
+            '写真を撮影するためにカメラ権限が必要です。設定画面からカメラ権限を許可してください。',
+            [
+              { text: 'キャンセル', style: 'cancel' },
+              {
+                text: '設定を開く',
+                onPress: async () => {
+                  try {
+                    if (Platform.OS === 'ios') {
+                      await Linking.openURL('app-settings:');
+                    } else if (Platform.OS === 'android') {
+                      await Linking.openSettings();
+                    }
+                  } catch (error) {
+                    logger.error('設定画面を開けませんでした:', error);
+                    Alert.alert('エラー', '設定画面を開けませんでした。手動で設定アプリからカメラ権限を許可してください。');
+                  }
+                }
+              }
+            ]
+          );
+        } else {
+          Alert.alert(
+            'カメラ権限が必要です',
+            '写真を撮影するためにカメラ権限が必要です。',
+            [
+              { text: 'キャンセル', style: 'cancel' },
+              {
+                text: '再試行',
+                onPress: () => takePhoto() // 再帰的に呼び出し
+              }
+            ]
+          );
+        }
         return;
       }
 
@@ -542,26 +631,28 @@ export default function ProfileSettingsScreen() {
       }
       
       // Supabase Storageにアップロード
+      // ファイル名を短くする（URI Too Longエラーを防ぐため）
       const fileExt = ext || 'jpg';
-      const fileName = `${currentUser.id}/avatar.${fileExt}`;
+      // ユーザーIDの最初の8文字を使用してファイル名を短縮
+      const shortUserId = currentUser.id.substring(0, 8);
+      const fileName = `${shortUserId}/avatar.${fileExt}`;
       logger.debug('アップロードファイル名:', fileName);
       
       logger.debug('Supabase Storageにアップロード中...');
       
-      // バケットの存在確認（オプション）
+      // バケットの存在確認を試みる（権限がある場合）
+      let bucketExists = false;
       const { data: buckets, error: listError } = await supabase.storage.listBuckets();
       if (listError) {
-        logger.warn('バケット一覧取得エラー（無視）:', listError);
+        logger.warn('バケット一覧取得エラー（権限がない可能性があります）:', listError);
+        // 権限がない場合は、アップロード時にエラーで検出する
       } else {
-        const avatarsBucket = buckets?.find(b => b.name === 'avatars');
-        if (!avatarsBucket) {
-          logger.error('avatarsバケットが存在しません');
-          Alert.alert(
-            'エラー',
-            'ストレージバケットが設定されていません。管理者にお問い合わせください。'
-          );
-          setLoading(false);
-          return;
+        const avatarsBucket = buckets?.find((b: { name: string }) => b.name === 'avatars');
+        if (avatarsBucket) {
+          bucketExists = true;
+          logger.debug('avatarsバケットが存在することを確認しました');
+        } else {
+          logger.warn('avatarsバケットが見つかりませんでした。アップロードを試みます...');
         }
       }
       
@@ -583,20 +674,30 @@ export default function ProfileSettingsScreen() {
             uploadError = error;
             logger.warn(`アップロード試行 ${attempt}/${maxRetries} 失敗:`, error);
             
-            // 503エラーの場合、リトライ前に少し待機
-            if (error.status === 503 && attempt < maxRetries) {
-              await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-              continue;
-            }
-            
-            // バケットが存在しないエラーの場合
-            if (error.message?.includes('Bucket not found') || error.message?.includes('not found')) {
+            // バケットが存在しないエラーの場合（最優先で処理）
+            if (
+              error.message?.includes('Bucket not found') || 
+              error.message?.includes('not found') ||
+              error.statusCode === 404 ||
+              error.status === 404 ||
+              error.code === '404' ||
+              (error.message && error.message.toLowerCase().includes('bucket'))
+            ) {
+              logger.error('avatarsバケットが存在しません。Supabaseダッシュボードでバケットを作成してください。');
               Alert.alert(
-                'エラー',
-                'ストレージバケットが設定されていません。管理者にお問い合わせください。'
+                'ストレージバケットが設定されていません',
+                'アバター画像をアップロードするには、Supabaseダッシュボードで「avatars」という名前のストレージバケットを作成する必要があります。\n\n管理者にお問い合わせください。'
               );
               setLoading(false);
               return;
+            }
+            
+            // 503エラーの場合、リトライ前に少し待機
+            if (error.status === 503 || error.statusCode === 503) {
+              if (attempt < maxRetries) {
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+                continue;
+              }
             }
             
         throw error;
@@ -607,6 +708,24 @@ export default function ProfileSettingsScreen() {
           break;
         } catch (err: any) {
           uploadError = err;
+          // バケットが存在しないエラーの場合（catch節でも確認）
+          if (
+            err?.message?.includes('Bucket not found') || 
+            err?.message?.includes('not found') ||
+            err?.statusCode === 404 ||
+            err?.status === 404 ||
+            err?.code === '404' ||
+            (err?.message && err.message.toLowerCase().includes('bucket'))
+          ) {
+            logger.error('avatarsバケットが存在しません。Supabaseダッシュボードでバケットを作成してください。');
+            Alert.alert(
+              'ストレージバケットが設定されていません',
+              'アバター画像をアップロードするには、Supabaseダッシュボードで「avatars」という名前のストレージバケットを作成する必要があります。\n\n管理者にお問い合わせください。'
+            );
+            setLoading(false);
+            return;
+          }
+          
           if (attempt === maxRetries) {
             throw err;
           }
@@ -641,18 +760,28 @@ export default function ProfileSettingsScreen() {
       
       // エラーメッセージを詳細化
       let errorMessage = '画像のアップロードに失敗しました';
+      let errorTitle = 'エラー';
       
-      if (error?.status === 503 || error?.statusCode === 503) {
+      // バケットが存在しないエラーの場合（最優先で処理）
+      if (
+        error?.message?.includes('Bucket not found') || 
+        error?.message?.includes('not found') ||
+        error?.statusCode === 404 ||
+        error?.status === 404 ||
+        error?.code === '404' ||
+        (error?.message && error.message.toLowerCase().includes('bucket'))
+      ) {
+        errorTitle = 'ストレージバケットが設定されていません';
+        errorMessage = 'アバター画像をアップロードするには、Supabaseダッシュボードで「avatars」という名前のストレージバケットを作成する必要があります。\n\n管理者にお問い合わせください。';
+      } else if (error?.status === 503 || error?.statusCode === 503) {
         errorMessage = 'サービスが一時的に利用できません。しばらく待ってから再度お試しください。';
-      } else if (error?.message?.includes('Bucket not found') || error?.message?.includes('not found')) {
-        errorMessage = 'ストレージバケットが設定されていません。管理者にお問い合わせください。';
       } else if (error?.message?.includes('network') || error?.message?.includes('ネットワーク')) {
         errorMessage = 'ネットワーク接続を確認してください。';
       } else if (error?.message) {
         errorMessage = `エラー: ${error.message}`;
       }
       
-      Alert.alert('エラー', errorMessage);
+      Alert.alert(errorTitle, errorMessage);
     } finally {
       setLoading(false);
       logger.debug('uploadImage完了');
@@ -724,6 +853,90 @@ export default function ProfileSettingsScreen() {
         },
       ]
     );
+  };
+
+  // 楽器情報のみを保存する関数
+  const saveInstrumentInfoOnly = async (instrumentsToSave: Array<InstrumentInfo>) => {
+    if (!currentUser || !selectedInstrument) {
+      return;
+    }
+
+    try {
+      // 既存の楽器ごとのデータを取得
+      const existingInstrumentDataResult = await getInstrumentSpecificProfileData(
+        currentUser.id,
+        selectedInstrument
+      );
+      const existingInstrumentData = existingInstrumentDataResult.data || {};
+      
+      // 楽器情報をJSON形式で保存（既存データとの互換性のため、空の場合はundefined）
+      const validInstruments = instrumentsToSave.filter(item => item.name.trim() !== '');
+      const instrumentTypesJson = validInstruments.length > 0 
+        ? JSON.stringify(validInstruments.map(item => ({
+            id: item.id,
+            name: item.name.trim(),
+            maker: item.maker.trim(),
+            model: item.model.trim(),
+            purchaseDate: item.purchaseDate || null,
+            purchasePrice: item.purchasePrice?.trim() || '',
+            notes: item.notes?.trim() || '',
+          })))
+        : undefined;
+      
+      // 音楽開始年齢が空の場合は既存の値を保持
+      const musicStartAgeValue = musicStartAge && musicStartAge.trim() !== '' 
+        ? parseInt(musicStartAge) 
+        : (existingInstrumentData.music_start_age !== undefined ? existingInstrumentData.music_start_age : undefined);
+      
+      const instrumentSpecificData = {
+        music_start_age: musicStartAgeValue,
+        music_experience_years: musicExperienceYears || 0,
+        custom_instrument_name: instrumentTypesJson,
+        career_data: {
+          pastOrganizationsUi: pastOrgs,
+          awardsUi: awardsEdit,
+          performancesUi: performancesEdit,
+          breakPeriodsUi: breakPeriods.map(bp => ({
+            id: bp.id,
+            startDate: bp.startDate,
+            endDate: bp.endDate,
+            reason: bp.reason
+          })),
+        },
+      };
+      
+      const instrumentDataResult = await saveInstrumentSpecificProfileData(
+        currentUser.id,
+        selectedInstrument,
+        instrumentSpecificData
+      );
+      
+      if (instrumentDataResult.error) {
+        logger.warn('楽器情報の保存エラー:', instrumentDataResult.error);
+      } else {
+        logger.debug('楽器情報の保存成功');
+      }
+    } catch (error) {
+      logger.error('楽器情報の保存中にエラーが発生しました:', error);
+    }
+  };
+
+  // 楽器情報の削除関数
+  const handleDeleteInstrument = async (instrumentId: string) => {
+    const filtered = instrumentTypes.filter(i => i.id !== instrumentId);
+    const updatedInstruments = filtered.length === 0 ? [] : filtered;
+    
+    // 状態を更新
+    if (updatedInstruments.length === 0) {
+      // 全て削除した場合は、楽器情報欄を非表示にする
+      setInstrumentTypes([]);
+      setShowInstrumentInfo(false);
+    } else {
+      setInstrumentTypes(updatedInstruments);
+    }
+    
+    // 削除後、楽器情報を自動保存（更新後の値を渡す）
+    await saveInstrumentInfoOnly(updatedInstruments);
   };
 
   // 削除関数
@@ -969,10 +1182,19 @@ export default function ProfileSettingsScreen() {
         );
         const existingInstrumentData = existingInstrumentDataResult.data || {};
         
-        const instrumentTypesString = instrumentTypes
-          .map(item => item.name.trim())
-          .filter(name => name !== '')
-          .join(',');
+        // 楽器情報をJSON形式で保存（既存データとの互換性のため、空の場合はundefined）
+        const validInstruments = instrumentTypes.filter(item => item.name.trim() !== '');
+        const instrumentTypesJson = validInstruments.length > 0 
+          ? JSON.stringify(validInstruments.map(item => ({
+              id: item.id,
+              name: item.name.trim(),
+              maker: item.maker.trim(),
+              model: item.model.trim(),
+              purchaseDate: item.purchaseDate || null,
+              purchasePrice: item.purchasePrice?.trim() || '',
+              notes: item.notes?.trim() || '',
+            })))
+          : undefined;
         
         // 音楽開始年齢が空の場合は既存の値を保持、そうでない場合は新しい値を設定
         const musicStartAgeValue = musicStartAge && musicStartAge.trim() !== '' 
@@ -982,7 +1204,7 @@ export default function ProfileSettingsScreen() {
         const instrumentSpecificData = {
           music_start_age: musicStartAgeValue,
           music_experience_years: musicExperienceYears || 0,
-          custom_instrument_name: instrumentTypesString || undefined,
+          custom_instrument_name: instrumentTypesJson,
           career_data: {
             pastOrganizationsUi: pastOrgs,
             awardsUi: awardsEdit,
@@ -1044,6 +1266,130 @@ export default function ProfileSettingsScreen() {
     safeGoBack(router, '/(tabs)/settings', true); // 確実にsettings画面に戻る
   };
 
+  // アカウント削除処理
+  const handleDeleteAccount = () => {
+    logger.info('[ProfileSettings] アカウント削除ボタンが押されました');
+    
+    // Web環境ではconfirmを使用
+    if (typeof window !== 'undefined' && window.confirm) {
+      const firstConfirm = window.confirm(
+        'アカウントを削除すると、すべてのデータが永久に削除されます。\n\nこの操作は取り消せません。本当に削除しますか？'
+      );
+      
+      if (!firstConfirm) {
+        logger.info('[ProfileSettings] 1回目の確認でキャンセルされました');
+        return;
+      }
+      
+      const secondConfirm = window.confirm(
+        '最終確認\n\nアカウントを削除すると、以下のデータがすべて永久に削除されます：\n\n• プロフィール情報\n• 練習記録\n• 目標設定\n• 録音データ\n• その他すべてのデータ\n\nこの操作は取り消せません。本当に削除しますか？'
+      );
+      
+      if (!secondConfirm) {
+        logger.info('[ProfileSettings] 2回目の確認でキャンセルされました');
+        return;
+      }
+      
+      logger.info('[ProfileSettings] 2回の確認が完了、削除処理を開始');
+      performAccountDeletion();
+      return;
+    }
+    
+    // ネイティブ環境ではAlertを使用
+    Alert.alert(
+      'アカウント削除の確認',
+      'アカウントを削除すると、すべてのデータが永久に削除されます。\n\nこの操作は取り消せません。本当に削除しますか？',
+      [
+        { 
+          text: 'キャンセル', 
+          style: 'cancel',
+          onPress: () => {
+            logger.info('[ProfileSettings] 1回目の確認でキャンセルされました');
+          }
+        },
+        { 
+          text: '削除する', 
+          style: 'destructive',
+          onPress: () => {
+            logger.info('[ProfileSettings] 1回目の確認で削除が選択されました');
+            // 2回目の確認
+            Alert.alert(
+              '最終確認',
+              'アカウントを削除すると、以下のデータがすべて永久に削除されます：\n\n• プロフィール情報\n• 練習記録\n• 目標設定\n• 録音データ\n• その他すべてのデータ\n\nこの操作は取り消せません。本当に削除しますか？',
+              [
+                { 
+                  text: 'キャンセル', 
+                  style: 'cancel',
+                  onPress: () => {
+                    logger.info('[ProfileSettings] 2回目の確認でキャンセルされました');
+                  }
+                },
+                { 
+                  text: 'はい、削除します', 
+                  style: 'destructive',
+                  onPress: () => {
+                    logger.info('[ProfileSettings] 2回目の確認で削除が選択されました、削除処理を開始');
+                    performAccountDeletion();
+                  }
+                }
+              ]
+            );
+          }
+        }
+      ]
+    );
+  };
+
+  const performAccountDeletion = async () => {
+    if (isDeleting) return;
+    
+    setIsDeleting(true);
+    
+    try {
+      logger.info('[ProfileSettings] アカウント削除処理を開始');
+      
+      // データベース関数を呼び出してユーザーデータを削除
+      const { error: deleteError } = await supabase.rpc('delete_user_account');
+      
+      if (deleteError) {
+        logger.error('[ProfileSettings] アカウント削除エラー:', deleteError);
+        Alert.alert(
+          'エラー',
+          'アカウント削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。'
+        );
+        setIsDeleting(false);
+        return;
+      }
+      
+      logger.info('[ProfileSettings] ユーザーデータの削除が完了');
+      
+      // ログアウト処理
+      await signOut();
+      
+      // 成功メッセージを表示（ログアウト後は表示されない可能性があるため、先に表示）
+      Alert.alert(
+        'アカウント削除完了',
+        'アカウントとすべてのデータが削除されました。\n\nご利用ありがとうございました。',
+        [
+          { 
+            text: 'OK', 
+            onPress: () => {
+              // ログアウト後は自動的に認証画面に遷移する
+            }
+          }
+        ]
+      );
+      
+    } catch (error: unknown) {
+      logger.error('[ProfileSettings] アカウント削除例外:', error);
+      Alert.alert(
+        'エラー',
+        'アカウント削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。'
+      );
+      setIsDeleting(false);
+    }
+  };
+
   // 現在の年齢を計算する関数（削除）
   // const calculateCurrentAge = (startAge: string, experienceYears: number) => {
   //   if (!startAge || experienceYears === 0) return 0;
@@ -1072,6 +1418,7 @@ export default function ProfileSettingsScreen() {
     setMusicStartAge(age.toString());
     setShowAgeSelectorModal(false);
   };
+
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]} >
@@ -1201,14 +1548,24 @@ export default function ProfileSettingsScreen() {
             <View style={styles.formRow}>
               <View style={styles.formItem}>
                 <Text style={[styles.formLabel, { color: currentTheme.textSecondary }]}>誕生日</Text>
-          <View style={styles.birthdayRow}>
+          <View style={[
+            styles.birthdayRow,
+            { 
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+            }
+          ]}>
             <TextInput
               ref={birthYearInputRef}
-              style={[styles.dateInputSmall, { 
-                backgroundColor: currentTheme.background,
-                borderColor: currentTheme.secondary,
-                color: currentTheme.text
-              }]}
+              style={[
+                styles.dateInputSmall,
+                { 
+                  backgroundColor: currentTheme.background,
+                  borderColor: currentTheme.secondary,
+                  color: currentTheme.text
+                }
+              ]}
               placeholder="YYYY"
               placeholderTextColor={currentTheme.textSecondary}
               value={birthYear}
@@ -1244,11 +1601,14 @@ export default function ProfileSettingsScreen() {
             <Text style={[styles.dateSep, { color: currentTheme.textSecondary }]}>-</Text>
             <TextInput
               ref={birthMonthInputRef}
-              style={[styles.dateInputXs, { 
-                backgroundColor: currentTheme.background,
-                borderColor: currentTheme.secondary,
-                color: currentTheme.text
-              }]}
+              style={[
+                styles.dateInputXs,
+                { 
+                  backgroundColor: currentTheme.background,
+                  borderColor: currentTheme.secondary,
+                  color: currentTheme.text
+                }
+              ]}
               placeholder="MM"
               placeholderTextColor={currentTheme.textSecondary}
               value={birthMonth}
@@ -1286,11 +1646,14 @@ export default function ProfileSettingsScreen() {
             <Text style={[styles.dateSep, { color: currentTheme.textSecondary }]}>-</Text>
             <TextInput
               ref={birthDayInputRef}
-              style={[styles.dateInputXs, { 
-                backgroundColor: currentTheme.background,
-                borderColor: currentTheme.secondary,
-                color: currentTheme.text
-              }]}
+              style={[
+                styles.dateInputXs,
+                { 
+                  backgroundColor: currentTheme.background,
+                  borderColor: currentTheme.secondary,
+                  color: currentTheme.text
+                }
+              ]}
               placeholder="DD"
               placeholderTextColor={currentTheme.textSecondary}
               value={birthDay}
@@ -1385,40 +1748,142 @@ export default function ProfileSettingsScreen() {
 
             <View style={styles.formRow}>
               <View style={styles.formItem}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <Text style={[styles.formLabel, { color: currentTheme.textSecondary }]}>楽器の種類</Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      const newId = (instrumentTypes.length + 1).toString();
-                      setInstrumentTypes([...instrumentTypes, { id: newId, name: '' }]);
-                    }}
-                    style={{
-                      paddingHorizontal: 12,
-                      paddingVertical: 6,
-                      backgroundColor: currentTheme.primary,
-                      borderRadius: 8,
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 4,
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <Plus size={16} color="#FFFFFF" />
-                    <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>追加</Text>
-                  </TouchableOpacity>
-                </View>
-                {instrumentTypes.map((item, index) => (
-                  <View key={item.id} style={{ marginBottom: index < instrumentTypes.length - 1 ? 12 : 0 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {!showInstrumentInfo ? (
+                  // 初期状態：追加ボタンのみ表示
+                  <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}>
+                    <Text style={[styles.formLabel, { color: currentTheme.textSecondary }]}>楽器情報</Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setShowInstrumentInfo(true);
+                        const newId = '1';
+                        setInstrumentTypes([{ id: newId, name: '', maker: '', model: '', purchaseDate: null, purchasePrice: '', notes: '' }]);
+                      }}
+                      style={{
+                        paddingHorizontal: Dimensions.get('window').width < 400 ? 16 : 12,
+                        paddingVertical: Dimensions.get('window').width < 400 ? 10 : 6,
+                        backgroundColor: currentTheme.primary,
+                        borderRadius: 8,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 4,
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Plus size={Dimensions.get('window').width < 400 ? 18 : 16} color="#FFFFFF" />
+                      <Text style={{ 
+                        color: '#FFFFFF', 
+                        fontSize: Dimensions.get('window').width < 400 ? 14 : 12, 
+                        fontWeight: '600' 
+                      }}>
+                        追加
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  // 楽器情報が表示されている場合
+                  <>
+                    <View style={{
+                      flexDirection: Dimensions.get('window').width < 400 ? 'column' : 'row',
+                      alignItems: Dimensions.get('window').width < 400 ? 'stretch' : 'center',
+                      justifyContent: 'space-between',
+                      marginBottom: 4,
+                      gap: Dimensions.get('window').width < 400 ? 8 : 0,
+                    }}>
+                      <Text style={[styles.formLabel, { color: currentTheme.textSecondary }]}>楽器情報</Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          const newId = (instrumentTypes.length + 1).toString();
+                          setInstrumentTypes([...instrumentTypes, { id: newId, name: '', maker: '', model: '', purchaseDate: null, purchasePrice: '', notes: '' }]);
+                        }}
+                        style={[
+                          styles.saveButtonNew,
+                          {
+                            backgroundColor: currentTheme.primary,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 4,
+                            margin: 0,
+                          }
+                        ]}
+                        activeOpacity={0.8}
+                      >
+                        <Plus size={16} color="#FFFFFF" />
+                        <Text style={styles.saveAllButtonText}>
+                          追加
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                    {instrumentTypes.map((item, index) => (
+                  <View key={item.id} style={{ marginBottom: index < instrumentTypes.length - 1 ? 8 : 0, marginTop: 4 }}>
+                    <View style={{ 
+                      backgroundColor: currentTheme.surface, 
+                      borderRadius: 12, 
+                      padding: 8,
+                      borderWidth: 1,
+                      borderColor: currentTheme.secondary,
+                    }}>
+                      {/* ヘッダー部分（楽器名ラベルと削除ボタン） */}
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                        <Text style={[styles.formLabel, { color: currentTheme.textSecondary, fontSize: 12 }]}>
+                          楽器名
+                        </Text>
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (Platform.OS === 'web') {
+                              // Web環境ではconfirmを使用
+                              if (typeof window !== 'undefined' && window.confirm('この楽器を削除しますか？')) {
+                                handleDeleteInstrument(item.id);
+                              }
+                            } else {
+                              // モバイル環境ではAlertを使用
+                              Alert.alert(
+                                '削除確認',
+                                'この楽器を削除しますか？',
+                                [
+                                  { text: 'キャンセル', style: 'cancel' },
+                                  { 
+                                    text: '削除', 
+                                    style: 'destructive',
+                                    onPress: () => {
+                                      handleDeleteInstrument(item.id);
+                                    }
+                                  }
+                                ]
+                              );
+                            }
+                          }}
+                          style={{
+                            padding: 6,
+                            backgroundColor: '#FF4444',
+                            borderRadius: 6,
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                          }}
+                          activeOpacity={0.7}
+                        >
+                          <Trash2 size={14} color="#FFFFFF" />
+                        </TouchableOpacity>
+                      </View>
+                      
+                      {/* 楽器名入力 */}
                       <TextInput
                         style={[styles.input, { 
                           backgroundColor: currentTheme.background, 
                           borderColor: currentTheme.secondary, 
                           color: currentTheme.text,
-                          marginTop: 8,
-                          flex: 1
+                          marginBottom: 4,
+                          paddingHorizontal: 8,
+                          paddingVertical: 6,
                         }]}
-                        placeholder="例: ストラディバリウス、YAMAHAなど"
+                        placeholder="例: ストラディバリウス"
                         placeholderTextColor={currentTheme.textSecondary}
                         value={item.name}
                         onChangeText={(text) => {
@@ -1428,30 +1893,127 @@ export default function ProfileSettingsScreen() {
                           setInstrumentTypes(updated);
                         }}
                       />
-                      {instrumentTypes.length > 1 && (
-                        <TouchableOpacity
-                          onPress={() => {
-                            setInstrumentTypes(instrumentTypes.filter(i => i.id !== item.id));
-                          }}
-                          style={{
-                            marginTop: 8,
-                            padding: 8,
-                            backgroundColor: '#FF4444',
-                            borderRadius: 8,
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Trash2 size={16} color="#FFFFFF" />
-                        </TouchableOpacity>
-                      )}
+                      
+                      {/* メーカー */}
+                      <Text style={[styles.formLabel, { color: currentTheme.textSecondary, marginBottom: 2, fontSize: 12 }]}>
+                        メーカー
+                      </Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: currentTheme.background, 
+                          borderColor: currentTheme.secondary, 
+                          color: currentTheme.text,
+                          marginBottom: 4,
+                          paddingHorizontal: 8,
+                          paddingVertical: 6,
+                        }]}
+                        placeholder="例: YAMAHA、Stradivarius"
+                        placeholderTextColor={currentTheme.textSecondary}
+                        value={item.maker}
+                        onChangeText={(text) => {
+                          const updated = instrumentTypes.map(i => 
+                            i.id === item.id ? { ...i, maker: text } : i
+                          );
+                          setInstrumentTypes(updated);
+                        }}
+                      />
+                      
+                      {/* 購入日 */}
+                      <Text style={[styles.formLabel, { color: currentTheme.textSecondary, marginBottom: 2, fontSize: 12 }]}>
+                        購入日
+                      </Text>
+                      <TouchableOpacity
+                        style={[styles.input, { 
+                          backgroundColor: currentTheme.background, 
+                          borderColor: currentTheme.secondary, 
+                          justifyContent: 'center',
+                          marginBottom: 4,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          gap: 8,
+                          paddingHorizontal: 8,
+                          paddingVertical: 6,
+                        }]}
+                        onPress={() => {
+                          setInstrumentDatePickerIndex(index);
+                          setShowInstrumentDatePicker(true);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Calendar size={16} color={currentTheme.textSecondary} />
+                        <Text style={{ 
+                          color: item.purchaseDate ? currentTheme.text : currentTheme.textSecondary,
+                          flex: 1,
+                        }}>
+                          {item.purchaseDate || '購入日を選択'}
+                        </Text>
+                      </TouchableOpacity>
+                      
+                      {/* 購入価格 */}
+                      <Text style={[styles.formLabel, { color: currentTheme.textSecondary, marginBottom: 2, fontSize: 12 }]}>
+                        購入価格
+                      </Text>
+                      <TextInput
+                        style={[styles.input, { 
+                          backgroundColor: currentTheme.background, 
+                          borderColor: currentTheme.secondary, 
+                          color: currentTheme.text,
+                          marginBottom: 4,
+                          paddingHorizontal: 8,
+                          paddingVertical: 6,
+                        }]}
+                        placeholder="例: 500000"
+                        placeholderTextColor={currentTheme.textSecondary}
+                        value={item.purchasePrice || ''}
+                        onChangeText={(text) => {
+                          const updated = instrumentTypes.map(i => 
+                            i.id === item.id ? { ...i, purchasePrice: text } : i
+                          );
+                          setInstrumentTypes(updated);
+                        }}
+                        keyboardType="number-pad"
+                        {...(Platform.OS === 'web' ? { 
+                          inputMode: 'numeric',
+                          pattern: '[0-9]*',
+                          type: 'tel',
+                          autoComplete: 'off'
+                        } : {})}
+                      />
+                      
+                      {/* 備考 */}
+                      <Text style={[styles.formLabel, { color: currentTheme.textSecondary, marginBottom: 2, fontSize: 12 }]}>
+                        備考
+                      </Text>
+                      <TextInput
+                        style={[styles.input, styles.textArea, { 
+                          backgroundColor: currentTheme.background, 
+                          borderColor: currentTheme.secondary, 
+                          color: currentTheme.text,
+                          marginBottom: 4,
+                          paddingHorizontal: 8,
+                          paddingVertical: 6,
+                        }]}
+                        placeholder="メモや特記事項を記入"
+                        placeholderTextColor={currentTheme.textSecondary}
+                        value={item.notes || ''}
+                        onChangeText={(text) => {
+                          const updated = instrumentTypes.map(i => 
+                            i.id === item.id ? { ...i, notes: text } : i
+                          );
+                          setInstrumentTypes(updated);
+                        }}
+                        multiline
+                        numberOfLines={3}
+                        {...(Platform.OS !== 'web' ? { textAlignVertical: 'top' } : {})}
+                      />
                     </View>
                   </View>
                 ))}
-                <Text style={[styles.helpText, { color: currentTheme.textSecondary, marginTop: 4 }]}>
-                  楽器の種類を詳しく記入してください（例：バイオリン → ストラディバリウス）。複数の楽器を追加できます。
-                </Text>
+                    <Text style={[styles.helpText, { color: currentTheme.textSecondary, marginTop: 4 }]}>
+                      所有している楽器の情報を記入してください。複数の楽器を追加できます。
+                    </Text>
+                  </>
+                )}
               </View>
             </View>
           </View>
@@ -1674,12 +2236,17 @@ export default function ProfileSettingsScreen() {
                 const instrumentDataResult = await getInstrumentSpecificProfileData(uid, selectedInstrument);
                 const existingData = instrumentDataResult.data || {};
                 
+                // 空の行を除外して保存
+                const filteredPastOrgs = pastOrgs.filter(org => org.name.trim() !== '');
+                const filteredAwards = awardsEdit.filter(award => award.title.trim() !== '');
+                const filteredPerformances = performancesEdit.filter(perf => perf.title.trim() !== '');
+                
                 const updatedInstrumentData = {
                   ...existingData,
                   career_data: {
-                    pastOrganizationsUi: pastOrgs,
-                    awardsUi: awardsEdit,
-                    performancesUi: performancesEdit,
+                    pastOrganizationsUi: filteredPastOrgs.length > 0 ? filteredPastOrgs : [],
+                    awardsUi: filteredAwards.length > 0 ? filteredAwards : [],
+                    performancesUi: filteredPerformances.length > 0 ? filteredPerformances : [],
                     breakPeriodsUi: breakPeriods.map(bp => ({
                       id: bp.id,
                       startDate: bp.startDate,
@@ -1710,6 +2277,37 @@ export default function ProfileSettingsScreen() {
           >
             <Text style={styles.saveAllButtonText}>経歴・実績を保存</Text>
           </TouchableOpacity>
+
+          {/* 情報削除セクション */}
+          <View style={[styles.infoSection, { backgroundColor: currentTheme.surface, marginTop: 24 }]}>
+            <View style={styles.sectionTitleContainer}>
+              <View style={[styles.sectionIcon, { backgroundColor: '#FF4444' }]}>
+                <Trash2 size={18} color="#FFFFFF" />
+              </View>
+              <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>情報削除</Text>
+            </View>
+            <View style={styles.formGroup}>
+              <Text style={[styles.sectionDescription, { color: currentTheme.textSecondary, marginBottom: 16 }]}>
+                アカウントを削除すると、すべてのデータが永久に削除されます。この操作は取り消せません。
+              </Text>
+              <TouchableOpacity
+                style={[styles.deleteButton, { 
+                  backgroundColor: '#FF4444',
+                  opacity: isDeleting ? 0.6 : 1
+                }]}
+                onPress={handleDeleteAccount}
+                disabled={isDeleting}
+                activeOpacity={0.8}
+              >
+                {isDeleting ? (
+                  <Text style={styles.deleteButtonText}>削除中...</Text>
+                ) : (
+                  <Text style={styles.deleteButtonText}>アカウントを削除</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
         </View>
       </ScrollView>
       
@@ -1744,6 +2342,38 @@ export default function ProfileSettingsScreen() {
         onClose={() => setShowAgeSelectorModal(false)}
         onSelect={handleAgeSelection}
       />
+
+      {/* 楽器購入日選択モーダル */}
+      <Modal
+        visible={showInstrumentDatePicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowInstrumentDatePicker(false)}
+      >
+        <View style={styles.datePickerOverlay}>
+          <View style={[styles.datePickerContent, { backgroundColor: currentTheme.surface }]}>
+            <View style={styles.datePickerHeader}>
+              <Text style={[styles.datePickerTitle, { color: currentTheme.text }]}>購入日を選択</Text>
+              <TouchableOpacity onPress={() => setShowInstrumentDatePicker(false)}>
+                <Text style={[styles.calendarCloseButtonText, { color: currentTheme.primary }]}>閉じる</Text>
+              </TouchableOpacity>
+            </View>
+            <EventCalendar
+              onDateSelect={(date: Date) => {
+                if (instrumentDatePickerIndex !== null) {
+                  const formattedDate = formatLocalDate(date);
+                  const updated = instrumentTypes.map((i, idx) => 
+                    idx === instrumentDatePickerIndex ? { ...i, purchaseDate: formattedDate } : i
+                  );
+                  setInstrumentTypes(updated);
+                  setShowInstrumentDatePicker(false);
+                  setInstrumentDatePickerIndex(null);
+                }
+              }}
+            />
+          </View>
+        </View>
+      </Modal>
 
       {/* 誕生日選択DateTimePicker - モバイルのみ */}
       {showBirthdayPicker && Platform.OS !== 'web' && (
