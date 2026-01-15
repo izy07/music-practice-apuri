@@ -115,10 +115,18 @@ export default function SettingsScreen() {
     {
       id: 'main-settings',
       title: '楽器変更',
-      subtitle: '楽器の選択と外観設定',
+      subtitle: '楽器の選択',
       icon: Zap,
       color: '#FF6B35',
       onPress: () => router.push(asSafeRoutePath('/(tabs)/main-settings'))
+    },
+    {
+      id: 'appearance-settings',
+      title: t('appearanceSettings'),
+      subtitle: 'カスタムテーマ・カラーパレット',
+      icon: Palette,
+      color: '#9C27B0',
+      onPress: () => router.push(asSafeRoutePath('/(tabs)/appearance-settings'))
     },
     {
       id: 'tutorial',
@@ -174,16 +182,29 @@ export default function SettingsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme?.background || '#F7FAFC' }]} >
       <InstrumentHeader />
       
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         <Text style={[styles.title, { color: currentTheme?.text || '#2D3748' }]}>{t('other')}</Text>
         
 
         
         <View style={[styles.settingsContainer, { backgroundColor: currentTheme?.surface || '#FFFFFF' }]}>
-          {settingsItems.map((item) => (
+          {settingsItems.map((item) => {
+            // 余白を減らす対象の項目ID
+            const compactItems = ['appearance-settings', 'tutorial', 'pricing', 'notification', 'privacy-settings', 'support'];
+            const isCompact = compactItems.includes(item.id);
+            
+            return (
             <TouchableOpacity
               key={item.id}
-              style={[styles.settingItem, { borderBottomColor: currentTheme?.secondary || '#E2E8F0' }]}
+                style={[
+                  styles.settingItem,
+                  isCompact && styles.settingItemCompact,
+                  { borderBottomColor: currentTheme?.secondary || '#E2E8F0' }
+                ]}
               onPress={item.onPress}
               activeOpacity={0.6}
               hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
@@ -197,7 +218,8 @@ export default function SettingsScreen() {
               </View>
               <ChevronRight size={20} color={currentTheme?.textSecondary || '#CCCCCC'} />
             </TouchableOpacity>
-          ))}
+            );
+          })}
           
 
           
@@ -232,14 +254,16 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 65, // タブバーの高さ
+    paddingBottom: 100, // タブバーの高さ + 余裕
   },
   title: {
     fontSize: 24,
     fontWeight: '700',
-    marginTop: 8,
-    marginBottom: 12,
+    marginTop: 4,
+    marginBottom: 8,
   },
   userInfoContainer: {
     backgroundColor: '#E8F5E8',
@@ -268,19 +292,23 @@ const styles = StyleSheet.create({
 
   settingsContainer: {
     borderRadius: 20,
-    marginBottom: 100,
+    marginBottom: 40,
     elevation: 4,
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
+  },
+  settingItemCompact: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
   },
   accountSection: {
     borderTopWidth: 2,
-    marginTop: 8,
+    marginTop: 4,
   },
 
   logoutItem: {
@@ -300,7 +328,7 @@ const styles = StyleSheet.create({
   settingTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   settingSubtitle: {
     fontSize: 14,

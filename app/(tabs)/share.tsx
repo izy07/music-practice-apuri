@@ -649,7 +649,6 @@ const styles = StyleSheet.create({
   },
   scrollContentContainer: {
     paddingBottom: 40,
-    flexGrow: 1,
   },
   header: {
     alignItems: 'center',

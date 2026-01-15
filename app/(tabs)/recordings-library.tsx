@@ -52,10 +52,15 @@ export default function RecordingsLibraryScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [playingRecording, setPlayingRecording] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
+  const [currentTime, setCurrentTime] = useState<number>(0); // 現在の再生位置（秒）
+  const [duration, setDuration] = useState<number>(0); // 録音の総時間（秒）
+  const [isSeeking, setIsSeeking] = useState<boolean>(false); // シーク中かどうか
+  const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [recordingTypeFilter, setRecordingTypeFilter] = useState<'all' | 'performance' | 'lesson'>('all'); // 録音種類フィルター
   const scrollViewRef = useRef<ScrollView>(null);
+  const progressSliderRefs = useRef<{ [key: string]: HTMLInputElement | null }>({}); // プログレスバーのinput要素の参照
 
   // 録音種類フィルターはクライアント側でフィルタリングするため、再読み込み不要
   // 初回読み込みと楽器変更時のみデータを読み込む
@@ -69,8 +74,202 @@ export default function RecordingsLibraryScreen() {
         setAudioElement(null);
         logger.debug('Audioオブジェクトをクリーンアップ');
       }
+      if (timeUpdateIntervalRef.current) {
+        clearInterval(timeUpdateIntervalRef.current);
+        timeUpdateIntervalRef.current = null;
+      }
     };
   }, [audioElement]);
+
+  // 再生位置の更新（timeupdateイベント）
+  useEffect(() => {
+    if (!audioElement || !playingRecording) {
+      if (timeUpdateIntervalRef.current) {
+        clearInterval(timeUpdateIntervalRef.current);
+        timeUpdateIntervalRef.current = null;
+      }
+      setCurrentTime(0);
+      setDuration(0);
+      return;
+    }
+
+    // 初期のdurationを設定（InfinityやNaNを除外）
+    if (audioElement.duration && isFinite(audioElement.duration) && !isNaN(audioElement.duration) && audioElement.duration > 0) {
+      setDuration(audioElement.duration);
+    } else if (playingRecording) {
+      // durationが取得できない場合、録音データから取得を試みる
+      const recording = recordings.find(r => r.id === playingRecording);
+      if (recording?.duration_seconds && isFinite(recording.duration_seconds) && !isNaN(recording.duration_seconds)) {
+        setDuration(recording.duration_seconds);
+      }
+    }
+
+    // timeupdateイベントで再生位置を更新
+    const handleTimeUpdate = () => {
+      if (!isSeeking && audioElement) {
+        const current = audioElement.currentTime;
+        if (isFinite(current) && !isNaN(current) && current >= 0) {
+          setCurrentTime(current);
+        }
+        const dur = audioElement.duration;
+        if (dur && isFinite(dur) && !isNaN(dur) && dur > 0) {
+          setDuration(dur);
+        }
+      }
+    };
+
+    // durationchangeイベントで総時間を更新
+    const handleDurationChange = () => {
+      const dur = audioElement.duration;
+      if (dur && isFinite(dur) && !isNaN(dur) && dur > 0) {
+        setDuration(dur);
+      }
+    };
+
+    // loadedmetadataイベントで総時間を更新
+    const handleLoadedMetadata = () => {
+      const dur = audioElement.duration;
+      if (dur && isFinite(dur) && !isNaN(dur) && dur > 0) {
+        setDuration(dur);
+      }
+    };
+
+    audioElement.addEventListener('timeupdate', handleTimeUpdate);
+    audioElement.addEventListener('durationchange', handleDurationChange);
+    audioElement.addEventListener('loadedmetadata', handleLoadedMetadata);
+
+    return () => {
+      audioElement.removeEventListener('timeupdate', handleTimeUpdate);
+      audioElement.removeEventListener('durationchange', handleDurationChange);
+      audioElement.removeEventListener('loadedmetadata', handleLoadedMetadata);
+    };
+  }, [audioElement, playingRecording, isSeeking]);
+
+  // Web環境でのプログレスバーinput要素の作成と更新
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof window === 'undefined') {
+      return;
+    }
+
+    if (!playingRecording) {
+      // 再生が停止したら、すべてのinput要素を削除
+      Object.keys(progressSliderRefs.current).forEach((recordingId) => {
+        const slider = progressSliderRefs.current[recordingId];
+        if (slider && slider.parentNode) {
+          slider.parentNode.removeChild(slider);
+          progressSliderRefs.current[recordingId] = null;
+        }
+      });
+      return;
+    }
+
+    // 現在再生中の録音のプログレスバーを作成/更新
+    const containerId = `progress-slider-container-${playingRecording}`;
+    // 少し待ってからコンテナを取得（Reactのレンダリング完了を待つ）
+    const container = document.getElementById(containerId);
+    if (!container) {
+      // コンテナが見つからない場合、少し待ってから再試行
+      const timeoutId = setTimeout(() => {
+        const retryContainer = document.getElementById(containerId);
+        if (!retryContainer) {
+          logger.debug('プログレスバーコンテナが見つかりません:', containerId);
+        }
+      }, 100);
+      return () => clearTimeout(timeoutId);
+    }
+
+    let slider = progressSliderRefs.current[playingRecording];
+    // durationが有効な値であることを確認（InfinityやNaNを除外）
+    const rawDuration = duration || recordings.find(r => r.id === playingRecording)?.duration_seconds || 0;
+    const totalDuration = isFinite(rawDuration) && !isNaN(rawDuration) && rawDuration > 0 ? rawDuration : 0;
+
+    if (!slider) {
+      // 新しいinput要素を作成
+      slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = '0';
+      slider.max = String(totalDuration);
+      slider.step = '0.1';
+      slider.style.width = '100%';
+      slider.style.height = '6px';
+      slider.style.borderRadius = '3px';
+      slider.style.outline = 'none';
+      slider.style.cursor = 'pointer';
+      slider.style.webkitAppearance = 'none';
+      slider.style.appearance = 'none';
+      container.appendChild(slider);
+      progressSliderRefs.current[playingRecording] = slider;
+
+      // イベントハンドラーを設定
+      const handleInput = (e: Event) => {
+        const target = e.target as HTMLInputElement;
+        const newTime = parseFloat(target.value);
+        setCurrentTime(newTime);
+        if (audioElement) {
+          audioElement.currentTime = newTime;
+        }
+      };
+
+      const handleMouseDown = () => {
+        setIsSeeking(true);
+      };
+
+      const handleMouseUp = () => {
+        setIsSeeking(false);
+      };
+
+      const handleTouchStart = () => {
+        setIsSeeking(true);
+      };
+
+      const handleTouchEnd = () => {
+        setIsSeeking(false);
+      };
+
+      slider.addEventListener('input', handleInput);
+      slider.addEventListener('mousedown', handleMouseDown);
+      slider.addEventListener('mouseup', handleMouseUp);
+      slider.addEventListener('touchstart', handleTouchStart);
+      slider.addEventListener('touchend', handleTouchEnd);
+
+      // クリーンアップ関数を保存
+      (slider as any)._cleanup = () => {
+        slider.removeEventListener('input', handleInput);
+        slider.removeEventListener('mousedown', handleMouseDown);
+        slider.removeEventListener('mouseup', handleMouseUp);
+        slider.removeEventListener('touchstart', handleTouchStart);
+        slider.removeEventListener('touchend', handleTouchEnd);
+      };
+    }
+
+    // 値とスタイルを更新（シーク中でない場合のみ）
+    if (!isSeeking) {
+      // totalDurationが有効な値であることを確認
+      const validDuration = isFinite(totalDuration) && !isNaN(totalDuration) && totalDuration > 0 ? totalDuration : 0;
+      slider.max = String(validDuration);
+      const validCurrentTime = isFinite(currentTime) && !isNaN(currentTime) && currentTime >= 0 ? currentTime : 0;
+      slider.value = String(validCurrentTime);
+    }
+    // 進捗率の計算（有効な値であることを確認）
+    const validDuration = isFinite(totalDuration) && !isNaN(totalDuration) && totalDuration > 0 ? totalDuration : 1;
+    const validCurrentTime = isFinite(currentTime) && !isNaN(currentTime) && currentTime >= 0 ? currentTime : 0;
+    const progressPercent = validDuration > 0 ? Math.min(100, Math.max(0, (validCurrentTime / validDuration) * 100)) : 0;
+    slider.style.background = `linear-gradient(to right, ${currentTheme.primary} 0%, ${currentTheme.primary} ${progressPercent}%, rgba(0, 0, 0, 0.1) ${progressPercent}%, rgba(0, 0, 0, 0.1) 100%)`;
+
+    // クリーンアップ
+    return () => {
+      if (slider) {
+        const cleanup = (slider as any)._cleanup;
+        if (cleanup) {
+          cleanup();
+        }
+        if (slider.parentNode) {
+          slider.parentNode.removeChild(slider);
+          progressSliderRefs.current[playingRecording] = null;
+        }
+      }
+    };
+  }, [playingRecording, currentTime, duration, audioElement, recordings, currentTheme.primary, isSeeking]);
 
   // 画面がフォーカスされた時にデータを再読み込み（楽器変更時のみ）
   useFocusEffect(
@@ -227,6 +426,8 @@ export default function RecordingsLibraryScreen() {
       }
       setPlayingRecording(null);
       setAudioElement(null);
+      setCurrentTime(0);
+      setDuration(0);
       return;
     }
 
@@ -349,13 +550,28 @@ export default function RecordingsLibraryScreen() {
             blobUrl = URL.createObjectURL(blob);
             logger.debug('Blob URLを作成しました:', blobUrl);
             
+            // Blob URLが確実に作成されていることを確認
+            if (!blobUrl || typeof blobUrl !== 'string' || blobUrl.trim() === '') {
+              throw new Error('Blob URLの作成に失敗しました');
+            }
+            
             // Audio要素を作成（Blob URLを使用してCSPエラーを回避）
             const audio = new Audio();
             // Blob URLを設定（CSPエラーを回避するため、src属性を直接設定）
-            audio.src = blobUrl;
-            audio.preload = 'auto';
-            // crossOriginを設定（念のため）
-            audio.crossOrigin = 'anonymous';
+            // blobUrlが有効であることを確認してから設定
+            if (blobUrl && typeof blobUrl === 'string' && blobUrl.trim() !== '') {
+              audio.src = blobUrl;
+              audio.preload = 'auto';
+              // crossOriginを設定（念のため）
+              audio.crossOrigin = 'anonymous';
+              
+              // src属性が正しく設定されたことを確認
+              if (!audio.src || audio.src === '' || audio.src === 'null' || audio.src === 'undefined') {
+                throw new Error(`Audio要素のsrc属性の設定に失敗しました: ${audio.src}`);
+              }
+            } else {
+              throw new Error('Blob URLが無効です');
+            }
             
             // エラーハンドリングを設定（Blob URL解放を含む）
             const cleanup = () => {
@@ -370,6 +586,8 @@ export default function RecordingsLibraryScreen() {
               cleanup();
               setPlayingRecording(null);
               setAudioElement(null);
+              setCurrentTime(0);
+              setDuration(0);
             };
             
             audio.onerror = (e) => {
@@ -440,7 +658,12 @@ export default function RecordingsLibraryScreen() {
             
             // 最後の試行でも失敗した場合
             if (retryCount >= maxRetries) {
-              logger.error('すべてのリトライが失敗しました');
+              logger.error('すべてのリトライが失敗しました', {
+                error: fetchError,
+                blobUrl: null, // エラー時はblobUrlがnullのまま
+                publicUrl,
+                isGitHubPages
+              });
               Alert.alert(
                 '再生エラー',
                 '録音の再生に失敗しました。\n\n考えられる原因:\n- ネットワーク接続の問題\n- Supabase StorageのCORS設定の問題\n- ファイルが存在しない\n\nインターネット接続とSupabase Storageの設定を確認してください。'
@@ -462,8 +685,12 @@ export default function RecordingsLibraryScreen() {
   };
 
   const formatDuration = (seconds: number) => {
+    // Infinity、NaN、または無効な値の場合は0:00を返す
+    if (!isFinite(seconds) || isNaN(seconds) || seconds < 0) {
+      return '0:00';
+    }
     const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
+    const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -949,6 +1176,76 @@ export default function RecordingsLibraryScreen() {
                       </TouchableOpacity>
                     </View>
                   </View>
+                  
+                  {/* プログレスバー（再生中の場合のみ表示） */}
+                  {playingRecording === recording.id && !isVideoUrl(recording.file_path) && (
+                    <View style={[styles.progressContainer, { borderTopColor: currentTheme.secondary }]}>
+                      {Platform.OS === 'web' && typeof window !== 'undefined' ? (
+                        <View>
+                          {Platform.OS === 'web' && typeof document !== 'undefined' ? (
+                            <View
+                              // @ts-ignore - Web環境ではid属性を使用
+                              id={`progress-slider-container-${recording.id}`}
+                              style={{ marginBottom: 8, height: 6 }}
+                            />
+                          ) : (
+                            <View style={{ marginBottom: 8, height: 6 }} />
+                          )}
+                          <View style={styles.timeContainer}>
+                            <Text style={[styles.timeText, { color: currentTheme.textSecondary }]}>
+                              {formatDuration(isFinite(currentTime) && !isNaN(currentTime) ? Math.floor(currentTime) : 0)}
+                            </Text>
+                            <Text style={[styles.timeText, { color: currentTheme.textSecondary }]}>
+                              {formatDuration((() => {
+                                const d = duration || recording.duration_seconds || 0;
+                                return isFinite(d) && !isNaN(d) ? d : 0;
+                              })())}
+                            </Text>
+                          </View>
+                        </View>
+                      ) : (
+                        <>
+                          <TouchableOpacity
+                            style={[styles.progressBarWrapper, { backgroundColor: currentTheme.secondary }]}
+                            onPress={(e) => {
+                              if (audioElement && playingRecording === recording.id) {
+                                const totalDuration = duration || recording.duration_seconds || 0;
+                                if (totalDuration > 0 && e.nativeEvent) {
+                                  const { locationX } = e.nativeEvent;
+                                  const containerWidth = (e.target as any)?.offsetWidth || (e.currentTarget as any)?.offsetWidth || width - 32;
+                                  const newTime = (locationX / containerWidth) * totalDuration;
+                                  const clampedTime = Math.max(0, Math.min(totalDuration, newTime));
+                                  audioElement.currentTime = clampedTime;
+                                  setCurrentTime(clampedTime);
+                                }
+                              }
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <View style={[styles.progressBar, { 
+                              width: `${(() => {
+                                const d = isFinite(duration) && !isNaN(duration) && duration > 0 ? duration : 0;
+                                const ct = isFinite(currentTime) && !isNaN(currentTime) && currentTime >= 0 ? currentTime : 0;
+                                return d > 0 ? Math.min(100, Math.max(0, (ct / d) * 100)) : 0;
+                              })()}%`,
+                              backgroundColor: currentTheme.primary 
+                            }]} />
+                          </TouchableOpacity>
+                          <View style={styles.timeContainer}>
+                            <Text style={[styles.timeText, { color: currentTheme.textSecondary }]}>
+                              {formatDuration(isFinite(currentTime) && !isNaN(currentTime) ? Math.floor(currentTime) : 0)}
+                            </Text>
+                            <Text style={[styles.timeText, { color: currentTheme.textSecondary }]}>
+                              {formatDuration((() => {
+                                const d = duration || recording.duration_seconds || 0;
+                                return isFinite(d) && !isNaN(d) ? d : 0;
+                              })())}
+                            </Text>
+                          </View>
+                        </>
+                      )}
+                    </View>
+                  )}
                 </View>
               ))
             )}
@@ -1154,6 +1451,31 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     padding: 4,
+  },
+  progressContainer: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  progressBarWrapper: {
+    width: '100%',
+    height: 6,
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressBar: {
+    height: '100%',
+    borderRadius: 3,
+  },
+  timeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  timeText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 });
 

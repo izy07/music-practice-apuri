@@ -1186,18 +1186,35 @@ export const goalRepository = {
       throw fetchError;
     }
     
-    // サブ目標がある場合（長期目標の場合）、サブ目標の状態から進捗率を再計算
-    let progressPercentage = 90; // デフォルト値
+    // サブ目標がある場合（長期目標の場合）、すべてのサブ目標を未達成に戻す
+    let progressPercentage = 0; // デフォルト値（未達成に戻すので0%）
     if (goalData?.goal_type === 'personal_long') {
       try {
         const subGoals = await subGoalRepository.getSubGoalsByGoalId(goalId, userId);
         if (subGoals && subGoals.length > 0) {
-          // サブ目標の状態から進捗率を計算
-          progressPercentage = subGoalRepository.calculateProgressFromSubGoals(subGoals);
+          // すべてのサブ目標を未達成に戻す
+          const uncompletePromises = subGoals
+            .filter(sg => sg.is_completed) // 達成済みのサブ目標のみ
+            .map(sg => subGoalRepository.updateSubGoal(sg.id, userId, {
+              is_completed: false
+            }));
+          
+          await Promise.all(uncompletePromises);
+          
+          // サブ目標を未達成に戻した後の進捗率を計算（0%になるはず）
+          const updatedSubGoals = await subGoalRepository.getSubGoalsByGoalId(goalId, userId);
+          progressPercentage = subGoalRepository.calculateProgressFromSubGoals(updatedSubGoals);
+          
+          logger.debug('長期目標のサブ目標を未達成に戻しました', {
+            goalId,
+            uncompletedCount: uncompletePromises.length,
+            progressPercentage
+          });
         }
       } catch (error) {
-        logger.debug('サブ目標取得エラー（進捗率計算をスキップ）:', error);
-        // エラー時はデフォルト値（90%）を使用
+        logger.error('サブ目標の未達成への戻しエラー:', error);
+        // エラー時は進捗率を0%に設定（未達成に戻すため）
+        progressPercentage = 0;
       }
     }
     
@@ -1209,7 +1226,7 @@ export const goalRepository = {
     // completed_atカラムをnullに設定（エラー時は除外）
     updateData.completed_at = null;
     
-    // 進捗率を設定（サブ目標がある場合は再計算した値、ない場合は90%）
+    // 進捗率を設定（サブ目標がある場合は再計算した値、ない場合は0%）
     updateData.progress_percentage = progressPercentage;
     
     let { error } = await supabase

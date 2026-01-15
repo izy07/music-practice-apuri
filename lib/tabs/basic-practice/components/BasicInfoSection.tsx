@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { Target, Camera } from 'lucide-react-native';
+import { Camera } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { instrumentBasics } from '../data/_instrumentBasics';
 import { styles } from '../styles';
@@ -21,7 +21,6 @@ export function BasicInfoSection({ instrumentKey, onOpenCamera }: BasicInfoSecti
   return (
     <View style={[styles.basicInfoSection, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
       <View style={styles.basicInfoHeader}>
-        <Target size={16} color={currentTheme.primary} />
         <Text style={[styles.basicInfoTitle, { color: currentTheme.primary }]}>基礎・姿勢・楽器の持ち方</Text>
       </View>
       

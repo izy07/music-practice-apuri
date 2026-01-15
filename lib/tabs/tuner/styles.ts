@@ -701,6 +701,7 @@ export const styles = StyleSheet.create({
   // 開放弦コンテンツのスタイル
   openStringContent: {
     marginTop: 0,
+    flexDirection: 'column',
   },
   openStringTitle: {
     fontSize: 16,
@@ -800,7 +801,8 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 12,
+    marginTop: 12,
+    marginBottom: 0,
     borderWidth: 2,
     elevation: 2,
   },

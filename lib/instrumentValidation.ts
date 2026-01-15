@@ -24,16 +24,12 @@ export function isValidInstrumentId(instrumentId: string | null | undefined): bo
 }
 
 /**
- * 楽器がデータベースに存在するか確認し、存在しない場合は作成を試みる
+ * 楽器がデータベースに存在するか確認する
+ * 注意: 楽器の作成は試みません（RLSポリシーにより通常ユーザーは作成不可）
  * @param instrumentId 確認する楽器ID
- * @returns 楽器が存在する（または作成された）かどうか
+ * @returns 楽器が存在するかどうか
  */
 export async function ensureInstrumentExists(instrumentId: string): Promise<boolean> {
-  // その他楽器の場合はスキップ
-  if (instrumentId === OTHER_INSTRUMENT_ID) {
-    return true;
-  }
-
   try {
     // データベースで楽器の存在確認
     const { data: instrumentExists, error: checkError } = await supabase
@@ -49,46 +45,20 @@ export async function ensureInstrumentExists(instrumentId: string): Promise<bool
 
     // 楽器が存在する場合は成功
     if (instrumentExists) {
+      logger.debug('楽器が存在します', { instrumentId });
       return true;
     }
 
-    // 楽器が存在しない場合は、デフォルト楽器データから作成を試みる
-    logger.warn('楽器が存在しないため、作成を試みます', { instrumentId });
-
-    const defaultInstruments = instrumentService.getDefaultInstruments();
-    const defaultInstrument = defaultInstruments.find(inst => inst.id === instrumentId);
-
-    if (!defaultInstrument) {
-      // デフォルト楽器データにも存在しない場合はエラー
-      const error = new Error(`楽器ID ${instrumentId} が存在しません`);
-      logger.error('無効な楽器ID:', { instrumentId });
-      throw error;
-    }
-
-    // 楽器をデータベースに作成
-    const { error: createError } = await supabase
-      .from('instruments')
-      .upsert({
-        id: defaultInstrument.id,
-        name: defaultInstrument.name,
-        name_en: defaultInstrument.nameEn,
-        color_primary: defaultInstrument.primary,
-        color_secondary: defaultInstrument.secondary,
-        color_accent: defaultInstrument.accent,
-      }, {
-        onConflict: 'id'
-      });
-
-    if (createError) {
-      logger.error('楽器作成エラー:', createError);
-      const error = new Error(`楽器の作成に失敗しました: ${createError.message || 'Unknown error'}`);
-      (error as any).code = createError.code;
-      (error as any).status = createError.status;
-      throw error;
-    }
-
-    logger.debug('楽器を作成しました', { instrumentId });
-    return true;
+    // 楽器が存在しない場合は警告を出して続行
+    // 楽器は管理者が事前に作成すべきマスターデータのため、通常ユーザーは作成できません
+    logger.warn('楽器がデータベースに存在しません。管理者に連絡して楽器を作成してもらってください。', { 
+      instrumentId,
+      hint: '楽器は管理者が事前に作成すべきマスターデータです。RLSポリシーにより通常ユーザーは作成できません。'
+    });
+    
+    // 楽器が存在しない場合でも、外部キー制約エラーが発生する可能性があるため、
+    // 呼び出し元で適切に処理できるようにfalseを返す
+    return false;
   } catch (error) {
     logger.error('ensureInstrumentExistsエラー:', error);
     throw error;

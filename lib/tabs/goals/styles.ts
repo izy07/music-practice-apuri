@@ -393,9 +393,10 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 4,
-    paddingHorizontal: 0,
+    paddingHorizontal: 24,
     borderRadius: 6,
     gap: 2,
+    minWidth: 120,
     ...(createShadowStyle({
       shadowColor: '#4CAF50',
       shadowOffset: { width: 0, height: 2 },
@@ -862,6 +863,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     marginTop: 6,
+    width: '100%',
   },
   achievementBadgeInline: {
     flexDirection: 'row',
@@ -1172,8 +1174,8 @@ export const styles = StyleSheet.create({
   },
   // サブ目標関連のスタイル
   subGoalsSection: {
-    marginTop: 12,
-    padding: 12,
+    marginTop: 8,
+    padding: 6,
     borderRadius: 8,
     borderWidth: 1,
   },
@@ -1181,7 +1183,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   subGoalsTitle: {
     fontSize: 12,
@@ -1191,9 +1193,9 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    paddingVertical: 8,
+    paddingVertical: 3,
     paddingHorizontal: 4,
-    marginTop: 4,
+    marginTop: 1,
     borderBottomWidth: 1,
   },
   subGoalItemContent: {
@@ -1208,7 +1210,7 @@ export const styles = StyleSheet.create({
   subGoalText: {
     flex: 1,
     fontSize: 13,
-    lineHeight: 18,
+    lineHeight: 15,
   },
   subGoalTextCompleted: {
     textDecorationLine: 'line-through',

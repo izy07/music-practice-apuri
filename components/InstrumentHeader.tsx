@@ -205,6 +205,12 @@ export default function InstrumentHeader() {
   const getInstrumentName = () => {
     // 現在選択されている楽器がある場合はそれを表示
     const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+    
+    // その他楽器（ID: 550e8400-e29b-41d4-a716-446655440016）の場合は、カスタム楽器名を優先的に表示
+    if (currentInstrumentId === '550e8400-e29b-41d4-a716-446655440016' && user?.custom_instrument_name) {
+      return user.custom_instrument_name;
+    }
+    
     if (currentInstrumentId && instrumentInfo) {
       const displayName = language === 'en' ? instrumentInfo.name_en : instrumentInfo.name;
       return removeEmoji(displayName);
@@ -212,12 +218,20 @@ export default function InstrumentHeader() {
     
     // 過去に選択されていた楽器がある場合はそれを表示
     if (userInstrumentInfo) {
+      // その他楽器の場合は、カスタム楽器名を優先的に表示
+      if (userInstrumentInfo.id === '550e8400-e29b-41d4-a716-446655440016' && user?.custom_instrument_name) {
+        return user.custom_instrument_name;
+      }
       const displayName = language === 'en' ? userInstrumentInfo.name_en : userInstrumentInfo.name;
       return removeEmoji(displayName);
     }
     
     // user.selected_instrument_idから直接楽器情報を取得
     if (user?.selected_instrument_id && dbInstruments.length > 0) {
+      // その他楽器の場合は、カスタム楽器名を優先的に表示
+      if (user.selected_instrument_id === '550e8400-e29b-41d4-a716-446655440016' && user?.custom_instrument_name) {
+        return user.custom_instrument_name;
+      }
       const instrument = dbInstruments.find(inst => inst.id === user.selected_instrument_id);
       if (instrument) {
         const displayName = language === 'en' ? instrument.nameEn : instrument.name;
@@ -228,6 +242,10 @@ export default function InstrumentHeader() {
     // AsyncStorageから読み込んだ楽器情報を表示（リロード時の一瞬消えを防ぐ）
     // Contextから取得した楽器情報を使用（単一のデータソース）
     if (instrumentInfo) {
+      // その他楽器の場合は、カスタム楽器名を優先的に表示
+      if (instrumentInfo.id === '550e8400-e29b-41d4-a716-446655440016' && user?.custom_instrument_name) {
+        return user.custom_instrument_name;
+      }
       const displayName = language === 'en' ? instrumentInfo.name_en : instrumentInfo.name;
       return removeEmoji(displayName);
     }

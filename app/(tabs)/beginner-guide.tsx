@@ -456,30 +456,6 @@ export default function BeginnerGuideScreen() {
           </View>
         );
 
-      case 'roadmap':
-        return (
-          <View style={[styles.section, { backgroundColor: currentTheme.surface }]}> 
-            <View style={styles.sectionHeader}>
-              <View style={[styles.iconContainer, { backgroundColor: `${currentGuide.color}20` }]}>
-                <History size={24} color={currentGuide.color} />
-              </View>
-              <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>{t('roadmap')}</Text>
-            </View>
-            <View style={styles.infoGrid}>
-              {(currentGuide as any).roadmap?.weeks?.map((wk: any, weekIdx: number) => (
-                <View key={weekIdx} style={styles.infoItem}>
-                  <Text style={[styles.resourcesTitle, { color: currentTheme.text }]}>{wk.title}</Text>
-                  {wk.items.map((it: string, itemIdx: number) => (
-                    <View key={itemIdx} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: currentGuide.color }} />
-                      <Text style={[styles.infoText, { color: currentTheme.text }]}>{it}</Text>
-                    </View>
-                  ))}
-                </View>
-              ))}
-            </View>
-          </View>
-        );
       case 'overview':
         return (
           <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
@@ -683,25 +659,21 @@ export default function BeginnerGuideScreen() {
                 </View>
               )}
               
-              {/* なぜ英語で表記されているのか（stringInfoがない場合） */}
-              {(currentGuide.fingering as any)?.noteNames && !(currentGuide.fingering as any)?.stringInfo && (
-                <View style={styles.infoItem}>
-                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>なぜ英語で表記されているのか</Text>
-                  <Text style={[styles.infoText, { color: currentTheme.text }]}>
-                    音楽では、音名を英語（C、D、E、F、G、A、B）で表記するのが世界的に標準的です。これは、楽譜や音楽理論、国際的な音楽教育でも英語の音名が広く使われているためです。例えば「C」は「ド」、「G」は「ソ」を意味します。国際的な音楽の共通言語として、英語表記に慣れておくと、楽譜を読む時や他の楽器と合わせる時、海外の音楽家と交流する時にも役立ちます。
-                  </Text>
-                </View>
-              )}
-              
-              {/* なぜ英語で表記されているのか（stringInfoがある場合） */}
-              {(currentGuide.fingering as any)?.stringInfo && (
-                <View style={styles.infoItem}>
-                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>なぜ英語で表記されているのか</Text>
-                  <Text style={[styles.infoText, { color: currentTheme.text }]}>
-                    弦楽器では、各弦を英語の音名（G、D、A、E、Cなど）で表記するのが世界的に標準的です。これは、楽譜や音楽理論でも英語の音名（C、D、E、F、G、A、B）が広く使われているためです。例えば「G線」は「ソ（G）の音が出る弦」という意味で、日本語の「ソ弦」と同じです。国際的な音楽の共通言語として、英語表記に慣れておくと、楽譜を読む時や他の楽器と合わせる時にも役立ちます。
-                  </Text>
-                </View>
-              )}
+              {/* なぜ英語で表記されているのか */}
+              {(currentGuide.fingering as any)?.noteNames && (() => {
+                const instrumentKey = getInstrumentKey();
+                const isStringInstrument = ['violin', 'viola', 'cello', 'contrabass'].includes(instrumentKey);
+                return (
+                  <View style={styles.infoItem}>
+                    <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>なぜ英語で表記されているのか</Text>
+                    <Text style={[styles.infoText, { color: currentTheme.text }]}>
+                      {isStringInstrument
+                        ? '弦楽器では、各弦を英語の音名（G、D、A、E、Cなど）で表記するのが世界的に標準的です。これは、楽譜や音楽理論でも英語の音名（C、D、E、F、G、A、B）が広く使われているためです。例えば「G線」は「ソ（G）の音が出る弦」という意味で、日本語の「ソ弦」と同じです。国際的な音楽の共通言語として、英語表記に慣れておくと、楽譜を読む時や他の楽器と合わせる時にも役立ちます。'
+                        : '音楽では、音名を英語（C、D、E、F、G、A、B）で表記するのが世界的に標準的です。これは、楽譜や音楽理論、国際的な音楽教育でも英語の音名が広く使われているためです。例えば「C」は「ド」、「G」は「ソ」を意味します。国際的な音楽の共通言語として、英語表記に慣れておくと、楽譜を読む時や他の楽器と合わせる時、海外の音楽家と交流する時にも役立ちます。'}
+                    </Text>
+                  </View>
+                );
+              })()}
               
               {/* 音名対応表 */}
               <View style={styles.infoItem}>
@@ -801,52 +773,6 @@ export default function BeginnerGuideScreen() {
                   </View>
                 ) : null;
               })()}
-              
-              {/* 弦楽器の各弦説明 */}
-              {(currentGuide.fingering as any)?.stringInfo && (
-                <>
-                  {(currentGuide.fingering as any).stringInfo.eString && (
-                    <View style={styles.infoItem}>
-                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>E線について（E線 = ミ弦）</Text>
-                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
-                        {(currentGuide.fingering as any).stringInfo.eString}
-                      </Text>
-                    </View>
-                  )}
-                  {(currentGuide.fingering as any).stringInfo.aString && (
-                    <View style={styles.infoItem}>
-                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>A線について（A線 = ラ弦）</Text>
-                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
-                        {(currentGuide.fingering as any).stringInfo.aString}
-                      </Text>
-                    </View>
-                  )}
-                  {(currentGuide.fingering as any).stringInfo.dString && (
-                    <View style={styles.infoItem}>
-                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>D線について（D線 = レ弦）</Text>
-                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
-                        {(currentGuide.fingering as any).stringInfo.dString}
-                      </Text>
-                    </View>
-                  )}
-                  {(currentGuide.fingering as any).stringInfo.gString && (
-                    <View style={styles.infoItem}>
-                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>G線について（G線 = ソ弦）</Text>
-                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
-                        {(currentGuide.fingering as any).stringInfo.gString}
-                      </Text>
-                    </View>
-                  )}
-                  {(currentGuide.fingering as any).stringInfo.cString && (
-                    <View style={styles.infoItem}>
-                      <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>C線について（C線 = ド弦）</Text>
-                      <Text style={[styles.infoText, { color: currentTheme.text }]}>
-                        {(currentGuide.fingering as any).stringInfo.cString}
-                      </Text>
-                    </View>
-                  )}
-                </>
-              )}
               
               {/* 管楽器のB管・C管説明 */}
               {(currentGuide.fingering as any)?.keyInfo && (
@@ -1415,11 +1341,11 @@ export default function BeginnerGuideScreen() {
       case 'resources':
         return (
           <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
-            <View style={styles.sectionHeader}>
-              <View style={[styles.iconContainer, { backgroundColor: `${currentGuide.color}20` }]}>
-                <Youtube size={24} color={currentGuide.color} />
+            <View style={styles.resourcesSectionHeader}>
+              <View style={[styles.resourcesIconContainer, { backgroundColor: `${currentGuide.color}20` }]}>
+                <Youtube size={20} color={currentGuide.color} />
               </View>
-              <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>{t('resources')}</Text>
+              <Text style={[styles.resourcesSectionTitle, { color: currentTheme.text }]}>{t('resources')}</Text>
             </View>
             
             <View style={styles.resourcesContainer}>
@@ -1430,7 +1356,7 @@ export default function BeginnerGuideScreen() {
                   style={styles.videoItem}
                   onPress={() => openVideo(video.url)}
                 >
-                  <Youtube size={20} color="#FF0000" />
+                  <Youtube size={18} color="#FF0000" />
                   <Text style={[styles.videoTitle, { color: currentTheme.text }]}>{video.title}</Text>
                 </TouchableOpacity>
               ))}
@@ -1438,7 +1364,7 @@ export default function BeginnerGuideScreen() {
               <Text style={[styles.resourcesTitle, { color: currentTheme.text }]}>図解・イラスト</Text>
               {currentGuide.resources.images.map((image: string, index: number) => (
                 <View key={index} style={styles.imageItem}>
-                  <ImageIcon size={20} color={currentGuide.color} />
+                  <ImageIcon size={18} color={currentGuide.color} />
                   <Text style={[styles.imageTitle, { color: currentTheme.text }]}>{image}</Text>
                 </View>
               ))}
@@ -1478,8 +1404,7 @@ export default function BeginnerGuideScreen() {
             { id: 'maintenance', label: t('care'), icon: Wrench },
             { id: 'tips', label: t('advice'), icon: Lightbulb },
             { id: 'resources', label: t('resources'), icon: Youtube },
-            { id: 'faq', label: t('faq'), icon: Star },
-            { id: 'roadmap', label: t('roadmap'), icon: History }
+            { id: 'faq', label: t('faq'), icon: Star }
           ].map((item) => (
             <TouchableOpacity
               key={item.id}

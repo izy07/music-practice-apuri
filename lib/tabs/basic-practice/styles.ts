@@ -76,8 +76,8 @@ export const styles = StyleSheet.create({
   basicInfoHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 12,
-    paddingBottom: 8,
+    padding: 10,
+    paddingBottom: 6,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(0,0,0,0.1)',
     gap: 8,
@@ -87,17 +87,17 @@ export const styles = StyleSheet.create({
     fontWeight: '600',
   },
   basicInfoContent: {
-    padding: 12,
-    paddingTop: 8,
+    padding: 10,
+    paddingTop: 6,
   },
   basicInfoItem: {
-    marginBottom: 12,
+    marginBottom: 8,
   },
   basicInfoItemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   cameraButton: {
     padding: 6,
@@ -112,11 +112,11 @@ export const styles = StyleSheet.create({
   basicInfoLabel: {
     fontSize: 14,
     fontWeight: '600',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   basicInfoText: {
     fontSize: 13,
-    lineHeight: 18,
+    lineHeight: 16,
   },
   basicInfoTips: {
     marginTop: 4,

@@ -63,7 +63,7 @@ export function LevelSelector({
 
       {userLevel && (
         <Text style={[styles.levelFixedNotice, { color: currentTheme.text }]}>
-          演奏レベルは上のボタンを押すと変更できます
+          レベルは上のボタンを押すと変更できます
         </Text>
       )}
     </>

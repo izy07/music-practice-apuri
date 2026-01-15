@@ -398,7 +398,7 @@ export default function AddGoalScreen() {
               </Text>
             </View>
             <Text style={[styles.subGoalsDescription, { color: currentTheme.textSecondary }]}>
-              目標達成のために必要なタスクを追加してください。進捗率は自動計算されます。
+              目標達成のために必要なタスクを追加してください。（進捗率は自動計算）
             </Text>
 
             {/* サブ目標リスト */}
@@ -591,13 +591,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   goalTypeSection: {
-    marginTop: 12,
-    marginBottom: 12,
+    marginTop: 8,
+    marginBottom: 8,
   },
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 10,
+    marginBottom: 6,
   },
   goalTypeCards: {
     flexDirection: 'row',
@@ -605,14 +605,14 @@ const styles = StyleSheet.create({
   },
   goalTypeCard: {
     flex: 1,
-    padding: 14,
+    padding: 10,
     borderRadius: 10,
     borderWidth: 2,
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
   },
   goalTypeTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
   },
   goalTypeDescription: {
@@ -621,26 +621,26 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   formSection: {
-    padding: 16,
+    padding: 12,
     borderRadius: 12,
-    marginBottom: 20,
-    marginTop: 6,
+    marginBottom: 16,
+    marginTop: 4,
   },
   inputGroup: {
-    marginBottom: 10,
+    marginBottom: 8,
   },
   label: {
     fontSize: 16,
     fontWeight: '500',
-    marginBottom: 5,
+    marginBottom: 4,
   },
   characterCount: {
     fontSize: 12,
     textAlign: 'right',
-    marginTop: 4,
+    marginTop: 2,
   },
   input: {
-    padding: 10,
+    padding: 8,
     borderRadius: 8,
     borderWidth: 1,
     fontSize: 16,
@@ -659,13 +659,13 @@ const styles = StyleSheet.create({
   },
   dateInput: {
     flex: 1,
-    padding: 10,
+    padding: 8,
     borderRadius: 8,
     borderWidth: 1,
     fontSize: 16,
   },
   calendarIconButton: {
-    padding: 8,
+    padding: 6,
     borderRadius: 6,
     backgroundColor: 'rgba(0, 122, 255, 0.1)',
     justifyContent: 'center',
@@ -756,14 +756,15 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   subGoalsList: {
-    marginBottom: 16,
-    gap: 8,
+    marginBottom: 12,
+    gap: 6,
   },
   subGoalItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
     borderRadius: 8,
     borderWidth: 1,
     backgroundColor: 'transparent',
@@ -772,12 +773,12 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 6,
   },
   subGoalIndex: {
     fontSize: 14,
     fontWeight: '600',
-    minWidth: 24,
+    minWidth: 20,
   },
   subGoalText: {
     fontSize: 14,
@@ -785,7 +786,7 @@ const styles = StyleSheet.create({
   },
   subGoalDeleteButton: {
     padding: 4,
-    marginLeft: 8,
+    marginLeft: 4,
   },
   subGoalInputContainer: {
     gap: 8,

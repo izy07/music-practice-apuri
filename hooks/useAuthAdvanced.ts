@@ -32,6 +32,7 @@ export interface AuthUser {
   created_at: string;
   last_sign_in_at?: string;
   selected_instrument_id?: string | null; // 楽器選択状態
+  custom_instrument_name?: string | null; // カスタム楽器名（その他楽器の場合）
   tutorial_completed?: boolean;
   onboarding_completed?: boolean;
   user_metadata?: {
@@ -1204,6 +1205,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           created_at: user.created_at,
           last_sign_in_at: user.last_sign_in_at,
           selected_instrument_id: selectedInstrumentId,
+          custom_instrument_name: (profile as any).custom_instrument_name || null,
           tutorial_completed: (profile as any).tutorial_completed ?? false,
           onboarding_completed: (profile as any).onboarding_completed ?? false,
         };

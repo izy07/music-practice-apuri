@@ -109,7 +109,6 @@ const translations = {
     
     // Beginner Guide
     faq: 'よくあるQ&A',
-    roadmap: '4週間ロードマップ',
     overview: '楽器の基本情報',
     basicPlaying: '基本的な演奏方法',
     fingering: '運指表',
@@ -473,7 +472,6 @@ const translations = {
     
     // Beginner Guide
     faq: 'FAQ',
-    roadmap: '4-Week Roadmap',
     overview: 'Basic Instrument Information',
     basicPlaying: 'Basic Playing Method',
     fingering: 'Fingering Chart',

@@ -11,6 +11,8 @@ import { createShadowStyle } from '@/lib/shadowStyles';
 import { useSubscription } from '@/hooks/useSubscription';
 import { canSaveDataForInstrument, getActiveInstrumentIds } from '@/lib/subscriptionLimits';
 import { safeGoBack, navigateToCalendarScreen } from '@/lib/navigationUtils';
+import { updateSelectedInstrument } from '@/repositories/userRepository';
+import { supabase } from '@/lib/supabase';
 
 interface Instrument {
   id: string;
@@ -50,20 +52,8 @@ export default function InstrumentSelectionScreen() {
     { id: '550e8400-e29b-41d4-a716-446655440016', name: 'その他', nameEn: 'Other', emoji: '❓' },
   ];
 
-  // 一時的に非表示にする楽器ID（編集追いつかないため）
-  const hiddenInstrumentIds = [
-    '550e8400-e29b-41d4-a716-446655440009', // クラリネット
-    '550e8400-e29b-41d4-a716-446655440007', // サックス
-    '550e8400-e29b-41d4-a716-446655440018', // ヴィオラ
-    '550e8400-e29b-41d4-a716-446655440008', // ホルン
-    '550e8400-e29b-41d4-a716-446655440013', // オーボエ
-    '550e8400-e29b-41d4-a716-446655440010', // トロンボーン
-    '550e8400-e29b-41d4-a716-446655440015', // コントラバス
-    '550e8400-e29b-41d4-a716-446655440012', // ファゴット
-  ];
-
-  // 表示する楽器をフィルタリング
-  const visibleInstruments = instruments.filter(instrument => !hiddenInstrumentIds.includes(instrument.id));
+  // すべての楽器を表示（非表示にしていた楽器も表示）
+  const visibleInstruments = instruments;
 
   // 現在の楽器IDを計算（useMemoで重複計算を防止）
   const currentInstrumentId = useMemo(() => {
@@ -143,6 +133,45 @@ export default function InstrumentSelectionScreen() {
     }
 
     try {
+      // カスタム楽器名を取得（その他楽器の場合のみ）
+      const customName = selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016' 
+        ? customInstrumentName.trim() 
+        : null;
+      
+      // データベースに楽器IDを保存
+      if (user) {
+        const result = await updateSelectedInstrument(user.id, selectedInstrumentId);
+        if (result.error) {
+          logger.error('楽器保存エラー（updateSelectedInstrument）:', result.error);
+          Alert.alert('エラー', '楽器の保存に失敗しました');
+          return;
+        }
+        
+        // カスタム楽器名を保存（その他楽器の場合のみ）
+        if (customName) {
+          const { error: customNameError } = await supabase
+            .from('user_profiles')
+            .update({ custom_instrument_name: customName })
+            .eq('user_id', user.id);
+          
+          if (customNameError) {
+            logger.error('カスタム楽器名保存エラー:', customNameError);
+            // カスタム楽器名の保存エラーは警告のみ（楽器IDは既に保存されている）
+          }
+        } else if (selectedInstrumentId !== '550e8400-e29b-41d4-a716-446655440016') {
+          // その他楽器以外を選択した場合は、カスタム楽器名をクリア
+          const { error: clearError } = await supabase
+            .from('user_profiles')
+            .update({ custom_instrument_name: null })
+            .eq('user_id', user.id);
+          
+          if (clearError) {
+            logger.warn('カスタム楽器名クリアエラー:', clearError);
+            // エラーは無視（楽器IDは既に保存されている）
+          }
+        }
+      }
+      
       // ContextのsetSelectedInstrumentを使用（唯一のエントリーポイント）
       await setSelectedInstrument(selectedInstrumentId);
       
@@ -160,8 +189,8 @@ export default function InstrumentSelectionScreen() {
       }
       
       // 成功メッセージを表示せず、直接カレンダー画面に遷移
-      const instrumentName = instruments.find(i => i.id === selectedInstrumentId)?.name || '楽器';
-      logger.debug('楽器変更完了:', { instrumentName, selectedInstrumentId });
+      const instrumentName = customName || instruments.find(i => i.id === selectedInstrumentId)?.name || '楽器';
+      logger.debug('楽器変更完了:', { instrumentName, selectedInstrumentId, customName });
       
       // カレンダー画面に遷移（一元化された関数を使用）
       navigateToCalendarScreen(router, `楽器「${instrumentName}」を選択してカレンダー画面に遷移`);
@@ -310,6 +339,21 @@ export default function InstrumentSelectionScreen() {
               maxLength={50}
               nativeID="custom-instrument-name-input"
               accessibilityLabel="楽器名"
+              onFocus={() => {
+                // フォーカス時に親要素のaria-hiddenを削除（aria-hidden警告を防ぐため）
+                if (typeof document !== 'undefined') {
+                  const input = document.querySelector('[nativeID="custom-instrument-name-input"]') as HTMLElement;
+                  if (input) {
+                    let parent = input.parentElement;
+                    while (parent) {
+                      if (parent.getAttribute('aria-hidden') === 'true') {
+                        parent.removeAttribute('aria-hidden');
+                      }
+                      parent = parent.parentElement;
+                    }
+                  }
+                }
+              }}
             />
           </View>
         )}

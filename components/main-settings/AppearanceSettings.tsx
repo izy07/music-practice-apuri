@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, Modal, TextInput } from 'react-native';
 import { Palette, Check, X } from 'lucide-react-native';
 import { Instrument } from '@/services';
@@ -26,9 +26,20 @@ interface ColorPickerProps {
 }
 
 const ColorPicker: React.FC<ColorPickerProps> = ({ label, color, onColorChange, colorType, currentTheme }) => {
-  const colorInputRef = useRef<HTMLInputElement | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [colorInput, setColorInput] = useState(color);
+  const textInputRef = useRef<TextInput>(null);
+  
+  // モーダルが開いた時にTextInputにフォーカスを当てる
+  useEffect(() => {
+    if (showModal && Platform.OS !== 'web') {
+      // 少し遅延させてからフォーカスを当てる（モーダルのアニメーション完了を待つ）
+      const timer = setTimeout(() => {
+        textInputRef.current?.focus();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [showModal]);
 
   const handleColorChange = async (newColor: string) => {
     try {
@@ -64,41 +75,34 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ label, color, onColorChange, 
   };
 
   const openColorPicker = () => {
-    // モバイル環境では直接モーダルを開く（より確実）
-    if (Platform.OS !== 'web') {
-      setColorInput(color);
-      setShowModal(true);
-      return;
-    }
-
-      // Web環境ではHTML5のカラーピッカーを使用
-    if (typeof document !== 'undefined') {
+    // Web環境ではHTML5のカラーピッカーを使用
+    if (Platform.OS === 'web' && typeof document !== 'undefined') {
       try {
-      const input = document.createElement('input');
-      input.type = 'color';
-      input.value = color;
-      input.style.position = 'fixed';
-      input.style.opacity = '0';
-      input.style.pointerEvents = 'none';
-      input.style.width = '0';
-      input.style.height = '0';
-      document.body.appendChild(input);
-      
-      const handleChange = (e: Event) => {
-        const target = e.target as HTMLInputElement;
-        if (target.value) {
-          handleColorChange(target.value);
-        }
-          if (document.body.contains(input)) {
-        document.body.removeChild(input);
+        const input = document.createElement('input');
+        input.type = 'color';
+        input.value = color;
+        input.style.position = 'fixed';
+        input.style.opacity = '0';
+        input.style.pointerEvents = 'none';
+        input.style.width = '0';
+        input.style.height = '0';
+        document.body.appendChild(input);
+        
+        const handleChange = (e: Event) => {
+          const target = e.target as HTMLInputElement;
+          if (target.value) {
+            handleColorChange(target.value);
           }
-        input.removeEventListener('change', handleChange);
-      };
-      
-      input.addEventListener('change', handleChange);
-      
-      // カラーピッカーを開く
-      input.click();
+          if (document.body.contains(input)) {
+            document.body.removeChild(input);
+          }
+          input.removeEventListener('change', handleChange);
+        };
+        
+        input.addEventListener('change', handleChange);
+        
+        // カラーピッカーを開く
+        input.click();
       } catch (error) {
         // エラーが発生した場合はモーダルで色コードを入力
         console.error('カラーピッカーエラー:', error);
@@ -106,7 +110,7 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ label, color, onColorChange, 
         setShowModal(true);
       }
     } else {
-      // フォールバック: モーダルで色コードを入力
+      // モバイル環境ではモーダルで色コードを入力
       setColorInput(color);
       setShowModal(true);
     }
@@ -163,6 +167,7 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ label, color, onColorChange, 
               <View style={styles.colorInputRow}>
                 <View style={[styles.colorPreviewLarge, { backgroundColor: colorInput.startsWith('#') ? colorInput : '#' + colorInput, borderColor: currentTheme?.secondary || '#E2E8F0' }]} />
                 <TextInput
+                  ref={textInputRef}
                   style={[styles.colorInput, { 
                     color: currentTheme?.text || '#2D3748',
                     borderColor: currentTheme?.secondary || '#E2E8F0',
@@ -175,6 +180,9 @@ const ColorPicker: React.FC<ColorPickerProps> = ({ label, color, onColorChange, 
                   autoCapitalize="none"
                   autoCorrect={false}
                   maxLength={7}
+                  keyboardType="default"
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveColor}
                 />
               </View>
               <Text style={[styles.modalHint, { color: currentTheme?.textSecondary || '#718096' }]}>
@@ -219,32 +227,7 @@ interface AppearanceSettingsProps {
 }
 
 const presetPalettes: PresetPalette[] = [
-  {
-    id: 'classic',
-    name: 'クラシック',
-    colors: {
-      background: '#F5F5F5',
-      surface: '#FFFFFF',
-      primary: '#4A5568',
-      secondary: '#E2E8F0',
-      accent: '#2D3748',
-      text: '#1A202C',
-      textSecondary: '#718096',
-    }
-  },
-  {
-    id: 'green',
-    name: 'グリーン',
-    colors: {
-      background: '#E8F5E9',
-      surface: '#FFFFFF',
-      primary: '#4CAF50',
-      secondary: '#C8E6C9',
-      accent: '#388E3C',
-      text: '#1B5E20',
-      textSecondary: '#2E7D32',
-    }
-  },
+  // レッド系
   {
     id: 'red',
     name: 'レッド',
@@ -259,34 +242,49 @@ const presetPalettes: PresetPalette[] = [
     }
   },
   {
-    id: 'purple',
-    name: 'パープル',
+    id: 'rose',
+    name: 'ローズ',
     colors: {
-      background: '#F3E5F5',
+      background: '#FFF1F2',
       surface: '#FFFFFF',
-      primary: '#9C27B0',
-      secondary: '#E1BEE7',
-      accent: '#7B1FA2',
-      text: '#4A148C',
-      textSecondary: '#6A1B9A',
+      primary: '#F43F5E',
+      secondary: '#FECDD3',
+      accent: '#E11D48',
+      text: '#BE123C',
+      textSecondary: '#9F1239',
     }
   },
   {
-    id: 'turquoise',
-    name: 'ターコイズ',
+    id: 'muted-red',
+    name: 'ローズグレー',
     colors: {
-      background: '#E0F7FA',
+      background: '#F6F3F3',
       surface: '#FFFFFF',
-      primary: '#00ACC1',
-      secondary: '#B2EBF2',
-      accent: '#00838F',
-      text: '#004D40',
-      textSecondary: '#00695C',
+      primary: '#B88A8A',
+      secondary: '#E8D0D0',
+      accent: '#9A6A6A',
+      text: '#6B4A4A',
+      textSecondary: '#8B6A6A',
     }
   },
+  // オレンジ系
+  {
+    id: 'amber',
+    name: 'アンバー',
+    colors: {
+      background: '#FFFBEB',
+      surface: '#FFFFFF',
+      primary: '#F59E0B',
+      secondary: '#FDE68A',
+      accent: '#D97706',
+      text: '#92400E',
+      textSecondary: '#78350F',
+    }
+  },
+  // イエロー/ベージュ系
   {
     id: 'muted-yellow',
-    name: 'ミュートイエロー',
+    name: 'ベージュ',
     colors: {
       background: '#F8F6F0',
       surface: '#FFFFFF',
@@ -297,30 +295,18 @@ const presetPalettes: PresetPalette[] = [
       textSecondary: '#8B7A6A',
     }
   },
+  // グリーン系
   {
-    id: 'muted-blue',
-    name: 'ミュートブルー',
+    id: 'green',
+    name: 'グリーン',
     colors: {
-      background: '#F3F4F6',
+      background: '#E8F5E9',
       surface: '#FFFFFF',
-      primary: '#7A9AAA',
-      secondary: '#D0E0E8',
-      accent: '#5A7A8A',
-      text: '#3A5A6A',
-      textSecondary: '#5A7A8A',
-    }
-  },
-  {
-    id: 'muted-red',
-    name: 'ミュートレッド',
-    colors: {
-      background: '#F6F3F3',
-      surface: '#FFFFFF',
-      primary: '#B88A8A',
-      secondary: '#E8D0D0',
-      accent: '#9A6A6A',
-      text: '#6B4A4A',
-      textSecondary: '#8B6A6A',
+      primary: '#4CAF50',
+      secondary: '#C8E6C9',
+      accent: '#388E3C',
+      text: '#1B5E20',
+      textSecondary: '#2E7D32',
     }
   },
   {
@@ -336,30 +322,45 @@ const presetPalettes: PresetPalette[] = [
       textSecondary: '#5A6A5A',
     }
   },
+  // シアン/ターコイズ系
   {
-    id: 'lavender',
-    name: 'ラベンダー',
+    id: 'turquoise-green',
+    name: 'ティール',
     colors: {
-      background: '#F5F4F8',
+      background: '#E0F2F1',
       surface: '#FFFFFF',
-      primary: '#9A8AAA',
-      secondary: '#E0D8E8',
-      accent: '#7A6A8A',
-      text: '#5A4A6A',
-      textSecondary: '#7A6A8A',
+      primary: '#26A69A',
+      secondary: '#80CBC4',
+      accent: '#00897B',
+      text: '#004D40',
+      textSecondary: '#00695C',
     }
   },
   {
-    id: 'indigo',
-    name: 'インドゴ',
+    id: 'turquoise',
+    name: 'ターコイズ',
     colors: {
-      background: '#F2F3F6',
+      background: '#E0F7FA',
       surface: '#FFFFFF',
-      primary: '#6A7A9A',
-      secondary: '#D0D8E8',
-      accent: '#4A5A7A',
-      text: '#3A4A6A',
-      textSecondary: '#5A6A8A',
+      primary: '#00ACC1',
+      secondary: '#B2EBF2',
+      accent: '#00838F',
+      text: '#004D40',
+      textSecondary: '#00695C',
+    }
+  },
+  // ブルー系
+  {
+    id: 'ocean-blue',
+    name: 'スカイブルー',
+    colors: {
+      background: '#E0F2FE',
+      surface: '#FFFFFF',
+      primary: '#0EA5E9',
+      secondary: '#BAE6FD',
+      accent: '#0284C7',
+      text: '#0369A1',
+      textSecondary: '#075985',
     }
   },
   {
@@ -377,7 +378,7 @@ const presetPalettes: PresetPalette[] = [
   },
   {
     id: 'steel-blue-dark',
-    name: 'ダークスチールブルー',
+    name: 'ペールブルー',
     colors: {
       background: '#D1E7F0',
       surface: '#FFFFFF',
@@ -389,42 +390,16 @@ const presetPalettes: PresetPalette[] = [
     }
   },
   {
-    id: 'deep-red',
-    name: 'ディープレッド',
+    id: 'muted-blue',
+    name: 'スレートブルー',
     colors: {
-      background: '#FEE2E2',
+      background: '#F3F4F6',
       surface: '#FFFFFF',
-      primary: '#DC2626',
-      secondary: '#FCA5A5',
-      accent: '#B91C1C',
-      text: '#991B1B',
-      textSecondary: '#7F1D1D',
-    }
-  },
-  {
-    id: 'violet',
-    name: 'バイオレット',
-    colors: {
-      background: '#F5F3FF',
-      surface: '#FFFFFF',
-      primary: '#8B5CF6',
-      secondary: '#DDD6FE',
-      accent: '#7C3AED',
-      text: '#6D28D9',
-      textSecondary: '#5B21B6',
-    }
-  },
-  {
-    id: 'ocean-blue',
-    name: 'オーシャンブルー',
-    colors: {
-      background: '#E0F2FE',
-      surface: '#FFFFFF',
-      primary: '#0EA5E9',
-      secondary: '#BAE6FD',
-      accent: '#0284C7',
-      text: '#0369A1',
-      textSecondary: '#075985',
+      primary: '#7A9AAA',
+      secondary: '#D0E0E8',
+      accent: '#5A7A8A',
+      text: '#3A5A6A',
+      textSecondary: '#5A7A8A',
     }
   },
   {
@@ -441,29 +416,70 @@ const presetPalettes: PresetPalette[] = [
     }
   },
   {
-    id: 'amber',
-    name: 'アンバー',
+    id: 'indigo',
+    name: 'スレートグレー',
     colors: {
-      background: '#FFFBEB',
+      background: '#F2F3F6',
       surface: '#FFFFFF',
-      primary: '#F59E0B',
-      secondary: '#FDE68A',
-      accent: '#D97706',
-      text: '#92400E',
-      textSecondary: '#78350F',
+      primary: '#6A7A9A',
+      secondary: '#D0D8E8',
+      accent: '#4A5A7A',
+      text: '#3A4A6A',
+      textSecondary: '#5A6A8A',
+    }
+  },
+  // パープル/バイオレット系
+  {
+    id: 'violet',
+    name: 'バイオレット',
+    colors: {
+      background: '#F5F3FF',
+      surface: '#FFFFFF',
+      primary: '#8B5CF6',
+      secondary: '#DDD6FE',
+      accent: '#7C3AED',
+      text: '#6D28D9',
+      textSecondary: '#5B21B6',
     }
   },
   {
-    id: 'rose',
-    name: 'ローズ',
+    id: 'purple',
+    name: 'パープル',
     colors: {
-      background: '#FFF1F2',
+      background: '#F3E5F5',
       surface: '#FFFFFF',
-      primary: '#F43F5E',
-      secondary: '#FECDD3',
-      accent: '#E11D48',
-      text: '#BE123C',
-      textSecondary: '#9F1239',
+      primary: '#9C27B0',
+      secondary: '#E1BEE7',
+      accent: '#7B1FA2',
+      text: '#4A148C',
+      textSecondary: '#6A1B9A',
+    }
+  },
+  {
+    id: 'lavender',
+    name: 'ラベンダー',
+    colors: {
+      background: '#F5F4F8',
+      surface: '#FFFFFF',
+      primary: '#9A8AAA',
+      secondary: '#E0D8E8',
+      accent: '#7A6A8A',
+      text: '#5A4A6A',
+      textSecondary: '#7A6A8A',
+    }
+  },
+  // グレー系（無彩色）
+  {
+    id: 'classic',
+    name: 'クラシック',
+    colors: {
+      background: '#F5F5F5',
+      surface: '#FFFFFF',
+      primary: '#4A5568',
+      secondary: '#E2E8F0',
+      accent: '#2D3748',
+      text: '#1A202C',
+      textSecondary: '#718096',
     }
   }
 ];
@@ -828,11 +844,11 @@ const styles = StyleSheet.create({
   presetGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
-    justifyContent: 'space-between',
+    gap: 8,
+    justifyContent: 'flex-start',
   },
   presetButton: {
-    width: '30%',
+    width: '31%',
     padding: 8,
     borderRadius: 12,
     alignItems: 'center',

@@ -7,6 +7,7 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Trophy } from 'lucide-react-native';
 import { useThemeColors } from '@/hooks/useThemeColors';
 import { Goal } from '@/lib/tabs/goals/types';
+import { CompletedGoalCard } from '@/components/tabs/goals/components/_CompletedGoalCard';
 
 interface Props {
   completedGoals: Goal[];
@@ -15,6 +16,7 @@ interface Props {
   onUpdateProgress?: (goalId: string, progress: number) => Promise<void>;
   onDeleteGoal?: (goalId: string) => Promise<void>;
   onUncompleteGoal?: (goalId: string) => Promise<void>;
+  onGoalUpdated?: (goal: Goal) => void;
 }
 
 export const CompletedGoalsSection: React.FC<Props> = memo(({
@@ -24,6 +26,7 @@ export const CompletedGoalsSection: React.FC<Props> = memo(({
   onUpdateProgress,
   onDeleteGoal,
   onUncompleteGoal,
+  onGoalUpdated,
 }) => {
   const colors = useThemeColors();
 
@@ -61,12 +64,10 @@ export const CompletedGoalsSection: React.FC<Props> = memo(({
             <CompletedGoalCard
               key={goal.id}
               goal={goal}
-              colors={colors}
-              getGoalTypeLabel={getGoalTypeLabel}
-              getGoalTypeColor={getGoalTypeColor}
               onUpdateProgress={onUpdateProgress}
               onDeleteGoal={onDeleteGoal}
               onUncompleteGoal={onUncompleteGoal}
+              onGoalUpdated={onGoalUpdated}
             />
           ))}
         </View>
@@ -75,88 +76,6 @@ export const CompletedGoalsSection: React.FC<Props> = memo(({
   );
 });
 
-// 個別の目標カードコンポーネント（メモ化）
-const CompletedGoalCard = memo<{
-  goal: Goal;
-  colors: ReturnType<typeof useThemeColors>;
-  getGoalTypeLabel: (type: string) => string;
-  getGoalTypeColor: (type: string) => string;
-  onUpdateProgress?: (goalId: string, progress: number) => Promise<void>;
-  onDeleteGoal?: (goalId: string) => Promise<void>;
-  onUncompleteGoal?: (goalId: string) => Promise<void>;
-}>(({ goal, colors, getGoalTypeLabel, getGoalTypeColor, onUpdateProgress, onDeleteGoal, onUncompleteGoal }) => {
-  const cardStyle = useMemo(() => [
-    styles.completedGoalCard,
-    { backgroundColor: colors.background, borderColor: colors.secondary + '33' }
-  ], [colors.background, colors.secondary]);
-
-  const titleStyle = useMemo(() => [
-    styles.completedGoalTitle,
-    { color: colors.text }
-  ], [colors.text]);
-
-  const descriptionStyle = useMemo(() => [
-    styles.completedGoalDescription,
-    { color: colors.textSecondary }
-  ], [colors.textSecondary]);
-
-  const dateStyle = useMemo(() => [
-    styles.completedGoalDate,
-    { color: colors.textSecondary }
-  ], [colors.textSecondary]);
-
-  return (
-    <View style={cardStyle}>
-      <View style={styles.completedGoalHeader}>
-        <View style={[styles.completedGoalBadge, { backgroundColor: getGoalTypeColor(goal.goal_type) }]}>
-          <Text style={styles.completedGoalBadgeText}>{getGoalTypeLabel(goal.goal_type)}</Text>
-        </View>
-        {onDeleteGoal && (
-          <TouchableOpacity
-            style={[styles.deleteButton, { backgroundColor: '#FF4444', zIndex: 10 }]}
-            onPress={(e) => {
-              e.stopPropagation();
-              if (onDeleteGoal) {
-                onDeleteGoal(goal.id).catch((error) => {
-                  console.error('削除エラー:', error);
-                });
-              }
-            }}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Text style={styles.deleteButtonText}>×</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-      <Text style={titleStyle}>{goal.title}</Text>
-      {goal.description && (
-        <Text style={descriptionStyle}>
-          {goal.description}
-        </Text>
-      )}
-      <Text style={dateStyle}>
-        達成日: {goal.completed_at ? new Date(goal.completed_at).toLocaleDateString('ja-JP') : '不明'}
-      </Text>
-      {onUncompleteGoal && (
-        <TouchableOpacity
-          style={[styles.uncompleteButton, { backgroundColor: colors.secondary }]}
-          onPress={(e) => {
-            e.stopPropagation();
-            if (onUncompleteGoal) {
-              onUncompleteGoal(goal.id).catch((error) => {
-                console.error('未達成への戻しエラー:', error);
-              });
-            }
-          }}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.uncompleteButtonText, { color: colors.text }]}>未達成に戻す</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-});
 
 const styles = StyleSheet.create({
   section: {

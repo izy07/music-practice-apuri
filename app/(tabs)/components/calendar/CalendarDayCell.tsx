@@ -1,6 +1,21 @@
 import React, { memo, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { getEventColorCode, EventColor } from '@/lib/eventColors';
+
+const { width } = Dimensions.get('window');
+
+// 画面サイズに応じたフォントサイズの計算
+const getEventFontSize = () => {
+  // 画面幅に基づいてフォントサイズを調整
+  // 小さい画面（iPhone SEなど）ではより小さく
+  if (width < 375) {
+    return 6; // 非常に小さい画面
+  } else if (width < 414) {
+    return 7; // 中程度の画面
+  } else {
+    return 8; // 大きい画面
+  }
+};
 
 // テーマの型定義
 interface InstrumentTheme {
@@ -89,11 +104,14 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
             <Text 
               style={[
                 styles.eventIndicatorText,
-                { color: eventColor },
+                { 
+                  color: eventColor,
+                  fontSize: getEventFontSize(),
+                },
               ]} 
               numberOfLines={1}
               adjustsFontSizeToFit={true}
-              minimumFontScale={0.6}
+              minimumFontScale={0.5}
             >
               {event.title}
           </Text>
@@ -144,17 +162,19 @@ CalendarDayCell.displayName = 'CalendarDayCell';
 
 const styles = StyleSheet.create({
   dayCell: {
-    width: '14.28%',
+    // 親グリッドでjustifyContent:'space-between'を使って横余白を作るため、
+    // 幅を7等分より少し小さくして余白分を確保する
+    width: '13.6%',
     height: 55,
     justifyContent: 'flex-start',
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 4,
     marginHorizontal: 0,
     marginVertical: 0.5,
     backgroundColor: '#E8E8E8',
     position: 'relative',
-    paddingVertical: 2,
-    paddingTop: 4,
+    paddingVertical: 0,
+    paddingTop: 2,
   },
   todayCell: {
     backgroundColor: '#E3F2FD',
@@ -162,14 +182,15 @@ const styles = StyleSheet.create({
     borderColor: '#2196F3',
   },
   dayText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
     color: '#333333',
     textAlign: 'center',
     position: 'absolute',
-    top: 4,
+    top: 2,
     left: 0,
     right: 0,
+    lineHeight: 14,
   },
   sundayText: {
     color: '#FF6B6B',
@@ -204,25 +225,27 @@ const styles = StyleSheet.create({
   },
   eventIndicator: {
     position: 'absolute',
-    top: 20,
-    left: 1,
-    right: 1,
+    top: 16,
+    left: 0,
+    right: 0,
     backgroundColor: '#FFFFFF',
-    paddingHorizontal: 1,
-    paddingVertical: 1,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
     borderRadius: 2,
     borderWidth: 1,
-    minHeight: 14,
-    maxHeight: 18,
+    height: 12,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
   eventIndicatorText: {
-    fontSize: 6,
+    fontSize: 8, // デフォルト値（インラインスタイルで上書きされる）
     fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 8,
-    flexShrink: 1,
+    lineHeight: 10,
+    flexShrink: 0,
+    paddingHorizontal: 0,
+    includeFontPadding: false,
   },
   checkmarkContainer: {
     position: 'absolute',

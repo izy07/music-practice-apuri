@@ -5,6 +5,7 @@ import { Play, Pause, Square, RotateCcw, Plus, Minus, Timer as TimerIcon, Clock,
 import { Modal } from 'react-native';
 import { Svg, Circle } from 'react-native-svg';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
@@ -32,14 +33,14 @@ function getProgressColor(progress: number): string {
   // 残り時間の割合 = 1 - progress
   const remainingRatio = 1 - progress;
   
-  if (remainingRatio >= 0.75) {
-    // 残り時間が多い（75%以上）: 青系
+  if (remainingRatio >= 0.50) {
+    // 残り時間が多い（50%以上）: 青系
     return '#2196F3';
-  } else if (remainingRatio >= 0.25) {
-    // 残り時間が中程度（25-75%）: オレンジ系
+  } else if (remainingRatio >= 0.20) {
+    // 残り時間が中程度（20-50%）: オレンジ系
     return '#FF9800';
   } else {
-    // 残り時間が少ない（25%以下）: 赤系
+    // 残り時間が少ない（20%以下）: 赤系
     return '#F44336';
   }
 }
@@ -313,6 +314,26 @@ export default function TimerScreen() {
     };
   }, []);
 
+  // 画面にフォーカスが戻った時にタイマーの状態を確認・同期
+  useFocusEffect(
+    useCallback(() => {
+      // タイマーサービスから最新の状態を取得
+      const timerService = require('@/components/TimerService').default.getInstance();
+      const currentTimerSeconds = timerService.getTimerSeconds();
+      const currentIsTimerRunning = timerService.isTimerRunning();
+      
+      logger.debug('タイマー画面にフォーカス: 状態を確認', {
+        currentTimerSeconds,
+        currentIsTimerRunning,
+        timerPreset: timerPresetRef.current
+      });
+      
+      // タイマーが動作中であるべきなのに停止している場合、再開を試みる
+      // ただし、実際にはTimerServiceはシングルトンなので、setIntervalは動作し続けているはず
+      // ここでは状態の確認のみを行う（useTimerフックが自動的に状態を同期する）
+    }, [])
+  );
+
   // クリーンアップ: タイマーをクリア（メモリリーク防止）
   useEffect(() => {
     return () => {
@@ -330,14 +351,17 @@ export default function TimerScreen() {
   const [showTimerInputModal, setShowTimerInputModal] = useState(false); // タイマー入力モーダルの表示状態
   const [timerHours, setTimerHours] = useState<string>(''); // タイマー入力の時間
   const [timerMinutes, setTimerMinutes] = useState<string>(''); // タイマー入力の分
+  const [timerSeconds, setTimerSeconds] = useState<string>(''); // タイマー入力の秒
   
-  // 時間・分入力欄のref
+  // 時間・分・秒入力欄のref
   const timerHoursInputRef = useRef<TextInput>(null);
   const timerMinutesInputRef = useRef<TextInput>(null);
+  const timerSecondsInputRef = useRef<TextInput>(null);
   
   // 入力フィールドのフォーカス状態を追跡
   const [isHoursFocused, setIsHoursFocused] = useState(false);
   const [isMinutesFocused, setIsMinutesFocused] = useState(false);
+  const [isSecondsFocused, setIsSecondsFocused] = useState(false);
   
   // 全角数字を半角数字に変換する関数
   const convertToHalfWidth = useCallback((text: string): string => {
@@ -436,6 +460,49 @@ export default function TimerScreen() {
     }
   }, [timerMinutes]);
 
+  const handleSecondsInput = useCallback((text: string) => {
+    // 全角数字を半角数字に変換
+    const halfWidthText = convertToHalfWidth(text);
+    
+    // 数字以外を除去
+    const numericText = halfWidthText.replace(/[^0-9]/g, '');
+    
+    if (numericText === '') {
+      setTimerSeconds('');
+      return;
+    }
+    
+    // 先頭の0を除去（ただし、単独の0は許可）
+    let cleanedText = numericText;
+    if (numericText.length > 1 && numericText.startsWith('0')) {
+      cleanedText = numericText.replace(/^0+/, '') || '0';
+    }
+    
+    const numValue = parseInt(cleanedText, 10);
+    if (!isNaN(numValue)) {
+      // 最大値59に制限（秒は0-59）
+      if (numValue > 59) {
+        setTimerSeconds('59');
+      } else {
+        setTimerSeconds(cleanedText);
+      }
+    } else {
+      setTimerSeconds('');
+    }
+  }, [convertToHalfWidth]);
+
+  const handleSecondsBlur = useCallback(() => {
+    if (timerSeconds) {
+      const numValue = parseInt(timerSeconds, 10);
+      if (!isNaN(numValue) && numValue >= 0) {
+        const clamped = Math.min(59, Math.max(0, numValue));
+        setTimerSeconds(clamped.toString());
+      } else {
+        setTimerSeconds('');
+      }
+    }
+  }, [timerSeconds]);
+
   // カスタム時間の状態変更をログ出力（デバッグ時のみ）
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -486,7 +553,7 @@ export default function TimerScreen() {
   const miscTimerRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
   
   const {
-    timerSeconds,
+    timerSeconds: currentTimerSeconds,
     isTimerRunning,
     startTimer,
     pauseTimer,
@@ -586,28 +653,36 @@ export default function TimerScreen() {
       return;
     }
     
-    // 入力フィールドにフォーカスがある場合は更新しない
-    if (isHoursFocused || isMinutesFocused) {
+    // モーダルが開いている場合は更新しない（ユーザーが入力中に上書きされないようにする）
+    if (showTimerInputModal) {
       return;
     }
     
-    if (mode === 'timer' && !isTimerRunning && timerSeconds === timerPresetRef.current) {
+    // 入力フィールドにフォーカスがある場合は更新しない
+    if (isHoursFocused || isMinutesFocused || isSecondsFocused) {
+      return;
+    }
+    
+    if (mode === 'timer' && !isTimerRunning && currentTimerSeconds === timerPresetRef.current) {
       // タイマーが停止中で、表示時間が設定時間と一致する場合のみ更新
       if (timerPresetRef.current > 0) {
         const hours = Math.floor(timerPresetRef.current / 3600);
         const minutes = Math.floor((timerPresetRef.current % 3600) / 60);
+        const seconds = timerPresetRef.current % 60;
         // 現在の入力値と異なる場合のみ更新（ユーザーが入力中は更新しない）
         const currentHours = timerHours ? parseInt(timerHours, 10) : 0;
         const currentMinutes = timerMinutes ? parseInt(timerMinutes, 10) : 0;
-        if (hours !== currentHours || minutes !== currentMinutes) {
+        const currentSecondsValue = timerSeconds ? parseInt(timerSeconds, 10) : 0;
+        if (hours !== currentHours || minutes !== currentMinutes || seconds !== currentSecondsValue) {
           setTimerHours(hours > 0 ? hours.toString() : '');
           setTimerMinutes(minutes > 0 ? minutes.toString() : '');
+          setTimerSeconds(seconds > 0 ? seconds.toString() : '');
         }
       }
       // timerPresetRef.current === 0の場合でも、入力フィールドにフォーカスがある場合はリセットしない
       // （ユーザーが入力中にリセットされないようにする）
     }
-  }, [mode, isTimerRunning, timerSeconds, timerHours, timerMinutes, isHoursFocused, isMinutesFocused]);
+  }, [mode, isTimerRunning, currentTimerSeconds, isHoursFocused, isMinutesFocused, isSecondsFocused, showTimerInputModal]);
 
   // タイマーの実行状態を追跡（完了検出のため）
   useEffect(() => {
@@ -1324,7 +1399,7 @@ export default function TimerScreen() {
   };
 
   const handleStartPause = () => {
-    if (timerSeconds === 0 && !isTimerRunning) {
+    if (currentTimerSeconds === 0 && !isTimerRunning) {
       // Set timer if not set
       const totalSeconds = customTime.hours * 3600 + customTime.minutes * 60 + customTime.seconds;
       if (totalSeconds > 0) {
@@ -1411,27 +1486,29 @@ export default function TimerScreen() {
     // ただし、分だけ入力されている場合は時間を0にする（誤入力を防ぐ）
     const hoursValue = timerHours && timerHours.trim() !== '' ? timerHours.trim() : '0';
     const minutesValue = timerMinutes && timerMinutes.trim() !== '' ? timerMinutes.trim() : '0';
+    const secondsValue = timerSeconds && timerSeconds.trim() !== '' ? timerSeconds.trim() : '0';
     
     const hours = parseInt(hoursValue, 10);
     const minutes = parseInt(minutesValue, 10);
-    const seconds = 0; // 秒は0に固定
+    const seconds = parseInt(secondsValue, 10);
 
-    logger.debug('handleTimerInputApply called:', { timerHours, timerMinutes, hoursValue, minutesValue, hours, minutes, isNaNHours: isNaN(hours), isNaNMinutes: isNaN(minutes) });
+    logger.debug('handleTimerInputApply called:', { timerHours, timerMinutes, timerSeconds, hoursValue, minutesValue, secondsValue, hours, minutes, seconds, isNaNHours: isNaN(hours), isNaNMinutes: isNaN(minutes), isNaNSeconds: isNaN(seconds) });
 
-    // 時間または分が0より大きい場合のみ適用
+    // 時間、分、または秒が0より大きい場合のみ適用
     // 分だけ入力されている場合は時間を0にする（誤入力を防ぐ）
     const finalHours = (!isNaN(hours) && hours > 0) ? hours : 0;
     const finalMinutes = (!isNaN(minutes) && minutes > 0) ? minutes : 0;
+    const finalSeconds = (!isNaN(seconds) && seconds > 0) ? seconds : 0;
 
-    if (finalHours > 0 || finalMinutes > 0) {
-      const totalSeconds = finalHours * 3600 + finalMinutes * 60 + seconds;
+    if (finalHours > 0 || finalMinutes > 0 || finalSeconds > 0) {
+      const totalSeconds = finalHours * 3600 + finalMinutes * 60 + finalSeconds;
       
-      logger.debug('タイマー入力から設定:', { finalHours, finalMinutes, seconds, totalSeconds });
+      logger.debug('タイマー入力から設定:', { finalHours, finalMinutes, finalSeconds, totalSeconds });
       
       // カスタム時間の状態を更新
       dispatchCustomTime({ type: 'SET_HOURS', payload: finalHours });
       dispatchCustomTime({ type: 'SET_MINUTES', payload: finalMinutes });
-      dispatchCustomTime({ type: 'SET_SECONDS', payload: seconds });
+      dispatchCustomTime({ type: 'SET_SECONDS', payload: finalSeconds });
       
       // タイマーに設定（setTimerPresetはタイマーの秒数を直接更新する）
       // timerPresetRefはsetTimerPreset内で更新されるので、ここでは設定不要
@@ -1447,9 +1524,10 @@ export default function TimerScreen() {
         setShowTimerInputModal(false);
         setTimerHours('');
         setTimerMinutes('');
+        setTimerSeconds('');
         
         // 成功メッセージを表示
-        const timeStr = `${finalHours > 0 ? finalHours + (t('hours') || '時間') : ''}${finalMinutes > 0 ? finalMinutes + (t('minutes') || '分') : ''}`;
+        const timeStr = `${finalHours > 0 ? finalHours + (t('hours') || '時間') : ''}${finalMinutes > 0 ? finalMinutes + (t('minutes') || '分') : ''}${finalSeconds > 0 ? finalSeconds + (t('seconds') || '秒') : ''}`;
         Alert.alert(t('settingsCompleted') || '設定完了', t('timerSetTo')?.replace('{time}', timeStr) || `タイマーを${timeStr}に設定しました`);
       }, 100);
       miscTimerRefs.current.push(timer);
@@ -1463,20 +1541,45 @@ export default function TimerScreen() {
     setShowTimerInputModal(false);
     setTimerHours('');
     setTimerMinutes('');
+    setTimerSeconds('');
   };
 
-  // モーダルが開いた時に分のフィールドに自動的にフォーカスを当てる
+  // モーダルが開いた時に現在のタイマー値を入力フィールドに反映し、分のフィールドに自動的にフォーカスを当てる
   useEffect(() => {
     if (showTimerInputModal) {
+      // 現在のタイマー値を入力フィールドに反映
+      const currentPreset = timerPresetRef.current;
+      logger.debug('モーダルを開いた時のタイマー値:', { currentPreset, timerPresetRef: timerPresetRef.current });
+      
+      if (currentPreset > 0) {
+        const hours = Math.floor(currentPreset / 3600);
+        const minutes = Math.floor((currentPreset % 3600) / 60);
+        const seconds = currentPreset % 60;
+        logger.debug('タイマー値を分解:', { hours, minutes, seconds });
+        setTimerHours(hours > 0 ? hours.toString() : '');
+        setTimerMinutes(minutes > 0 ? minutes.toString() : '');
+        setTimerSeconds(seconds > 0 ? seconds.toString() : '');
+      } else {
+        // タイマーが設定されていない場合は空にする
+        setTimerHours('');
+        setTimerMinutes('');
+        setTimerSeconds('');
+      }
+      
       // モーダルが開いたら少し待ってから分のフィールドにフォーカス
       const timer = setTimeout(() => {
         timerMinutesInputRef.current?.focus();
       }, 300);
       return () => clearTimeout(timer);
+    } else {
+      // モーダルが閉じられた時に入力フィールドをクリア
+      setTimerHours('');
+      setTimerMinutes('');
+      setTimerSeconds('');
     }
   }, [showTimerInputModal]);
 
-  const currentSeconds = timerSeconds;
+  const currentSeconds = currentTimerSeconds;
   const isRunning = isTimerRunning;
 
   // プログレス計算（左回りで時間の経過とともに減る）
@@ -1484,8 +1587,8 @@ export default function TimerScreen() {
   
   // プログレス計算：timerPresetRefまたはtotalTimerSecondsの大きい方を使用
   const presetSeconds = Math.max(timerPresetRef.current, totalTimerSeconds);
-  const progress = (presetSeconds > 0 && timerSeconds > 0) ? 
-    Math.max(0, Math.min(1, 1 - (timerSeconds / presetSeconds))) : 0;
+  const progress = (presetSeconds > 0 && currentTimerSeconds > 0) ? 
+    Math.max(0, Math.min(1, 1 - (currentTimerSeconds / presetSeconds))) : 0;
 
   // Quick timer presets
   const quickTimers = [
@@ -1501,12 +1604,12 @@ export default function TimerScreen() {
 
   // タイマーが再開された時に完了状態をクリア（resetTimer/clearTimerで明示的にリセット済み）
   useEffect(() => {
-    if (mode === 'timer' && timerSeconds > 0 && isTimerRunning) {
+    if (mode === 'timer' && currentTimerSeconds > 0 && isTimerRunning) {
       // タイマーが実行中に再開された場合は完了状態をクリア
       // （resetTimer/clearTimerで既にリセットされているが、念のため）
       completedPracticeTimeRef.current = null;
     }
-  }, [timerSeconds, isTimerRunning, mode]);
+  }, [currentTimerSeconds, isTimerRunning, mode]);
 
 
   return (
@@ -1602,7 +1705,7 @@ export default function TimerScreen() {
                 <TouchableOpacity
                   style={[styles.controlButton, { backgroundColor: currentTheme.primary }]}
                   onPress={() => {
-                    if (timerSeconds === 0 && !isTimerRunning) {
+                    if (currentTimerSeconds === 0 && !isTimerRunning) {
                       const totalSeconds = customTime.hours * 3600 + customTime.minutes * 60 + customTime.seconds;
                       if (totalSeconds > 0) {
                         logger.debug('Control button: Setting timer preset to:', totalSeconds);
@@ -1635,7 +1738,7 @@ export default function TimerScreen() {
           </View>
           
           {/* Timer completion indicator */}
-          {mode === 'timer' && timerSeconds === 0 && !isTimerRunning && timerPresetRef.current > 0 && (
+          {mode === 'timer' && currentTimerSeconds === 0 && !isTimerRunning && timerPresetRef.current > 0 && (
             <View style={[styles.completedIndicator, { backgroundColor: currentTheme.primary }]}>
               <Text style={[styles.completedText, { color: currentTheme.surface }]}>{t('practiceCompleted')}</Text>
             </View>
@@ -1650,21 +1753,23 @@ export default function TimerScreen() {
               flexDirection: 'row',
               justifyContent: 'center',
               alignItems: 'center',
-              marginVertical: 16,
-              gap: 12,
+              // はみ出し対策: 余白を詰め、必要なら折り返し可能にする
+              marginVertical: 2,
+              gap: 3,
+              flexWrap: 'wrap',
             }}>
               {/* 時間入力 */}
               <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
+                gap: 4,
               }}>
                 <TextInput
                   ref={timerHoursInputRef}
                   style={{
-                    width: 45,
-                    paddingVertical: 10,
-                    paddingHorizontal: 6,
+                    width: 42,
+                    paddingVertical: 6,
+                    paddingHorizontal: 4,
                     borderRadius: 8,
                     borderWidth: 1.5,
                     borderColor: timerHours ? currentTheme.primary : currentTheme.secondary,
@@ -1691,10 +1796,10 @@ export default function TimerScreen() {
                   }}
                 />
                 <Text style={{
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: '500',
                   color: currentTheme.textSecondary,
-                  minWidth: 30,
+                  minWidth: 22,
                 }}>
                   {t('hours') || '時間'}
                 </Text>
@@ -1704,14 +1809,14 @@ export default function TimerScreen() {
               <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                gap: 6,
+                gap: 4,
               }}>
                 <TextInput
                   ref={timerMinutesInputRef}
                   style={{
-                    width: 40,
-                    paddingVertical: 10,
-                    paddingHorizontal: 6,
+                    width: 38,
+                    paddingVertical: 6,
+                    paddingHorizontal: 4,
                     borderRadius: 8,
                     borderWidth: 1.5,
                     borderColor: timerMinutes ? currentTheme.primary : currentTheme.secondary,
@@ -1732,16 +1837,63 @@ export default function TimerScreen() {
                   placeholderTextColor={currentTheme.textSecondary}
                   keyboardType="number-pad"
                   maxLength={2}
+                  returnKeyType="next"
+                  onSubmitEditing={() => {
+                    timerSecondsInputRef.current?.focus();
+                  }}
+                />
+                <Text style={{
+                  fontSize: 12,
+                  fontWeight: '500',
+                  color: currentTheme.textSecondary,
+                  minWidth: 20,
+                }}>
+                  {t('minutes') || '分'}
+                </Text>
+              </View>
+              
+              {/* 秒入力 */}
+              <View style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+              }}>
+                <TextInput
+                  ref={timerSecondsInputRef}
+                  style={{
+                    width: 38,
+                    paddingVertical: 6,
+                    paddingHorizontal: 4,
+                    borderRadius: 8,
+                    borderWidth: 1.5,
+                    borderColor: timerSeconds ? currentTheme.primary : currentTheme.secondary,
+                    fontSize: 18,
+                    textAlign: 'right',
+                    fontWeight: '700',
+                    color: currentTheme.text,
+                    backgroundColor: currentTheme.surface,
+                  }}
+                  value={timerSeconds}
+                  onChangeText={handleSecondsInput}
+                  onFocus={() => setIsSecondsFocused(true)}
+                  onBlur={() => {
+                    setIsSecondsFocused(false);
+                    handleSecondsBlur();
+                  }}
+                  placeholder="0"
+                  placeholderTextColor={currentTheme.textSecondary}
+                  keyboardType="number-pad"
+                  maxLength={2}
                   returnKeyType="done"
                   onSubmitEditing={handleTimerInputApply}
                 />
                 <Text style={{
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: '500',
                   color: currentTheme.textSecondary,
-                  minWidth: 25,
+                  minWidth: 20,
                 }}>
-                  {t('minutes') || '分'}
+                  {t('seconds') || '秒'}
                 </Text>
               </View>
               
@@ -1749,11 +1901,12 @@ export default function TimerScreen() {
               <TouchableOpacity
                 style={{
                   backgroundColor: currentTheme.primary,
-                  paddingVertical: 12,
-                  paddingHorizontal: 24,
+                  paddingVertical: 8,
+                  paddingHorizontal: 12,
                   borderRadius: 25,
                   justifyContent: 'center',
                   alignItems: 'center',
+                  marginLeft: 2,
                   ...(Platform.OS === 'web' 
                     ? { boxShadow: '0px 2px 3.84px rgba(0, 0, 0, 0.25)' }
                     : {
@@ -1764,14 +1917,18 @@ export default function TimerScreen() {
                         elevation: 5,
                       }
                   ),
-                  minWidth: 80,
+                  minWidth: 64,
                 }}
                 onPress={handleTimerInputApply}
-                disabled={(!timerHours || parseInt(timerHours, 10) === 0) && (!timerMinutes || parseInt(timerMinutes, 10) === 0)}
+                disabled={
+                  (!timerHours || timerHours.trim() === '' || isNaN(parseInt(timerHours, 10)) || parseInt(timerHours, 10) === 0) &&
+                  (!timerMinutes || timerMinutes.trim() === '' || isNaN(parseInt(timerMinutes, 10)) || parseInt(timerMinutes, 10) === 0) &&
+                  (!timerSeconds || timerSeconds.trim() === '' || isNaN(parseInt(timerSeconds, 10)) || parseInt(timerSeconds, 10) === 0)
+                }
               >
                 <Text style={{
                   color: currentTheme.surface,
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: '600',
                 }}>
                   {t('apply') || '適用'}
@@ -1897,9 +2054,9 @@ export default function TimerScreen() {
           <View style={{
             backgroundColor: '#1A1A1A',
             borderRadius: 20,
-            width: width * 0.85,
+            width: width * 0.9,
             maxWidth: 400,
-            padding: 30,
+            padding: 20,
             alignItems: 'center',
           }}>
             {/* タイマー時間入力 */}
@@ -1907,7 +2064,7 @@ export default function TimerScreen() {
               fontSize: 18,
               fontWeight: '600',
               color: '#E0E0E0',
-              marginBottom: 20,
+              marginBottom: 16,
               textAlign: 'center',
             }}>
               タイマー時間を設定
@@ -1918,8 +2075,8 @@ export default function TimerScreen() {
               justifyContent: 'space-around',
               alignItems: 'center',
               width: '100%',
-              marginBottom: 24,
-              gap: 12,
+              marginBottom: 20,
+              gap: 8,
             }}>
               {/* 時間入力 */}
               <View style={{
@@ -1927,16 +2084,14 @@ export default function TimerScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 6,
+                gap: 4,
               }}>
                 <TextInput
                   ref={timerHoursInputRef}
                   style={{
-                    flex: 1,
-                    minWidth: 40,
-                    maxWidth: 45,
-                    paddingVertical: 10,
-                    paddingHorizontal: 6,
+                    width: 45,
+                    paddingVertical: 8,
+                    paddingHorizontal: 4,
                     borderRadius: 8,
                     borderWidth: 1.5,
                     borderColor: timerHours ? currentTheme.primary : '#666666',
@@ -1963,10 +2118,10 @@ export default function TimerScreen() {
                   }}
                 />
                 <Text style={{
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: '500',
                   color: '#E0E0E0',
-                  minWidth: 30,
+                  minWidth: 24,
                 }}>
                   {t('hours') || '時間'}
                 </Text>
@@ -1978,16 +2133,14 @@ export default function TimerScreen() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 6,
+                gap: 4,
               }}>
                 <TextInput
                   ref={timerMinutesInputRef}
                   style={{
-                    flex: 1,
-                    minWidth: 40,
-                    maxWidth: 45,
-                    paddingVertical: 10,
-                    paddingHorizontal: 6,
+                    width: 45,
+                    paddingVertical: 8,
+                    paddingHorizontal: 4,
                     borderRadius: 8,
                     borderWidth: 1.5,
                     borderColor: timerMinutes ? currentTheme.primary : '#666666',
@@ -2008,16 +2161,65 @@ export default function TimerScreen() {
                   placeholderTextColor="#666666"
                   keyboardType="number-pad"
                   maxLength={2}
+                  returnKeyType="next"
+                  onSubmitEditing={() => {
+                    timerSecondsInputRef.current?.focus();
+                  }}
+                />
+                <Text style={{
+                  fontSize: 12,
+                  fontWeight: '500',
+                  color: '#E0E0E0',
+                  minWidth: 20,
+                }}>
+                  {t('minutes') || '分'}
+                </Text>
+              </View>
+              
+              {/* 秒入力 */}
+              <View style={{
+                flex: 1,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+              }}>
+                <TextInput
+                  ref={timerSecondsInputRef}
+                  style={{
+                    width: 45,
+                    paddingVertical: 8,
+                    paddingHorizontal: 4,
+                    borderRadius: 8,
+                    borderWidth: 1.5,
+                    borderColor: timerSeconds ? currentTheme.primary : '#666666',
+                    fontSize: 18,
+                    textAlign: 'right',
+                    fontWeight: '700',
+                    color: '#FFFFFF',
+                    backgroundColor: '#2A2A2A',
+                  }}
+                  value={timerSeconds}
+                  onChangeText={handleSecondsInput}
+                  onFocus={() => setIsSecondsFocused(true)}
+                  onBlur={() => {
+                    setIsSecondsFocused(false);
+                    handleSecondsBlur();
+                  }}
+                  placeholder="0"
+                  placeholderTextColor="#666666"
+                  keyboardType="number-pad"
+                  maxLength={2}
                   returnKeyType="done"
                   onSubmitEditing={handleTimerInputApply}
                 />
                 <Text style={{
-                  fontSize: 14,
+                  fontSize: 12,
                   fontWeight: '500',
                   color: '#E0E0E0',
-                  minWidth: 25,
+                  minWidth: 20,
                 }}>
-                  {t('minutes') || '分'}
+                  {t('seconds') || '秒'}
                 </Text>
               </View>
             </View>
@@ -2026,20 +2228,23 @@ export default function TimerScreen() {
             {(() => {
               const hours = timerHours ? parseInt(timerHours, 10) : 0;
               const minutes = timerMinutes ? parseInt(timerMinutes, 10) : 0;
-              const totalSeconds = hours * 3600 + minutes * 60;
+              const seconds = timerSeconds ? parseInt(timerSeconds, 10) : 0;
+              const totalSeconds = hours * 3600 + minutes * 60 + seconds;
               if (totalSeconds > 0) {
                 const displayHours = Math.floor(totalSeconds / 3600);
                 const displayMinutes = Math.floor((totalSeconds % 3600) / 60);
+                const displaySeconds = totalSeconds % 60;
                 return (
                   <Text style={{
                     fontSize: 14,
                     fontWeight: '500',
                     color: '#999999',
-                    marginBottom: 20,
+                    marginBottom: 16,
                     textAlign: 'center',
                   }}>
                     {displayHours > 0 ? `${displayHours}${t('hours') || '時間'}` : ''}
                     {displayMinutes > 0 ? `${displayMinutes}${t('minutes') || '分'}` : ''}
+                    {displaySeconds > 0 ? `${displaySeconds}${t('seconds') || '秒'}` : ''}
                     {totalSeconds === 0 ? t('pleaseSetValidTime') || '有効な時間を設定してください' : ''}
                   </Text>
                 );
@@ -2048,7 +2253,7 @@ export default function TimerScreen() {
             })()}
 
             {/* コントロールボタン */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 30 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginTop: 20 }}>
               <TouchableOpacity
                 onPress={handleTimerInputCancel}
                 style={{
@@ -2065,18 +2270,30 @@ export default function TimerScreen() {
 
               <TouchableOpacity
                 onPress={handleTimerInputApply}
-                disabled={(!timerHours || isNaN(parseInt(timerHours, 10)) || parseInt(timerHours, 10) === 0) && (!timerMinutes || isNaN(parseInt(timerMinutes, 10)) || parseInt(timerMinutes, 10) === 0)}
+                disabled={
+                  (!timerHours || timerHours.trim() === '' || isNaN(parseInt(timerHours, 10)) || parseInt(timerHours, 10) === 0) &&
+                  (!timerMinutes || timerMinutes.trim() === '' || isNaN(parseInt(timerMinutes, 10)) || parseInt(timerMinutes, 10) === 0) &&
+                  (!timerSeconds || timerSeconds.trim() === '' || isNaN(parseInt(timerSeconds, 10)) || parseInt(timerSeconds, 10) === 0)
+                }
                 style={{
                   paddingVertical: 16,
                   paddingHorizontal: 32,
                   borderRadius: 40,
-                  backgroundColor: ((!timerHours || isNaN(parseInt(timerHours, 10)) || parseInt(timerHours, 10) === 0) && (!timerMinutes || isNaN(parseInt(timerMinutes, 10)) || parseInt(timerMinutes, 10) === 0)) 
+                  backgroundColor: (
+                    (!timerHours || timerHours.trim() === '' || isNaN(parseInt(timerHours, 10)) || parseInt(timerHours, 10) === 0) &&
+                    (!timerMinutes || timerMinutes.trim() === '' || isNaN(parseInt(timerMinutes, 10)) || parseInt(timerMinutes, 10) === 0) &&
+                    (!timerSeconds || timerSeconds.trim() === '' || isNaN(parseInt(timerSeconds, 10)) || parseInt(timerSeconds, 10) === 0)
+                  ) 
                     ? '#666666' 
                     : currentTheme.primary,
                   justifyContent: 'center',
                   alignItems: 'center',
                   minWidth: 120,
-                  opacity: ((!timerHours || isNaN(parseInt(timerHours, 10)) || parseInt(timerHours, 10) === 0) && (!timerMinutes || isNaN(parseInt(timerMinutes, 10)) || parseInt(timerMinutes, 10) === 0)) ? 0.5 : 1,
+                  opacity: (
+                    (!timerHours || timerHours.trim() === '' || isNaN(parseInt(timerHours, 10)) || parseInt(timerHours, 10) === 0) &&
+                    (!timerMinutes || timerMinutes.trim() === '' || isNaN(parseInt(timerMinutes, 10)) || parseInt(timerMinutes, 10) === 0) &&
+                    (!timerSeconds || timerSeconds.trim() === '' || isNaN(parseInt(timerSeconds, 10)) || parseInt(timerSeconds, 10) === 0)
+                  ) ? 0.5 : 1,
                 }}
               >
                 <Text style={{

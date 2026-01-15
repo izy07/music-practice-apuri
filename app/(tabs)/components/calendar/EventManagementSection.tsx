@@ -34,6 +34,28 @@ interface EventManagementSectionProps {
   onEventDeleted: () => void;
 }
 
+const parseEventDate = (dateStr: string): Date | null => {
+  // Supabaseのevents.dateは主に "YYYY-MM-DD" を想定（UTC解釈による日付ズレを避けるためローカル0時で生成）
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const d = new Date(`${dateStr}T00:00:00`);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const d = new Date(dateStr);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+const formatEventListDate = (dateStr: string): string => {
+  const d = parseEventDate(dateStr);
+  if (!d) return dateStr;
+  const nowYear = new Date().getFullYear();
+  const isDifferentYear = d.getFullYear() !== nowYear;
+
+  return d.toLocaleDateString('ja-JP', isDifferentYear
+    ? { year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'short' }
+    : { month: 'numeric', day: 'numeric', weekday: 'short' }
+  );
+};
+
 // デフォルトテーマ
 const defaultTheme: InstrumentTheme = {
   background: '#FFFFFF',
@@ -150,6 +172,21 @@ export default function EventManagementSection({
       return eventColor === selectedColorFilter;
     });
   }, [allEvents, selectedColorFilter]);
+
+  // 日付が新しい順（降順）に並び替え（最新を上に）
+  const sortedFilteredEvents = useMemo(() => {
+    return [...filteredEvents].sort((a, b) => {
+      const aDate = a.date ? parseEventDate(a.date) : null;
+      const bDate = b.date ? parseEventDate(b.date) : null;
+
+      // 日付がないものは下へ
+      if (!aDate && !bDate) return 0;
+      if (!aDate) return 1;
+      if (!bDate) return -1;
+
+      return bDate.getTime() - aDate.getTime();
+    });
+  }, [filteredEvents]);
   
   // メンテナンスイベントを取得（最新のもの）と表示ラベルの判定
   const maintenanceEventInfo = useMemo(() => {
@@ -195,7 +232,7 @@ export default function EventManagementSection({
     return { event: latestEvent, label };
   }, [allEvents]);
   
-  const displayEvents = filteredEvents.slice(0, 5);
+  const displayEvents = sortedFilteredEvents.slice(0, 5);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.surface }]}>
@@ -321,11 +358,7 @@ export default function EventManagementSection({
                 <Text style={[styles.eventTitle, { color: theme.text }]}>{event.title}</Text>
                 {event.date && (
                   <Text style={[styles.eventDate, { color: theme.textSecondary }]}>
-                    {new Date(event.date).toLocaleDateString('ja-JP', { 
-                      month: 'numeric', 
-                      day: 'numeric',
-                      weekday: 'short'
-                    })}
+                    {formatEventListDate(event.date)}
                   </Text>
                 )}
               </View>
@@ -468,7 +501,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   maintenanceInfo: {
-    padding: 12,
+    padding: 8,
     borderRadius: 8,
     borderWidth: 1,
     marginBottom: 8,
@@ -476,16 +509,16 @@ const styles = StyleSheet.create({
   maintenanceLabel: {
     fontSize: 12,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   maintenanceDate: {
     fontSize: 14,
     fontWeight: '500',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   maintenanceTitle: {
     fontSize: 12,
-    marginTop: 4,
+    marginTop: 2,
   },
   filterContainer: {
     flexDirection: 'row',

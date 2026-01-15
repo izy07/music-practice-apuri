@@ -1132,11 +1132,11 @@ export default function CalendarScreen() {
                   style={[styles.todayButton, { position: 'absolute', right: 0, backgroundColor: currentTheme.primary }]}
                   onPress={goToToday}
                   accessibilityRole="button"
-                  accessibilityLabel="今日の日付に戻る"
-                  accessibilityHint="カレンダーを今日の日付に移動します"
+                  accessibilityLabel="今の日付に戻る"
+                  accessibilityHint="カレンダーを今の日付に移動します"
                 >
                   <Text style={[styles.todayButtonText, { color: currentTheme.surface, writingDirection: 'ltr' }]}>
-                    今日
+                    今
                   </Text>
                 </TouchableOpacity>
               )}
@@ -1421,7 +1421,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingVertical: getScaledSpacing(12),
     paddingHorizontal: getScaledSpacing(12),
-    paddingBottom: getScaledSpacing(20), // 下部のパディングを増やしてサマリーとの間隔を確保
+    paddingBottom: getScaledSpacing(10), // 下の余白を減らす（今月の合計練習時間の下が空きすぎるため）
     marginTop: getScaledSpacing(8),
     marginBottom: getScaledSpacing(5),
     elevation: 4,
@@ -1475,13 +1475,14 @@ const styles = StyleSheet.create({
     color: '#333333',
   },
   todayButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    // 「今日」→「今」で短くなった分、ボタン自体も少しコンパクトにする
+    paddingHorizontal: 6,
+    paddingVertical: 4,
     borderRadius: 8,
-    minWidth: 50,
+    minWidth: 28,
   },
   todayButtonText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   dayHeaders: {
@@ -1511,13 +1512,15 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     maxHeight: 350, // カレンダーの最大高さを増加
     paddingVertical: getScaledSpacing(4),
-    justifyContent: 'flex-start',
+    // 横方向にセル間の余白を作る（縦は既にmarginVerticalがある）
+    justifyContent: 'space-between',
     paddingHorizontal: getScaledSpacing(0.5), // dayHeadersと同じパディングを適用
-    marginBottom: getScaledSpacing(6), // カレンダーとサマリーの間隔をさらに短く
+    marginBottom: 0, // カレンダーとサマリーの間隔を最小限に
     minHeight: 0, // 最小高さをリセット
   },
   emptyDay: {
-    width: '14.28%',
+    // CalendarDayCellと同じ幅に揃えて、space-betweenで横余白を作る
+    width: '13.6%',
     height: 28, // 固定値で短く
     marginHorizontal: 0,
     marginVertical: getScaledSpacing(0.25),
@@ -1528,7 +1531,7 @@ const styles = StyleSheet.create({
     height: 28, // 固定値で短く
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: getScaledSize(8),
+    borderRadius: getScaledSize(4),
     marginHorizontal: 0,
     marginVertical: getScaledSpacing(0.25),
     paddingHorizontal: 0, // calendarGridのpaddingHorizontalで調整するため0に
@@ -1618,7 +1621,7 @@ const styles = StyleSheet.create({
     lineHeight: 9,
   },
   summaryContainer: {
-    marginTop: getScaledSpacing(4), // カレンダーとの間隔をさらに短く
+    marginTop: 0, // カレンダーとの間隔をさらに短く
     padding: getScaledSpacing(12),
     paddingLeft: getScaledSpacing(16), // 左側の余白を追加
     paddingBottom: getScaledSpacing(6), // 下部のパディングを減らす

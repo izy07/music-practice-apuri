@@ -666,10 +666,11 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 12,
-    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 6,
+    alignSelf: 'center',
     ...createShadowStyle({
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
@@ -680,8 +681,8 @@ export const styles = StyleSheet.create({
   },
   deleteButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
   },
   // 日付選択モーダルのスタイル
   datePickerOverlay: {

@@ -340,7 +340,7 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
         }
         break;
         
-      case 'beep':
+      case 'beep' as any:
         // 後方互換性のため 'beep' を 'tone' として処理
         {
           const oscillator = ctx.createOscillator();
@@ -628,10 +628,8 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
             style={[
               styles.beatIndicator,
               {
-                backgroundColor: currentBeat === index 
-                  ? currentTheme.primary 
-                  : currentTheme.secondary,
-                opacity: currentBeat === index ? 1 : 0.3,
+                backgroundColor: currentBeat === index ? currentTheme.primary : 'transparent',
+                borderColor: currentBeat === index ? currentTheme.primary : currentTheme.textSecondary,
               }
             ]}
           />
@@ -899,6 +897,7 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     marginHorizontal: 8,
+    borderWidth: 2,
   },
   settingsContainer: {
     borderRadius: 20,
@@ -921,6 +920,7 @@ const styles = StyleSheet.create({
   },
   bpmInputContainer: {
     marginBottom: 6,
+    marginTop: 16,
     alignItems: 'center',
   },
   bpmInput: {
@@ -939,6 +939,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   timeSignatureSettingContainer: {
+    marginTop: -4,
     marginBottom: 8,
   },
   timeSignatureDisplayButton: {
@@ -1005,13 +1006,15 @@ const styles = StyleSheet.create({
   metronomeSoundSettingGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     gap: 8,
     marginTop: 2,
   },
   metronomeSoundSettingButton: {
-    minWidth: 80,
-    paddingHorizontal: 16,
+    flex: 1,
+    minWidth: '22%',
+    maxWidth: '24%',
+    paddingHorizontal: 8,
     paddingVertical: 12,
     borderRadius: 16,
     justifyContent: 'center',
@@ -1038,7 +1041,8 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 24,
     elevation: 4,
-    marginTop: 10,
+    marginTop: 4,
+    marginBottom: 12,
   },
   metronomeStartButtonText: {
     color: '#FFFFFF',

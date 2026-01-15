@@ -57,6 +57,11 @@ export default function ProfileSettingsScreen() {
   const birthYearInputRef = useRef<TextInput>(null);
   const birthMonthInputRef = useRef<TextInput>(null);
   const birthDayInputRef = useRef<TextInput>(null);
+  
+  // 購入日入力フィールドのref（各楽器ごとに管理）
+  const purchaseYearInputRefs = useRef<{ [key: string]: TextInput | null }>({});
+  const purchaseMonthInputRefs = useRef<{ [key: string]: TextInput | null }>({});
+  const purchaseDayInputRefs = useRef<{ [key: string]: TextInput | null }>({});
   const [breakPeriods, setBreakPeriods] = useState<Array<{id: string, startDate: string, endDate: string, reason: string}>>([]);
   const [pastOrganizations, setPastOrganizations] = useState<Array<{id: string, name: string, role: string, startDate: string, endDate: string}>>([]);
   const [awards, setAwards] = useState<Array<{id: string, title: string, organization: string, date: string, description: string}>>([]);
@@ -68,6 +73,9 @@ export default function ProfileSettingsScreen() {
     maker: string;
     model: string;
     purchaseDate: string | null;
+    purchaseYear: string;
+    purchaseMonth: string;
+    purchaseDay: string;
     purchasePrice?: string;
     notes?: string;
   };
@@ -75,9 +83,6 @@ export default function ProfileSettingsScreen() {
   const [instrumentTypes, setInstrumentTypes] = useState<Array<InstrumentInfo>>([]);
   const [showInstrumentInfo, setShowInstrumentInfo] = useState(false);
   
-  // 購入日選択モーダルの状態
-  const [showInstrumentDatePicker, setShowInstrumentDatePicker] = useState(false);
-  const [instrumentDatePickerIndex, setInstrumentDatePickerIndex] = useState<number | null>(null);
   const [showBreakPeriodModal, setShowBreakPeriodModal] = useState(false);
   const [showPastOrganizationModal, setShowPastOrganizationModal] = useState(false);
   const [showAwardModal, setShowAwardModal] = useState(false);
@@ -188,15 +193,31 @@ export default function ProfileSettingsScreen() {
                   const parsed = JSON.parse(instrumentData.custom_instrument_name);
                   if (Array.isArray(parsed) && parsed.length > 0) {
                     // JSON形式のデータ
-                    const instruments = parsed.map((item: any, index: number) => ({
-                      id: item.id || (index + 1).toString(),
-                      name: item.name || '',
-                      maker: item.maker || '',
-                      model: item.model || '',
-                      purchaseDate: item.purchaseDate || null,
-                      purchasePrice: item.purchasePrice || '',
-                      notes: item.notes || '',
-                    }));
+                    const instruments = parsed.map((item: any, index: number) => {
+                      let purchaseYear = '';
+                      let purchaseMonth = '';
+                      let purchaseDay = '';
+                      if (item.purchaseDate) {
+                        const date = new Date(item.purchaseDate);
+                        if (!isNaN(date.getTime())) {
+                          purchaseYear = String(date.getFullYear());
+                          purchaseMonth = String(date.getMonth() + 1).padStart(2, '0');
+                          purchaseDay = String(date.getDate()).padStart(2, '0');
+                        }
+                      }
+                      return {
+                        id: item.id || (index + 1).toString(),
+                        name: item.name || '',
+                        maker: item.maker || '',
+                        model: item.model || '',
+                        purchaseDate: item.purchaseDate || null,
+                        purchaseYear,
+                        purchaseMonth,
+                        purchaseDay,
+                        purchasePrice: item.purchasePrice || '',
+                        notes: item.notes || '',
+                      };
+                    });
                     setInstrumentTypes(instruments);
                     setShowInstrumentInfo(true);
                   } else {
@@ -213,6 +234,9 @@ export default function ProfileSettingsScreen() {
                         maker: '',
                         model: '',
                         purchaseDate: null,
+                        purchaseYear: '',
+                        purchaseMonth: '',
+                        purchaseDay: '',
                         purchasePrice: '',
                         notes: '',
                       }))
@@ -259,7 +283,7 @@ export default function ProfileSettingsScreen() {
                 const types = customInstrumentName.split(',').filter((name: string) => name.trim() !== '');
                 if (types.length > 0) {
                   setInstrumentTypes(
-                    types.map((name: string, index: number) => ({ id: (index + 1).toString(), name: name.trim(), maker: '', model: '', purchaseDate: null, purchasePrice: '', notes: '' }))
+                    types.map((name: string, index: number) => ({ id: (index + 1).toString(), name: name.trim(), maker: '', model: '', purchaseDate: null, purchaseYear: '', purchaseMonth: '', purchaseDay: '', purchasePrice: '', notes: '' }))
                   );
                   setShowInstrumentInfo(true);
                 }
@@ -872,15 +896,30 @@ export default function ProfileSettingsScreen() {
       // 楽器情報をJSON形式で保存（既存データとの互換性のため、空の場合はundefined）
       const validInstruments = instrumentsToSave.filter(item => item.name.trim() !== '');
       const instrumentTypesJson = validInstruments.length > 0 
-        ? JSON.stringify(validInstruments.map(item => ({
-            id: item.id,
-            name: item.name.trim(),
-            maker: item.maker.trim(),
-            model: item.model.trim(),
-            purchaseDate: item.purchaseDate || null,
-            purchasePrice: item.purchasePrice?.trim() || '',
-            notes: item.notes?.trim() || '',
-          })))
+        ? JSON.stringify(validInstruments.map(item => {
+            // 購入日を年、月、日から生成
+            let purchaseDate = item.purchaseDate;
+            if (!purchaseDate && item.purchaseYear && item.purchaseMonth && item.purchaseDay) {
+              const y = parseInt(item.purchaseYear, 10);
+              const m = parseInt(item.purchaseMonth, 10);
+              const d = parseInt(item.purchaseDay, 10);
+              if (y && m && d) {
+                const date = new Date(y, m - 1, d);
+                if (!isNaN(date.getTime())) {
+                  purchaseDate = date.toISOString().split('T')[0];
+                }
+              }
+            }
+            return {
+              id: item.id,
+              name: item.name.trim(),
+              maker: item.maker.trim(),
+              model: item.model.trim(),
+              purchaseDate: purchaseDate || null,
+              purchasePrice: item.purchasePrice?.trim() || '',
+              notes: item.notes?.trim() || '',
+            };
+          }))
         : undefined;
       
       // 音楽開始年齢が空の場合は既存の値を保持
@@ -923,20 +962,90 @@ export default function ProfileSettingsScreen() {
 
   // 楽器情報の削除関数
   const handleDeleteInstrument = async (instrumentId: string) => {
-    const filtered = instrumentTypes.filter(i => i.id !== instrumentId);
-    const updatedInstruments = filtered.length === 0 ? [] : filtered;
-    
-    // 状態を更新
-    if (updatedInstruments.length === 0) {
-      // 全て削除した場合は、楽器情報欄を非表示にする
-      setInstrumentTypes([]);
-      setShowInstrumentInfo(false);
-    } else {
-      setInstrumentTypes(updatedInstruments);
+    if (!currentUser?.id) {
+      Alert.alert('エラー', 'ユーザー情報が取得できませんでした');
+      return;
     }
-    
-    // 削除後、楽器情報を自動保存（更新後の値を渡す）
-    await saveInstrumentInfoOnly(updatedInstruments);
+
+    try {
+      logger.info('[ProfileSettings] 楽器データ削除処理を開始:', { instrumentId, userId: currentUser.id });
+
+      // 各テーブルから楽器のデータを削除
+      const deletePromises = [
+        supabase
+          .from('recordings')
+          .delete()
+          .eq('user_id', currentUser.id)
+          .eq('instrument_id', instrumentId),
+        supabase
+          .from('goals')
+          .delete()
+          .eq('user_id', currentUser.id)
+          .eq('instrument_id', instrumentId),
+        supabase
+          .from('my_songs')
+          .delete()
+          .eq('user_id', currentUser.id)
+          .eq('instrument_id', instrumentId),
+        supabase
+          .from('practice_sessions')
+          .delete()
+          .eq('user_id', currentUser.id)
+          .eq('instrument_id', instrumentId),
+        supabase
+          .from('events')
+          .delete()
+          .eq('user_id', currentUser.id)
+          .eq('instrument_id', instrumentId),
+      ];
+
+      const results = await Promise.all(deletePromises);
+      const errors = results.filter(r => r.error);
+
+      if (errors.length > 0) {
+        logger.error('[ProfileSettings] 楽器データ削除エラー:', errors);
+        Alert.alert(
+          'エラー',
+          '楽器データの削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      logger.info('[ProfileSettings] 楽器データの削除が完了:', { instrumentId });
+
+      // 楽器情報リストから削除
+      const filtered = instrumentTypes.filter(i => i.id !== instrumentId);
+      const updatedInstruments = filtered.length === 0 ? [] : filtered;
+      
+      // 状態を更新
+      if (updatedInstruments.length === 0) {
+        // 全て削除した場合は、楽器情報欄を非表示にする
+        setInstrumentTypes([]);
+        setShowInstrumentInfo(false);
+      } else {
+        setInstrumentTypes(updatedInstruments);
+      }
+      
+      // 削除後、楽器情報を自動保存（更新後の値を渡す）
+      await saveInstrumentInfoOnly(updatedInstruments);
+
+      // 削除成功のアラートを表示
+      const instrument = instrumentTypes.find(i => i.id === instrumentId);
+      const instrumentName = instrument?.name || '楽器';
+      Alert.alert(
+        '削除完了',
+        `「${instrumentName}」のデータを削除しました。`,
+        [{ text: 'OK' }]
+      );
+    } catch (error: unknown) {
+      logger.error('[ProfileSettings] 楽器データ削除例外:', error);
+      Alert.alert(
+        'エラー',
+        '楽器データの削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   // 削除関数
@@ -1439,7 +1548,11 @@ export default function ProfileSettingsScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
         {/* プロフィール概要カード */}
         <View style={[styles.profileOverviewCard, { backgroundColor: currentTheme.surface }]}>
           <TouchableOpacity 
@@ -1760,7 +1873,7 @@ export default function ProfileSettingsScreen() {
                       onPress={() => {
                         setShowInstrumentInfo(true);
                         const newId = '1';
-                        setInstrumentTypes([{ id: newId, name: '', maker: '', model: '', purchaseDate: null, purchasePrice: '', notes: '' }]);
+                        setInstrumentTypes([{ id: newId, name: '', maker: '', model: '', purchaseDate: null, purchaseYear: '', purchaseMonth: '', purchaseDay: '', purchasePrice: '', notes: '' }]);
                       }}
                       style={{
                         paddingHorizontal: Dimensions.get('window').width < 400 ? 16 : 12,
@@ -1798,7 +1911,7 @@ export default function ProfileSettingsScreen() {
                       <TouchableOpacity
                         onPress={() => {
                           const newId = (instrumentTypes.length + 1).toString();
-                          setInstrumentTypes([...instrumentTypes, { id: newId, name: '', maker: '', model: '', purchaseDate: null, purchasePrice: '', notes: '' }]);
+                          setInstrumentTypes([...instrumentTypes, { id: newId, name: '', maker: '', model: '', purchaseDate: null, purchaseYear: '', purchaseMonth: '', purchaseDay: '', purchasePrice: '', notes: '' }]);
                         }}
                         style={[
                           styles.saveButtonNew,
@@ -1828,49 +1941,69 @@ export default function ProfileSettingsScreen() {
                       borderWidth: 1,
                       borderColor: currentTheme.secondary,
                     }}>
-                      {/* ヘッダー部分（楽器名ラベルと削除ボタン） */}
+                      {/* ヘッダー部分（楽器名ラベルと編集・削除ボタン） */}
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
                         <Text style={[styles.formLabel, { color: currentTheme.textSecondary, fontSize: 12 }]}>
                           楽器名
                         </Text>
-                        <TouchableOpacity
-                          onPress={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            if (Platform.OS === 'web') {
-                              // Web環境ではconfirmを使用
-                              if (typeof window !== 'undefined' && window.confirm('この楽器を削除しますか？')) {
-                                handleDeleteInstrument(item.id);
-                              }
-                            } else {
-                              // モバイル環境ではAlertを使用
-                              Alert.alert(
-                                '削除確認',
-                                'この楽器を削除しますか？',
-                                [
-                                  { text: 'キャンセル', style: 'cancel' },
-                                  { 
-                                    text: '削除', 
-                                    style: 'destructive',
-                                    onPress: () => {
-                                      handleDeleteInstrument(item.id);
+                        <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              // 編集ボタンは現在は視覚的な表示のみ（将来の拡張用）
+                              // 現在は常に編集可能な状態なので、特に処理は不要
+                            }}
+                            style={{
+                              padding: 6,
+                              backgroundColor: currentTheme.primary,
+                              borderRadius: 6,
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Edit size={14} color="#FFFFFF" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (Platform.OS === 'web') {
+                                // Web環境ではconfirmを使用
+                                if (typeof window !== 'undefined' && window.confirm('この楽器を削除しますか？')) {
+                                  handleDeleteInstrument(item.id);
+                                }
+                              } else {
+                                // モバイル環境ではAlertを使用
+                                Alert.alert(
+                                  '削除確認',
+                                  'この楽器を削除しますか？',
+                                  [
+                                    { text: 'キャンセル', style: 'cancel' },
+                                    { 
+                                      text: '削除', 
+                                      style: 'destructive',
+                                      onPress: () => {
+                                        handleDeleteInstrument(item.id);
+                                      }
                                     }
-                                  }
-                                ]
-                              );
-                            }
-                          }}
-                          style={{
-                            padding: 6,
-                            backgroundColor: '#FF4444',
-                            borderRadius: 6,
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                          }}
-                          activeOpacity={0.7}
-                        >
-                          <Trash2 size={14} color="#FFFFFF" />
-                        </TouchableOpacity>
+                                  ]
+                                );
+                              }
+                            }}
+                            style={{
+                              padding: 6,
+                              backgroundColor: '#FF4444',
+                              borderRadius: 6,
+                              justifyContent: 'center',
+                              alignItems: 'center',
+                            }}
+                            activeOpacity={0.7}
+                          >
+                            <Trash2 size={14} color="#FFFFFF" />
+                          </TouchableOpacity>
+                        </View>
                       </View>
                       
                       {/* 楽器名入力 */}
@@ -1922,32 +2055,177 @@ export default function ProfileSettingsScreen() {
                       <Text style={[styles.formLabel, { color: currentTheme.textSecondary, marginBottom: 2, fontSize: 12 }]}>
                         購入日
                       </Text>
-                      <TouchableOpacity
-                        style={[styles.input, { 
-                          backgroundColor: currentTheme.background, 
-                          borderColor: currentTheme.secondary, 
-                          justifyContent: 'center',
-                          marginBottom: 4,
+                      <View style={[
+                        styles.birthdayRow,
+                        { 
                           flexDirection: 'row',
                           alignItems: 'center',
-                          gap: 8,
-                          paddingHorizontal: 8,
-                          paddingVertical: 6,
-                        }]}
-                        onPress={() => {
-                          setInstrumentDatePickerIndex(index);
-                          setShowInstrumentDatePicker(true);
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <Calendar size={16} color={currentTheme.textSecondary} />
-                        <Text style={{ 
-                          color: item.purchaseDate ? currentTheme.text : currentTheme.textSecondary,
-                          flex: 1,
-                        }}>
-                          {item.purchaseDate || '購入日を選択'}
-                        </Text>
-                      </TouchableOpacity>
+                          gap: 4,
+                          marginBottom: 4,
+                        }
+                      ]}>
+                        <TextInput
+                          ref={(ref) => { purchaseYearInputRefs.current[item.id] = ref; }}
+                          style={[
+                            styles.dateInputSmall,
+                            { 
+                              backgroundColor: currentTheme.background,
+                              borderColor: currentTheme.secondary,
+                              color: currentTheme.text
+                            }
+                          ]}
+                          placeholder="YYYY"
+                          placeholderTextColor={currentTheme.textSecondary}
+                          value={item.purchaseYear}
+                          onChangeText={(v) => {
+                            const halfWidthText = convertToHalfWidth(v);
+                            const nv = halfWidthText.slice(0, 4);
+                            const updated = instrumentTypes.map(i => 
+                              i.id === item.id ? { ...i, purchaseYear: nv } : i
+                            );
+                            setInstrumentTypes(updated);
+                            if (nv.length === 4 && item.purchaseMonth && item.purchaseDay) {
+                              const y = parseInt(nv, 10);
+                              const m = parseInt(item.purchaseMonth, 10);
+                              const d = parseInt(item.purchaseDay, 10);
+                              if (y && m && d) {
+                                const date = new Date(y, m - 1, d);
+                                if (!isNaN(date.getTime())) {
+                                  const updated2 = updated.map(i => 
+                                    i.id === item.id ? { ...i, purchaseDate: date.toISOString().split('T')[0] } : i
+                                  );
+                                  setInstrumentTypes(updated2);
+                                }
+                              }
+                            }
+                            if (nv.length === 4) {
+                              purchaseMonthInputRefs.current[item.id]?.focus();
+                            }
+                          }}
+                          keyboardType="number-pad"
+                          {...(Platform.OS === 'web' ? { 
+                            inputMode: 'numeric',
+                            pattern: '[0-9]*',
+                            type: 'tel',
+                            autoComplete: 'off'
+                          } : {})}
+                          maxLength={4}
+                          returnKeyType="next"
+                          onSubmitEditing={() => {
+                            purchaseMonthInputRefs.current[item.id]?.focus();
+                          }}
+                          accessibilityLabel="購入日 年"
+                        />
+                        <Text style={[styles.dateSep, { color: currentTheme.textSecondary }]}>-</Text>
+                        <TextInput
+                          ref={(ref) => { purchaseMonthInputRefs.current[item.id] = ref; }}
+                          style={[
+                            styles.dateInputXs,
+                            { 
+                              backgroundColor: currentTheme.background,
+                              borderColor: currentTheme.secondary,
+                              color: currentTheme.text
+                            }
+                          ]}
+                          placeholder="MM"
+                          placeholderTextColor={currentTheme.textSecondary}
+                          value={item.purchaseMonth}
+                          onChangeText={(v) => {
+                            const halfWidthText = convertToHalfWidth(v);
+                            let nv = halfWidthText.slice(0, 2);
+                            if (nv.length === 2) {
+                              const n = Math.min(12, Math.max(1, parseInt(nv, 10)));
+                              nv = String(n).padStart(2, '0');
+                              purchaseDayInputRefs.current[item.id]?.focus();
+                            }
+                            const updated = instrumentTypes.map(i => 
+                              i.id === item.id ? { ...i, purchaseMonth: nv } : i
+                            );
+                            setInstrumentTypes(updated);
+                            if (item.purchaseYear && nv && item.purchaseDay) {
+                              const y = parseInt(item.purchaseYear, 10);
+                              const m = parseInt(nv, 10);
+                              const d = parseInt(item.purchaseDay, 10);
+                              if (y && m && d) {
+                                const date = new Date(y, m - 1, d);
+                                if (!isNaN(date.getTime())) {
+                                  const updated2 = updated.map(i => 
+                                    i.id === item.id ? { ...i, purchaseDate: date.toISOString().split('T')[0] } : i
+                                  );
+                                  setInstrumentTypes(updated2);
+                                }
+                              }
+                            }
+                          }}
+                          keyboardType="number-pad"
+                          {...(Platform.OS === 'web' ? { 
+                            inputMode: 'numeric',
+                            pattern: '[0-9]*',
+                            type: 'tel',
+                            autoComplete: 'off'
+                          } : {})}
+                          maxLength={2}
+                          returnKeyType="next"
+                          onSubmitEditing={() => {
+                            purchaseDayInputRefs.current[item.id]?.focus();
+                          }}
+                          accessibilityLabel="購入日 月"
+                        />
+                        <Text style={[styles.dateSep, { color: currentTheme.textSecondary }]}>-</Text>
+                        <TextInput
+                          ref={(ref) => { purchaseDayInputRefs.current[item.id] = ref; }}
+                          style={[
+                            styles.dateInputXs,
+                            { 
+                              backgroundColor: currentTheme.background,
+                              borderColor: currentTheme.secondary,
+                              color: currentTheme.text
+                            }
+                          ]}
+                          placeholder="DD"
+                          placeholderTextColor={currentTheme.textSecondary}
+                          value={item.purchaseDay}
+                          onChangeText={(v) => {
+                            const halfWidthText = convertToHalfWidth(v);
+                            let nv = halfWidthText.slice(0, 2);
+                            if (nv.length === 2) {
+                              const y = parseInt(item.purchaseYear || '0', 10);
+                              const m = parseInt(item.purchaseMonth || '0', 10);
+                              const maxDay = y && m ? new Date(y, m, 0).getDate() : 31;
+                              const n = Math.min(maxDay, Math.max(1, parseInt(nv, 10)));
+                              nv = String(n).padStart(2, '0');
+                            }
+                            const updated = instrumentTypes.map(i => 
+                              i.id === item.id ? { ...i, purchaseDay: nv } : i
+                            );
+                            setInstrumentTypes(updated);
+                            if (item.purchaseYear && item.purchaseMonth && nv) {
+                              const y = parseInt(item.purchaseYear, 10);
+                              const m = parseInt(item.purchaseMonth, 10);
+                              const d = parseInt(nv, 10);
+                              if (y && m && d) {
+                                const date = new Date(y, m - 1, d);
+                                if (!isNaN(date.getTime())) {
+                                  const updated2 = updated.map(i => 
+                                    i.id === item.id ? { ...i, purchaseDate: date.toISOString().split('T')[0] } : i
+                                  );
+                                  setInstrumentTypes(updated2);
+                                }
+                              }
+                            }
+                          }}
+                          keyboardType="number-pad"
+                          {...(Platform.OS === 'web' ? { 
+                            inputMode: 'numeric',
+                            pattern: '[0-9]*',
+                            type: 'tel',
+                            autoComplete: 'off'
+                          } : {})}
+                          maxLength={2}
+                          returnKeyType="done"
+                          accessibilityLabel="購入日 日"
+                        />
+                      </View>
                       
                       {/* 購入価格 */}
                       <Text style={[styles.formLabel, { color: currentTheme.textSecondary, marginBottom: 2, fontSize: 12 }]}>
@@ -2278,17 +2556,17 @@ export default function ProfileSettingsScreen() {
             <Text style={styles.saveAllButtonText}>経歴・実績を保存</Text>
           </TouchableOpacity>
 
-          {/* 情報削除セクション */}
-          <View style={[styles.infoSection, { backgroundColor: currentTheme.surface, marginTop: 24 }]}>
+          {/* プロフィール削除セクション */}
+          <View style={[styles.infoSection, { backgroundColor: currentTheme.surface, marginTop: 24, marginBottom: 40 }]}>
             <View style={styles.sectionTitleContainer}>
               <View style={[styles.sectionIcon, { backgroundColor: '#FF4444' }]}>
                 <Trash2 size={18} color="#FFFFFF" />
               </View>
-              <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>情報削除</Text>
+              <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>プロフィール削除</Text>
             </View>
             <View style={styles.formGroup}>
               <Text style={[styles.sectionDescription, { color: currentTheme.textSecondary, marginBottom: 16 }]}>
-                アカウントを削除すると、すべてのデータが永久に削除されます。この操作は取り消せません。
+                プロフィール情報を削除します。この操作は取り消せません。
               </Text>
               <TouchableOpacity
                 style={[styles.deleteButton, { 
@@ -2302,7 +2580,7 @@ export default function ProfileSettingsScreen() {
                 {isDeleting ? (
                   <Text style={styles.deleteButtonText}>削除中...</Text>
                 ) : (
-                  <Text style={styles.deleteButtonText}>アカウントを削除</Text>
+                  <Text style={styles.deleteButtonText}>プロフィール削除</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -2343,37 +2621,6 @@ export default function ProfileSettingsScreen() {
         onSelect={handleAgeSelection}
       />
 
-      {/* 楽器購入日選択モーダル */}
-      <Modal
-        visible={showInstrumentDatePicker}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowInstrumentDatePicker(false)}
-      >
-        <View style={styles.datePickerOverlay}>
-          <View style={[styles.datePickerContent, { backgroundColor: currentTheme.surface }]}>
-            <View style={styles.datePickerHeader}>
-              <Text style={[styles.datePickerTitle, { color: currentTheme.text }]}>購入日を選択</Text>
-              <TouchableOpacity onPress={() => setShowInstrumentDatePicker(false)}>
-                <Text style={[styles.calendarCloseButtonText, { color: currentTheme.primary }]}>閉じる</Text>
-              </TouchableOpacity>
-            </View>
-            <EventCalendar
-              onDateSelect={(date: Date) => {
-                if (instrumentDatePickerIndex !== null) {
-                  const formattedDate = formatLocalDate(date);
-                  const updated = instrumentTypes.map((i, idx) => 
-                    idx === instrumentDatePickerIndex ? { ...i, purchaseDate: formattedDate } : i
-                  );
-                  setInstrumentTypes(updated);
-                  setShowInstrumentDatePicker(false);
-                  setInstrumentDatePickerIndex(null);
-                }
-              }}
-            />
-          </View>
-        </View>
-      </Modal>
 
       {/* 誕生日選択DateTimePicker - モバイルのみ */}
       {showBirthdayPicker && Platform.OS !== 'web' && (

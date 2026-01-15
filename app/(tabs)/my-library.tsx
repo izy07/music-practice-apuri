@@ -1610,17 +1610,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 8,
+    marginBottom: 4,
   },
   songInfo: {
     flex: 1,
     marginRight: 16,
-    paddingLeft: 8,
+    paddingLeft: 4,
   },
   songTitle: {
     fontSize: 17,
     fontWeight: '700',
-    marginBottom: 3,
+    marginBottom: 2,
   },
   songComposer: {
     fontSize: 14,
@@ -1646,7 +1646,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 6,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   metaChip: {
     paddingHorizontal: 8,
@@ -1671,7 +1671,7 @@ const styles = StyleSheet.create({
   notesText: {
     fontSize: 12,
     lineHeight: 16,
-    marginTop: 4,
+    marginTop: 2,
   },
   statusModalOverlay: {
     flex: 1,

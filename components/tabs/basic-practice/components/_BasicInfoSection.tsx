@@ -3,7 +3,7 @@
  */
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
-import { Target, Camera } from 'lucide-react-native';
+import { Camera } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { InstrumentBasics } from '@/lib/tabs/basic-practice/types';
 import { styles } from '@/lib/tabs/basic-practice/styles';
@@ -22,7 +22,6 @@ export const BasicInfoSection: React.FC<BasicInfoSectionProps> = ({
   return (
     <View style={[styles.basicInfoSection, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
       <View style={styles.basicInfoHeader}>
-        <Target size={16} color={currentTheme.primary} />
         <Text style={[styles.basicInfoTitle, { color: currentTheme.primary }]}>基礎・姿勢・楽器の持ち方</Text>
       </View>
       

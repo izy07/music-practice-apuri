@@ -197,11 +197,19 @@ export const updateSelectedInstrument = async (
       if (instrumentId) {
         // Web環境では直接インポートを使用、モバイル環境では動的インポートを使用
         const isWeb = Platform.OS === 'web' || (typeof window !== 'undefined' && typeof document !== 'undefined');
+        // 楽器が存在するか確認（作成は試みません）
+        let instrumentExists = false;
         if (isWeb) {
-          await staticEnsureInstrumentExists(instrumentId);
+          instrumentExists = await staticEnsureInstrumentExists(instrumentId);
         } else {
-        const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
-        await ensureInstrumentExists(instrumentId);
+          const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
+          instrumentExists = await ensureInstrumentExists(instrumentId);
+        }
+        
+        // 楽器が存在しない場合は警告を出して続行
+        // 外部キー制約違反が発生する可能性があるが、その場合は後続の処理でエラーが発生する
+        if (!instrumentExists) {
+          logger.warn(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:楽器が存在しませんが、続行します`, { instrumentId });
         }
       }
       
@@ -293,20 +301,26 @@ export const updateSelectedInstrument = async (
         if (is400Error || isForeignKeyError || isPGRSTError) {
           logger.warn(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:updateエラー - upsertを試みます`, errorDetails);
           
-          // 楽器が存在しない場合は、再度作成を試みる（外部キー制約違反の場合）
-          // 共通ユーティリティ関数を使用して楽器作成ロジックを統一
+          // 外部キー制約違反の場合、楽器が存在するか確認
+          // 注意: 楽器の作成は試みません（RLSポリシーにより通常ユーザーは作成不可）
           if (isForeignKeyError && instrumentId) {
             // Web環境では直接インポートを使用、モバイル環境では動的インポートを使用
             const isWeb = Platform.OS === 'web' || (typeof window !== 'undefined' && typeof document !== 'undefined');
+            let instrumentExists = false;
             if (isWeb) {
-              await staticEnsureInstrumentExists(instrumentId);
+              instrumentExists = await staticEnsureInstrumentExists(instrumentId);
             } else {
-            const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
-            await ensureInstrumentExists(instrumentId);
+              const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
+              instrumentExists = await ensureInstrumentExists(instrumentId);
             }
             
-            // 楽器作成後に少し待機（データベースの反映を待つ）
-            await new Promise(resolve => setTimeout(resolve, 300));
+            // 楽器が存在しない場合はエラーを返す
+            if (!instrumentExists) {
+              const error = new Error(`楽器ID ${instrumentId} がデータベースに存在しません。管理者に連絡して楽器を作成してもらってください。`);
+              (error as any).code = '23503';
+              (error as any).status = 400;
+              throw error;
+            }
           }
           
           // upsertを試みる（レコードが存在しない場合や、外部キー制約違反を回避するため）

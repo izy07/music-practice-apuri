@@ -115,7 +115,7 @@ const upgradeBannerStyles = {
 export default function GoalsScreen() {
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const router = useRouter();
-  const { entitlement } = useSubscription();
+  const { entitlement, loading: subscriptionLoading } = useSubscription();
   const { isAuthenticated, user } = useAuthAdvanced();
   
   // 現在のルートを記録（マウント時）
@@ -1752,6 +1752,16 @@ export default function GoalsScreen() {
     </View>
   );
 
+  // 達成済み目標の更新処理（サブ目標更新時に呼ばれる）
+  const handleCompletedGoalUpdated = (updatedGoal: Goal) => {
+    setCompletedGoals(prev => prev.map(g => g.id === updatedGoal.id ? updatedGoal : g));
+    // 進捗率が100%未満になった場合は未達成リストに移動
+    if (updatedGoal.progress_percentage < 100 || !updatedGoal.is_completed) {
+      setCompletedGoals(prev => prev.filter(g => g.id !== updatedGoal.id));
+      setGoals(prev => [updatedGoal, ...prev]);
+    }
+  };
+
   // 達成済み目標セクション（コンポーネント化済み）
   const renderCompletedGoals = () => (
     <CompletedGoalsSection
@@ -1760,6 +1770,8 @@ export default function GoalsScreen() {
       getGoalTypeColor={getGoalTypeColor}
       onDeleteGoal={deleteGoal}
       onUncompleteGoal={uncompleteGoal}
+      onUpdateProgress={updateProgress}
+      onGoalUpdated={handleCompletedGoalUpdated}
     />
   );
 
@@ -1930,7 +1942,8 @@ export default function GoalsScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* フリープラン用アップグレードバナー */}
-        {!entitlement.isEntitled && user && (
+        {/* subscriptionLoading中は状態が未確定のため表示しない（プレミアムでも一瞬表示されるチラつきを防ぐ） */}
+        {!subscriptionLoading && !entitlement.isEntitled && user && (
           <UpgradeBanner
             currentTheme={currentTheme}
             router={router}

@@ -350,9 +350,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     marginBottom: 24,
-    gap: 12, // ボタン間の間隔を増やす
+    gap: 8, // ボタン間の間隔を調整
   },
   stopwatchControlButton: {
     flex: 1,
@@ -360,15 +360,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     borderRadius: 8,
     gap: 4,
-    maxWidth: '33%',
-    overflow: 'hidden', // タッチ領域の重複を防ぐ
+    minWidth: 0, // flexアイテムが縮小できるようにする
   },
   stopwatchControlButtonText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
+    flexShrink: 1, // テキストが縮小できるようにする
   },
   lapTableContainer: {
     width: '100%',

@@ -1,4 +1,5 @@
 import logger from '@/lib/logger';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 
 // Persistent timer service that maintains state across screen changes
 class TimerService {
@@ -13,6 +14,10 @@ class TimerService {
   
   // Timer preset values
   private _timerPresetSeconds: number = 0;
+  
+  // バックグラウンド移行時の時刻を記録（復帰時に経過時間を計算するため）
+  private _backgroundTime: number | null = null;
+  private _appStateSubscription: any = null;
 
   static getInstance(): TimerService {
     if (!TimerService.instance) {
@@ -23,6 +28,62 @@ class TimerService {
 
   private constructor() {
     // Private constructor for singleton
+    // AppStateの監視を開始（バックグラウンド/フォアグラウンドの切り替えを検知）
+    if (Platform.OS !== 'web') {
+      this._appStateSubscription = AppState.addEventListener('change', this._handleAppStateChange.bind(this));
+    }
+  }
+  
+  // アプリの状態変化を処理
+  private _handleAppStateChange(nextAppState: AppStateStatus) {
+    if (nextAppState === 'background' || nextAppState === 'inactive') {
+      // バックグラウンドに移行した時
+      if (this._isTimerRunning || this._isStopwatchRunning) {
+        this._backgroundTime = Date.now();
+        logger.debug('TimerService: アプリがバックグラウンドに移行', {
+          timerRunning: this._isTimerRunning,
+          stopwatchRunning: this._isStopwatchRunning,
+          timerSeconds: this._timerSeconds,
+          stopwatchSeconds: this._stopwatchSeconds
+        });
+      }
+    } else if (nextAppState === 'active') {
+      // フォアグラウンドに復帰した時
+      if (this._backgroundTime !== null && (this._isTimerRunning || this._isStopwatchRunning)) {
+        const elapsedMs = Date.now() - this._backgroundTime;
+        const elapsedSeconds = Math.floor(elapsedMs / 1000);
+        
+        logger.debug('TimerService: アプリがフォアグラウンドに復帰', {
+          elapsedSeconds,
+          timerRunning: this._isTimerRunning,
+          stopwatchRunning: this._isStopwatchRunning,
+          timerSeconds: this._timerSeconds,
+          stopwatchSeconds: this._stopwatchSeconds
+        });
+        
+        // タイマーの場合：経過時間を減算
+        if (this._isTimerRunning && this._timerSeconds > 0) {
+          const newSeconds = Math.max(0, this._timerSeconds - elapsedSeconds);
+          this._timerSeconds = newSeconds;
+          
+          if (newSeconds <= 0) {
+            // タイマーが完了した場合
+            this.pauseTimer();
+            this._timerSeconds = 0;
+          }
+          
+          this._notifyListeners();
+        }
+        
+        // ストップウォッチの場合：経過時間を加算
+        if (this._isStopwatchRunning) {
+          this._stopwatchSeconds += elapsedSeconds;
+          this._notifyListeners();
+        }
+        
+        this._backgroundTime = null;
+      }
+    }
   }
 
   // Timer methods

@@ -108,6 +108,19 @@
 }
 ```
 
+### 8-2. ティール (turquoise-green)
+```json
+{
+  "background": "#E0F2F1",
+  "surface": "#FFFFFF",
+  "primary": "#26A69A",
+  "secondary": "#80CBC4",
+  "accent": "#00897B",
+  "text": "#004D40",
+  "textSecondary": "#00695C"
+}
+```
+
 ### 9. サンセット (sunset)
 ```json
 {

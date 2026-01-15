@@ -19,7 +19,7 @@ config.resolver.alias = {
 // Expo RouterのWebサポートを有効化
 config.resolver.sourceExts = ['web.tsx', 'web.ts', 'web.jsx', 'web.js', ...(config.resolver.sourceExts || [])];
 
-// Web環境でHermesパラメータを削除（最小限の処理）
+// Web環境でHermesパラメータを削除
 if (!config.server) {
   config.server = {};
 }
@@ -28,44 +28,57 @@ if (!config.server) {
 const removeHermesParams = (url) => {
   if (!url) return url;
   let cleaned = url;
-  while (cleaned.includes('transform.engine=hermes') || cleaned.includes('unstable_transformProfile=hermes-stable')) {
-    cleaned = cleaned.replace(/[?&]transform\.engine=hermes(&|$)/g, (match, suffix) => suffix === '&' ? '&' : '');
-    cleaned = cleaned.replace(/transform\.engine=hermes&/, '');
-    cleaned = cleaned.replace(/transform\.engine=hermes/, '');
-    cleaned = cleaned.replace(/[?&]unstable_transformProfile=hermes-stable(&|$)/g, (match, suffix) => suffix === '&' ? '&' : '');
-    cleaned = cleaned.replace(/unstable_transformProfile=hermes-stable&/, '');
-    cleaned = cleaned.replace(/unstable_transformProfile=hermes-stable/, '');
-  }
-  cleaned = cleaned.replace(/[?&]$/, '').replace(/\?&/, '?').replace(/&+/g, '&').replace(/^&/, '').replace(/\?$/, '');
+  
+  // Hermesパラメータを確実に削除
+  // transform.engine=hermesを削除
+  cleaned = cleaned.replace(/[?&]transform\.engine=hermes(&|$)/g, (match, suffix) => suffix === '&' ? '&' : '');
+  cleaned = cleaned.replace(/transform\.engine=hermes&/, '');
+  cleaned = cleaned.replace(/transform\.engine=hermes/, '');
+  // unstable_transformProfile=hermes-stableを削除
+  cleaned = cleaned.replace(/[?&]unstable_transformProfile=hermes-stable(&|$)/g, (match, suffix) => suffix === '&' ? '&' : '');
+  cleaned = cleaned.replace(/unstable_transformProfile=hermes-stable&/, '');
+  cleaned = cleaned.replace(/unstable_transformProfile=hermes-stable/, '');
+  
+  // 余分な&や?を整理
+  cleaned = cleaned.replace(/[?&]+$/, '').replace(/\?&/, '?').replace(/&+/g, '&').replace(/^&/, '').replace(/\?$/, '');
+  
   return cleaned;
 };
 
-// rewriteRequestUrl: entry.bundleからHermesパラメータを削除
+// rewriteRequestUrl: すべてのWebバンドルリクエストからHermesパラメータを削除
 const originalRewriteRequestUrl = config.server.rewriteRequestUrl;
 config.server.rewriteRequestUrl = (url) => {
-  if (url && url.includes('entry.bundle')) {
+  if (!url) return url;
+  
+  // WebプラットフォームのバンドルリクエストからHermesパラメータを削除
+  if (url.includes('platform=web')) {
     const cleaned = removeHermesParams(url);
     if (cleaned !== url) {
+      console.log('[Metro Config] rewriteRequestUrl: URL変更', url.substring(0, 150), '->', cleaned.substring(0, 150));
       return originalRewriteRequestUrl ? originalRewriteRequestUrl(cleaned) : cleaned;
     }
   }
+  
   return originalRewriteRequestUrl ? originalRewriteRequestUrl(url) : url;
 };
 
-// enhanceMiddleware: entry.bundleからHermesパラメータを削除
+// enhanceMiddleware: すべてのWebバンドルリクエストからHermesパラメータを削除
 const originalEnhanceMiddleware = config.server.enhanceMiddleware;
 config.server.enhanceMiddleware = (middleware, server) => {
   const enhanced = originalEnhanceMiddleware ? originalEnhanceMiddleware(middleware, server) : middleware;
   return (req, res, next) => {
-    const url = req.url || '';
-    if (url.includes('entry.bundle')) {
+    const url = req.url || req.originalUrl || '';
+    
+    // WebプラットフォームのバンドルリクエストからHermesパラメータを削除
+    if (url.includes('platform=web')) {
       const cleaned = removeHermesParams(url);
       if (cleaned !== url) {
-        console.log('[Metro] entry.bundle URL変更:', url, '->', cleaned);
+        console.log('[Metro Middleware] URL変更:', url.substring(0, 150), '->', cleaned.substring(0, 150));
         req.url = cleaned;
         req.originalUrl = cleaned;
       }
     }
+    
     return enhanced(req, res, next);
   };
 };

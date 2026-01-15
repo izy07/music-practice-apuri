@@ -54,6 +54,7 @@ const HIDDEN_TABS = [
   'my-library',
   'recordings-library',
   'main-settings',
+  'appearance-settings',
   'terms-of-service',
   'privacy-policy',
   'legal-info',
@@ -103,9 +104,9 @@ export default function TabLayout() {
             backgroundColor: currentTheme.surface,
             borderTopWidth: 1,
             borderTopColor: currentTheme.secondary,
-            height: 70, // ラベルを表示するために高さを増やす
-            paddingTop: 6,
-            paddingBottom: 8, // 下部にパディングを追加してラベルを表示
+            height: 60, // 高さを減らす
+            paddingTop: 4,
+            paddingBottom: 4, // 下部のパディングを減らす
             paddingHorizontal: 0,
             paddingLeft: 0,
             paddingRight: 0,
@@ -129,14 +130,14 @@ export default function TabLayout() {
           // タブアイテムのスタイル
           tabBarItemStyle: {
             flex: isVisible ? 1 : 0, // 表示タブは均等に幅を占める、非表示タブはスペースを取らない
-            paddingVertical: isVisible ? 4 : 0,
+            paddingVertical: isVisible ? 2 : 0,
             paddingHorizontal: 0,
             margin: 0,
             minWidth: isVisible ? 0 : 0,
             maxWidth: isVisible ? '100%' : 0,
             width: isVisible ? undefined : 0,
             height: isVisible ? 'auto' : 0, // ラベルを表示するためにautoに設定
-            minHeight: isVisible ? 60 : 0, // ラベルを表示するための最小高さを増やす
+            minHeight: isVisible ? 50 : 0, // 最小高さを減らす
             justifyContent: 'flex-start', // ラベルを表示するためにflex-startに変更
             alignItems: 'center',
             flexDirection: 'column', // アイコンとラベルを縦に配置
@@ -227,9 +228,9 @@ export default function TabLayout() {
                       flex: 1,
                       alignItems: 'center',
                       justifyContent: 'flex-start',
-                      paddingTop: 4,
-                      paddingBottom: Platform.OS === 'ios' ? 8 : 8,
-                      minHeight: 60,
+                      paddingTop: 2,
+                      paddingBottom: Platform.OS === 'ios' ? 4 : 4,
+                      minHeight: 50,
                       height: 'auto',
                       overflow: 'hidden',
                       position: 'relative',
@@ -242,11 +243,11 @@ export default function TabLayout() {
                         justifyContent: 'center',
                         marginBottom: 2,
                         overflow: 'hidden',
-                        width: 24,
-                        height: 24,
+                        width: 28,
+                        height: 28,
                       }}
                     >
-                      <IconComponent size={24} color={iconColor} />
+                      <IconComponent size={28} color={iconColor} />
                     </View>
                     <Text
                       style={{
@@ -280,7 +281,8 @@ export default function TabLayout() {
           'basic-practice': '基礎練',
           'profile-settings': t('profileSettings'),
           'recordings-library': t('recordingsLibrary'),
-          'main-settings': t('appearance'),
+          'main-settings': '楽器変更',
+          'appearance-settings': t('appearanceSettings'),
           'language-settings': t('languageSettings'),
           'notification-settings': t('notificationSettings'),
           'privacy-settings': t('privacySettings'),

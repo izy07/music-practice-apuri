@@ -22,7 +22,7 @@ import Metronome from '@/components/metronome/Metronome';
 import { styles } from '@/lib/tabs/tuner/styles';
 import audioResourceManager from '@/lib/audioResourceManager';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { autoCorrelate, getNoteFromFrequency, smoothValue, getTuningColor } from '@/lib/tunerAudioProcessor';
+import { autoCorrelate, getNoteFromFrequency, smoothValue, getTuningColor, combineAlgorithms } from '@/lib/tunerAudioProcessor';
 import { getUserSettings } from '@/repositories/userSettingsRepository';
 import { getCurrentUser } from '@/lib/authService';
 import { DEFAULT_A4_FREQUENCY, getFrequency, NOTE_NAMES, NOTE_NAMES_JA } from '@/lib/tunerUtils';
@@ -33,10 +33,10 @@ import { setCurrentRoute } from '@/lib/navigationHistory';
 
 // プロ仕様の周波数検出精度設定
 const TUNING_PRECISION = {
-  EXCELLENT: 5,   // ±5セント以内: プロレベル
-  GOOD: 10,       // ±10セント以内: 良い
-  ACCEPTABLE: 15, // ±15セント以内: 許容範囲
-  POOR: 25,       // ±25セント以内: 調整必要
+  EXCELLENT: 0.1, // ±0.1セント以内: 超高精度レベル（Peterson Strobo相当）
+  GOOD: 1,        // ±1セント以内: 高精度レベル
+  ACCEPTABLE: 5,  // ±5セント以内: プロレベル
+  POOR: 10,       // ±10セント以内: 調整必要
 };
 
 // 楽器別チューニング設定
@@ -460,6 +460,7 @@ export default function TunerScreen() {
   }, [playingScaleNote]);
   
   // 音階データを生成（C3からC6まで、オクターブごとにグループ化）
+  // ユーザーが設定したA4周波数を使用
   const scaleNotesByOctave = useMemo(() => {
     const octaves: { [octave: number]: Array<{ note: string; noteJa: string; octave: number; frequency: number; displayName: string }> } = {};
     // C3からC6まで（3オクターブ + 1音）
@@ -468,7 +469,8 @@ export default function TunerScreen() {
       for (let i = 0; i < NOTE_NAMES.length; i++) {
         const note = NOTE_NAMES[i];
         const noteJa = NOTE_NAMES_JA[i];
-        const frequency = getFrequency(note, octave, DEFAULT_A4_FREQUENCY);
+        // ユーザーが設定したA4周波数を使用
+        const frequency = getFrequency(note, octave, a4Frequency);
         const displayName = `${noteJa}${octave}`;
         octaves[octave].push({ note, noteJa, octave, frequency, displayName });
         
@@ -479,7 +481,7 @@ export default function TunerScreen() {
       }
     }
     return octaves;
-  }, []);
+  }, [a4Frequency]);
 
   // アニメーション用の値（UI表示用）
   const tuningBarAnimation = useRef(new Animated.Value(0)).current;
@@ -602,7 +604,7 @@ export default function TunerScreen() {
 
       // 定期的に音程を検出（60fps相当）
       // 周波数検出の信頼性を向上させるため、複数フレームの平均を使用
-      const HISTORY_SIZE = 7; // 7フレームの履歴を使用（より滑らかに）
+      const HISTORY_SIZE = 10; // 10フレームの履歴を使用（安定性を優先）
       frequencyHistoryRef.current = []; // 履歴をリセット
 
       const processAudio = () => {
@@ -612,8 +614,8 @@ export default function TunerScreen() {
         const dataArray = new Float32Array(bufferLength);
         analyserNodeRef.current.getFloatTimeDomainData(dataArray);
 
-        // 周波数を検出
-        const detectedFrequency = autoCorrelate(dataArray, audioContextRef.current.sampleRate);
+        // 周波数を検出（複数アルゴリズムを統合して高精度化）
+        const detectedFrequency = combineAlgorithms(dataArray, audioContextRef.current.sampleRate);
 
         if (detectedFrequency > 0 && detectedFrequency < 10000) {
           // 履歴に追加
@@ -623,25 +625,77 @@ export default function TunerScreen() {
           }
 
           // 履歴が十分にたまったら中央値を使用（外れ値の影響を減らす）
+          // より安定した検出のため、履歴を十分に蓄積
           let medianFreq = detectedFrequency;
-          if (frequencyHistoryRef.current.length >= 3) {
+          if (frequencyHistoryRef.current.length >= 7) {
+            // 7フレーム以上の場合、外れ値を除去してから中央値を計算
+            const sortedFreqs = [...frequencyHistoryRef.current].sort((a, b) => a - b);
+            // 外れ値を除去（上下25%を除外）
+            const q1Index = Math.floor(sortedFreqs.length * 0.25);
+            const q3Index = Math.floor(sortedFreqs.length * 0.75);
+            const trimmedFreqs = sortedFreqs.slice(q1Index, q3Index + 1);
+            // トリム後の中央値を使用
+            medianFreq = trimmedFreqs[Math.floor(trimmedFreqs.length / 2)];
+            
+            // さらに、トリム後の平均も計算して、中央値と平均の加重平均を使用
+            const trimmedMean = trimmedFreqs.reduce((a, b) => a + b, 0) / trimmedFreqs.length;
+            // 中央値70%、平均30%の加重平均（安定性と精度のバランス）
+            medianFreq = medianFreq * 0.7 + trimmedMean * 0.3;
+          } else if (frequencyHistoryRef.current.length >= 3) {
+            // 3フレーム以上の場合、中央値を使用
             const sortedFreqs = [...frequencyHistoryRef.current].sort((a, b) => a - b);
             medianFreq = sortedFreqs[Math.floor(sortedFreqs.length / 2)];
+          } else if (frequencyHistoryRef.current.length >= 2) {
+            // 2フレームの場合は平均を使用
+            medianFreq = frequencyHistoryRef.current.reduce((a, b) => a + b, 0) / frequencyHistoryRef.current.length;
           }
 
-          // 平滑化処理（中央値を使用、より滑らかに）
-          const smoothedFreq = smoothValue(
-            smoothedFrequencyRef.current,
-            medianFreq,
-            0.15, // alpha（より滑らかに）
-            20   // maxChange (Hz)（より滑らかに）
-          );
+          // 安定した検出のため、より強力な平滑化を適用
+          // ただし、初回検出時は即座に反映
+          const freqDiff = Math.abs(medianFreq - smoothedFrequencyRef.current);
+          let smoothedFreq: number;
+          
+          if (smoothedFrequencyRef.current === 0) {
+            // 初回検出時は即座に反映
+            smoothedFreq = medianFreq;
+          } else if (freqDiff < 2) {
+            // 非常に小さな変化（2Hz未満）の場合は、強力な平滑化（安定性を優先）
+            smoothedFreq = smoothedFrequencyRef.current * 0.3 + medianFreq * 0.7;
+          } else if (freqDiff < 5) {
+            // 小さな変化（2-5Hz）の場合は、中程度の平滑化
+            smoothedFreq = smoothedFrequencyRef.current * 0.2 + medianFreq * 0.8;
+          } else if (freqDiff < 10) {
+            // 中程度の変化（5-10Hz）の場合は、軽い平滑化
+            smoothedFreq = smoothValue(
+              smoothedFrequencyRef.current,
+              medianFreq,
+              0.8, // alpha（高い値でより速く反映）
+              50   // maxChange
+            );
+          } else if (freqDiff < 20) {
+            // 大きな変化（10-20Hz）の場合は、標準的な平滑化
+            smoothedFreq = smoothValue(
+              smoothedFrequencyRef.current,
+              medianFreq,
+              0.6, // alpha
+              30   // maxChange
+            );
+          } else {
+            // 非常に大きな変化（20Hz以上）の場合は、強い平滑化（外れ値の可能性）
+            smoothedFreq = smoothValue(
+              smoothedFrequencyRef.current,
+              medianFreq,
+              0.4, // alpha
+              20   // maxChange
+            );
+          }
+          
           smoothedFrequencyRef.current = smoothedFreq;
 
           // 音名を取得（設定されたA4周波数を使用）
           const noteInfo = getNoteFromFrequency(smoothedFreq, a4Frequency);
           
-          // デバッグ情報（開発時のみ）
+          // デバッグ情報（開発時のみ、本番環境でもコンソールに出力）
           if (__DEV__) {
             logger.debug('チューナー検出', {
               detectedFreq: detectedFrequency.toFixed(2),
@@ -651,9 +705,13 @@ export default function TunerScreen() {
               noteJa: noteInfo.noteJa,
               octave: noteInfo.octave,
               cents: noteInfo.cents.toFixed(1),
-              a4Freq: a4Frequency
+              a4Freq: a4Frequency,
+              tuningQuality: noteInfo.tuningQuality,
+              isInTune: noteInfo.isInTune
             });
           }
+          // 本番環境でも重要な情報をコンソールに出力（デバッグ用）
+          console.log(`[Tuner] 検出周波数: ${detectedFrequency.toFixed(2)}Hz, 平滑化後: ${smoothedFreq.toFixed(2)}Hz, 音名: ${noteInfo.note}${noteInfo.octave}, セント: ${noteInfo.cents.toFixed(1)}, A4: ${a4Frequency}Hz`);
           
           // UIを更新（滑らかな更新のため、状態更新を最適化）
           setCurrentFrequency(smoothedFreq);
@@ -1245,8 +1303,7 @@ export default function TunerScreen() {
                   style={[
                     styles.simpleStartButton,
                     { 
-                      backgroundColor: isListening ? currentTheme.secondary : currentTheme.primary,
-                      marginTop: -16, // 開始ボタンを上に移動
+                      backgroundColor: isListening ? currentTheme.secondary : currentTheme.primary 
                     },
                   ]}
                   onPress={isListening ? stopListening : startListening}
@@ -1308,24 +1365,30 @@ export default function TunerScreen() {
                     {isStringInstrument(selectedInstrument) ? '開放弦の音を聞く' : '基本の音を聞く'}
                   </Text>
                   
-                  {/* 停止ボタン（固定表示） */}
-                  {playingOpenString && (
-                    <TouchableOpacity
-                      style={[
-                        styles.stopButton,
-                        { backgroundColor: '#FF4444', borderColor: '#FF4444' }
-                      ]}
-                      onPress={stopOpenString}
-                    >
-                      <Text style={[styles.stopButtonText, { color: '#FFFFFF' }]}>
-                        停止 ({playingOpenString ? convertNoteName(playingOpenString, noteDisplayMode) : ''})
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                  
                   <View style={styles.openStringButtons}>
                     {INSTRUMENT_TUNINGS[selectedInstrument].openStrings.slice(0, 4).map((openString, index) => {
                       const isPlaying = playingOpenString === openString.note;
+                      // ユーザーが設定したA4周波数を使用して周波数を再計算
+                      // openString.noteは "A4", "E5", "B♭1" などの形式
+                      // ♭記号を#記号に変換（B♭→A#, E♭→D#, A♭→G#, D♭→C#, G♭→F#）
+                      let noteStr = openString.note;
+                      const flatToSharp: { [key: string]: string } = {
+                        'B♭': 'A#', 'E♭': 'D#', 'A♭': 'G#', 'D♭': 'C#', 'G♭': 'F#', 'C♭': 'B', 'F♭': 'E'
+                      };
+                      for (const [flat, sharp] of Object.entries(flatToSharp)) {
+                        if (noteStr.startsWith(flat)) {
+                          noteStr = noteStr.replace(flat, sharp);
+                          break;
+                        }
+                      }
+                      const noteMatch = noteStr.match(/^([A-G]#?)(\d+)$/);
+                      let actualFrequency = openString.frequency;
+                      if (noteMatch) {
+                        const note = noteMatch[1];
+                        const octave = parseInt(noteMatch[2], 10);
+                        // ユーザーが設定したA4周波数を使用して周波数を再計算
+                        actualFrequency = getFrequency(note, octave, a4Frequency);
+                      }
                       return (
                         <TouchableOpacity
                           key={index}
@@ -1340,7 +1403,8 @@ export default function TunerScreen() {
                             if (isPlaying) {
                               stopOpenString();
                             } else {
-                              playOpenString(openString.frequency, openString.note);
+                              // 再計算した周波数を使用
+                              playOpenString(actualFrequency, openString.note);
                             }
                           }}
                         >
@@ -1348,7 +1412,7 @@ export default function TunerScreen() {
                             {convertNoteName(openString.note, noteDisplayMode)}
                           </Text>
                           <Text style={[styles.openStringFrequency, { color: currentTheme.surface }]}>
-                            {openString.frequency.toFixed(1)}Hz
+                            {actualFrequency.toFixed(1)}Hz
                           </Text>
                           <Text style={[styles.openStringLabel, { color: currentTheme.surface }]}>
                             {openString.string}
@@ -1362,6 +1426,24 @@ export default function TunerScreen() {
                       );
                     })}
                   </View>
+                  
+                  {/* 停止ボタン（下部固定、常に表示） */}
+                  <TouchableOpacity
+                    style={[
+                      styles.stopButton,
+                      { 
+                        backgroundColor: playingOpenString ? '#FF4444' : currentTheme.secondary,
+                        borderColor: playingOpenString ? '#FF4444' : currentTheme.secondary,
+                        opacity: playingOpenString ? 1 : 0.5
+                      }
+                    ]}
+                    onPress={stopOpenString}
+                    disabled={!playingOpenString}
+                  >
+                    <Text style={[styles.stopButtonText, { color: playingOpenString ? '#FFFFFF' : currentTheme.textSecondary }]}>
+                      停止 {playingOpenString ? `(${convertNoteName(playingOpenString, noteDisplayMode)})` : ''}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
                 
                 {/* 音階を聞く */}
@@ -1369,29 +1451,6 @@ export default function TunerScreen() {
                   <Text style={[styles.openStringTitle, { color: currentTheme.text }]}>
                     音階を聞く
                   </Text>
-                  
-                  {/* 停止ボタン（固定表示） */}
-                  {playingScaleNote && (
-                    <TouchableOpacity
-                      style={[
-                        styles.stopButton,
-                        { backgroundColor: '#FF4444', borderColor: '#FF4444' }
-                      ]}
-                      onPress={stopScaleNote}
-                    >
-                      <Text style={[styles.stopButtonText, { color: '#FFFFFF' }]}>
-                        停止 ({playingScaleNote ? (() => {
-                          // scaleNotesByOctaveから該当する音を検索
-                          for (let octave = 3; octave <= 6; octave++) {
-                            const notes = scaleNotesByOctave[octave] || [];
-                            const found = notes.find(n => `${n.note}${n.octave}` === playingScaleNote);
-                            if (found) return found.displayName;
-                          }
-                          return '';
-                        })() : ''})
-                      </Text>
-                    </TouchableOpacity>
-                  )}
                   
                   <View style={styles.scaleNotesContainer}>
                     {[3, 4, 5].map((octave) => {
@@ -1482,16 +1541,42 @@ export default function TunerScreen() {
                       </ScrollView>
                     )}
                   </View>
+                  
+                  {/* 停止ボタン（下部固定、常に表示） */}
+                  <TouchableOpacity
+                    style={[
+                      styles.stopButton,
+                      { 
+                        backgroundColor: playingScaleNote ? '#FF4444' : currentTheme.secondary,
+                        borderColor: playingScaleNote ? '#FF4444' : currentTheme.secondary,
+                        opacity: playingScaleNote ? 1 : 0.5
+                      }
+                    ]}
+                    onPress={stopScaleNote}
+                    disabled={!playingScaleNote}
+                  >
+                    <Text style={[styles.stopButtonText, { color: playingScaleNote ? '#FFFFFF' : currentTheme.textSecondary }]}>
+                      停止 {playingScaleNote ? (() => {
+                        // scaleNotesByOctaveから該当する音を検索
+                        for (let octave = 3; octave <= 6; octave++) {
+                          const notes = scaleNotesByOctave[octave] || [];
+                          const found = notes.find(n => `${n.note}${n.octave}` === playingScaleNote);
+                          if (found) return `(${found.displayName})`;
+                        }
+                        return '';
+                      })() : ''}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
                 
                 {/* 移調楽器について */}
-                {INSTRUMENT_TUNINGS[selectedInstrument].transposingInfo && (
+                {'transposingInfo' in INSTRUMENT_TUNINGS[selectedInstrument] && (INSTRUMENT_TUNINGS[selectedInstrument] as any).transposingInfo && (
                   <View style={[styles.transposingInfoContent, { backgroundColor: currentTheme.surface, borderWidth: 1, borderColor: currentTheme.secondary }]}>
                     <Text style={[styles.transposingInfoTitle, { color: currentTheme.text }]}>
                       移調楽器について
                     </Text>
                     <Text style={[styles.transposingInfoDescription, { color: currentTheme.text }]}>
-                      {INSTRUMENT_TUNINGS[selectedInstrument].transposingInfo?.description}
+                      {(INSTRUMENT_TUNINGS[selectedInstrument] as any).transposingInfo.description}
                     </Text>
                   </View>
                 )}

@@ -14,7 +14,7 @@ import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { UI, DATA, STATISTICS } from '@/lib/constants';
 import { getPracticeSessionsByDateRange } from '@/repositories/practiceSessionRepository';
 import { formatMinutesToHours } from '@/lib/dateUtils';
-import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
+import { getEffectiveInstrumentId, getInstrumentId } from '@/lib/instrumentUtils';
 import { practiceDataCache, PracticeDataCache } from '@/lib/cache/practiceDataCache';
 import logger from '@/lib/logger';
 
@@ -409,10 +409,56 @@ export default function StatisticsScreen() {
     };
   }, [fetchPracticeRecords, user, selectedInstrument]);
 
+  // 日付範囲でフィルタリングされた練習記録（他のuseMemoより前に定義）
+  const filteredPracticeRecords = useMemo(() => {
+    if (!dateFilterStart && !dateFilterEnd) {
+      return practiceRecords;
+    }
+    
+    return practiceRecords.filter(record => {
+      const recordDate = record.practice_date;
+      if (dateFilterStart && recordDate < dateFilterStart) {
+        return false;
+      }
+      if (dateFilterEnd && recordDate > dateFilterEnd) {
+        return false;
+      }
+      return true;
+    });
+  }, [practiceRecords, dateFilterStart, dateFilterEnd]);
 
   // 日別（当週：月〜日）- メモ化で最適化（フィルタリングされたデータを使用）
   const weeklyData = useMemo<DayData[]>(() => {
     const arr: DayData[] = [];
+    
+    // 日付範囲フィルタが有効な場合、フィルタ範囲内のデータを表示
+    if (dateFilterStart || dateFilterEnd) {
+      const startDate = dateFilterStart ? new Date(dateFilterStart) : new Date();
+      const endDate = dateFilterEnd ? new Date(dateFilterEnd) : new Date();
+      
+      // 練習記録を日付でマップ化（O(1)アクセス）
+      const recordsByDate = new Map<string, number>();
+      filteredPracticeRecords.forEach(record => {
+        const dateStr = record.practice_date;
+        const minutes = record.duration_minutes ?? 0;
+        if (minutes > 0) {
+          recordsByDate.set(dateStr, (recordsByDate.get(dateStr) || 0) + minutes);
+        }
+      });
+      
+      // フィルタ範囲内のすべての日付を生成
+      const currentDate = new Date(startDate);
+      const endDateTime = endDate.getTime();
+      while (currentDate.getTime() <= endDateTime) {
+        const dateStr = currentDate.toISOString().split('T')[0];
+        const dayMinutes = recordsByDate.get(dateStr) || 0;
+        arr.push({ dateLabel: String(currentDate.getDate()), minutes: dayMinutes });
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+      return arr;
+    }
+    
+    // フィルタが無効な場合、従来通りanchorDateを基準にした週を表示
     const base = new Date(anchorDate);
     const dayOfWeek = base.getDay(); // 0=Sun, 1=Mon ...
     const offset = (dayOfWeek + 6) % 7; // Monday start
@@ -441,10 +487,63 @@ export default function StatisticsScreen() {
       arr.push({ dateLabel: String(d.getDate()), minutes: dayMinutes });
     }
     return arr;
-  }, [filteredPracticeRecords, anchorDate]);
+  }, [filteredPracticeRecords, anchorDate, dateFilterStart, dateFilterEnd]);
 
   // 月別（当月を6日ごとに5区分）
   const monthlyData = useMemo<DayData[]>(() => {
+    // 日付範囲フィルタが有効な場合、フィルタ範囲を週別に集計
+    if (dateFilterStart || dateFilterEnd) {
+      const startDate = dateFilterStart ? new Date(dateFilterStart) : new Date();
+      const endDate = dateFilterEnd ? new Date(dateFilterEnd) : new Date();
+      
+      // 練習記録を日付でマップ化（O(1)アクセス）
+      const recordsByDate = new Map<string, number>();
+      filteredPracticeRecords.forEach(record => {
+        const dateStr = record.practice_date;
+        const minutes = record.duration_minutes ?? 0;
+        if (minutes > 0) {
+          recordsByDate.set(dateStr, (recordsByDate.get(dateStr) || 0) + minutes);
+        }
+      });
+      
+      // 週別に集計（月曜日始まり）
+      const weeklyBins: Array<{ start: Date; end: Date; label: string }> = [];
+      const currentDate = new Date(startDate);
+      const endDateTime = endDate.getTime();
+      
+      // 最初の週の開始日を月曜日に調整
+      const dayOfWeek = currentDate.getDay();
+      const offset = (dayOfWeek + 6) % 7; // Monday start
+      const weekStart = new Date(currentDate);
+      weekStart.setDate(currentDate.getDate() - offset);
+      
+      while (weekStart.getTime() <= endDateTime) {
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekStart.getDate() + 6);
+        
+        // 週の終了日がフィルタ範囲を超えないように調整
+        const actualWeekEnd = weekEnd.getTime() > endDateTime ? new Date(endDate) : new Date(weekEnd);
+        
+        const weekLabel = `${weekStart.getMonth() + 1}/${weekStart.getDate()}-${actualWeekEnd.getMonth() + 1}/${actualWeekEnd.getDate()}`;
+        weeklyBins.push({ start: new Date(weekStart), end: actualWeekEnd, label: weekLabel });
+        
+        weekStart.setDate(weekStart.getDate() + 7);
+      }
+      
+      return weeklyBins.map(bin => {
+        let totalMinutes = 0;
+        const current = new Date(bin.start);
+        const binEndTime = bin.end.getTime();
+        while (current.getTime() <= binEndTime) {
+          const dateStr = current.toISOString().split('T')[0];
+          totalMinutes += recordsByDate.get(dateStr) || 0;
+          current.setDate(current.getDate() + 1);
+        }
+        return { dateLabel: bin.label, minutes: totalMinutes };
+      });
+    }
+    
+    // フィルタが無効な場合、従来通りanchorDateを基準にした月を表示
     const now = new Date(anchorDate);
     const year = now.getFullYear();
     const month = now.getMonth(); // 0-11
@@ -478,7 +577,7 @@ export default function StatisticsScreen() {
       }
       return { dateLabel: bin.label, minutes: totalMinutes };
     });
-  }, [filteredPracticeRecords, anchorDate]);
+  }, [filteredPracticeRecords, anchorDate, dateFilterStart, dateFilterEnd]);
 
   // 年別（月単位）- メモ化で最適化（常に1月〜12月の順に表示）
   const yearlyData = useMemo<DayData[]>(() => {
@@ -496,6 +595,28 @@ export default function StatisticsScreen() {
       }
     });
     
+    // 日付範囲フィルタが有効な場合、フィルタ範囲内の月を表示
+    if (dateFilterStart || dateFilterEnd) {
+      const startDate = dateFilterStart ? new Date(dateFilterStart) : new Date();
+      const endDate = dateFilterEnd ? new Date(dateFilterEnd) : new Date();
+      
+      const currentMonth = new Date(startDate);
+      currentMonth.setDate(1); // 月の最初の日
+      const endDateTime = endDate.getTime();
+      
+      while (currentMonth.getTime() <= endDateTime) {
+        const monthKey = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, '0')}`;
+        const total = recordsByMonth.get(monthKey) || 0;
+        arr.push({ dateLabel: `${currentMonth.getMonth() + 1}月`, minutes: total });
+        
+        // 次の月へ
+        currentMonth.setMonth(currentMonth.getMonth() + 1);
+      }
+      
+      return arr;
+    }
+    
+    // フィルタが無効な場合、従来通りanchorDateを基準にした年を表示
     // 表示対象の年を決定（アンカー日の年）
     const now = new Date(anchorDate);
     const currentYear = now.getFullYear();
@@ -510,7 +631,7 @@ export default function StatisticsScreen() {
     }
     
     return arr;
-  }, [filteredPracticeRecords, anchorDate]);
+  }, [filteredPracticeRecords, anchorDate, dateFilterStart, dateFilterEnd]);
 
   // 年別（年単位）- メモ化で最適化
   const yearlyStatsData = useMemo<DayData[]>(() => {
@@ -577,24 +698,6 @@ export default function StatisticsScreen() {
       new Date(b.practice_date).getTime() - new Date(a.practice_date).getTime()
     ).slice(0, 5);
   }, [filteredPracticeRecords]);
-
-  // 日付範囲でフィルタリングされた練習記録
-  const filteredPracticeRecords = useMemo(() => {
-    if (!dateFilterStart && !dateFilterEnd) {
-      return practiceRecords;
-    }
-    
-    return practiceRecords.filter(record => {
-      const recordDate = record.practice_date;
-      if (dateFilterStart && recordDate < dateFilterStart) {
-        return false;
-      }
-      if (dateFilterEnd && recordDate > dateFilterEnd) {
-        return false;
-      }
-      return true;
-    });
-  }, [practiceRecords, dateFilterStart, dateFilterEnd]);
 
   // 詳細分析用の追加統計を計算（フィルタリングされたデータを使用）
   const getAdditionalStats = useMemo(() => {
@@ -733,6 +836,70 @@ export default function StatisticsScreen() {
   }, [filteredPracticeRecords]);
 
   const { data, maxValue, summary } = useMemo(() => {
+    // 日付範囲フィルタが有効な場合、フィルタ範囲の長さに応じて表示方式を決定
+    if (dateFilterStart || dateFilterEnd) {
+      const startDate = dateFilterStart ? new Date(dateFilterStart) : new Date();
+      const endDate = dateFilterEnd ? new Date(dateFilterEnd) : new Date();
+      const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      
+      if (daysDiff <= 7) {
+        // 7日以内 → 日別表示
+        const total = weeklyData.reduce((s, d) => s + d.minutes, 0);
+        const max = Math.max(...weeklyData.map(d => d.minutes), 120);
+        const activeDays = weeklyData.filter(d => d.minutes > 0).length;
+        const longest = Math.max(...weeklyData.map(d => d.minutes), 0);
+        const avg = activeDays ? Math.round(total / activeDays) : 0;
+        return {
+          data: weeklyData,
+          maxValue: Math.max(120, max),
+          summary: {
+            avgMinutes: avg,
+            longestMinutes: longest,
+            totalMinutes: total,
+            days: activeDays,
+            totalLabel: '期間合計',
+          },
+        };
+      } else if (daysDiff <= 60) {
+        // 8〜60日 → 週別表示
+        const total = monthlyData.reduce((s, d) => s + d.minutes, 0);
+        const max = Math.max(...monthlyData.map(d => d.minutes), 600);
+        const binsWith = monthlyData.filter(d => d.minutes > 0).length;
+        const longest = Math.max(...monthlyData.map(d => d.minutes), 0);
+        const avg = binsWith ? Math.round(total / binsWith) : 0;
+        return {
+          data: monthlyData,
+          maxValue: Math.max(600, max),
+          summary: {
+            avgMinutes: avg,
+            longestMinutes: longest,
+            totalMinutes: total,
+            days: binsWith,
+            totalLabel: '期間合計',
+          },
+        };
+      } else {
+        // 61日以上 → 月別表示
+        const total = yearlyData.reduce((s, d) => s + d.minutes, 0);
+        const max = Math.max(...yearlyData.map(d => d.minutes), 600);
+        const activeMonths = yearlyData.filter(d => d.minutes > 0).length;
+        const longest = Math.max(...yearlyData.map(d => d.minutes), 0);
+        const avg = activeMonths ? Math.round(total / activeMonths) : 0;
+        return {
+          data: yearlyData,
+          maxValue: Math.max(600, max),
+          summary: {
+            avgMinutes: avg,
+            longestMinutes: longest,
+            totalMinutes: total,
+            days: activeMonths,
+            totalLabel: '期間合計',
+          },
+        };
+      }
+    }
+    
+    // フィルタが無効な場合、従来通りの動作
     if (span === 'daily') {
       const total = weeklyData.reduce((s, d) => s + d.minutes, 0);
       const max = Math.max(...weeklyData.map(d => d.minutes), 120);
@@ -790,7 +957,7 @@ export default function StatisticsScreen() {
         },
       };
     }
-  }, [span, statsMode, weeklyData, monthlyData, yearlyData]);
+  }, [span, statsMode, weeklyData, monthlyData, yearlyData, dateFilterStart, dateFilterEnd]);
 
   const Primary = currentTheme.primary || '#7C4DFF';
   const Background = currentTheme.background || '#FFFFFF';
@@ -800,8 +967,19 @@ export default function StatisticsScreen() {
 
   // 期間表示（日別: 当週の開始〜終了、統計: 今月または今年）
   const periodTitle = useMemo(() => {
-    const today = new Date(anchorDate);
     const pad2 = (n: number) => String(n).padStart(2, '0');
+    
+    // 日付範囲フィルタが有効な場合、フィルタ範囲を表示
+    if (dateFilterStart || dateFilterEnd) {
+      const startDate = dateFilterStart ? new Date(dateFilterStart) : new Date();
+      const endDate = dateFilterEnd ? new Date(dateFilterEnd) : new Date();
+      return {
+        main: `${startDate.getMonth() + 1}月 ${pad2(startDate.getDate())}–${endDate.getMonth() + 1}月 ${pad2(endDate.getDate())}`,
+        sub: `${startDate.getFullYear()}年`,
+      };
+    }
+    
+    const today = new Date(anchorDate);
     if (span === 'daily') {
       const start = new Date(today);
       const offset = (today.getDay() + 6) % 7; // Monday start
@@ -821,7 +999,7 @@ export default function StatisticsScreen() {
     
     const month = today.getMonth() + 1;
     return { main: `${month}月`, sub: `${today.getFullYear()}` };
-  }, [span, statsMode, anchorDate]);
+  }, [span, statsMode, anchorDate, dateFilterStart, dateFilterEnd]);
 
   // 期間移動
   const shiftPeriod = (dir: -1 | 1) => {
@@ -951,28 +1129,41 @@ export default function StatisticsScreen() {
 
         {/* 期間表示 + ナビゲーション */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8, paddingHorizontal: 16 }}>
-          <TouchableOpacity 
-            onPress={() => shiftPeriod(-1)} 
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="前の期間"
-            accessibilityHint="前の週または月の統計を表示します"
-          >
-            <ChevronLeft size={24} color={SecondaryText} />
-          </TouchableOpacity>
-          <View style={{ alignItems: 'center', paddingVertical: 4 }}>
-            <Text style={{ color: TextColor, fontSize: 20, fontWeight: '800' }}>{periodTitle.main}</Text>
-            <Text style={{ color: SecondaryText, fontSize: 16, fontWeight: '700', marginTop: 2 }}>{periodTitle.sub}</Text>
-          </View>
-          <TouchableOpacity 
-            onPress={() => shiftPeriod(1)} 
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="次の期間"
-            accessibilityHint="次の週または月の統計を表示します"
-          >
-            <ChevronRight size={24} color={SecondaryText} />
-          </TouchableOpacity>
+          {!(dateFilterStart || dateFilterEnd) ? (
+            <>
+              <TouchableOpacity 
+                onPress={() => shiftPeriod(-1)} 
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="前の期間"
+                accessibilityHint="前の週または月の統計を表示します"
+              >
+                <ChevronLeft size={24} color={SecondaryText} />
+              </TouchableOpacity>
+              <View style={{ alignItems: 'center', paddingVertical: 4 }}>
+                <Text style={{ color: TextColor, fontSize: 20, fontWeight: '800' }}>{periodTitle.main}</Text>
+                <Text style={{ color: SecondaryText, fontSize: 16, fontWeight: '700', marginTop: 2 }}>{periodTitle.sub}</Text>
+              </View>
+              <TouchableOpacity 
+                onPress={() => shiftPeriod(1)} 
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel="次の期間"
+                accessibilityHint="次の週または月の統計を表示します"
+              >
+                <ChevronRight size={24} color={SecondaryText} />
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <View style={{ width: 24 }} />
+              <View style={{ alignItems: 'center', paddingVertical: 4 }}>
+                <Text style={{ color: TextColor, fontSize: 20, fontWeight: '800' }}>{periodTitle.main}</Text>
+                <Text style={{ color: SecondaryText, fontSize: 16, fontWeight: '700', marginTop: 2 }}>{periodTitle.sub}</Text>
+              </View>
+              <View style={{ width: 24 }} />
+            </>
+          )}
         </View>
         <View style={[styles.chartCard, { backgroundColor: Surface }]}>
           <Text style={[styles.chartTitle, { color: TextColor }]}>

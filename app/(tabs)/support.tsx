@@ -154,6 +154,27 @@ export default function SupportScreen() {
             <ChevronRight size={20} color={currentTheme?.textSecondary || '#999999'} />
           </TouchableOpacity>
 
+          <TouchableOpacity
+            style={[styles.actionButton, { borderColor: currentTheme?.primary || '#1976D2' }]}
+            onPress={() => {
+              const twitterUrl = 'https://x.com/app_gakkirenshu';
+              Linking.openURL(twitterUrl).catch(() => {
+                Alert.alert('エラー', 'Twitterを開けませんでした');
+              });
+            }}
+          >
+            <Twitter size={20} color={currentTheme?.primary || '#1976D2'} />
+            <View style={styles.actionButtonContent}>
+              <Text style={[styles.actionButtonTitle, { color: currentTheme?.text || '#333333' }]}>
+                Twitterアカウント
+              </Text>
+              <Text style={[styles.actionButtonSubtitle, { color: currentTheme?.textSecondary || '#666666' }]}>
+                最新情報やお知らせをチェック
+              </Text>
+            </View>
+            <ChevronRight size={20} color={currentTheme?.textSecondary || '#999999'} />
+          </TouchableOpacity>
+
             <TouchableOpacity
               style={[styles.snsButton, { backgroundColor: '#1DA1F2' }]}
             onPress={handleSNSShare}
