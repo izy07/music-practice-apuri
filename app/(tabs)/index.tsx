@@ -9,6 +9,7 @@ import PracticeRecordModal from '@/components/PracticeRecordModal';
 import EventModal from '@/components/EventModal';
 import CalendarDayCell from './components/calendar/CalendarDayCell';
 import EventManagementSection from './components/calendar/EventManagementSection';
+import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { useCalendarData } from '@/hooks/tabs/useCalendarData';
 import { supabase } from '@/lib/supabase';
@@ -1403,6 +1404,8 @@ export default function CalendarScreen() {
         }}
       />
 
+      {/* タブバー上に広告バナー（フリープランのみ） */}
+      <BottomBannerAd />
 
     </SafeAreaView>
   );
@@ -1415,7 +1418,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 12, // パディングを少し増やす
-    paddingBottom: 65, // タブバーの高さ
+    paddingBottom: 125, // タブバーの高さ + 広告バナー分
   },
   calendarContainer: {
     borderRadius: 12,
@@ -1660,7 +1663,7 @@ const styles = StyleSheet.create({
 
   fab: {
     position: 'absolute',
-    bottom: getScaledSpacing(100), // 少し上に移動（60 → 100）
+    bottom: getScaledSpacing(180), // さらに上に移動（130 → 180）
     right: getScaledSpacing(20),
     width: getScaledSize(96),
     height: getScaledSize(96),

@@ -17,7 +17,6 @@ import { supabase } from '@/lib/supabase';
 import PastOrgEditorModal from '@/components/profile-settings/PastOrgEditorModal';
 import AwardEditorModal from '@/components/profile-settings/AwardEditorModal';
 import PerformanceEditorModal from '@/components/profile-settings/PerformanceEditorModal';
-import AgeSelectorModal from '@/components/profile-settings/AgeSelectorModal';
 import EventCalendar from '@/components/EventCalendar';
 import { formatLocalDate } from '@/lib/dateUtils';
 import { styles } from '@/lib/tabs/profile-settings/styles';
@@ -87,7 +86,6 @@ export default function ProfileSettingsScreen() {
   const [showPastOrganizationModal, setShowPastOrganizationModal] = useState(false);
   const [showAwardModal, setShowAwardModal] = useState(false);
   const [showPerformanceModal, setShowPerformanceModal] = useState(false);
-  const [showAgeSelectorModal, setShowAgeSelectorModal] = useState(false);
   const [editingBreakPeriod, setEditingBreakPeriod] = useState<any>(null);
   const [editingPastOrganization, setEditingPastOrganization] = useState<any>(null);
   const [editingAward, setEditingAward] = useState<any>(null);
@@ -408,7 +406,7 @@ export default function ProfileSettingsScreen() {
     loadCurrentUser();
   }, [isLoading, selectedInstrument]);
 
-  // 誕生日または音楽開始年齢が変更された時の処理
+  // 誕生日が変更された時の処理
   useEffect(() => {
     if (birthday) {
       const age = calculateAgeFromBirthday(birthday);
@@ -416,12 +414,17 @@ export default function ProfileSettingsScreen() {
     }
   }, [birthday]);
 
+  // 楽器開始年齢と現在の年齢から演奏歴年数を自動計算
   useEffect(() => {
     if (musicStartAge && currentAge) {
       const years = calculateMusicExperienceYears(musicStartAge, currentAge);
       setMusicExperienceYears(years);
+    } else {
+      // どちらかが空の場合は0にリセット
+      setMusicExperienceYears(0);
     }
   }, [musicStartAge, currentAge]);
+
 
   // 認証中または認証されていない場合は何も表示しない
   if (isLoading || !isAuthenticated) {
@@ -430,11 +433,13 @@ export default function ProfileSettingsScreen() {
 
   // 楽器・練習レベル設定はこの画面では扱わない（主要機能で管理）
 
+
   // 演奏歴年数を自動計算
   const calculateMusicExperienceYears = (startAge: string, currentAge: string) => {
     if (!startAge || !currentAge) return 0;
     const startAgeNum = parseInt(startAge);
     const currentAgeNum = parseInt(currentAge);
+    if (isNaN(startAgeNum) || isNaN(currentAgeNum)) return 0;
     return Math.max(0, currentAgeNum - startAgeNum);
   };
 
@@ -970,46 +975,55 @@ export default function ProfileSettingsScreen() {
     try {
       logger.info('[ProfileSettings] 楽器データ削除処理を開始:', { instrumentId, userId: currentUser.id });
 
-      // 各テーブルから楽器のデータを削除
-      const deletePromises = [
-        supabase
-          .from('recordings')
-          .delete()
-          .eq('user_id', currentUser.id)
-          .eq('instrument_id', instrumentId),
-        supabase
-          .from('goals')
-          .delete()
-          .eq('user_id', currentUser.id)
-          .eq('instrument_id', instrumentId),
-        supabase
-          .from('my_songs')
-          .delete()
-          .eq('user_id', currentUser.id)
-          .eq('instrument_id', instrumentId),
-        supabase
-          .from('practice_sessions')
-          .delete()
-          .eq('user_id', currentUser.id)
-          .eq('instrument_id', instrumentId),
-        supabase
-          .from('events')
-          .delete()
-          .eq('user_id', currentUser.id)
-          .eq('instrument_id', instrumentId),
-      ];
+      // instrumentIdがUUID形式かどうかを確認
+      // UUID形式の正規表現: 8-4-4-4-12の16進数
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      const isUuid = uuidRegex.test(instrumentId);
 
-      const results = await Promise.all(deletePromises);
-      const errors = results.filter(r => r.error);
+      // UUID形式の場合のみ、データベースの各テーブルから削除を試みる
+      // ローカルID（"1", "2"など）の場合は、楽器情報リストからのみ削除
+      if (isUuid && selectedInstrument) {
+        // 選択中の楽器のIDと一致する場合のみ削除
+        if (instrumentId === selectedInstrument) {
+          const deletePromises = [
+            supabase
+              .from('recordings')
+              .delete()
+              .eq('user_id', currentUser.id)
+              .eq('instrument_id', instrumentId),
+            supabase
+              .from('goals')
+              .delete()
+              .eq('user_id', currentUser.id)
+              .eq('instrument_id', instrumentId),
+            supabase
+              .from('my_songs')
+              .delete()
+              .eq('user_id', currentUser.id)
+              .eq('instrument_id', instrumentId),
+            supabase
+              .from('practice_sessions')
+              .delete()
+              .eq('user_id', currentUser.id)
+              .eq('instrument_id', instrumentId),
+            supabase
+              .from('events')
+              .delete()
+              .eq('user_id', currentUser.id)
+              .eq('instrument_id', instrumentId),
+          ];
 
-      if (errors.length > 0) {
-        logger.error('[ProfileSettings] 楽器データ削除エラー:', errors);
-        Alert.alert(
-          'エラー',
-          '楽器データの削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。',
-          [{ text: 'OK' }]
-        );
-        return;
+          const results = await Promise.all(deletePromises);
+          const errors = results.filter(r => r.error);
+
+          if (errors.length > 0) {
+            logger.error('[ProfileSettings] 楽器データ削除エラー:', errors);
+            // エラーがあっても、楽器情報リストからの削除は続行
+          }
+        }
+      } else {
+        // ローカルIDの場合は、データベースからの削除はスキップ
+        logger.info('[ProfileSettings] ローカルIDのため、データベースからの削除をスキップ:', { instrumentId });
       }
 
       logger.info('[ProfileSettings] 楽器データの削除が完了:', { instrumentId });
@@ -1523,10 +1537,6 @@ export default function ProfileSettingsScreen() {
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
   };
 
-  const handleAgeSelection = (age: number) => {
-    setMusicStartAge(age.toString());
-    setShowAgeSelectorModal(false);
-  };
 
 
   return (
@@ -1825,20 +1835,37 @@ export default function ProfileSettingsScreen() {
 
             <View style={styles.formRow}>
               <View style={styles.formItem}>
-                <Text style={[styles.formLabel, { color: currentTheme.textSecondary }]}>音楽開始年齢</Text>
-                <TouchableOpacity
-                  style={[styles.ageSelectorButton, { 
-                    backgroundColor: currentTheme.background,
-                    borderColor: currentTheme.secondary
-                  }]}
-                  onPress={() => setShowAgeSelectorModal(true)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[styles.ageSelectorText, { color: musicStartAge ? currentTheme.text : currentTheme.textSecondary }]}>
-                    {musicStartAge ? `${musicStartAge}歳から開始` : '何歳から始めましたか？'}
-                  </Text>
-                  <Text style={[styles.ageSelectorArrow, { color: currentTheme.textSecondary }]}>▼</Text>
-                </TouchableOpacity>
+                <Text style={[styles.formLabel, { color: currentTheme.textSecondary }]}>楽器開始年齢</Text>
+                <View style={[styles.ageInputContainer, { 
+                  backgroundColor: currentTheme.background,
+                  borderColor: currentTheme.secondary
+                }]}>
+                  <TextInput
+                    style={[styles.ageInput, { 
+                      color: currentTheme.text,
+                      backgroundColor: 'transparent'
+                    }]}
+                    value={musicStartAge}
+                    onChangeText={(text) => {
+                      // 全角数字を半角数字に変換
+                      const halfWidthText = convertToHalfWidth(text);
+                      // 数字のみを許可（全角・半角両方）
+                      const numericText = halfWidthText.replace(/[^0-9]/g, '');
+                      // 最大3桁まで（0-999歳）
+                      if (numericText.length <= 3) {
+                        setMusicStartAge(numericText);
+                      }
+                    }}
+                    placeholder="年齢を入力"
+                    placeholderTextColor={currentTheme.textSecondary}
+                    keyboardType="number-pad"
+                    maxLength={3}
+                    editable={true}
+                    selectTextOnFocus={false}
+                    pointerEvents="auto"
+                  />
+                  <Text style={[styles.ageInputSuffix, { color: currentTheme.textSecondary }]}>歳</Text>
+                </View>
               </View>
             </View>
 
@@ -1875,24 +1902,23 @@ export default function ProfileSettingsScreen() {
                         const newId = '1';
                         setInstrumentTypes([{ id: newId, name: '', maker: '', model: '', purchaseDate: null, purchaseYear: '', purchaseMonth: '', purchaseDay: '', purchasePrice: '', notes: '' }]);
                       }}
-                      style={{
-                        paddingHorizontal: Dimensions.get('window').width < 400 ? 16 : 12,
-                        paddingVertical: Dimensions.get('window').width < 400 ? 10 : 6,
-                        backgroundColor: currentTheme.primary,
-                        borderRadius: 8,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        gap: 4,
-                      }}
-                      activeOpacity={0.7}
+                      style={[
+                        styles.saveButtonNew,
+                        {
+                          backgroundColor: currentTheme.primary,
+                          flexDirection: 'row',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 4,
+                          margin: 0,
+                          paddingHorizontal: 16,
+                          paddingVertical: 10,
+                        }
+                      ]}
+                      activeOpacity={0.8}
                     >
-                      <Plus size={Dimensions.get('window').width < 400 ? 18 : 16} color="#FFFFFF" />
-                      <Text style={{ 
-                        color: '#FFFFFF', 
-                        fontSize: Dimensions.get('window').width < 400 ? 14 : 12, 
-                        fontWeight: '600' 
-                      }}>
+                      <Plus size={16} color="#FFFFFF" />
+                      <Text style={styles.saveAllButtonText}>
                         追加
                       </Text>
                     </TouchableOpacity>
@@ -1922,6 +1948,8 @@ export default function ProfileSettingsScreen() {
                             justifyContent: 'center',
                             gap: 4,
                             margin: 0,
+                            paddingHorizontal: 16,
+                            paddingVertical: 10,
                           }
                         ]}
                         activeOpacity={0.8}
@@ -2297,7 +2325,19 @@ export default function ProfileSettingsScreen() {
           </View>
 
           <TouchableOpacity
-            style={[styles.saveButtonNew, { backgroundColor: currentTheme.primary }]}
+            style={[
+              styles.saveButtonNew,
+              {
+                backgroundColor: currentTheme.primary,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4,
+                margin: 0,
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+              }
+            ]}
             onPress={saveProfile}
             disabled={loading}
             activeOpacity={0.8}
@@ -2557,30 +2597,32 @@ export default function ProfileSettingsScreen() {
           </TouchableOpacity>
 
           {/* プロフィール削除セクション */}
-          <View style={[styles.infoSection, { backgroundColor: currentTheme.surface, marginTop: 24, marginBottom: 40 }]}>
+          <View style={[styles.infoSection, { backgroundColor: currentTheme.surface, marginTop: 16, marginBottom: 24, paddingHorizontal: 8, paddingVertical: 8 }]}>
             <View style={styles.sectionTitleContainer}>
               <View style={[styles.sectionIcon, { backgroundColor: '#FF4444' }]}>
-                <Trash2 size={18} color="#FFFFFF" />
+                <Trash2 size={16} color="#FFFFFF" />
               </View>
-              <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>プロフィール削除</Text>
+              <Text style={[styles.sectionTitle, { color: currentTheme.text, fontSize: 14 }]}>プロフィール削除</Text>
             </View>
-            <View style={styles.formGroup}>
-              <Text style={[styles.sectionDescription, { color: currentTheme.textSecondary, marginBottom: 16 }]}>
+            <View style={[styles.formGroup, { marginTop: 4 }]}>
+              <Text style={[styles.sectionDescription, { color: currentTheme.textSecondary, marginBottom: 8, fontSize: 11 }]}>
                 プロフィール情報を削除します。この操作は取り消せません。
               </Text>
               <TouchableOpacity
                 style={[styles.deleteButton, { 
                   backgroundColor: '#FF4444',
-                  opacity: isDeleting ? 0.6 : 1
+                  opacity: isDeleting ? 0.6 : 1,
+                  paddingVertical: 6,
+                  paddingHorizontal: 12
                 }]}
                 onPress={handleDeleteAccount}
                 disabled={isDeleting}
                 activeOpacity={0.8}
               >
                 {isDeleting ? (
-                  <Text style={styles.deleteButtonText}>削除中...</Text>
+                  <Text style={[styles.deleteButtonText, { fontSize: 12 }]}>削除中...</Text>
                 ) : (
-                  <Text style={styles.deleteButtonText}>プロフィール削除</Text>
+                  <Text style={[styles.deleteButtonText, { fontSize: 12 }]}>プロフィール削除</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -2614,12 +2656,6 @@ export default function ProfileSettingsScreen() {
         }}
       />
       
-      <AgeSelectorModal
-        visible={showAgeSelectorModal}
-        selectedAge={musicStartAge}
-        onClose={() => setShowAgeSelectorModal(false)}
-        onSelect={handleAgeSelection}
-      />
 
 
       {/* 誕生日選択DateTimePicker - モバイルのみ */}

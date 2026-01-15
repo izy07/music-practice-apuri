@@ -9,7 +9,7 @@ export const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 1,
-    paddingBottom: 65, // タブバーの高さ
+    paddingBottom: 125, // タブバーの高さ + 広告バナー分
   },
   modeToggleContainer: {
     flexDirection: 'row',
@@ -656,8 +656,8 @@ export const styles = StyleSheet.create({
   // 音名表示モードセクションのスタイル（統合版）
   noteDisplayModeSection: {
     width: '100%',
-    marginTop: 16,
-    padding: 20,
+    marginTop: 8,
+    padding: 12,
     borderRadius: 16,
     marginHorizontal: 0,
     borderWidth: 2,
@@ -672,24 +672,24 @@ export const styles = StyleSheet.create({
     }),
   },
   noteDisplayModeHeader: {
-    marginBottom: 20,
-    paddingBottom: 16,
+    marginBottom: 12,
+    paddingBottom: 8,
     borderBottomWidth: 1,
     borderBottomColor: '#E0E0E0',
   },
   noteDisplayModeTitle: {
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 12,
+    marginBottom: 6,
   },
   noteDisplayModeButtons: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
   },
   noteDisplayModeButton: {
     flex: 1,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: 8,
     alignItems: 'center',
     borderWidth: 2,
@@ -706,12 +706,12 @@ export const styles = StyleSheet.create({
   openStringTitle: {
     fontSize: 16,
     fontWeight: '700',
-    marginBottom: 12,
+    marginBottom: 6,
   },
   openStringDescription: {
     fontSize: 14,
     lineHeight: 20,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   openStringButtons: {
     flexDirection: 'row',
@@ -721,13 +721,13 @@ export const styles = StyleSheet.create({
   },
   openStringButton: {
     width: '48%',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 6,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
     borderWidth: 1,
-    minHeight: 80,
+    minHeight: 70,
   },
   openStringButtonText: {
     fontSize: 16,

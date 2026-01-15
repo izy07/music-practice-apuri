@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Platform, Modal, TextInput } from 'react-native';
-import { Palette, Check, X } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { Palette, Save } from 'lucide-react-native';
 import { Instrument } from '@/services';
 
 interface PresetPalette {
@@ -17,203 +17,6 @@ interface PresetPalette {
   };
 }
 
-interface ColorPickerProps {
-  label: string;
-  color: string;
-  onColorChange: (color: string) => void | Promise<void>;
-  colorType: string;
-  currentTheme: Instrument;
-}
-
-const ColorPicker: React.FC<ColorPickerProps> = ({ label, color, onColorChange, colorType, currentTheme }) => {
-  const [showModal, setShowModal] = useState(false);
-  const [colorInput, setColorInput] = useState(color);
-  const textInputRef = useRef<TextInput>(null);
-  
-  // モーダルが開いた時にTextInputにフォーカスを当てる
-  useEffect(() => {
-    if (showModal && Platform.OS !== 'web') {
-      // 少し遅延させてからフォーカスを当てる（モーダルのアニメーション完了を待つ）
-      const timer = setTimeout(() => {
-        textInputRef.current?.focus();
-      }, 300);
-      return () => clearTimeout(timer);
-    }
-  }, [showModal]);
-
-  const handleColorChange = async (newColor: string) => {
-    try {
-      await onColorChange(newColor);
-    } catch (error) {
-      console.error('色の変更エラー:', error);
-      Alert.alert('エラー', '色の変更に失敗しました');
-    }
-  };
-
-  const validateColorCode = (code: string): boolean => {
-    // #で始まる6桁の16進数か、#なしの6桁の16進数
-    const hexColorRegex = /^#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/;
-    return hexColorRegex.test(code);
-  };
-
-  const formatColorCode = (code: string): string => {
-    // #がない場合は追加
-    if (!code.startsWith('#')) {
-      return '#' + code;
-    }
-    return code;
-  };
-
-  const handleSaveColor = () => {
-    const formattedColor = formatColorCode(colorInput.trim());
-    if (validateColorCode(formattedColor)) {
-      handleColorChange(formattedColor);
-      setShowModal(false);
-    } else {
-      Alert.alert('エラー', '正しい色コードを入力してください（例: #FF0000 または FF0000）');
-    }
-  };
-
-  const openColorPicker = () => {
-    // Web環境ではHTML5のカラーピッカーを使用
-    if (Platform.OS === 'web' && typeof document !== 'undefined') {
-      try {
-        const input = document.createElement('input');
-        input.type = 'color';
-        input.value = color;
-        input.style.position = 'fixed';
-        input.style.opacity = '0';
-        input.style.pointerEvents = 'none';
-        input.style.width = '0';
-        input.style.height = '0';
-        document.body.appendChild(input);
-        
-        const handleChange = (e: Event) => {
-          const target = e.target as HTMLInputElement;
-          if (target.value) {
-            handleColorChange(target.value);
-          }
-          if (document.body.contains(input)) {
-            document.body.removeChild(input);
-          }
-          input.removeEventListener('change', handleChange);
-        };
-        
-        input.addEventListener('change', handleChange);
-        
-        // カラーピッカーを開く
-        input.click();
-      } catch (error) {
-        // エラーが発生した場合はモーダルで色コードを入力
-        console.error('カラーピッカーエラー:', error);
-        setColorInput(color);
-        setShowModal(true);
-      }
-    } else {
-      // モバイル環境ではモーダルで色コードを入力
-      setColorInput(color);
-      setShowModal(true);
-    }
-  };
-
-  return (
-    <>
-      <View style={styles.colorPickerContainer}>
-        <Text style={[styles.colorPickerLabel, { color: currentTheme?.text || '#2D3748' }]}>{label}</Text>
-        <View style={styles.colorPickerRow}>
-          <TouchableOpacity
-            onPress={openColorPicker}
-            activeOpacity={0.7}
-            hitSlop={{ top: 5, bottom: 5, left: 5, right: 5 }}
-          >
-          <View style={[styles.colorPreview, { backgroundColor: color, borderColor: currentTheme?.secondary || '#E2E8F0' }]} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.colorButton, { backgroundColor: currentTheme?.primary || '#4A5568' }]}
-            onPress={openColorPicker}
-            activeOpacity={0.7}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-          >
-            <Text style={[styles.colorButtonText, { color: currentTheme?.surface || '#FFFFFF' }]}>変更</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* モバイル環境用の色コード入力モーダル */}
-      <Modal
-        visible={showModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: currentTheme?.surface || '#FFFFFF' }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: currentTheme?.text || '#2D3748' }]}>
-                {label}を変更
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowModal(false)}
-                style={styles.modalCloseButton}
-              >
-                <X size={24} color={currentTheme?.text || '#2D3748'} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.modalBody}>
-              <Text style={[styles.modalLabel, { color: currentTheme?.text || '#2D3748' }]}>
-                色コードを入力（例: #FF0000 または FF0000）
-              </Text>
-              <View style={styles.colorInputRow}>
-                <View style={[styles.colorPreviewLarge, { backgroundColor: colorInput.startsWith('#') ? colorInput : '#' + colorInput, borderColor: currentTheme?.secondary || '#E2E8F0' }]} />
-                <TextInput
-                  ref={textInputRef}
-                  style={[styles.colorInput, { 
-                    color: currentTheme?.text || '#2D3748',
-                    borderColor: currentTheme?.secondary || '#E2E8F0',
-                    backgroundColor: currentTheme?.background || '#F7FAFC'
-                  }]}
-                  value={colorInput}
-                  onChangeText={setColorInput}
-                  placeholder="#FF0000"
-                  placeholderTextColor={currentTheme?.textSecondary || '#718096'}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  maxLength={7}
-                  keyboardType="default"
-                  returnKeyType="done"
-                  onSubmitEditing={handleSaveColor}
-                />
-              </View>
-              <Text style={[styles.modalHint, { color: currentTheme?.textSecondary || '#718096' }]}>
-                現在の色: {color}
-              </Text>
-            </View>
-
-            <View style={styles.modalFooter}>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonCancel, { borderColor: currentTheme?.secondary || '#E2E8F0' }]}
-                onPress={() => setShowModal(false)}
-              >
-                <Text style={[styles.modalButtonText, { color: currentTheme?.text || '#2D3748' }]}>
-                  キャンセル
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonSave, { backgroundColor: currentTheme?.primary || '#4A5568' }]}
-                onPress={handleSaveColor}
-              >
-                <Text style={[styles.modalButtonText, { color: currentTheme?.surface || '#FFFFFF' }]}>
-                  保存
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-    </>
-  );
-};
 
 interface AppearanceSettingsProps {
   currentTheme: Instrument;
@@ -224,6 +27,7 @@ interface AppearanceSettingsProps {
   selectedInstrument: string;
   setCustomTheme: (theme: Instrument) => Promise<void>;
   resetToInstrumentTheme: () => Promise<void>;
+  isCustomTheme: boolean; // InstrumentThemeContextから取得した、保存済みかどうかのフラグ
 }
 
 const presetPalettes: PresetPalette[] = [
@@ -493,24 +297,35 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
   selectedInstrument,
   setCustomTheme,
   resetToInstrumentTheme,
+  isCustomTheme,
 }) => {
   const [selectedPresetId, setSelectedPresetId] = useState<string | null>(null);
 
-  const handlePresetSelect = async (palette: PresetPalette) => {
+  const handlePresetSelect = (palette: PresetPalette) => {
+    // プリセット選択時は一時的に適用するだけで、保存はしない
     const newTheme = { ...customColors, ...palette.colors };
     setCustomColors(newTheme);
     setUseCustomTheme(true);
     setSelectedPresetId(palette.id);
-    await setCustomTheme(newTheme);
-    Alert.alert('プリセット適用', `${palette.name}カラーパレットを適用しました`);
   };
 
-  const handleSaveCustomTheme = async () => {
-    await setCustomTheme(customColors);
-    setUseCustomTheme(true);
-    setSelectedPresetId(null);
-    Alert.alert('保存完了', 'カスタムテーマを保存しました');
+  const handleSaveTheme = async () => {
+    // 「テーマを保存」ボタンが押されたときにのみ永続的に保存
+    try {
+      const presetName = getCurrentPresetName();
+      const themeToSave: Instrument = {
+        ...customColors,
+        id: selectedInstrument || customColors.id || 'custom',
+        name: presetName || customColors.name || 'カスタム',
+        nameEn: customColors.nameEn || 'Custom',
+      };
+      await setCustomTheme(themeToSave);
+      Alert.alert('保存完了', 'この楽器のテーマを保存しました。この楽器では次回からこのテーマが自動的に適用されます。');
+    } catch (error) {
+      Alert.alert('エラー', 'テーマの保存に失敗しました');
+    }
   };
+
 
   const handleResetTheme = async () => {
     setUseCustomTheme(false);
@@ -636,135 +451,20 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
         </View>
       </View>
 
-      {/* カスタムカラー設定 */}
-      <View style={styles.customSection}>
-          <Text style={[styles.customTitle, { color: currentTheme?.text || '#2D3748' }]}>カスタムカラー設定</Text>
-          
-          <View style={styles.colorPickerGrid}>
-            <View style={styles.colorPickerColumn}>
-              <ColorPicker 
-                label="背景色" 
-                color={customColors.background} 
-                colorType="background" 
-                currentTheme={currentTheme} 
-                onColorChange={async (color) => {
-                  try {
-                    const updatedColors = { ...customColors, background: color };
-                    setCustomColors(updatedColors);
-                    // 即座に反映
-                    await setCustomTheme(updatedColors);
-                  } catch (error) {
-                    console.error('背景色の更新エラー:', error);
-                  }
-                }} 
-              />
-              <ColorPicker 
-                label="プライマリ色" 
-                color={customColors.primary} 
-                colorType="primary" 
-                currentTheme={currentTheme} 
-                onColorChange={async (color) => {
-                  try {
-                    const updatedColors = { ...customColors, primary: color };
-                    setCustomColors(updatedColors);
-                    await setCustomTheme(updatedColors);
-                  } catch (error) {
-                    console.error('プライマリ色の更新エラー:', error);
-                  }
-                }} 
-              />
-              <ColorPicker 
-                label="アクセント色" 
-                color={customColors.accent} 
-                colorType="accent" 
-                currentTheme={currentTheme} 
-                onColorChange={async (color) => {
-                  try {
-                    const updatedColors = { ...customColors, accent: color };
-                    setCustomColors(updatedColors);
-                    await setCustomTheme(updatedColors);
-                  } catch (error) {
-                    console.error('アクセント色の更新エラー:', error);
-                  }
-                }} 
-              />
-              <ColorPicker 
-                label="テキスト色" 
-                color={customColors.text} 
-                colorType="text" 
-                currentTheme={currentTheme} 
-                onColorChange={async (color) => {
-                  try {
-                    const updatedColors = { ...customColors, text: color };
-                    setCustomColors(updatedColors);
-                    await setCustomTheme(updatedColors);
-                  } catch (error) {
-                    console.error('テキスト色の更新エラー:', error);
-                  }
-                }} 
-              />
-            </View>
-            
-            <View style={styles.colorPickerColumn}>
-              <ColorPicker 
-                label="表面色" 
-                color={customColors.surface} 
-                colorType="surface" 
-                currentTheme={currentTheme} 
-                onColorChange={async (color) => {
-                  try {
-                    const updatedColors = { ...customColors, surface: color };
-                    setCustomColors(updatedColors);
-                    await setCustomTheme(updatedColors);
-                  } catch (error) {
-                    console.error('表面色の更新エラー:', error);
-                  }
-                }} 
-              />
-              <ColorPicker 
-                label="セカンダリ色" 
-                color={customColors.secondary} 
-                colorType="secondary" 
-                currentTheme={currentTheme} 
-                onColorChange={async (color) => {
-                  try {
-                    const updatedColors = { ...customColors, secondary: color };
-                    setCustomColors(updatedColors);
-                    await setCustomTheme(updatedColors);
-                  } catch (error) {
-                    console.error('セカンダリ色の更新エラー:', error);
-                  }
-                }} 
-              />
-              <ColorPicker 
-                label="サブテキスト色" 
-                color={customColors.textSecondary} 
-                colorType="textSecondary" 
-                currentTheme={currentTheme} 
-                onColorChange={async (color) => {
-                  try {
-                    const updatedColors = { ...customColors, textSecondary: color };
-                    setCustomColors(updatedColors);
-                    await setCustomTheme(updatedColors);
-                  } catch (error) {
-                    console.error('サブテキスト色の更新エラー:', error);
-                  }
-                }} 
-              />
-            </View>
-          </View>
-          
-          <View style={styles.customActions}>
-            <TouchableOpacity
-              style={[styles.saveButton, { backgroundColor: currentTheme?.primary || '#4A5568' }]}
-              onPress={handleSaveCustomTheme}
-              activeOpacity={0.7}
-            >
-              <Check size={20} color="#FFFFFF" />
-              <Text style={styles.saveButtonText}>カスタムテーマを保存</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+      {/* テーマを保存ボタン */}
+      {useCustomTheme && (
+        <TouchableOpacity
+          style={[styles.saveThemeButton, { backgroundColor: currentTheme?.primary || '#4A5568' }]}
+          onPress={handleSaveTheme}
+          activeOpacity={0.7}
+        >
+          <Save size={20} color="#FFFFFF" />
+          <Text style={styles.saveThemeButtonText}>
+            {isCustomTheme ? 'テーマを更新' : 'テーマを保存'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
 
       {/* リセットボタン */}
       <TouchableOpacity
@@ -874,56 +574,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 4,
   },
-  customSection: {
-    marginBottom: 12,
-  },
-  customTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  colorPickerGrid: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  colorPickerColumn: {
-    flex: 1,
-    gap: 0,
-  },
-  colorPickerContainer: {
-    marginBottom: 10,
-  },
-  colorPickerLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  colorPickerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  colorPreview: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  colorButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  colorButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  customActions: {
-    marginTop: 8,
-  },
-  saveButton: {
+  saveThemeButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -931,8 +582,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 8,
     gap: 8,
+    marginTop: 12,
+    marginBottom: 8,
   },
-  saveButtonText: {
+  saveThemeButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
@@ -948,94 +601,6 @@ const styles = StyleSheet.create({
   resetButtonText: {
     fontSize: 14,
     fontWeight: '500',
-  },
-  // モーダル用のスタイル
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    width: '100%',
-    maxWidth: 400,
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  modalCloseButton: {
-    padding: 4,
-  },
-  modalBody: {
-    marginBottom: 20,
-  },
-  modalLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  colorInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
-  },
-  colorPreviewLarge: {
-    width: 50,
-    height: 50,
-    borderRadius: 8,
-    borderWidth: 2,
-  },
-  colorInput: {
-    flex: 1,
-    height: 50,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    fontSize: 16,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-  },
-  modalHint: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    gap: 12,
-    justifyContent: 'flex-end',
-  },
-  modalButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
-    minWidth: 100,
-    alignItems: 'center',
-  },
-  modalButtonCancel: {
-    borderWidth: 1,
-    backgroundColor: 'transparent',
-  },
-  modalButtonSave: {
-    // backgroundColorは動的に設定
-  },
-  modalButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
   },
 });
 

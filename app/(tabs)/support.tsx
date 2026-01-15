@@ -43,20 +43,84 @@ export default function SupportScreen() {
       };
 
       if (Platform.OS === 'web') {
-        if (navigator.share) {
-          await navigator.share(shareContent);
-        } else {
-          // Web環境でシェアがサポートされていない場合
-          const text = `${shareContent.message} ${shareContent.url}`;
-          await navigator.clipboard.writeText(text);
-          Alert.alert('コピー完了', 'アプリの情報をクリップボードにコピーしました');
+        // Web環境でのシェア処理
+        const text = `${shareContent.message} ${shareContent.url}`;
+        
+        // navigator.shareが利用可能かチェック
+        if (typeof navigator !== 'undefined' && navigator.share) {
+          try {
+            // navigator.shareはurlプロパティをサポートしていない場合があるため、textに統合
+            await navigator.share({
+              title: '楽器練習記録アプリ',
+              text: text,
+            });
+            return; // 成功した場合は終了
+          } catch (shareError: any) {
+            // ユーザーがシェアをキャンセルした場合はエラーとして扱わない
+            if (shareError?.name === 'AbortError' || 
+                shareError?.message?.includes('AbortError') ||
+                shareError?.message?.includes('cancel')) {
+              return;
+            }
+            // シェアが失敗した場合はクリップボードにコピーにフォールバック
+            logger.debug('navigator.shareが失敗、クリップボードにフォールバック:', shareError);
+          }
+        }
+        
+        // クリップボードにコピー（フォールバックまたはnavigator.shareが利用できない場合）
+        try {
+          if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(text);
+            Alert.alert('コピー完了', 'アプリの情報をクリップボードにコピーしました');
+          } else if (typeof document !== 'undefined') {
+            // フォールバック: テキストエリアを使用してコピー
+            const textArea = document.createElement('textarea');
+            textArea.value = text;
+            textArea.style.position = 'fixed';
+            textArea.style.opacity = '0';
+            textArea.style.left = '-9999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            const success = document.execCommand('copy');
+            document.body.removeChild(textArea);
+            
+            if (success) {
+              Alert.alert('コピー完了', 'アプリの情報をクリップボードにコピーしました');
+            } else {
+              throw new Error('クリップボードへのコピーに失敗しました');
+            }
+          } else {
+            throw new Error('シェア機能が利用できません');
+          }
+        } catch (clipboardError: any) {
+          logger.error('クリップボードコピーエラー:', clipboardError);
+          throw new Error(`シェアとクリップボードコピーの両方に失敗しました: ${clipboardError?.message || '不明なエラー'}`);
         }
       } else {
+        // ネイティブ環境
         await Share.share(shareContent);
       }
-    } catch (error) {
-      ErrorHandler.handle(error, 'シェア', true);
-      Alert.alert('エラー', 'シェアに失敗しました');
+    } catch (error: any) {
+      // ユーザーがシェアをキャンセルした場合はエラーとして扱わない
+      if (error?.message?.includes('AbortError') || 
+          error?.name === 'AbortError' || 
+          error?.message?.includes('User cancelled') ||
+          error?.message?.includes('cancel')) {
+        return;
+      }
+      
+      // エラーの詳細を記録
+      const errorDetails = {
+        message: error?.message || 'エラーメッセージなし',
+        name: error?.name || 'エラー名なし',
+        stack: error?.stack || 'スタックトレースなし',
+        toString: error?.toString?.() || String(error),
+      };
+      
+      logger.error('シェアエラー:', errorDetails);
+      ErrorHandler.handle(error, 'シェア', false); // ユーザーには既にAlertを表示するので、ErrorHandlerでは表示しない
+      Alert.alert('エラー', error?.message || 'シェアに失敗しました');
     }
   };
 

@@ -6,7 +6,7 @@ import React, { useRef, useEffect } from 'react';
 import { View, LogBox, AppState } from 'react-native';
 import { Stack } from 'expo-router'; // 画面遷移のスタックナビゲーター
 import { Platform } from 'react-native';
-import { useRouter, useSegments } from 'expo-router'; // ルーティング関連のフック
+import { useRouter, useSegments, useRootNavigationState } from 'expo-router'; // ルーティング関連のフック
 import { useFrameworkReady } from '@/hooks/useFrameworkReady'; // フレームワーク準備状態の管理
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced'; // 認証フック（統一版）
 import { LanguageProvider } from '@/components/LanguageContext'; // 多言語対応の管理
@@ -105,6 +105,8 @@ function RootLayoutContent() {
   // ルーティング関連のフック
   const router = useRouter(); // 画面遷移を実行するためのルーター
   const segments = useSegments() as readonly string[]; // 現在のURLパスを配列で取得
+  const rootNavigationState = useRootNavigationState();
+  const isRouterReady = !!rootNavigationState?.key;
   
   // 認証フックを常に実行（Hooksの順序を保持）
   const { 
@@ -150,7 +152,7 @@ function RootLayoutContent() {
           const isInAuthGroup = currentSegments[0] === 'auth';
           
           // ログイン画面にいない場合のみリダイレクト
-          if (!isInAuthGroup && isReady && isInitialized) {
+          if (!isInAuthGroup && isReady && isRouterReady && isInitialized) {
             redirectToLogin(router, 'ネットワーク切断を検出');
           }
         }
@@ -399,7 +401,7 @@ function RootLayoutContent() {
 
   // GitHub Pages用: 404.htmlからリダイレクトされた際に元のパスを復元
   React.useEffect(() => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && isReady) {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && isReady && isRouterReady) {
       // 環境変数からベースパスを取得（getBasePath関数を使用）
       const basePath = getBasePath();
       const currentPath = window.location.pathname;
@@ -447,7 +449,11 @@ function RootLayoutContent() {
         window.history.replaceState({}, '', newUrl);
         
         // 元のパスに遷移（Expo Routerが処理）
-        router.replace(normalizedRedirectPath as any);
+        try {
+          router.replace(normalizedRedirectPath as any);
+        } catch (e) {
+          logger.warn('Root Layout未準備のため遷移をスキップ（後で自動復旧します）', e);
+        }
       } else if (storedRedirectPath) {
         // sessionStorageからリダイレクトパスを復元
         logger.debug('404.htmlからリダイレクトされたパスを復元（sessionStorage）:', storedRedirectPath);
@@ -458,7 +464,11 @@ function RootLayoutContent() {
         const newPath = basePath + normalizedRedirectPath;
         
         window.history.replaceState({}, '', newPath + window.location.search + window.location.hash);
-        router.replace(normalizedRedirectPath as any);
+        try {
+          router.replace(normalizedRedirectPath as any);
+        } catch (e) {
+          logger.warn('Root Layout未準備のため遷移をスキップ（後で自動復旧します）', e);
+        }
       } else if (originalPath) {
         // sessionStorageから元のパスを復元（フォールバック）
         if (currentPath.includes('/index.html') && originalPath !== currentPath) {
@@ -466,7 +476,11 @@ function RootLayoutContent() {
           sessionStorage.removeItem('expo-router-original-path');
           const pathWithoutBaseFromOriginal = originalPath.replace(basePath, '') || '/';
           window.history.replaceState({}, '', originalPath + window.location.search + window.location.hash);
-          router.replace(pathWithoutBaseFromOriginal as any);
+          try {
+            router.replace(pathWithoutBaseFromOriginal as any);
+          } catch (e) {
+            logger.warn('Root Layout未準備のため遷移をスキップ（後で自動復旧します）', e);
+          }
         }
       } else if (pathWithoutBase !== '/' && pathWithoutBase !== '/index.html') {
         // ベースパス以外のパスにアクセスした場合、Expo Routerに正しいパスを伝える
@@ -478,7 +492,7 @@ function RootLayoutContent() {
         }
       }
     }
-  }, [router, isReady]);
+  }, [router, isReady, isRouterReady]);
 
   /**
    * 【ナビゲーション関数】安全な画面遷移を実行
@@ -489,7 +503,7 @@ function RootLayoutContent() {
   // ナビゲーション関数（シンプル化）
   const navigateWithDelay = (path: RoutePath, delay: number = 0): void => {
     // フレームワークが準備完了するまで待機
-    if (!isReady) {
+    if (!isReady || !isRouterReady) {
       logger.debug('フレームワーク準備中 - ナビゲーションを待機中', { path, isReady });
       // 準備完了後に再試行
       setTimeout(() => navigateWithDelay(path, 0), 100);
@@ -520,6 +534,11 @@ function RootLayoutContent() {
    * - 認証済み + 楽器未選択 → チュートリアル画面
    */
   useEffect(() => {
+    // Expo RouterのRoot Navigationが準備できるまで待機（navigate before mounting を回避）
+    if (!isRouterReady) {
+      return;
+    }
+
     // 現在のセグメントを取得（Web環境ではrefから取得して強制遷移を防ぐ）
     const currentSegments = Platform.OS === 'web' ? segmentsRef.current : segments;
     
@@ -707,7 +726,7 @@ function RootLayoutContent() {
       }
       return;
     }
-  }, [isReady, isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, needsTutorial, router, segments]);
+  }, [isReady, isRouterReady, isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, needsTutorial, router, segments]);
 
   // checkUserProgressAndNavigate関数は削除（シンプル化のため不要）
 

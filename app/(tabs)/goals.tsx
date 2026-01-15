@@ -26,6 +26,7 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { checkGoalLimit, canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 import { isErrorWithCode, getErrorMessage } from '@/lib/errorHandlingHelpers';
 import { Goal, SubGoal, GoalFromDB, UserProfile, Event, NewGoalData } from '@/lib/tabs/goals/types';
+import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 
 /**
  * アップグレードバナーコンポーネント
@@ -2503,6 +2504,9 @@ export default function GoalsScreen() {
         onChangeMonth={changeMonth}
         currentTheme={currentTheme}
       />
+
+      {/* タブバー上に広告バナー（フリープランのみ） */}
+      <BottomBannerAd />
 
     </SafeAreaView>
   );

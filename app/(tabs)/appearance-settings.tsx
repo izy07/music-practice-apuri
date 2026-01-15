@@ -103,6 +103,7 @@ export default function AppearanceSettingsScreen() {
           selectedInstrument={selectedInstrument}
           setCustomTheme={setCustomTheme}
           resetToInstrumentTheme={resetToInstrumentTheme}
+          isCustomTheme={isCustomTheme}
         />
       </ScrollView>
     </SafeAreaView>

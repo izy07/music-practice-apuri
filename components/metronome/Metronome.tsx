@@ -939,7 +939,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   timeSignatureSettingContainer: {
-    marginTop: -4,
+    marginTop: -6,
     marginBottom: 8,
   },
   timeSignatureDisplayButton: {
@@ -1014,15 +1014,16 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: '22%',
     maxWidth: '24%',
-    paddingHorizontal: 8,
-    paddingVertical: 12,
+    paddingHorizontal: 4,
+    paddingVertical: 8,
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
   },
   metronomeSoundSettingButtonText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
+    textAlign: 'center',
   },
   bpmExplanationContainer: {
     marginTop: 4,

@@ -501,24 +501,27 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
   maintenanceInfo: {
-    padding: 8,
+    padding: 6,
     borderRadius: 8,
     borderWidth: 1,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   maintenanceLabel: {
     fontSize: 12,
     fontWeight: '600',
-    marginBottom: 2,
+    marginBottom: 1,
+    lineHeight: 14,
   },
   maintenanceDate: {
     fontSize: 14,
     fontWeight: '500',
-    marginBottom: 1,
+    marginBottom: 0,
+    lineHeight: 16,
   },
   maintenanceTitle: {
     fontSize: 12,
-    marginTop: 2,
+    marginTop: 1,
+    lineHeight: 14,
   },
   filterContainer: {
     flexDirection: 'row',

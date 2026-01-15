@@ -48,6 +48,19 @@ const config: ExpoConfig = {
     'expo-asset',
     'expo-audio',
     'expo-web-browser',
+    // AdMob (Google Mobile Ads) - Android/iOS App ID はネイティブに必須
+    [
+      'react-native-google-mobile-ads',
+      {
+        androidAppId: 'ca-app-pub-4701955364298598~7135719486',
+        // iOSは後で本番IDに差し替え（未設定だとiOSでクラッシュするため暫定でテストID）
+        iosAppId: process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || 'ca-app-pub-3940256099942544~1458002511',
+        // 計測開始を遅らせる（同意/年齢設定を先に適用したい場合）
+        delayAppMeasurementInit: true,
+        optimizeInitialization: true,
+        optimizeAdLoading: true,
+      },
+    ],
     [
       'expo-notifications',
       {

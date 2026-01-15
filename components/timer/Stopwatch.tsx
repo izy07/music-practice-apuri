@@ -270,6 +270,8 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
               { color: currentTheme.textSecondary }
             ]}
             numberOfLines={1}
+            adjustsFontSizeToFit={true}
+            minimumFontScale={0.8}
           >
             ラップ
           </Text>
@@ -293,6 +295,8 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
               { color: currentTheme.text }
             ]}
             numberOfLines={1}
+            adjustsFontSizeToFit={true}
+            minimumFontScale={0.8}
           >
             クリア
           </Text>
@@ -350,25 +354,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     marginBottom: 24,
-    gap: 8, // ボタン間の間隔を調整
+    gap: 4, // ボタン間の間隔を減らしてボタン幅を確保
   },
   stopwatchControlButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     paddingHorizontal: 4,
     borderRadius: 8,
     gap: 4,
-    minWidth: 0, // flexアイテムが縮小できるようにする
+    overflow: 'hidden', // タッチ領域の重複を防ぐ
   },
   stopwatchControlButtonText: {
     fontSize: 13,
     fontWeight: '600',
-    flexShrink: 1, // テキストが縮小できるようにする
+    textAlign: 'center',
+    flexShrink: 1,
   },
   lapTableContainer: {
     width: '100%',

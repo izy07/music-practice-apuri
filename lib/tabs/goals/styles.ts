@@ -12,7 +12,7 @@ export const styles = StyleSheet.create({
   scrollContent: {
     paddingHorizontal: 4,
     paddingTop: 2,
-    paddingBottom: 40,
+    paddingBottom: 125, // タブバーの高さ + 広告バナー分
     alignItems: 'center',
   },
   header: {

@@ -47,6 +47,7 @@ const HIDDEN_TABS = [
   'feedback',
   'tutorial',
   'profile-settings',
+  'major-settings',
   'language-settings',
   'beginner-guide',
   'note-training',

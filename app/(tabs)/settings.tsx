@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User, Palette, Globe, ChartBar as BarChart3, BookOpen, MessageSquare, FileText, LogOut, ChevronRight, Library, Zap, Crown, Heart, Share2, Star, GraduationCap, Bell, Shield } from 'lucide-react-native';
+import { User, Palette, BookOpen, LogOut, ChevronRight, Library, Zap, Crown, Heart, GraduationCap } from 'lucide-react-native';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
@@ -10,6 +10,7 @@ import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { setCurrentRoute } from '@/lib/navigationHistory';
 import { asSafeRoutePath } from '@/lib/navigationHelpers';
+import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -121,12 +122,12 @@ export default function SettingsScreen() {
       onPress: () => router.push(asSafeRoutePath('/(tabs)/main-settings'))
     },
     {
-      id: 'appearance-settings',
-      title: t('appearanceSettings'),
-      subtitle: 'カスタムテーマ・カラーパレット',
+      id: 'major-settings',
+      title: '主要機能設定',
+      subtitle: '外観・言語・通知・プライバシー',
       icon: Palette,
       color: '#9C27B0',
-      onPress: () => router.push(asSafeRoutePath('/(tabs)/appearance-settings'))
+      onPress: () => router.push(asSafeRoutePath('/(tabs)/major-settings'))
     },
     {
       id: 'tutorial',
@@ -145,30 +146,6 @@ export default function SettingsScreen() {
       onPress: () => router.push(asSafeRoutePath('/(tabs)/pricing-plans'))
     },
     {
-      id: 'language',
-      title: t('languageSettings'),
-      subtitle: t('languageSettingsSubtitle'),
-      icon: Globe,
-      color: '#2196F3',
-      onPress: () => router.push(asSafeRoutePath('/(tabs)/language-settings'))
-    },
-    {
-      id: 'notification',
-      title: t('notificationSettings'),
-      subtitle: t('notificationSettingsSubtitle'),
-      icon: Bell,
-      color: '#FF9800',
-      onPress: () => router.push(asSafeRoutePath('/(tabs)/notification-settings'))
-    },
-    {
-      id: 'privacy-settings',
-      title: t('privacySettings'),
-      subtitle: 'データ管理・セキュリティ設定',
-      icon: Shield,
-      color: '#4CAF50',
-      onPress: () => router.push(asSafeRoutePath('/(tabs)/privacy-settings'))
-    },
-    {
       id: 'support',
       title: t('feedbackTitle'),
       subtitle: t('feedbackSubtitle'),
@@ -177,6 +154,35 @@ export default function SettingsScreen() {
       onPress: () => router.push(asSafeRoutePath('/(tabs)/support'))
     },
   ], [t, router]);
+
+  const renderSettingItem = (item: (typeof settingsItems)[number]) => {
+    // 余白を減らす対象の項目ID
+    const compactItems = ['major-settings', 'tutorial', 'pricing', 'support'];
+    const isCompact = compactItems.includes(item.id);
+
+    return (
+      <TouchableOpacity
+        key={item.id}
+        style={[
+          styles.settingItem,
+          isCompact && styles.settingItemCompact,
+          { borderBottomColor: currentTheme?.secondary || '#E2E8F0' },
+        ]}
+        onPress={item.onPress}
+        activeOpacity={0.6}
+        hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
+      >
+        <View style={[styles.iconContainer, { backgroundColor: `${item.color}20` }]}>
+          <item.icon size={24} color={item.color} />
+        </View>
+        <View style={styles.settingContent}>
+          <Text style={[styles.settingTitle, { color: currentTheme?.text || '#2D3748' }]}>{item.title}</Text>
+          <Text style={[styles.settingSubtitle, { color: currentTheme?.textSecondary || '#718096' }]}>{item.subtitle}</Text>
+        </View>
+        <ChevronRight size={20} color={currentTheme?.textSecondary || '#CCCCCC'} />
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme?.background || '#F7FAFC' }]} >
@@ -192,34 +198,7 @@ export default function SettingsScreen() {
 
         
         <View style={[styles.settingsContainer, { backgroundColor: currentTheme?.surface || '#FFFFFF' }]}>
-          {settingsItems.map((item) => {
-            // 余白を減らす対象の項目ID
-            const compactItems = ['appearance-settings', 'tutorial', 'pricing', 'notification', 'privacy-settings', 'support'];
-            const isCompact = compactItems.includes(item.id);
-            
-            return (
-            <TouchableOpacity
-              key={item.id}
-                style={[
-                  styles.settingItem,
-                  isCompact && styles.settingItemCompact,
-                  { borderBottomColor: currentTheme?.secondary || '#E2E8F0' }
-                ]}
-              onPress={item.onPress}
-              activeOpacity={0.6}
-              hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-            >
-              <View style={[styles.iconContainer, { backgroundColor: `${item.color}20` }]}>
-                <item.icon size={24} color={item.color} />
-              </View>
-              <View style={styles.settingContent}>
-                <Text style={[styles.settingTitle, { color: currentTheme?.text || '#2D3748' }]}>{item.title}</Text>
-                <Text style={[styles.settingSubtitle, { color: currentTheme?.textSecondary || '#718096' }]}>{item.subtitle}</Text>
-              </View>
-              <ChevronRight size={20} color={currentTheme?.textSecondary || '#CCCCCC'} />
-            </TouchableOpacity>
-            );
-          })}
+          {settingsItems.map(renderSettingItem)}
           
 
           
@@ -244,6 +223,9 @@ export default function SettingsScreen() {
         </View>
       </ScrollView>
 
+      {/* タブバー上に広告バナー（フリープランのみ） */}
+      <BottomBannerAd />
+
     </SafeAreaView>
   );
 }
@@ -257,7 +239,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 100, // タブバーの高さ + 余裕
+    paddingBottom: 165, // タブバーの高さ + 広告バナー分 + 余裕
   },
   title: {
     fontSize: 24,

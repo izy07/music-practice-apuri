@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert, Share, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert, Share, Switch, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Calendar, Users, CheckSquare, Plus, Settings, Home, Share as ShareIcon, Copy, ClipboardList } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -158,24 +158,114 @@ export default function ShareScreen() {
   const sharePassword = async (password: string) => {
     try {
       const message = `${t('organizationJoinPassword')}: ${password}\n\n${t('sharePasswordMessage')}`;
-      await Share.share({
-        message: message,
-        title: t('share'),
-      });
-    } catch (error) {
+      
+      if (Platform.OS === 'web') {
+        // Web環境ではnavigator.shareを使用
+        if (typeof navigator !== 'undefined' && navigator.share) {
+          try {
+            await navigator.share({
+              title: t('share'),
+              text: message,
+            });
+          } catch (shareError: any) {
+            // ユーザーがシェアをキャンセルした場合はエラーとして扱わない
+            if (shareError?.name === 'AbortError' || shareError?.message?.includes('AbortError')) {
+              return;
+            }
+            // シェアが失敗した場合はクリップボードにコピー
+            throw shareError;
+          }
+        } else {
+          // navigator.shareがサポートされていない場合はクリップボードにコピー
+          if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+            await navigator.clipboard.writeText(message);
+            Alert.alert(t('copyCompleted'), 'パスワードをクリップボードにコピーしました');
+          } else if (typeof document !== 'undefined') {
+            // フォールバック: テキストエリアを使用してコピー
+            const textArea = document.createElement('textarea');
+            textArea.value = message;
+            textArea.style.position = 'fixed';
+            textArea.style.opacity = '0';
+            textArea.style.left = '-9999px';
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textArea);
+            Alert.alert(t('copyCompleted'), 'パスワードをクリップボードにコピーしました');
+          } else {
+            throw new Error('シェア機能が利用できません');
+          }
+        }
+      } else {
+        // ネイティブ環境ではShare.shareを使用
+        await Share.share({
+          message: message,
+          title: t('share'),
+        });
+      }
+    } catch (error: any) {
+      // ユーザーがシェアをキャンセルした場合はエラーとして扱わない
+      if (error?.message?.includes('AbortError') || error?.name === 'AbortError' || error?.message?.includes('User cancelled')) {
+        return;
+      }
+      logger.error('シェアエラー:', error);
       ErrorHandler.handle(error, t('share'), false);
+      Alert.alert('エラー', 'シェアに失敗しました');
     }
   };
 
   const copyToClipboard = async (text: string, type: string) => {
     try {
-      await Share.share({
-        message: text,
-        title: `${type} ${t('copy')}`,
-      });
-      Alert.alert(t('copyCompleted'), `${type}${t('copiedToClipboard')}`);
-    } catch (error) {
+      if (Platform.OS === 'web') {
+        // Web環境ではnavigator.clipboardを使用
+        if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          Alert.alert(t('copyCompleted'), `${type}${t('copiedToClipboard')}`);
+        } else if (typeof document !== 'undefined') {
+          // フォールバック: テキストエリアを使用してコピー
+          const textArea = document.createElement('textarea');
+          textArea.value = text;
+          textArea.style.position = 'fixed';
+          textArea.style.opacity = '0';
+          textArea.style.left = '-9999px';
+          document.body.appendChild(textArea);
+          textArea.focus();
+          textArea.select();
+          try {
+            document.execCommand('copy');
+            Alert.alert(t('copyCompleted'), `${type}${t('copiedToClipboard')}`);
+          } catch (err) {
+            throw new Error('クリップボードへのコピーに失敗しました');
+          } finally {
+            document.body.removeChild(textArea);
+          }
+        } else {
+          throw new Error('クリップボードAPIが利用できません');
+        }
+      } else {
+        // ネイティブ環境ではShare.shareを使用（クリップボードライブラリがない場合のフォールバック）
+        try {
+          // @react-native-clipboard/clipboardを試行
+          const Clipboard = require('@react-native-clipboard/clipboard').default;
+          Clipboard.setString(text);
+          Alert.alert(t('copyCompleted'), `${type}${t('copiedToClipboard')}`);
+        } catch (clipboardError) {
+          // ライブラリがない場合はShare.shareを使用
+          await Share.share({
+            message: text,
+            title: `${type} ${t('copy')}`,
+          });
+        }
+      }
+    } catch (error: any) {
+      // ユーザーがシェアをキャンセルした場合はエラーとして扱わない
+      if (error?.message?.includes('AbortError') || error?.name === 'AbortError' || error?.message?.includes('User cancelled')) {
+        return;
+      }
+      logger.error('クリップボードコピーエラー:', error);
       ErrorHandler.handle(error, t('copy'), false);
+      Alert.alert('エラー', 'クリップボードへのコピーに失敗しました');
     }
   };
 

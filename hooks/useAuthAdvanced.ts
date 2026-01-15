@@ -9,7 +9,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter, useSegments } from 'expo-router';
+import { useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import { Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { createRateLimiter } from '@/lib/authSecurity';
@@ -191,6 +191,8 @@ const updateAuthState = (newState: Partial<AuthState>) => {
 export const useAuthAdvanced = (): AuthHookReturn => {
   const router = useRouter();
   const segments = useSegments();
+  const rootNavigationState = useRootNavigationState();
+  const isRouterReady = !!rootNavigationState?.key;
   
   // レート制限インスタンス
   const rateLimiter = useRef(createRateLimiter()).current;
@@ -555,8 +557,12 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                   } else {
                     await supabase.auth.signOut();
                   }
-                  if (typeof router !== 'undefined') {
-                    redirectToLogin(router, 'リフレッシュトークン無効（401エラー）');
+                  if (typeof router !== 'undefined' && isRouterReady) {
+                    try {
+                      redirectToLogin(router, 'リフレッシュトークン無効（401エラー）');
+                    } catch (navError) {
+                      logger.warn('Root Layout未準備のためログイン遷移をスキップ（後で自動復旧します）', navError);
+                    }
                   }
                 } else {
                   // その他のエラーはログに記録（ログアウトしない）
@@ -597,8 +603,12 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                 } else {
                   await supabase.auth.signOut();
                 }
-                if (typeof router !== 'undefined') {
-                  router.replace('/auth/login');
+                if (typeof router !== 'undefined' && isRouterReady) {
+                  try {
+                    redirectToLogin(router, 'リフレッシュトークン無効（例外）');
+                  } catch (navError) {
+                    logger.warn('Root Layout未準備のためログイン遷移をスキップ（後で自動復旧します）', navError);
+                  }
                 }
               } else {
                 logger.debug('セッションリフレッシュ例外:', e);
@@ -625,7 +635,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         timer = null;
       }
     };
-  }, [router]);
+  }, [router, isRouterReady]);
 
   // handleAuthenticatedUserの参照を保持（onAuthStateChangeのuseEffectで使用）
   const handleAuthenticatedUserRef = useRef<((user: { id: string; email?: string; user_metadata?: Record<string, unknown> }) => Promise<AuthUser | null>) | null>(null);

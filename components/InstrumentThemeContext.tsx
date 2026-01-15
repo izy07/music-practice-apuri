@@ -514,9 +514,11 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       setSelectedInstrumentState(instrumentId);
       await AsyncStorage.setItem(getKey(STORAGE_KEYS.selectedInstrument), instrumentId);
       
-      // 2. その楽器のカスタムテーマを読み込む
-      const customThemeKey = `${getKey(STORAGE_KEYS.customTheme)}:${instrumentId}`;
-      const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme)}:${instrumentId}`;
+      // 2. その楽器のカスタムテーマを読み込む（ユーザーIDを明示的に取得）
+      const { user: currentUserForTheme } = await getCurrentUser();
+      const uid = currentUserForTheme?.id || '';
+      const customThemeKey = `${getKey(STORAGE_KEYS.customTheme, uid)}:${instrumentId}`;
+      const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme, uid)}:${instrumentId}`;
       
       const [storedCustomTheme, storedIsCustomTheme] = await Promise.all([
         AsyncStorage.getItem(customThemeKey),
@@ -613,9 +615,13 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
     if (!instrumentId) return;
 
-      // その楽器のカスタムテーマを確認
-      const customThemeKey = `${getKey(STORAGE_KEYS.customTheme)}:${instrumentId}`;
-      const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme)}:${instrumentId}`;
+      // ユーザーIDを取得（保存時と読み込み時で同じキーを使用するため）
+      const { user: currentUser } = await getCurrentUser();
+      const uid = currentUser?.id || currentUserId || '';
+
+      // その楽器のカスタムテーマを確認（initialize関数と同じ形式を使用）
+      const customThemeKey = `${getKey(STORAGE_KEYS.customTheme, uid)}:${instrumentId}`;
+      const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme, uid)}:${instrumentId}`;
       
       const [storedCustomTheme, storedIsCustomTheme] = await Promise.all([
         AsyncStorage.getItem(customThemeKey),
@@ -645,7 +651,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     };
     
     updateThemeForInstrument();
-  }, [selectedInstrument, user?.selected_instrument_id, dbInstruments, defaultInstruments, currentTheme.id, getKey]);
+  }, [selectedInstrument, user?.selected_instrument_id, dbInstruments, defaultInstruments, currentTheme.id, getKey, currentUserId]);
 
   // currentThemeの計算（カスタムテーマ優先）
   const currentThemeComputed = useMemo(() => {
@@ -676,9 +682,13 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         return;
       }
 
-      // 楽器IDを含めたキーで保存
-      const customThemeKey = `${getKey(STORAGE_KEYS.customTheme)}:${instrumentId}`;
-      const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme)}:${instrumentId}`;
+      // ユーザーIDを取得（保存時と読み込み時で同じキーを使用するため）
+      const { user: currentUser } = await getCurrentUser();
+      const uid = currentUser?.id || currentUserId || '';
+      
+      // 楽器IDを含めたキーで保存（initialize関数と同じ形式を使用）
+      const customThemeKey = `${getKey(STORAGE_KEYS.customTheme, uid)}:${instrumentId}`;
+      const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme, uid)}:${instrumentId}`;
       
       setCustomThemeState(theme);
       setIsCustomTheme(true);
@@ -686,12 +696,12 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       await AsyncStorage.setItem(customThemeKey, JSON.stringify(theme));
       await AsyncStorage.setItem(isCustomThemeKey, 'true');
       
-      logger.debug('カスタムテーマを保存しました', { instrumentId, customThemeKey });
+      logger.debug('カスタムテーマを保存しました', { instrumentId, uid, customThemeKey });
     } catch (error) {
       logger.error('カスタムテーマ保存エラー:', error);
       ErrorHandler.handle(error, 'カスタムテーマ保存', false);
     }
-  }, [getKey, selectedInstrument, user?.selected_instrument_id]);
+  }, [getKey, selectedInstrument, user?.selected_instrument_id, currentUserId]);
 
   const resetToInstrumentTheme = useCallback(async () => {
     try {
@@ -699,14 +709,18 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
       
       if (instrumentId) {
-        // 楽器IDを含めたキーで削除
-        const customThemeKey = `${getKey(STORAGE_KEYS.customTheme)}:${instrumentId}`;
-        const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme)}:${instrumentId}`;
+        // ユーザーIDを取得（保存時と読み込み時で同じキーを使用するため）
+        const { user: currentUser } = await getCurrentUser();
+        const uid = currentUser?.id || currentUserId || '';
+        
+        // 楽器IDを含めたキーで削除（initialize関数と同じ形式を使用）
+        const customThemeKey = `${getKey(STORAGE_KEYS.customTheme, uid)}:${instrumentId}`;
+        const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme, uid)}:${instrumentId}`;
         
         await AsyncStorage.removeItem(customThemeKey);
         await AsyncStorage.setItem(isCustomThemeKey, 'false');
         
-        logger.debug('カスタムテーマをリセットしました', { instrumentId, customThemeKey });
+        logger.debug('カスタムテーマをリセットしました', { instrumentId, uid, customThemeKey });
       }
       
       setCustomThemeState(null);

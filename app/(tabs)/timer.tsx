@@ -24,6 +24,7 @@ import { canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 import Stopwatch from '@/components/timer/Stopwatch';
 import { styles } from '@/lib/tabs/timer/styles';
 import { setCurrentRoute } from '@/lib/navigationHistory';
+import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 
 const { width } = Dimensions.get('window');
 
@@ -1768,13 +1769,13 @@ export default function TimerScreen() {
                   ref={timerHoursInputRef}
                   style={{
                     width: 42,
-                    paddingVertical: 6,
-                    paddingHorizontal: 4,
+                    paddingVertical: 8,
+                    paddingHorizontal: 6,
                     borderRadius: 8,
-                    borderWidth: 1.5,
+                    borderWidth: 2,
                     borderColor: timerHours ? currentTheme.primary : currentTheme.secondary,
-                    fontSize: 18,
-                    textAlign: 'right',
+                    fontSize: 15,
+                    textAlign: 'center',
                     fontWeight: '700',
                     color: currentTheme.text,
                     backgroundColor: currentTheme.surface,
@@ -1814,14 +1815,14 @@ export default function TimerScreen() {
                 <TextInput
                   ref={timerMinutesInputRef}
                   style={{
-                    width: 38,
-                    paddingVertical: 6,
-                    paddingHorizontal: 4,
+                    width: 42,
+                    paddingVertical: 8,
+                    paddingHorizontal: 6,
                     borderRadius: 8,
                     borderWidth: 1.5,
                     borderColor: timerMinutes ? currentTheme.primary : currentTheme.secondary,
-                    fontSize: 18,
-                    textAlign: 'right',
+                    fontSize: 15,
+                    textAlign: 'center',
                     fontWeight: '700',
                     color: currentTheme.text,
                     backgroundColor: currentTheme.surface,
@@ -1861,14 +1862,14 @@ export default function TimerScreen() {
                 <TextInput
                   ref={timerSecondsInputRef}
                   style={{
-                    width: 38,
-                    paddingVertical: 6,
-                    paddingHorizontal: 4,
+                    width: 42,
+                    paddingVertical: 8,
+                    paddingHorizontal: 6,
                     borderRadius: 8,
                     borderWidth: 1.5,
                     borderColor: timerSeconds ? currentTheme.primary : currentTheme.secondary,
-                    fontSize: 18,
-                    textAlign: 'right',
+                    fontSize: 15,
+                    textAlign: 'center',
                     fontWeight: '700',
                     color: currentTheme.text,
                     backgroundColor: currentTheme.surface,
@@ -2089,14 +2090,14 @@ export default function TimerScreen() {
                 <TextInput
                   ref={timerHoursInputRef}
                   style={{
-                    width: 45,
+                    width: 38,
                     paddingVertical: 8,
-                    paddingHorizontal: 4,
+                    paddingHorizontal: 6,
                     borderRadius: 8,
-                    borderWidth: 1.5,
+                    borderWidth: 2,
                     borderColor: timerHours ? currentTheme.primary : '#666666',
-                    fontSize: 18,
-                    textAlign: 'right',
+                    fontSize: 15,
+                    textAlign: 'center',
                     fontWeight: '700',
                     color: '#FFFFFF',
                     backgroundColor: '#2A2A2A',
@@ -2138,14 +2139,14 @@ export default function TimerScreen() {
                 <TextInput
                   ref={timerMinutesInputRef}
                   style={{
-                    width: 45,
+                    width: 38,
                     paddingVertical: 8,
-                    paddingHorizontal: 4,
+                    paddingHorizontal: 6,
                     borderRadius: 8,
-                    borderWidth: 1.5,
+                    borderWidth: 2,
                     borderColor: timerMinutes ? currentTheme.primary : '#666666',
-                    fontSize: 18,
-                    textAlign: 'right',
+                    fontSize: 15,
+                    textAlign: 'center',
                     fontWeight: '700',
                     color: '#FFFFFF',
                     backgroundColor: '#2A2A2A',
@@ -2188,13 +2189,13 @@ export default function TimerScreen() {
                   ref={timerSecondsInputRef}
                   style={{
                     width: 45,
-                    paddingVertical: 8,
-                    paddingHorizontal: 4,
+                    paddingVertical: 10,
+                    paddingHorizontal: 8,
                     borderRadius: 8,
-                    borderWidth: 1.5,
+                    borderWidth: 2,
                     borderColor: timerSeconds ? currentTheme.primary : '#666666',
-                    fontSize: 18,
-                    textAlign: 'right',
+                    fontSize: 16,
+                    textAlign: 'center',
                     fontWeight: '700',
                     color: '#FFFFFF',
                     backgroundColor: '#2A2A2A',
@@ -2308,6 +2309,9 @@ export default function TimerScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* タブバー上に広告バナー（Webはダミー表示） */}
+      <BottomBannerAd />
     </SafeAreaView>
   );
 }

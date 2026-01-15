@@ -627,23 +627,30 @@ export const styles = StyleSheet.create({
     padding: 8,
   },
   // 年齢選択関連スタイル
-  ageSelectorButton: {
+  ageInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     borderWidth: 2,
     borderRadius: 16,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingVertical: 12,
+    minHeight: 48,
   },
-  ageSelectorText: {
+  ageInput: {
     fontSize: 16,
     fontWeight: '500',
     flex: 1,
+    textAlign: 'left',
+    padding: 0,
+    minHeight: 24,
+    height: 24,
+    marginRight: -4,
   },
-  ageSelectorArrow: {
-    fontSize: 12,
-    marginLeft: 8,
+  ageInputSuffix: {
+    fontSize: 16,
+    fontWeight: '500',
+    flexShrink: 0,
+    marginLeft: -2,
   },
   experienceDisplayNew: {
     borderWidth: 2,
