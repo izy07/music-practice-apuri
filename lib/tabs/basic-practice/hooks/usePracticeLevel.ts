@@ -34,12 +34,27 @@ interface UsePracticeLevelReturn {
  * @param selectedInstrument 選択された楽器ID（楽器ごとにレベルを保存するため）
  */
 export const usePracticeLevel = (selectedInstrument?: string | null): UsePracticeLevelReturn => {
-  const [selectedLevel, setSelectedLevel] = useState<PracticeLevel>('beginner');
+  // 初期化時にAsyncStorageから即座に読み込む（同期的に読み込むため、初期値として使用）
+  const [selectedLevel, setSelectedLevel] = useState<PracticeLevel>(() => {
+    // 初期化時に即座にAsyncStorageから読み込む（同期的に）
+    try {
+      const instrumentId = getInstrumentId(selectedInstrument);
+      if (instrumentId) {
+        const cacheKey = `${LEVEL_CACHE_KEY_PREFIX}:${instrumentId}`;
+        // 注意: AsyncStorage.getItemは非同期なので、初期値としては使用できない
+        // 代わりに、useEffectで即座に読み込む
+      }
+    } catch (error) {
+      // 初期化時のエラーは無視
+    }
+    return 'beginner';
+  });
   const [showLevelModal, setShowLevelModal] = useState(false);
   const [isFirstTime, setIsFirstTime] = useState(true);
   const [userLevel, setUserLevel] = useState<string | null>(null);
   const [hasSelectedLevel, setHasSelectedLevel] = useState(false);
   const segments = useSegments(); // 現在のルートを取得
+  const hasInitializedRef = useRef(false); // 初期化済みフラグ
 
   /**
    * 楽器ごとのレベルキャッシュキーを取得
@@ -73,20 +88,21 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
         return;
       }
 
-      // まずローカルキャッシュから読み込み（楽器ごと）
+      // まずローカルキャッシュから読み込み（楽器ごと）- 同期的にチェック
+      let cached: string | null = null;
       try {
-      const cached = await AsyncStorage.getItem(cacheKey);
+        cached = await AsyncStorage.getItem(cacheKey);
         logger.debug('ローカルキャッシュ確認（楽器ごと）:', { cached, cacheKey, instrumentId });
 
         if (cached && cached !== '' && (cached === 'beginner' || cached === 'intermediate' || cached === 'advanced')) {
           const level = cached as PracticeLevel;
           setUserLevel(level);
           setSelectedLevel(level);
-        setHasSelectedLevel(true);
-        setIsFirstTime(false);
-        setShowLevelModal(false);
+          setHasSelectedLevel(true);
+          setIsFirstTime(false);
+          setShowLevelModal(false);
           logger.debug('✅ ローカルキャッシュからレベル復元（楽器ごと）:', { level, cacheKey, instrumentId });
-        return;
+          return;
         } else if (cached) {
           // 無効な値がキャッシュされている場合は削除
           logger.warn('⚠️ 無効なキャッシュ値を検出、削除します:', { cached, cacheKey });
@@ -96,7 +112,19 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
         logger.warn('キャッシュ読み込みエラー（続行）:', cacheReadError);
       }
 
-      // キャッシュがない場合: データベースから取得を試みる（オフライン時はスキップ）
+      // キャッシュがない場合: まずモーダルを表示してから、データベースから取得を試みる（オフライン時はスキップ）
+      // パフォーマンス改善: モーダルを先に表示してから、バックグラウンドでデータベースから読み込む
+      const isInstrumentSelectionScreen = segments.some(segment => segment === 'instrument-selection');
+      if (!isInstrumentSelectionScreen) {
+        // 楽器選択画面でない場合は、即座にモーダルを表示
+        setIsFirstTime(true);
+        setHasSelectedLevel(false);
+        setUserLevel(null);
+        setShowLevelModal(true);
+        logger.debug('⚡ パフォーマンス改善: キャッシュがないため、即座にモーダルを表示（データベース読み込みは並行実行）');
+      }
+
+      // キャッシュがない場合: データベースから取得を試みる（オフライン時はスキップ）- 非同期で実行
       try {
         const { data: { user } } = await supabase.auth.getUser();
         if (user && instrumentId) {
@@ -118,7 +146,7 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
               setShowLevelModal(false);
               // キャッシュに保存
               await AsyncStorage.setItem(cacheKey, level);
-              logger.debug('✅ user_instrument_profilesからレベル復元（楽器ごと）:', { level, instrumentId });
+              logger.debug('✅ user_instrument_profilesからレベル復元（楽器ごと）: モーダルを閉じる', { level, instrumentId });
               return;
             } else if (instrumentProfileError && instrumentProfileError.code !== 'PGRST116') {
               // テーブルが存在しない場合（PGRST116）以外のエラーはログに記録
@@ -142,46 +170,14 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
         logger.warn('データベースアクセスエラー（オフライン時など）:', dbError);
       }
 
-      // ここまで来たら未設定: チェック完了後にのみモーダルを表示
-      logger.warn('⚠️ レベル未設定（楽器ごと）。モーダルを表示', { 
+      // データベースからもレベルが見つからなかった場合
+      // 既にモーダルは表示済み（キャッシュがない場合）なので、ここでは何もしない
+      logger.debug('⚠️ レベル未設定（楽器ごと）。モーダルは既に表示済み（または表示しない）', { 
         instrumentId, 
         cacheKey,
-        selectedInstrument 
+        selectedInstrument,
+        isInstrumentSelectionScreen: segments.some(segment => segment === 'instrument-selection')
       });
-      
-      // 念のため、もう一度キャッシュを確認（タイミングの問題を回避）
-      try {
-        const doubleCheckCache = await AsyncStorage.getItem(cacheKey);
-        if (doubleCheckCache && doubleCheckCache !== '' && 
-            (doubleCheckCache === 'beginner' || doubleCheckCache === 'intermediate' || doubleCheckCache === 'advanced')) {
-          const level = doubleCheckCache as PracticeLevel;
-          logger.debug('✅ 再確認でキャッシュを発見、レベルを復元:', { level, cacheKey });
-          setUserLevel(level);
-          setSelectedLevel(level);
-          setHasSelectedLevel(true);
-          setIsFirstTime(false);
-          setShowLevelModal(false);
-          return;
-        }
-      } catch (doubleCheckError) {
-        logger.debug('再確認時のキャッシュ読み込みエラー（無視）:', doubleCheckError);
-      }
-      
-      // 楽器選択画面にいる場合はモーダルを表示しない
-      const isInstrumentSelectionScreen = segments.some(segment => segment === 'instrument-selection');
-      if (isInstrumentSelectionScreen) {
-        logger.debug('楽器選択画面にいるため、レベルモーダルを表示しません');
-        setIsFirstTime(true);
-        setHasSelectedLevel(false);
-        setUserLevel(null);
-        setShowLevelModal(false);
-        return;
-      }
-      
-      setIsFirstTime(true);
-      setHasSelectedLevel(false);
-      setUserLevel(null);
-      setShowLevelModal(true);
     } catch (error) {
       logger.error('ユーザーレベル確認エラー:', error);
       // エラー時もキャッシュから復元を試みる
@@ -416,59 +412,79 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
   }, [selectedLevel, selectedInstrument, getLevelCacheKey]);
 
   // 楽器が変更された時、または初回マウント時にレベルを確認
-  // 楽器ごとに初回のみモーダルを表示するため、楽器が変更されたら必ずチェック
-  // 楽器変更直後はモーダルを表示しないように、デバウンスを追加
-  const instrumentChangeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // まずAsyncStorageから即座に読み込んで表示し、その後データベースから最新の値を取得
   useEffect(() => {
     let isMounted = true;
+    let cancelled = false;
     
-    // 既存のタイマーをクリア
-    if (instrumentChangeTimeoutRef.current) {
-      clearTimeout(instrumentChangeTimeoutRef.current);
-      instrumentChangeTimeoutRef.current = null;
-    }
-    
-    // 楽器変更直後はモーダルを表示しない（一瞬表示されるのを防ぐ）
-    // デバウンスを追加して、楽器変更が完了してからレベル確認を実行
-    instrumentChangeTimeoutRef.current = setTimeout(async () => {
+    const loadLevelImmediately = async () => {
       // 楽器選択画面にいる場合はレベル確認をスキップ
       const isInstrumentSelectionScreen = segments.some(segment => segment === 'instrument-selection');
       if (isInstrumentSelectionScreen) {
         logger.debug('楽器選択画面にいるため、レベル確認をスキップします');
-        if (isMounted) {
+        if (isMounted && !cancelled) {
           setShowLevelModal(false);
         }
         return;
       }
       
-      // 楽器が選択されている場合のみチェック
       const instrumentId = getInstrumentId(selectedInstrument);
-      if (instrumentId) {
-        logger.debug('🔍 楽器変更を検出、レベル確認を開始（デバウンス後）:', { instrumentId, selectedInstrument });
-        await checkUserLevel();
-        if (isMounted) {
-          logger.debug('✅ レベル確認完了');
-        }
-      } else {
+      if (!instrumentId) {
         // 楽器が選択されていない場合はモーダルを非表示
-        if (isMounted) {
+        if (isMounted && !cancelled) {
           setShowLevelModal(false);
           setSelectedLevel('beginner');
           setUserLevel(null);
           setHasSelectedLevel(false);
           setIsFirstTime(false);
         }
+        return;
       }
-    }, 500); // 500msのデバウンス（楽器変更が完了してからレベル確認を実行）
-    
-    return () => {
-      isMounted = false;
-      if (instrumentChangeTimeoutRef.current) {
-        clearTimeout(instrumentChangeTimeoutRef.current);
-        instrumentChangeTimeoutRef.current = null;
+      
+      const cacheKey = getLevelCacheKey(instrumentId);
+      
+      // まずAsyncStorageから即座に読み込む（画面表示を早くするため）
+      try {
+        const cached = await AsyncStorage.getItem(cacheKey);
+        if (cached && cached !== '' && (cached === 'beginner' || cached === 'intermediate' || cached === 'advanced')) {
+          const level = cached as PracticeLevel;
+          if (isMounted && !cancelled) {
+            setUserLevel(level);
+            setSelectedLevel(level);
+            setHasSelectedLevel(true);
+            setIsFirstTime(false);
+            setShowLevelModal(false);
+            logger.debug('✅ AsyncStorageから即座にレベル復元:', { level, cacheKey, instrumentId });
+            hasInitializedRef.current = true;
+          }
+          // キャッシュから読み込んだ後、データベースから最新の値を取得（バックグラウンドで）
+          // checkUserLevelを呼び出すと、データベースから最新の値を取得して更新する
+          if (!cancelled) {
+            checkUserLevel().catch(error => {
+              logger.warn('データベースからのレベル取得エラー（無視）:', error);
+            });
+          }
+          return;
+        }
+      } catch (cacheError) {
+        logger.warn('AsyncStorage読み込みエラー（続行）:', cacheError);
+      }
+      
+      // キャッシュがない場合は、データベースから取得
+      if (isMounted && !cancelled) {
+        await checkUserLevel();
+        hasInitializedRef.current = true;
       }
     };
-  }, [selectedInstrument, checkUserLevel]);
+    
+    // 即座に実行（デバウンスなし）
+    loadLevelImmediately();
+    
+    return () => {
+      cancelled = true;
+      isMounted = false;
+    };
+  }, [selectedInstrument, getLevelCacheKey, checkUserLevel, segments]);
 
   return {
     selectedLevel,

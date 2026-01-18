@@ -143,7 +143,7 @@ export const GoalCard: React.FC<GoalCardProps> = ({
         <View style={styles.progressSection}>
           {goal.progress_percentage === 100 && (
             <View style={[styles.achievementBadge, styles.bigAchievementBadge, styles.achievementBadgeSuccess]}>
-              <CheckCircle size={28} color="#FFFFFF" />
+              <CheckCircle size={20} color="#FFFFFF" />
               <Text style={styles.bigAchievementText}>達成成功！</Text>
             </View>
           )}
@@ -308,7 +308,7 @@ export const GoalCard: React.FC<GoalCardProps> = ({
           {goal.is_completed ? (
             <View style={styles.completeButtonContainer}>
               <View style={[styles.achievementBadge, styles.bigAchievementBadge, styles.achievementBadgeSuccess]}>
-                <CheckCircle size={28} color="#FFFFFF" />
+                <CheckCircle size={20} color="#FFFFFF" />
                 <Text style={styles.bigAchievementText}>達成成功！</Text>
               </View>
             </View>

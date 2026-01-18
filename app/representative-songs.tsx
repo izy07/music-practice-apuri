@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Dimensions, Linking, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, ExternalLink, Youtube, Plus, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, ExternalLink, Youtube, Plus, Trash2, Edit2 } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { supabase } from '@/lib/supabase';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import logger from '@/lib/logger';
-import { practiceDataCache, PracticeDataCache } from '@/lib/cache/practiceDataCache';
 import { safeGoBack } from '@/lib/navigationUtils';
+import { getRepresentativeSongsByInstrumentId, StaticRepresentativeSong } from '@/data/staticRepresentativeSongs';
 
 const { width } = Dimensions.get('window');
 
@@ -18,17 +18,17 @@ interface RepresentativeSong {
   instrument_id: string;
   title: string;
   composer: string;
-  era?: string;
-  genre?: string;
-  youtube_url?: string;
-  spotify_url?: string;
-  description_ja?: string;
-  description_en?: string;
+  era?: string | null;
+  genre?: string | null;
+  youtube_url?: string | null;
+  spotify_url?: string | null;
+  description_ja?: string | null;
+  description_en?: string | null;
   is_popular: boolean;
   display_order: number;
-  famous_performer?: string;
-  famous_video_url?: string;
-  famous_note?: string;
+  famous_performer?: string | null;
+  famous_video_url?: string | null;
+  famous_note?: string | null;
 }
 
 interface Instrument {
@@ -66,13 +66,15 @@ export default function RepresentativeSongsScreen() {
   const { currentTheme } = useInstrumentTheme();
   const { user, isAuthenticated } = useAuthAdvanced();
   
-  const [songs, setSongs] = useState<(RepresentativeSong | UserFavoriteSong)[]>([]);
+  const [songs, setSongs] = useState<(RepresentativeSong | UserFavoriteSong | StaticRepresentativeSong)[]>([]);
   const [favoriteSongs, setFavoriteSongs] = useState<UserFavoriteSong[]>([]);
   const [instrument, setInstrument] = useState<Instrument | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedSong, setSelectedSong] = useState<RepresentativeSong | UserFavoriteSong | null>(null);
+  const [selectedSong, setSelectedSong] = useState<RepresentativeSong | UserFavoriteSong | StaticRepresentativeSong | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingSong, setEditingSong] = useState<UserFavoriteSong | null>(null);
   const [newSong, setNewSong] = useState({
     title: '',
     composer: '',
@@ -94,7 +96,7 @@ export default function RepresentativeSongsScreen() {
   useFocusEffect(
     React.useCallback(() => {
       if (instrumentId) {
-        // お気に入り曲を再読み込み（代表曲はキャッシュから取得されるため、お気に入り曲のみ再読み込み）
+        // お気に入り曲を再読み込み（代表曲は静的データのため、お気に入り曲のみ再読み込み）
         if (isAuthenticated && user) {
           logger.debug('[代表曲画面] 画面フォーカス - お気に入り曲を再読み込み');
           loadFavoriteSongs();
@@ -131,67 +133,13 @@ export default function RepresentativeSongsScreen() {
       logger.debug('[代表曲画面] 楽器情報取得成功:', instrumentData.name);
       setInstrument(instrumentData);
       
-      // キャッシュから代表曲データを取得を試行
-      const cacheKey = PracticeDataCache.generateKey('representative_songs', { instrumentId });
-      const cachedSongs = practiceDataCache.get<RepresentativeSong[]>(cacheKey);
-      if (cachedSongs) {
-        logger.debug('[代表曲画面] キャッシュから代表曲を取得:', cachedSongs.length, '曲');
-        setSongs(cachedSongs);
-        return;
-      }
+      // 静的データから代表曲を取得（データベースリクエスト不要）
+      const songsData = getRepresentativeSongsByInstrumentId(instrumentId);
       
-      // 代表曲を取得（エラーを静かに処理）
-      let songsData: RepresentativeSong[] | null = null;
-      try {
-        const result = await supabase
-          .from('representative_songs')
-          .select('*')
-          .eq('instrument_id', instrumentId)
-          .order('display_order', { ascending: true });
-        
-        songsData = result.data;
-        
-        // テーブルが存在しない場合（404エラー）は正常なフォールバック動作として処理
-        const isTableNotFound = result.error && (
-          result.error.code === 'PGRST205' || 
-          result.error.code === 'PGRST116' || 
-          result.error.status === 404 || 
-          result.error.message?.includes('Could not find the table') || 
-          result.error.message?.includes('does not exist') ||
-          result.error.message?.includes('Not Found')
-        );
-        
-        if (result.error && isTableNotFound) {
-          // テーブルが存在しない場合は、フォールバックデータを使用するため、デバッグログのみ
-          logger.debug('[代表曲画面] representative_songsテーブルが存在しません。フォールバックデータを使用します。');
-        } else if (result.error && !isTableNotFound) {
-          // テーブルが存在しない以外のエラーのみログ出力
-          logger.error('[代表曲画面] 代表曲取得エラー:', {
-            code: result.error.code,
-            message: result.error.message,
-            status: result.error.status,
-          });
-        }
-      } catch (error) {
-        // ネットワークエラーなど、予期しないエラーをキャッチ
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        const isTableNotFound = errorMessage.includes('404') || 
-                                errorMessage.includes('Not Found') ||
-                                errorMessage.includes('Could not find the table');
-        
-        if (!isTableNotFound) {
-          logger.error('[代表曲画面] 代表曲取得で予期しないエラー:', error);
-        }
-      }
-      
-      // データベースから代表曲が取得できた場合はそれを使用
       if (songsData && songsData.length > 0) {
-        logger.debug('[代表曲画面] データベースから代表曲を取得:', songsData.length, '曲');
-        // キャッシュに保存
-        practiceDataCache.set(cacheKey, songsData);
+        logger.debug('[代表曲画面] 静的データから代表曲を取得:', songsData.length, '曲');
         setSongs(songsData);
       } else {
-        // データベースに代表曲がない場合は空配列
         logger.debug('[代表曲画面] 代表曲データなし');
         setSongs([]);
       }
@@ -204,8 +152,7 @@ export default function RepresentativeSongsScreen() {
       logger.error('[代表曲画面] データ読み込みエラー:', error);
       // エラー時は空配列
       setSongs([]);
-      // ユーザーに表示するエラーは重大なエラーのみ
-      if (error instanceof Error && !error.message.includes('Could not find the table')) {
+      if (error instanceof Error) {
         Alert.alert('エラー', `データの読み込みに失敗しました: ${error.message}`);
       }
     } finally {
@@ -249,7 +196,7 @@ export default function RepresentativeSongsScreen() {
 
       logger.debug('[代表曲画面] お気に入り曲取得成功:', (data || []).length, '曲');
 
-      const favoriteSongsWithFlag = (data || []).map(song => ({
+      const favoriteSongsWithFlag = (data || []).map((song: UserFavoriteSong) => ({
         ...song,
         is_user_favorite: true,
       }));
@@ -363,8 +310,94 @@ export default function RepresentativeSongsScreen() {
     }
   };
 
+  const handleEditFavoriteSong = (song: UserFavoriteSong) => {
+    setEditingSong(song);
+    setNewSong({
+      title: song.title || '',
+      composer: song.composer || '',
+      era: song.era || '',
+      genre: song.genre || '',
+      youtube_url: song.youtube_url || '',
+      description_ja: song.description_ja || '',
+      famous_performer: song.famous_performer || '',
+      famous_note: song.famous_note || '',
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdateFavoriteSong = async () => {
+    if (!isAuthenticated || !user || !instrumentId || !editingSong) {
+      Alert.alert('エラー', 'ログインが必要です');
+      return;
+    }
+
+    if (!newSong.title.trim()) {
+      Alert.alert('エラー', '曲名を入力してください');
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('user_favorite_songs')
+        .update({
+          title: newSong.title.trim(),
+          composer: newSong.composer.trim() || '',
+          era: newSong.era.trim() || null,
+          genre: newSong.genre.trim() || null,
+          youtube_url: newSong.youtube_url.trim() || null,
+          description_ja: newSong.description_ja.trim() || null,
+          famous_performer: newSong.famous_performer.trim() || null,
+          famous_note: newSong.famous_note.trim() || null,
+        })
+        .eq('id', editingSong.id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error('[代表曲画面] お気に入り曲更新エラー:', error);
+        Alert.alert('エラー', `お気に入り曲の更新に失敗しました: ${error.message}`);
+        return;
+      }
+
+      logger.debug('[代表曲画面] お気に入り曲更新成功:', data);
+
+      const updatedFavoriteSong: UserFavoriteSong = {
+        ...data,
+        is_user_favorite: true,
+      };
+
+      // 状態を更新
+      setFavoriteSongs(prev => prev.map(song => 
+        song.id === editingSong.id ? updatedFavoriteSong : song
+      ));
+      setSongs(prev => prev.map(song => 
+        song.id === editingSong.id ? updatedFavoriteSong : song
+      ));
+      
+      // フォームをリセット
+      setNewSong({
+        title: '',
+        composer: '',
+        era: '',
+        genre: '',
+        youtube_url: '',
+        description_ja: '',
+        famous_performer: '',
+        famous_note: '',
+      });
+      setEditingSong(null);
+      setShowEditModal(false);
+      Alert.alert('成功', 'お気に入り曲を更新しました');
+    } catch (error) {
+      logger.error('[代表曲画面] お気に入り曲更新で予期しないエラー:', error);
+      Alert.alert('エラー', 'お気に入り曲の更新に失敗しました');
+    }
+  };
+
   const handleDeleteFavoriteSong = async (songId: string) => {
     if (!isAuthenticated || !user) {
+      Alert.alert('エラー', 'ログインが必要です');
       return;
     }
 
@@ -378,11 +411,14 @@ export default function RepresentativeSongsScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const { error } = await supabase
+              logger.debug('[代表曲画面] お気に入り曲削除開始:', { songId, userId: user.id });
+              
+              const { error, data } = await supabase
                 .from('user_favorite_songs')
                 .delete()
                 .eq('id', songId)
-                .eq('user_id', user.id);
+                .eq('user_id', user.id)
+                .select();
 
               if (error) {
                 logger.error('[代表曲画面] お気に入り曲削除エラー:', error);
@@ -390,8 +426,11 @@ export default function RepresentativeSongsScreen() {
                 return;
               }
 
-              setFavoriteSongs(favoriteSongs.filter(song => song.id !== songId));
-              setSongs(songs.filter(song => song.id !== songId));
+              logger.debug('[代表曲画面] お気に入り曲削除成功:', { songId, deletedData: data });
+
+              // データベースから最新の状態を再読み込み（確実に反映させるため）
+              await loadFavoriteSongs();
+              
               Alert.alert('成功', 'お気に入り曲を削除しました');
             } catch (error) {
               logger.error('[代表曲画面] お気に入り曲削除で予期しないエラー:', error);
@@ -404,7 +443,7 @@ export default function RepresentativeSongsScreen() {
   };
 
 
-  const handleSongPress = (song: RepresentativeSong | UserFavoriteSong) => {
+  const handleSongPress = (song: RepresentativeSong | UserFavoriteSong | StaticRepresentativeSong) => {
     // 曲名を押したら、説明を表示するモーダルを開く
     setSelectedSong(song);
     setShowModal(true);
@@ -457,7 +496,7 @@ export default function RepresentativeSongsScreen() {
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
-          {instrument?.name}が活躍する曲
+          {instrument?.name}による名演奏
         </Text>
         <View style={{ width: 24 }} />
       </View>
@@ -484,18 +523,18 @@ export default function RepresentativeSongsScreen() {
               onPress={() => setShowAddModal(true)}
               activeOpacity={0.8}
             >
-              <Plus size={20} color="#FFFFFF" />
+              <Plus size={24} color="#FFFFFF" />
               <Text style={styles.addButtonText}>お気に入り曲を追加</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* 楽器が登場する曲・お気に入り曲一覧 */}
+        {/* 楽器による名演奏・お気に入り曲一覧 */}
         <View style={styles.content}>
           {songs.length === 0 ? (
             <View style={styles.emptyState}>
               <Text style={[styles.emptyText, { color: currentTheme.textSecondary }]}>
-                楽器が登場する曲が登録されていません
+                名演奏が登録されていません
               </Text>
             </View>
           ) : (
@@ -520,16 +559,28 @@ export default function RepresentativeSongsScreen() {
                       </Text>
                     </View>
                     {isFavorite && isAuthenticated && user && (
-                      <TouchableOpacity
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleDeleteFavoriteSong(song.id);
-                        }}
-                        style={styles.deleteButton}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        <Trash2 size={18} color={currentTheme.error || '#F44336'} />
-                      </TouchableOpacity>
+                      <View style={styles.actionButtonsContainer}>
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleEditFavoriteSong(song as UserFavoriteSong);
+                          }}
+                          style={styles.editButton}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                          <Edit2 size={18} color={currentTheme.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleDeleteFavoriteSong(song.id);
+                          }}
+                          style={styles.deleteButton}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                          <Trash2 size={18} color='#F44336' />
+                        </TouchableOpacity>
+                      </View>
                     )}
                   </View>
                   
@@ -609,6 +660,159 @@ export default function RepresentativeSongsScreen() {
         </View>
       </Modal>
 
+      {/* お気に入り曲編集モーダル */}
+      <Modal
+        visible={showEditModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setShowEditModal(false);
+          setEditingSong(null);
+          setNewSong({
+            title: '',
+            composer: '',
+            era: '',
+            genre: '',
+            youtube_url: '',
+            description_ja: '',
+            famous_performer: '',
+            famous_note: '',
+          });
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
+                お気に入り曲を編集
+              </Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowEditModal(false);
+                  setEditingSong(null);
+                  setNewSong({
+                    title: '',
+                    composer: '',
+                    era: '',
+                    genre: '',
+                    youtube_url: '',
+                    description_ja: '',
+                    famous_performer: '',
+                    famous_note: '',
+                  });
+                }}
+                style={styles.modalCloseButton}
+              >
+                <Text style={[styles.modalCloseText, { color: currentTheme.textSecondary }]}>×</Text>
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.modalBody}>
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>曲名 *</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
+                  value={newSong.title}
+                  onChangeText={(text) => setNewSong({ ...newSong, title: text })}
+                  placeholder="曲名を入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>作曲者</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
+                  value={newSong.composer}
+                  onChangeText={(text) => setNewSong({ ...newSong, composer: text })}
+                  placeholder="作曲者名を入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>時代</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
+                  value={newSong.era}
+                  onChangeText={(text) => setNewSong({ ...newSong, era: text })}
+                  placeholder="例: バロック、古典、ロマン派など"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>ジャンル</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
+                  value={newSong.genre}
+                  onChangeText={(text) => setNewSong({ ...newSong, genre: text })}
+                  placeholder="ジャンルを入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>YouTube URL</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
+                  value={newSong.youtube_url}
+                  onChangeText={(text) => setNewSong({ ...newSong, youtube_url: text })}
+                  placeholder="https://youtube.com/..."
+                  placeholderTextColor={currentTheme.textSecondary}
+                  keyboardType="url"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>著名な演奏者</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
+                  value={newSong.famous_performer}
+                  onChangeText={(text) => setNewSong({ ...newSong, famous_performer: text })}
+                  placeholder="演奏者名を入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>備考</Text>
+                <TextInput
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
+                  value={newSong.famous_note}
+                  onChangeText={(text) => setNewSong({ ...newSong, famous_note: text })}
+                  placeholder="備考を入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: currentTheme.text }]}>説明</Text>
+                <TextInput
+                  style={[styles.textInput, styles.textArea, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
+                  value={newSong.description_ja}
+                  onChangeText={(text) => setNewSong({ ...newSong, description_ja: text })}
+                  placeholder="曲の説明を入力"
+                  placeholderTextColor={currentTheme.textSecondary}
+                  multiline
+                  numberOfLines={4}
+                />
+              </View>
+            </ScrollView>
+            
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={[styles.saveButton, { backgroundColor: currentTheme.primary }]}
+                onPress={handleUpdateFavoriteSong}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.saveButtonText}>更新</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* お気に入り曲追加モーダル */}
       <Modal
         visible={showAddModal}
@@ -658,7 +862,7 @@ export default function RepresentativeSongsScreen() {
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>曲名 *</Text>
                 <TextInput
-                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
                   value={newSong.title}
                   onChangeText={(text) => setNewSong({ ...newSong, title: text })}
                   placeholder="曲名を入力"
@@ -669,7 +873,7 @@ export default function RepresentativeSongsScreen() {
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>作曲者</Text>
                 <TextInput
-                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
                   value={newSong.composer}
                   onChangeText={(text) => setNewSong({ ...newSong, composer: text })}
                   placeholder="作曲者名を入力"
@@ -680,7 +884,7 @@ export default function RepresentativeSongsScreen() {
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>時代</Text>
                 <TextInput
-                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
                   value={newSong.era}
                   onChangeText={(text) => setNewSong({ ...newSong, era: text })}
                   placeholder="例: バロック、古典、ロマン派など"
@@ -691,7 +895,7 @@ export default function RepresentativeSongsScreen() {
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>ジャンル</Text>
                 <TextInput
-                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
                   value={newSong.genre}
                   onChangeText={(text) => setNewSong({ ...newSong, genre: text })}
                   placeholder="ジャンルを入力"
@@ -702,7 +906,7 @@ export default function RepresentativeSongsScreen() {
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>YouTube URL</Text>
                 <TextInput
-                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
                   value={newSong.youtube_url}
                   onChangeText={(text) => setNewSong({ ...newSong, youtube_url: text })}
                   placeholder="https://youtube.com/..."
@@ -714,7 +918,7 @@ export default function RepresentativeSongsScreen() {
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>著名な演奏者</Text>
                 <TextInput
-                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
                   value={newSong.famous_performer}
                   onChangeText={(text) => setNewSong({ ...newSong, famous_performer: text })}
                   placeholder="演奏者名を入力"
@@ -725,7 +929,7 @@ export default function RepresentativeSongsScreen() {
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>備考</Text>
                 <TextInput
-                  style={[styles.textInput, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  style={[styles.textInput, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
                   value={newSong.famous_note}
                   onChangeText={(text) => setNewSong({ ...newSong, famous_note: text })}
                   placeholder="備考を入力"
@@ -736,7 +940,7 @@ export default function RepresentativeSongsScreen() {
               <View style={styles.inputGroup}>
                 <Text style={[styles.inputLabel, { color: currentTheme.text }]}>説明</Text>
                 <TextInput
-                  style={[styles.textInput, styles.textArea, { backgroundColor: currentTheme.secondary, color: currentTheme.text, borderColor: currentTheme.primary }]}
+                  style={[styles.textInput, styles.textArea, { backgroundColor: currentTheme.surface, color: currentTheme.text, borderColor: currentTheme.secondary }]}
                   value={newSong.description_ja}
                   onChangeText={(text) => setNewSong({ ...newSong, description_ja: text })}
                   placeholder="曲の説明を入力"
@@ -952,10 +1156,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
     borderRadius: 12,
-    gap: 8,
+    gap: 10,
     elevation: 2,
     ...createShadowStyle({
       shadowColor: '#000',
@@ -967,12 +1171,19 @@ const styles = StyleSheet.create({
   },
   addButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
   },
   favoriteLabel: {
     fontSize: 14,
     fontWeight: '700',
+  },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  editButton: {
+    padding: 4,
   },
   deleteButton: {
     padding: 4,

@@ -14,6 +14,7 @@ import {
   Alert,
   Linking,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Mail, Shield, FileText, Trash2 } from 'lucide-react-native';
@@ -69,6 +70,17 @@ export default function PrivacySettingsScreen() {
     const instrument = defaultInstruments.find(i => i.id === instrumentId);
     const instrumentName = instrument?.name || '楽器';
 
+    // Web環境ではwindow.confirmを使用（Alert.alertが正しく動作しない場合があるため）
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
+      const message = `「${instrumentName}」のすべてのデータを削除しますか？\n\nこの操作は取り消すことができません。\n\n削除されるデータ:\n• 録音データ\n• 練習記録\n• 目標\n• マイライブラリ\n• イベント`;
+      const confirmed = window.confirm(message);
+      if (confirmed) {
+        performInstrumentDataDeletion(instrumentId);
+      }
+      return;
+    }
+
+    // ネイティブ環境ではAlert.alertを使用
     Alert.alert(
       '楽器データの削除',
       `「${instrumentName}」のすべてのデータを削除しますか？\n\nこの操作は取り消すことができません。\n\n削除されるデータ:\n• 録音データ\n• 練習記録\n• 目標\n• マイライブラリ\n• イベント`,
@@ -126,11 +138,16 @@ export default function PrivacySettingsScreen() {
 
       if (errors.length > 0) {
         logger.error('[PrivacySettings] 楽器データ削除エラー:', errors);
-        Alert.alert(
-          'エラー',
-          '楽器データの削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。',
-          [{ text: 'OK' }]
-        );
+        const errorMessage = '楽器データの削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。';
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+          window.alert(errorMessage);
+        } else {
+          Alert.alert(
+            'エラー',
+            errorMessage,
+            [{ text: 'OK' }]
+          );
+        }
         setIsDeletingInstrument(null);
         return;
       }
@@ -146,18 +163,28 @@ export default function PrivacySettingsScreen() {
       const instrument = defaultInstruments.find(i => i.id === instrumentId);
       const instrumentName = instrument?.name || '楽器';
 
-      Alert.alert(
-        '削除完了',
-        `「${instrumentName}」のデータを削除しました。`,
-        [{ text: 'OK' }]
-      );
+      // Web環境ではwindow.alertを使用（Alert.alertが正しく動作しない場合があるため）
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+        window.alert(`「${instrumentName}」のデータを削除しました。`);
+      } else {
+        Alert.alert(
+          '削除完了',
+          `「${instrumentName}」のデータを削除しました。`,
+          [{ text: 'OK' }]
+        );
+      }
     } catch (error: unknown) {
       logger.error('[PrivacySettings] 楽器データ削除例外:', error);
-      Alert.alert(
-        'エラー',
-        '楽器データの削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。',
-        [{ text: 'OK' }]
-      );
+      const errorMessage = '楽器データの削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。';
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.alert) {
+        window.alert(errorMessage);
+      } else {
+        Alert.alert(
+          'エラー',
+          errorMessage,
+          [{ text: 'OK' }]
+        );
+      }
     } finally {
       setIsDeletingInstrument(null);
     }

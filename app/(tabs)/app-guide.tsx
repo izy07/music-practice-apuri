@@ -229,7 +229,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 125, // タブバーの高さ + 広告バナー分
   },
   sectionCard: {
     marginBottom: 12,

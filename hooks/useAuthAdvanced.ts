@@ -2031,6 +2031,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       }
       
       // 5. AsyncStorageのユーザー固有データをクリア
+      // ただし、カスタムテーマ（customTheme, isCustomTheme）は保持する（ログイン時に復元するため）
       try {
         const allKeys = await AsyncStorage.getAllKeys();
         const userDataKeys = allKeys.filter(key => 
@@ -2042,8 +2043,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           key === 'calendar_view_date' ||
           key.startsWith('timer_') ||
           key.includes('selectedInstrument') ||
-          key.includes('customTheme') ||
-          key.includes('isCustomTheme') ||
+          // カスタムテーマは保持するため、削除対象から除外
+          // key.includes('customTheme') ||
+          // key.includes('isCustomTheme') ||
           key.includes('practiceSettings') ||
           key.includes('user_practice_level')
         );

@@ -8,6 +8,8 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
 import PostureCameraModal from '@/components/PostureCameraModal';
 import logger from '@/lib/logger';
+import { getInstrumentCategory } from '@/lib/instrumentUtils';
+import { getTermsForInstrument } from '@/data/musicTermsData';
 // Web環境（GitHub Pages等）では直接インポートを使用（動的インポートが動作しない場合があるため）
 // モバイル環境では動的インポートで遅延読み込み（軽量化）
 import { instrumentGuides as staticInstrumentGuides } from '@/data/instrumentGuides';
@@ -15,6 +17,63 @@ import { instrumentGuides as staticInstrumentGuides } from '@/data/instrumentGui
 let instrumentGuides: any = null;
 let isLoading = false;
 let loadPromise: Promise<any> | null = null;
+
+// 基礎練メニューで出てくる用語（初心者向け）をガイド「用語」でも表示するためのホワイトリスト
+const PRACTICE_TERM_WHITELIST = new Set<string>([
+  'ロングトーン',
+  'タンギング',
+  'ダブルタンギング',
+  'トリプルタンギング',
+  'アンブシュア',
+  'リップスラー',
+  'スケール（音階）',
+  'アルペジオ',
+  'ビブラート',
+  'グリッサンド',
+  'フラッタータンギング',
+  'ハーモニクス',
+  'シングルストローク',
+  'ダブルストローク',
+  'リバウンド',
+]);
+
+const buildPracticeTermsForGuide = (instrumentKey: string): Record<string, string> => {
+  try {
+    const instrumentCategory = getInstrumentCategory(instrumentKey);
+    const techniqueTerms = getTermsForInstrument('technique', instrumentCategory);
+    const picked = techniqueTerms.filter((t) => PRACTICE_TERM_WHITELIST.has(t.term_ja));
+
+    const record: Record<string, string> = {};
+    picked.forEach((t) => {
+      // keyはterm_jaを基準にして安定させる（Object.entriesで回すだけなので衝突しにくい）
+      record[t.term_ja] = `${t.term_ja}：${t.description_ja}`;
+    });
+    return record;
+  } catch (e) {
+    return {};
+  }
+};
+
+const mergeGuideTermsByTermName = (
+  base: Record<string, string>,
+  extra: Record<string, string>
+): Record<string, string> => {
+  const out: Record<string, string> = { ...base };
+  const existingNames = new Set<string>(
+    Object.values(out)
+      .filter((v) => typeof v === 'string')
+      .map((v) => String(v).split('：')[0])
+  );
+
+  Object.entries(extra).forEach(([k, v]) => {
+    const termName = String(v).split('：')[0];
+    if (existingNames.has(termName)) return;
+    out[k] = v;
+    existingNames.add(termName);
+  });
+
+  return out;
+};
 
 const loadInstrumentGuides = async (): Promise<any> => {
   // 既に読み込まれている場合は即座に返す
@@ -880,6 +939,13 @@ export default function BeginnerGuideScreen() {
         
         // basicTermsが存在する場合はそれを使用、なければハードコードされた用語を使用
         const basicTerms = (currentGuide as any)?.basicTerms;
+        const mergedTerms =
+          basicTerms && typeof basicTerms === 'object'
+            ? mergeGuideTermsByTermName(
+                basicTerms as Record<string, string>,
+                buildPracticeTermsForGuide(instrumentName)
+              )
+            : basicTerms;
         
         return (
           <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
@@ -891,9 +957,9 @@ export default function BeginnerGuideScreen() {
             </View>
             
             <View style={styles.infoGrid}>
-              {basicTerms && typeof basicTerms === 'object' ? (
+              {mergedTerms && typeof mergedTerms === 'object' ? (
                 // basicTermsから動的に用語を表示
-                Object.entries(basicTerms).map(([key, value]) => {
+                Object.entries(mergedTerms).map(([key, value]) => {
                   if (typeof value !== 'string') return null;
                   // 用語名と説明を分割（例: "ペグ：説明文" → "ペグ" と "説明文"）
                   const parts = value.split('：');

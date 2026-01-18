@@ -9,7 +9,6 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { setCurrentRoute } from '@/lib/navigationHistory';
 import { asSafeRoutePath } from '@/lib/navigationHelpers';
 import { safeGoBack } from '@/lib/navigationUtils';
-import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 
 export default function MajorSettingsScreen() {
   const router = useRouter();
@@ -102,9 +101,6 @@ export default function MajorSettingsScreen() {
           ))}
         </View>
       </ScrollView>
-
-      {/* タブバー上に広告バナー（フリープランのみ） */}
-      <BottomBannerAd />
     </SafeAreaView>
   );
 }
@@ -132,7 +128,7 @@ const styles = StyleSheet.create({
   content: { flex: 1 },
   scrollContent: {
     paddingHorizontal: 20,
-    paddingBottom: 165, // タブバーの高さ + 広告バナー分 + 余裕
+    paddingBottom: 100, // タブバーの高さ + 余裕
   },
   title: {
     fontSize: 24,

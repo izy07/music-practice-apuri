@@ -29,7 +29,7 @@ try {
 
 export default function ProfileSettingsScreen() {
   const router = useRouter();
-  const { isAuthenticated, isLoading, fetchUserProfile, signOut } = useAuthAdvanced();
+  const { isAuthenticated, isLoading, fetchUserProfile, signOut, user } = useAuthAdvanced();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const [isDeleting, setIsDeleting] = useState(false);
   
@@ -1389,6 +1389,164 @@ export default function ProfileSettingsScreen() {
     safeGoBack(router, '/(tabs)/settings', true); // 確実にsettings画面に戻る
   };
 
+  // プロフィール情報削除処理
+  const handleDeleteProfile = async () => {
+    if (isDeleting) return;
+    
+    logger.info('[ProfileSettings] プロフィール削除ボタンが押されました');
+    
+    // Web環境ではconfirmを使用
+    if (typeof window !== 'undefined' && window.confirm) {
+      const confirm = window.confirm(
+        'プロフィール情報を削除しますか？\n\n削除される情報：\n• ニックネーム\n• 誕生日\n• 楽器情報\n• 経歴・実績\n• 休止期間\n\nこの操作は取り消せません。アカウントは削除されません。'
+      );
+      
+      if (!confirm) {
+        logger.info('[ProfileSettings] プロフィール削除がキャンセルされました');
+        return;
+      }
+      
+      await performProfileDeletion();
+      return;
+    }
+    
+    // ネイティブ環境ではAlertを使用
+    Alert.alert(
+      'プロフィール削除の確認',
+      'プロフィール情報を削除しますか？\n\n削除される情報：\n• ニックネーム\n• 誕生日\n• 楽器情報\n• 経歴・実績\n• 休止期間\n\nこの操作は取り消せません。アカウントは削除されません。',
+      [
+        { 
+          text: 'キャンセル', 
+          style: 'cancel',
+          onPress: () => {
+            logger.info('[ProfileSettings] プロフィール削除がキャンセルされました');
+          }
+        },
+        { 
+          text: '削除する', 
+          style: 'destructive',
+          onPress: async () => {
+            await performProfileDeletion();
+          }
+        }
+      ]
+    );
+  };
+
+  const performProfileDeletion = async () => {
+    if (isDeleting || !user) return;
+    
+    setIsDeleting(true);
+    
+    try {
+      logger.info('[ProfileSettings] プロフィール削除処理を開始');
+      
+      // 1. プロフィール情報をクリア
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .update({
+          display_name: null,
+          nickname: null,
+          birthday: null,
+          music_start_age: null,
+          music_experience_years: null,
+          avatar_url: null,
+          instrument_specific_data: {},
+          updated_at: new Date().toISOString(),
+        })
+        .eq('user_id', user.id);
+      
+      if (profileError) {
+        logger.error('[ProfileSettings] プロフィール削除エラー:', profileError);
+        Alert.alert('エラー', `プロフィール情報の削除に失敗しました: ${profileError.message}`);
+        setIsDeleting(false);
+        return;
+      }
+      
+      // 2. 経歴・実績データを削除（楽器ごとのデータから）
+      // 楽器ごとのデータを取得して、すべての楽器の経歴・実績をクリア
+      const { data: profileData } = await supabase
+        .from('user_profiles')
+        .select('instrument_specific_data')
+        .eq('user_id', user.id)
+        .single();
+      
+      if (profileData && profileData.instrument_specific_data) {
+        const instrumentData = profileData.instrument_specific_data as any;
+        
+        // すべての楽器のcareer_dataをクリア
+        const updatedInstrumentData: any = {};
+        for (const [instrumentId, data] of Object.entries(instrumentData)) {
+          if (data && typeof data === 'object') {
+            updatedInstrumentData[instrumentId] = {
+              ...data,
+              career_data: {
+                pastOrganizationsUi: [],
+                awardsUi: [],
+                performancesUi: [],
+                breakPeriodsUi: [],
+              },
+            };
+          }
+        }
+        
+        // 更新
+        const { error: updateError } = await supabase
+          .from('user_profiles')
+          .update({
+            instrument_specific_data: updatedInstrumentData,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('user_id', user.id);
+        
+        if (updateError) {
+          logger.error('[ProfileSettings] 経歴・実績データ削除エラー:', updateError);
+          // エラーでも続行（プロフィール情報は削除済み）
+        }
+      }
+      
+      logger.info('[ProfileSettings] プロフィール削除が完了');
+      
+      // 3. 画面の状態をリセット
+      setDisplayName('ユーザー');
+      setNickname('');
+      setBirthday(null);
+      setBirthYear('');
+      setBirthMonth('');
+      setBirthDay('');
+      setMusicStartAge('');
+      setMusicExperienceYears(0);
+      setCurrentAge('');
+      setAvatarUrl(null);
+      setInstrumentTypes([]);
+      setBreakPeriods([]);
+      setPastOrganizations([]);
+      setAwards([]);
+      setPerformances([]);
+      setPastOrgs([{ id: undefined, name: '', startYm: '', endYm: '' }]);
+      setAwardsEdit([{ id: undefined, title: '', dateYm: '', result: '' }]);
+      setPerformancesEdit([{ id: undefined, title: '' }]);
+      
+      // 4. プロフィール情報を再読み込み
+      await loadCurrentUser();
+      
+      Alert.alert(
+        'プロフィール削除完了',
+        'プロフィール情報を削除しました。\n\nアカウントは削除されていません。',
+        [{ text: 'OK' }]
+      );
+      
+    } catch (error: unknown) {
+      logger.error('[ProfileSettings] プロフィール削除例外:', error);
+      Alert.alert(
+        'エラー',
+        'プロフィール情報の削除中にエラーが発生しました。'
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // アカウント削除処理
   const handleDeleteAccount = () => {
     logger.info('[ProfileSettings] アカウント削除ボタンが押されました');
@@ -2615,7 +2773,7 @@ export default function ProfileSettingsScreen() {
                   paddingVertical: 6,
                   paddingHorizontal: 12
                 }]}
-                onPress={handleDeleteAccount}
+                onPress={handleDeleteProfile}
                 disabled={isDeleting}
                 activeOpacity={0.8}
               >

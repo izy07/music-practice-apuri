@@ -399,6 +399,7 @@ export default function TunerScreen() {
   const audioProcessingIntervalRef = useRef<number | null>(null);
   const smoothedFrequencyRef = useRef<number>(0);
   const frequencyHistoryRef = useRef<number[]>([]); // 周波数履歴をrefで保持
+  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null); // UI更新デバウンス用
   
   // 音名表示モード（CDEかドレミか）- 開放弦の音を聞く機能で使用
   const [noteDisplayMode, setNoteDisplayMode] = useState<'en' | 'ja'>('en');
@@ -711,27 +712,36 @@ export default function TunerScreen() {
               isInTune: noteInfo.isInTune
             });
           }
-          // 本番環境でも重要な情報をコンソールに出力（デバッグ用）
-          console.log(`[Tuner] 検出周波数: ${detectedFrequency.toFixed(2)}Hz, 平滑化後: ${smoothedFreq.toFixed(2)}Hz, 音名: ${noteInfo.note}${noteInfo.octave}, セント: ${noteInfo.cents.toFixed(1)}, A4: ${a4Frequency}Hz`);
           
-          // UIを更新（滑らかな更新のため、状態更新を最適化）
-          setCurrentFrequency(smoothedFreq);
-          setCurrentNote(noteInfo.note);
-          setCurrentNoteJa(noteInfo.noteJa);
-          setCurrentOctave(noteInfo.octave);
-          setCurrentCents(noteInfo.cents);
+          // UI更新をデバウンス（100ms遅延で更新頻度を制限）
+          // これにより、60fpsの高速更新によるパフォーマンス問題を軽減
+          if (updateTimeoutRef.current) {
+            clearTimeout(updateTimeoutRef.current);
+          }
+          
+          updateTimeoutRef.current = setTimeout(() => {
+            // 本番環境でも重要な情報をコンソールに出力（デバッグ用、デバウンス後）
+            console.log(`[Tuner] 検出周波数: ${detectedFrequency.toFixed(2)}Hz, 平滑化後: ${smoothedFreq.toFixed(2)}Hz, 音名: ${noteInfo.note}${noteInfo.octave}, セント: ${noteInfo.cents.toFixed(1)}, A4: ${a4Frequency}Hz`);
+            
+            // UIを更新（デバウンス処理後）
+            setCurrentFrequency(smoothedFreq);
+            setCurrentNote(noteInfo.note);
+            setCurrentNoteJa(noteInfo.noteJa);
+            setCurrentOctave(noteInfo.octave);
+            setCurrentCents(noteInfo.cents);
 
-          // チューニングバーの位置を更新（より滑らかなアニメーション）
-          Animated.timing(tuningBarAnimation, {
-            toValue: noteInfo.cents,
-            duration: 200, // より長いdurationで滑らかに
-            easing: Easing.out(Easing.cubic), // より滑らかなイージング
-            useNativeDriver: false,
-          }).start();
+            // チューニングバーの位置を更新（より滑らかなアニメーション）
+            Animated.timing(tuningBarAnimation, {
+              toValue: noteInfo.cents,
+              duration: 200, // より長いdurationで滑らかに
+              easing: Easing.out(Easing.cubic), // より滑らかなイージング
+              useNativeDriver: false,
+            }).start();
 
-          // インジケーターの色を更新
-          const { color } = getTuningColor(Math.abs(noteInfo.cents));
-          setIndicatorColor(color);
+            // インジケーターの色を更新
+            const { color } = getTuningColor(Math.abs(noteInfo.cents));
+            setIndicatorColor(color);
+          }, 100); // 100msデバウンス
         } else {
           // 音が検出されない場合、履歴をクリア
           frequencyHistoryRef.current = [];
@@ -792,6 +802,12 @@ export default function TunerScreen() {
     if (audioProcessingIntervalRef.current) {
       clearInterval(audioProcessingIntervalRef.current);
       audioProcessingIntervalRef.current = null;
+    }
+
+    // UI更新デバウンスのタイムアウトをクリア
+    if (updateTimeoutRef.current) {
+      clearTimeout(updateTimeoutRef.current);
+      updateTimeoutRef.current = null;
     }
 
     // マイクストリームを解放

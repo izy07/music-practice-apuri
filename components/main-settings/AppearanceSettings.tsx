@@ -453,16 +453,16 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
 
       {/* テーマを保存ボタン */}
       {useCustomTheme && (
-        <TouchableOpacity
+            <TouchableOpacity
           style={[styles.saveThemeButton, { backgroundColor: currentTheme?.primary || '#4A5568' }]}
           onPress={handleSaveTheme}
-          activeOpacity={0.7}
-        >
+              activeOpacity={0.7}
+            >
           <Save size={20} color="#FFFFFF" />
           <Text style={styles.saveThemeButtonText}>
             {isCustomTheme ? 'テーマを更新' : 'テーマを保存'}
           </Text>
-        </TouchableOpacity>
+            </TouchableOpacity>
       )}
 
 

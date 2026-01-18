@@ -77,7 +77,11 @@ export default function PricingPlansScreen() {
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={{ paddingBottom: 125 }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* ヒーロー */}
         <View style={[styles.hero, { backgroundColor: currentTheme.surface }]}>
           <Crown size={28} color={currentTheme.primary} />

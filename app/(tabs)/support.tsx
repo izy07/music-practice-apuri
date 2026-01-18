@@ -161,7 +161,11 @@ export default function SupportScreen() {
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={{ paddingBottom: 125 }}
+        showsVerticalScrollIndicator={false}
+      >
         {/* フィードバックする */}
         <View style={[styles.section, { backgroundColor: currentTheme?.surface || '#FFFFFF' }]}>
           <View style={styles.sectionHeader}>

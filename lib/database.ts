@@ -585,6 +585,12 @@ export const saveRecording = async (record: {
       hasFilePath: !!record.file_path
     });
 
+    // レッスン録音の場合は30日後に自動削除（お気に入りは除外される）
+    const recordingType = record.recording_type ?? 'performance';
+    const autoDeleteAt = recordingType === 'lesson' && !(record.is_favorite ?? false)
+      ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30日後
+      : null;
+
     // 現在のデータベーススキーマに合わせて、必須フィールドにデフォルト値を設定
     const payload = {
       user_id: record.user_id,
@@ -596,7 +602,8 @@ export const saveRecording = async (record: {
       is_favorite: record.is_favorite ?? false,
       recorded_at: record.recorded_at ?? new Date().toISOString(),
       created_at: new Date().toISOString(),
-      recording_type: record.recording_type ?? 'performance', // デフォルトは演奏録音
+      recording_type: recordingType,
+      auto_delete_at: autoDeleteAt, // レッスン録音かつお気に入りでない場合のみ設定
     };
 
     logger.debug('保存ペイロード:', payload);
@@ -610,7 +617,7 @@ export const saveRecording = async (record: {
     if (error) {
       // カラムが存在しないエラーの場合、該当カラムを除外して再試行
       if (isColumnNotFoundError(error)) {
-        const optionalColumns = ['instrument_id', 'recording_type'];
+        const optionalColumns = ['instrument_id', 'recording_type', 'auto_delete_at'];
         let currentPayload = payload;
         let excludedColumns: string[] = [];
         

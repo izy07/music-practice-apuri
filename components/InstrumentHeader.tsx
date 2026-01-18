@@ -13,6 +13,7 @@ import { getSession } from '@/lib/authService';
 import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
 import { getCurrentRouteFromHistory } from '@/lib/navigationHistory';
 import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
+import { supabase } from '@/lib/supabase';
 export default function InstrumentHeader() {
   const router = useRouter();
   const segments = useSegments();
@@ -43,6 +44,9 @@ export default function InstrumentHeader() {
 
   // ユーザーの過去の楽器選択を取得（初回のみ、最適化）
   const [userInstrumentInfo, setUserInstrumentInfo] = useState<{ id: string; name: string; name_en: string } | null>(null);
+  
+  // カスタム楽器名（その他楽器の場合）
+  const [customInstrumentName, setCustomInstrumentName] = useState<string | null>(null);
   
   useEffect(() => {
     let cancelled = false;
@@ -168,6 +172,70 @@ export default function InstrumentHeader() {
     };
   }, [isAuthenticated, user, selectedInstrument, dbInstruments, setSelectedInstrument]);
 
+  // カスタム楽器名を取得（その他楽器が選択されている場合のみ）
+  useEffect(() => {
+    let cancelled = false;
+    
+    const fetchCustomInstrumentName = async () => {
+      if (!isAuthenticated || !user?.id) {
+        setCustomInstrumentName(null);
+        return;
+      }
+      
+      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+      
+      // その他楽器が選択されている場合のみ、カスタム楽器名を取得
+      if (currentInstrumentId === '550e8400-e29b-41d4-a716-446655440016') {
+        // まずuserオブジェクトから取得を試みる
+        if (user?.custom_instrument_name) {
+          if (!cancelled) {
+            setCustomInstrumentName(user.custom_instrument_name);
+          }
+          return;
+        }
+        
+        // userオブジェクトにない場合は、データベースから直接取得
+        try {
+          const { data, error } = await supabase
+            .from('user_profiles')
+            .select('custom_instrument_name')
+            .eq('user_id', user.id)
+            .maybeSingle();
+          
+          if (!cancelled) {
+            if (error) {
+              // カラムが存在しないエラー（42703）の場合は無視
+              if (error.code !== '42703') {
+                logger.debug('カスタム楽器名取得エラー（無視）:', error);
+              }
+              setCustomInstrumentName(null);
+            } else if (data?.custom_instrument_name) {
+              setCustomInstrumentName(data.custom_instrument_name);
+            } else {
+              setCustomInstrumentName(null);
+            }
+          }
+        } catch (error) {
+          if (!cancelled) {
+            logger.debug('カスタム楽器名取得例外（無視）:', error);
+            setCustomInstrumentName(null);
+          }
+        }
+      } else {
+        // その他楽器以外が選択されている場合はカスタム楽器名をクリア
+        if (!cancelled) {
+          setCustomInstrumentName(null);
+        }
+      }
+    };
+    
+    fetchCustomInstrumentName();
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, user, selectedInstrument, user?.custom_instrument_name]);
+
   // Webプラットフォームでのフォーカス管理
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -207,11 +275,22 @@ export default function InstrumentHeader() {
     const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
     
     // その他楽器（ID: 550e8400-e29b-41d4-a716-446655440016）の場合は、カスタム楽器名を優先的に表示
-    if (currentInstrumentId === '550e8400-e29b-41d4-a716-446655440016' && user?.custom_instrument_name) {
-      return user.custom_instrument_name;
+    // customInstrumentName（状態）を優先的に使用し、フォールバックとしてuser?.custom_instrument_nameを使用
+    if (currentInstrumentId === '550e8400-e29b-41d4-a716-446655440016') {
+      const displayName = customInstrumentName || user?.custom_instrument_name;
+      if (displayName) {
+        return displayName;
+      }
     }
     
     if (currentInstrumentId && instrumentInfo) {
+      // その他楽器の場合は、カスタム楽器名を優先的に表示
+      if (instrumentInfo.id === '550e8400-e29b-41d4-a716-446655440016') {
+        const displayName = customInstrumentName || user?.custom_instrument_name;
+        if (displayName) {
+          return displayName;
+        }
+      }
       const displayName = language === 'en' ? instrumentInfo.name_en : instrumentInfo.name;
       return removeEmoji(displayName);
     }
@@ -219,8 +298,11 @@ export default function InstrumentHeader() {
     // 過去に選択されていた楽器がある場合はそれを表示
     if (userInstrumentInfo) {
       // その他楽器の場合は、カスタム楽器名を優先的に表示
-      if (userInstrumentInfo.id === '550e8400-e29b-41d4-a716-446655440016' && user?.custom_instrument_name) {
-        return user.custom_instrument_name;
+      if (userInstrumentInfo.id === '550e8400-e29b-41d4-a716-446655440016') {
+        const displayName = customInstrumentName || user?.custom_instrument_name;
+        if (displayName) {
+          return displayName;
+        }
       }
       const displayName = language === 'en' ? userInstrumentInfo.name_en : userInstrumentInfo.name;
       return removeEmoji(displayName);
@@ -229,8 +311,11 @@ export default function InstrumentHeader() {
     // user.selected_instrument_idから直接楽器情報を取得
     if (user?.selected_instrument_id && dbInstruments.length > 0) {
       // その他楽器の場合は、カスタム楽器名を優先的に表示
-      if (user.selected_instrument_id === '550e8400-e29b-41d4-a716-446655440016' && user?.custom_instrument_name) {
-        return user.custom_instrument_name;
+      if (user.selected_instrument_id === '550e8400-e29b-41d4-a716-446655440016') {
+        const displayName = customInstrumentName || user?.custom_instrument_name;
+        if (displayName) {
+          return displayName;
+        }
       }
       const instrument = dbInstruments.find(inst => inst.id === user.selected_instrument_id);
       if (instrument) {
@@ -243,8 +328,11 @@ export default function InstrumentHeader() {
     // Contextから取得した楽器情報を使用（単一のデータソース）
     if (instrumentInfo) {
       // その他楽器の場合は、カスタム楽器名を優先的に表示
-      if (instrumentInfo.id === '550e8400-e29b-41d4-a716-446655440016' && user?.custom_instrument_name) {
-        return user.custom_instrument_name;
+      if (instrumentInfo.id === '550e8400-e29b-41d4-a716-446655440016') {
+        const displayName = customInstrumentName || user?.custom_instrument_name;
+        if (displayName) {
+          return displayName;
+        }
       }
       const displayName = language === 'en' ? instrumentInfo.name_en : instrumentInfo.name;
       return removeEmoji(displayName);

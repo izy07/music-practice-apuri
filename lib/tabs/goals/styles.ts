@@ -997,9 +997,9 @@ export const styles = StyleSheet.create({
     backgroundColor: '#4CAF50',
   },
   bigAchievementBadge: {
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 16,
     transform: [{ scale: 1.02 }],
   },
   achievementBadgeText: {
@@ -1009,10 +1009,10 @@ export const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   bigAchievementText: {
-    fontSize: 18,
-    fontWeight: '800',
+    fontSize: 14,
+    fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   justCompletedOverlay: {
     position: 'absolute',

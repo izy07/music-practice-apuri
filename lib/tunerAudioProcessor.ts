@@ -123,71 +123,58 @@ export const getNoteFromFrequency = (
   const octave = Math.floor(nearestMidi / 12) - 1;
 
   // セントの計算（標準的なチューナーの計算方法）
-  // セント = 1200 * log2(実測周波数 / 基準周波数)
-  // 基準周波数は最も近い半音の周波数（12平均律に基づく）
+  // セント = (noteNumber - nearestMidi) * 100
+  // noteNumberは周波数から直接計算されているため、この方法が最も正確
   // 1セント = 半音の1/100、100セント = 1半音
   // 正の値 = 高い、負の値 = 低い
+  // 
+  // 数学的根拠:
+  // noteNumber = 12 * log2(frequency / a4Freq) + 69
+  // nearestMidi = round(noteNumber)
+  // cents = (noteNumber - nearestMidi) * 100
+  // これは 1200 * log2(frequency / referenceFrequency) と数学的に等価
+  // ただし、referenceFrequencyの計算に誤差が入る可能性があるため、
+  // noteNumberベースの計算の方がより正確
   
-  // 基準音の周波数を計算（最も近い半音）
-  const semitonesFromA4 = nearestMidi - a4NoteNumber;
-  const referenceFrequency = a4Freq * Math.pow(2, semitonesFromA4 / 12);
-  
-  // 周波数比からセントを計算（標準的な方法、高精度版）
-  // この方法は、実測周波数と基準周波数の比から直接セントを計算するため、正確
-  // 系統的な誤差を避けるため、常にlog2計算を使用（簡易計算は使わない）
   let cents: number;
   
-  // 常に標準的な方法を使用（精度を優先）
-  // 周波数比が1に非常に近い場合でも、log2計算を使用することで精度を保つ
-  if (Math.abs(frequency - referenceFrequency) < referenceFrequency * 1e-10) {
-    // 完全に一致している場合のみ0を返す
-    cents = 0;
-  } else if (frequency <= 0 || referenceFrequency <= 0) {
-    // 無効な周波数の場合、noteNumberベースで計算
-    cents = (noteNumber - nearestMidi) * 100;
-  } else {
-    // 標準的な方法: 周波数比からセントを計算（高精度）
-    // Math.log2の精度を最大限に活用
-    const frequencyRatio = frequency / referenceFrequency;
-    
-    // 周波数比が有効な範囲内かチェック（10^-10 から 10^10 の範囲）
-    if (frequencyRatio > 1e-10 && frequencyRatio < 1e10 && isFinite(frequencyRatio)) {
-      cents = 1200 * Math.log2(frequencyRatio);
-      
-      // 計算結果の妥当性チェック（NaNやInfinityを防ぐ）
-      if (!isFinite(cents)) {
-        // フォールバック: noteNumberベースの計算（ただし、これは精度が低い）
-        cents = (noteNumber - nearestMidi) * 100;
+  // noteNumberベースで直接セントを計算（最も正確な方法）
+  // この方法は、周波数から直接計算されたnoteNumberを使用するため、
+  // 中間計算（referenceFrequency）による誤差を避けることができる
+  cents = (noteNumber - nearestMidi) * 100;
+  
+  // 計算結果の妥当性チェック（NaNやInfinityを防ぐ）
+  if (!isFinite(cents)) {
+    // フォールバック: 周波数比から計算
+    const semitonesFromA4 = nearestMidi - a4NoteNumber;
+    const referenceFrequency = a4Freq * Math.pow(2, semitonesFromA4 / 12);
+    if (referenceFrequency > 0 && frequency > 0 && isFinite(referenceFrequency) && isFinite(frequency)) {
+      const frequencyRatio = frequency / referenceFrequency;
+      if (frequencyRatio > 1e-10 && frequencyRatio < 1e10 && isFinite(frequencyRatio)) {
+        cents = 1200 * Math.log2(frequencyRatio);
+        if (!isFinite(cents)) {
+          cents = 0;
+        }
+      } else {
+        cents = 0;
       }
     } else {
-      // 周波数比が異常な範囲の場合、noteNumberベースで計算
-      cents = (noteNumber - nearestMidi) * 100;
+      cents = 0;
     }
   }
   
-  // セントの値が異常に大きい場合（±200セント以上）、計算エラーの可能性があるため、再計算
+  // セントの値が異常に大きい場合の処理（改善版）
+  // ±200セント以上は異常値として扱うが、計算エラーの可能性も考慮
+  // 以前は±50セントに制限していたが、これにより大きなズレが隠れる可能性があった
+  // 異常値の場合は、セントを±100セントに制限し、警告を出力
   if (Math.abs(cents) > 200) {
-    // 異常値の場合は、noteNumberベースで再計算
-    const fallbackCents = (noteNumber - nearestMidi) * 100;
-    
-    // fallbackCentsも異常な場合（±200セント以上）、周波数比から再計算を試みる
-    if (Math.abs(fallbackCents) > 200) {
-      // 周波数比から直接セントを計算（より安全な方法）
-      if (referenceFrequency > 0 && isFinite(referenceFrequency)) {
-        const directCents = 1200 * Math.log2(frequency / referenceFrequency);
-        if (isFinite(directCents) && Math.abs(directCents) <= 200) {
-          cents = directCents;
-        } else {
-          // それでも異常な場合、最も近い半音からの差を計算（±50セントに制限）
-          cents = Math.max(-50, Math.min(50, fallbackCents));
-        }
-      } else {
-        // referenceFrequencyが無効な場合、±50セントに制限
-        cents = Math.max(-50, Math.min(50, fallbackCents));
-      }
-    } else {
-      cents = fallbackCents;
+    // 計算エラーの可能性を考慮し、以前より緩い制限に変更
+    // ±100セントに制限（半音の誤差範囲内）
+    const limitedCents = Math.max(-100, Math.min(100, cents));
+    if (__DEV__) {
+      console.warn(`[Tuner] セント値が異常に大きいため制限しました: ${cents.toFixed(1)} -> ${limitedCents.toFixed(1)} (周波数: ${frequency.toFixed(2)}Hz)`);
     }
+    cents = limitedCents;
   }
   const absCents = Math.abs(cents);
 
@@ -379,33 +366,33 @@ export const autoCorrelate = (
     // オクターブ関係がない場合、ハーモニクスでない候補を探す
     for (const candidate of candidates) {
       // この候補が他の候補のハーモニクス（整数倍）かどうかをチェック
-      let isHarmonic = false;
+    let isHarmonic = false;
       
       // より低い周波数（長いperiod）の候補が存在するかチェック
-      for (const other of candidates) {
-        if (other.period === candidate.period) continue;
+    for (const other of candidates) {
+      if (other.period === candidate.period) continue;
         
         // この候補が他の候補のハーモニクス（整数倍）かチェック
         // つまり、other.period > candidate.period かつ other.period / candidate.period が整数に近い場合
         // 注意：periodが大きい = 周波数が低い
         if (other.period > candidate.period) {
-          const ratio = other.period / candidate.period;
+      const ratio = other.period / candidate.period;
           // 3倍、4倍、5倍などのハーモニクスの可能性をチェック（2倍はオクターブなので除外）
           // より厳密な判定：0.1の誤差を許容
           if (ratio > 2.7 && ratio < 10 && Math.abs(ratio - Math.round(ratio)) < 0.1) {
             // この候補は他の候補のハーモニクスである可能性が高い
-            isHarmonic = true;
-            break;
-          }
-        }
-      }
-
-      // ハーモニクスでない場合、基本周波数として採用
-      // 相関値が最も高いものを優先するため、最初に見つかったハーモニクスでない候補を採用
-      if (!isHarmonic) {
-        fundamentalPeriod = candidate.period;
-        fundamentalCorrelation = candidate.correlation;
+        isHarmonic = true;
         break;
+          }
+      }
+    }
+
+    // ハーモニクスでない場合、基本周波数として採用
+      // 相関値が最も高いものを優先するため、最初に見つかったハーモニクスでない候補を採用
+    if (!isHarmonic) {
+      fundamentalPeriod = candidate.period;
+      fundamentalCorrelation = candidate.correlation;
+      break;
       }
     }
   }
@@ -420,8 +407,8 @@ export const autoCorrelate = (
       fundamentalCorrelation = candidates[0].correlation;
     } else {
       // それでも見つからない場合は、最も相関値の高いものを使用
-      fundamentalPeriod = candidates[0].period;
-      fundamentalCorrelation = candidates[0].correlation;
+    fundamentalPeriod = candidates[0].period;
+    fundamentalCorrelation = candidates[0].correlation;
     }
   }
 

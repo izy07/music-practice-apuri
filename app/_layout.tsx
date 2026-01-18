@@ -261,6 +261,13 @@ function RootLayoutContent() {
               message.includes('WAI-ARIA')) {
             return;
           }
+          // Unexpected text node警告を無視（ネットワークエラー時などに無限発生するため）
+          if (message.includes('Unexpected text node') || 
+              fullMessage.includes('Unexpected text node') ||
+              message.includes('A text node cannot be a child of a') ||
+              fullMessage.includes('A text node cannot be a child of a')) {
+            return;
+          }
           
           // RPC関数の404エラーを抑制（フォールバック方法で処理されるため）
           if (fullMessage.includes('/rpc/check_column_exists') && 
@@ -304,6 +311,13 @@ function RootLayoutContent() {
               message.includes('assistive technology') ||
               message.includes('The focus must not be hidden') ||
               message.includes('WAI-ARIA')) {
+            return;
+          }
+          // Unexpected text node警告を無視（ネットワークエラー時などに無限発生するため）
+          if (message.includes('Unexpected text node') || 
+              fullMessage.includes('Unexpected text node') ||
+              message.includes('A text node cannot be a child of a') ||
+              fullMessage.includes('A text node cannot be a child of a')) {
             return;
           }
           // React/Expo開発時の標準メッセージを抑制

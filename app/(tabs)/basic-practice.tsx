@@ -99,7 +99,7 @@ export default function BasicPracticeScreen() {
       {/* メインコンテンツ - 全体をスクロール可能にする */}
       <ScrollView 
         style={styles.mainContent} 
-        contentContainerStyle={{ paddingTop: 0, paddingBottom: 80 }}
+        contentContainerStyle={{ paddingTop: 0, paddingBottom: 125 }}
         showsVerticalScrollIndicator={false}
       >
         {/* 基礎情報セクション - レベル選択の直下、マスターレベルでは表示しない */}

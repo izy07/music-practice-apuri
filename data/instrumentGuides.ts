@@ -46,7 +46,9 @@ export const instrumentGuides = {
         bowFrog: '弓元：弓の根元部分。強い音を出す時に使います。',
         bowHair: '弓毛：弓に張られた馬の毛。松脂を塗って弦を擦り、音を出します。',
         rosin: '松脂：弓毛に塗る樹脂。弓毛と弦の摩擦を高めて音を出します。',
-        string: '弦：4本の弦。それぞれ異なる音程と音色を持ちます。'
+        string: '弦：4本の弦。それぞれ異なる音程と音色を持ちます。',
+        harmonics: '倍音：基本音に含まれる高次の周波数成分。弦を軽く触れて倍音を鳴らすことで、透き通った高い響きの音が出せます。',
+        bowing: 'ボーイング：弓の使い方、弓操作のこと。弓の速度、圧力、弓の位置を調整することで、音色や音量、表現を変えます。'
       },
       fingering: {
         basic: '最初に覚える音：開放弦（A音）、1の指（B音）、2の指（C音）、3の指（D音）',
@@ -80,6 +82,8 @@ export const instrumentGuides = {
         videos: [
           { title: 'バイオリンの持ち方・構え方', url: 'https://www.youtube.com/watch?v=example1' },
           { title: '基本的な弓の使い方', url: 'https://www.youtube.com/watch?v=example2' },
+          { title: '初心者にありがちなミス！どうしてノコギリの音になるの！？', url: 'https://youtu.be/IRJcGzP_Obo?si=GeUgI6qSWu1QXnHM' },
+          { title: '弓が真っ直ぐにならない原因&対処法', url: 'https://youtu.be/xTaVTMRkPsU?si=ycru2C7qs3TjzIpy' },
           { title: '運指の基礎', url: 'https://www.youtube.com/watch?v=example3' }
         ],
         images: [
@@ -242,6 +246,7 @@ export const instrumentGuides = {
       },
       resources: {
         videos: [
+          { title: 'HOW TO】ギター弦の張り替え/弦交換のやり方', url: 'https://youtu.be/9BYgNAgOWAM?si=RDkFmqz7aRaOYTkq' },
           { title: 'ギターの持ち方・構え方', url: 'https://www.youtube.com/watch?v=example7' },
           { title: '基本的な弦の弾き方', url: 'https://www.youtube.com/watch?v=example8' },
           { title: 'コードの押さえ方', url: 'https://www.youtube.com/watch?v=example9' }
@@ -416,6 +421,8 @@ export const instrumentGuides = {
       },
       resources: {
         videos: [
+          { title: 'HOW TO「トランペットの吹き方」', url: 'https://youtu.be/HC0lD9G5ymw?si=pcD4sTkVfy1l1iKM' },
+          { title: '美しい音色の出し方', url: 'https://youtu.be/-pctVKXCCag?si=tc5miSMrlhdZzRrX' },
           { title: 'トランペットの持ち方・構え方', url: 'https://www.youtube.com/watch?v=example13' },
           { title: '基本的な息の使い方', url: 'https://www.youtube.com/watch?v=example14' },
           { title: 'ピストンの使い方', url: 'https://www.youtube.com/watch?v=example15' }
@@ -485,7 +492,9 @@ export const instrumentGuides = {
         bowFrog: '弓元：弓の根元部分。強い音を出す時に使います。',
         bowHair: '弓毛：弓に張られた馬の毛。松脂を塗って弦を擦り、音を出します。',
         rosin: '松脂：弓毛に塗る樹脂。弓毛と弦の摩擦を高めて音を出します。',
-        string: '弦：4本の弦。それぞれ異なる音程と音色を持ちます。'
+        string: '弦：4本の弦。それぞれ異なる音程と音色を持ちます。',
+        harmonics: '倍音：基本音に含まれる高次の周波数成分。弦を軽く触れて倍音を鳴らすことで、透き通った高い響きの音が出せます。',
+        bowing: 'ボーイング：弓の使い方、弓操作のこと。弓の速度、圧力、弓の位置を調整することで、音色や音量、表現を変えます。'
       },
       tuning: {
         reference: '各弦の基準音を確認してチューニングします。',
@@ -508,6 +517,8 @@ export const instrumentGuides = {
         videos: [
           { title: 'ヴィオラの持ち方・構え方', url: 'https://www.youtube.com/watch?v=example1' },
           { title: '基本的な弓の使い方', url: 'https://www.youtube.com/watch?v=example2' },
+          { title: '初心者にありがちなミス！どうしてノコギリの音になるの！？', url: 'https://youtu.be/IRJcGzP_Obo?si=GeUgI6qSWu1QXnHM' },
+          { title: '弓が真っ直ぐにならない原因&対処法', url: 'https://youtu.be/xTaVTMRkPsU?si=ycru2C7qs3TjzIpy' },
           { title: '運指の基礎', url: 'https://www.youtube.com/watch?v=example3' }
         ],
         images: [
@@ -662,7 +673,9 @@ export const instrumentGuides = {
         bowFrog: '弓元：弓の根元部分。強い音を出す時に使います。',
         bowHair: '弓毛：弓に張られた馬の毛。松脂を塗って弦を擦り、音を出します。',
         rosin: '松脂：弓毛に塗る樹脂。弓毛と弦の摩擦を高めて音を出します。',
-        string: '弦：4本の弦。それぞれ異なる音程と音色を持ちます。'
+        string: '弦：4本の弦。それぞれ異なる音程と音色を持ちます。',
+        harmonics: '倍音：基本音に含まれる高次の周波数成分。弦を軽く触れて倍音を鳴らすことで、透き通った高い響きの音が出せます。',
+        bowing: 'ボーイング：弓の使い方、弓操作のこと。弓の速度、圧力、弓の位置を調整することで、音色や音量、表現を変えます。'
       },
       tuning: {
         reference: '各弦の基準音を確認してチューニングします。',
@@ -751,7 +764,9 @@ export const instrumentGuides = {
         bowFrog: '弓元：弓の根元部分。強い音を出す時に使います。',
         bowHair: '弓毛：弓に張られた馬の毛。松脂を塗って弦を擦り、音を出します。',
         rosin: '松脂：弓毛に塗る樹脂。弓毛と弦の摩擦を高めて音を出します。',
-        string: '弦：4本の弦。それぞれ異なる音程と音色を持ちます。'
+        string: '弦：4本の弦。それぞれ異なる音程と音色を持ちます。',
+        harmonics: '倍音：基本音に含まれる高次の周波数成分。弦を軽く触れて倍音を鳴らすことで、透き通った高い響きの音が出せます。',
+        bowing: 'ボーイング：弓の使い方、弓操作のこと。弓の速度、圧力、弓の位置を調整することで、音色や音量、表現を変えます。'
       },
       tuning: {
         reference: '各弦の基準音を確認してチューニングします。',

@@ -125,7 +125,7 @@ export const CompletedGoalCard: React.FC<CompletedGoalCardProps> = ({
         <View style={styles.progressSection}>
           {/* 達成済みバッジ（大） */}
           <View style={[styles.achievementBadge, styles.bigAchievementBadge, styles.achievementBadgeSuccess]}>
-            <CheckCircle size={28} color="#FFFFFF" />
+            <CheckCircle size={20} color="#FFFFFF" />
             <Text style={styles.bigAchievementText}>達成成功！</Text>
           </View>
           <View style={styles.progressHeader}>
@@ -222,7 +222,7 @@ export const CompletedGoalCard: React.FC<CompletedGoalCardProps> = ({
       {goal.goal_type === 'personal_short' && (
         <View style={styles.completeButtonContainer}>
           <View style={[styles.achievementBadge, styles.bigAchievementBadge, styles.achievementBadgeSuccess]}>
-            <CheckCircle size={28} color="#FFFFFF" />
+            <CheckCircle size={20} color="#FFFFFF" />
             <Text style={styles.bigAchievementText}>達成成功！</Text>
           </View>
         </View>

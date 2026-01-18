@@ -1121,7 +1121,7 @@ export default function CalendarScreen() {
               accessibilityLabel="前の月"
               accessibilityHint="前の月のカレンダーを表示します"
             >
-              <ChevronLeft size={24} color={currentTheme.primary} />
+              <ChevronLeft size={24} color={currentTheme.textSecondary} />
             </TouchableOpacity>
             
             <View style={{ flex: 1, alignItems: 'center', position: 'relative' }}>
@@ -1150,7 +1150,7 @@ export default function CalendarScreen() {
               accessibilityLabel="次の月"
               accessibilityHint="次の月のカレンダーを表示します"
             >
-              <ChevronRight size={24} color={currentTheme.primary} />
+              <ChevronRight size={24} color={currentTheme.textSecondary} />
             </TouchableOpacity>
           </View>
 
@@ -1478,14 +1478,14 @@ const styles = StyleSheet.create({
     color: '#333333',
   },
   todayButton: {
-    // 「今日」→「今」で短くなった分、ボタン自体も少しコンパクトにする
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    // 「今」ボタンを少し大きく
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 8,
-    minWidth: 28,
+    minWidth: 36,
   },
   todayButtonText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
   },
   dayHeaders: {

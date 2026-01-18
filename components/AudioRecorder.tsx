@@ -1094,8 +1094,19 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         ? '録音データが録音ライブラリとSupabaseに保存されました' 
         : '録音記録が録音ライブラリとSupabaseに保存されました（音声ファイルのアップロードは失敗）';
       
-      // 録音モーダルを閉じる（親モーダルは開いたまま）
-      onClose();
+      // レッスン録音の場合は自動削除について通知
+      if (recordingType === 'lesson') {
+        Alert.alert(
+          'レッスン録音を保存しました',
+          'この録音は30日後に自動削除されます。重要な録音はお気に入りに追加してください。',
+          [
+            { text: '了解', onPress: () => onClose() }
+          ]
+        );
+      } else {
+        // パフォーマンス録音の場合は通常通り閉じる
+        onClose();
+      }
 
     } catch (error) {
       console.error('録音保存エラー:', error);

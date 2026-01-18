@@ -97,6 +97,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
   const [lastSyncError, setLastSyncError] = useState<Error | null>(null);
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
+  const isSettingCustomThemeRef = useRef<boolean>(false); // カスタムテーマ設定中のフラグ
   const [currentTheme, setCurrentThemeState] = useState<Instrument>(() => {
     const instruments = instrumentService.getDefaultInstruments();
     return instruments.length > 0 ? instruments[0] : defaultTheme;
@@ -241,9 +242,23 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         await AsyncStorage.removeItem(STORAGE_KEYS.practiceSettings);
       }
 
-      // 4. データソースの優先順位を明確化: user.selected_instrument_id > AsyncStorage > デフォルト
-      // 計画に従って、user.selected_instrument_idを最優先に設定
-      let instrumentIdToUse = user?.selected_instrument_id || storedInstrument || '';
+      // 4. データソースの優先順位を明確化: AsyncStorage（最後に使用した楽器） > user.selected_instrument_id > デフォルト
+      // 最後に使用した楽器を最優先にする（ユーザーが最後に選択した楽器を尊重）
+      let instrumentIdToUse = storedInstrument || user?.selected_instrument_id || '';
+      
+      // AsyncStorageとuser.selected_instrument_idが異なる場合、AsyncStorageを優先し、データベースを更新
+      if (storedInstrument && user?.selected_instrument_id && storedInstrument !== user.selected_instrument_id) {
+        logger.debug('AsyncStorageとuser.selected_instrument_idが異なります。AsyncStorageを優先します', {
+          storedInstrument,
+          userSelectedInstrument: user.selected_instrument_id
+        });
+        // バックグラウンドでデータベースを更新（初期化をブロックしない）
+        if (currentUser) {
+          updateSelectedInstrument(currentUser.id, storedInstrument).catch(error => {
+            logger.warn('楽器選択の同期エラー（無視）:', error);
+          });
+        }
+      }
       
       if (instrumentIdToUse) {
         setSelectedInstrumentState(instrumentIdToUse);
@@ -373,31 +388,20 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     if (!user) {
       if (currentUserId) {
         // ログアウト時はストレージをクリア（基本キー）
+        // ただし、カスタムテーマ（customTheme, isCustomTheme）は保持する（ログイン時に復元するため）
         AsyncStorage.multiRemove([
           getKey(STORAGE_KEYS.selectedInstrument),
-          getKey(STORAGE_KEYS.customTheme),
-          getKey(STORAGE_KEYS.isCustomTheme),
+          // カスタムテーマは保持するため、削除対象から除外
+          // getKey(STORAGE_KEYS.customTheme),
+          // getKey(STORAGE_KEYS.isCustomTheme),
           getKey(STORAGE_KEYS.practiceSettings),
         ]).catch((error) => {
           ErrorHandler.handle(error, 'ログアウト時のストレージクリア', false);
         });
         
-        // 楽器IDを含むキーもすべて削除（カスタムテーマが楽器ごとに保存されているため）
-        AsyncStorage.getAllKeys().then((allKeys) => {
-          const themeKeys = allKeys.filter(key => 
-            (key.includes('customTheme') || key.includes('isCustomTheme')) &&
-            (key.includes(currentUserId) || key.startsWith('customTheme') || key.startsWith('isCustomTheme'))
-          );
-          
-          if (themeKeys.length > 0) {
-            AsyncStorage.multiRemove(themeKeys).catch((error) => {
-              logger.warn('楽器IDを含むカスタムテーマキーの削除エラー（無視）:', error);
-            });
-            logger.debug('楽器IDを含むカスタムテーマキーを削除しました:', themeKeys);
-          }
-        }).catch((error) => {
-          logger.warn('カスタムテーマキーの取得エラー（無視）:', error);
-        });
+        // カスタムテーマは保持するため、削除しない
+        // 楽器IDを含むカスタムテーマキーも保持する（ログイン時に復元するため）
+        logger.debug('ログアウト時: カスタムテーマは保持します（ログイン時に復元するため）');
         
         if (!cancelled) {
           setSelectedInstrumentState('');
@@ -496,27 +500,29 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
   }, []);
 
   // 楽器選択の同期処理（唯一のエントリーポイント）
-  const setSelectedInstrument = useCallback(async (instrumentId: string) => {
-    if (isSyncing) {
-      logger.debug('サーバー同期中です。少し待ってから再試行してください。');
-      await new Promise(resolve => setTimeout(resolve, 100));
-      if (isSyncing) {
-        setSelectedInstrumentState(instrumentId);
-        await AsyncStorage.setItem(getKey(STORAGE_KEYS.selectedInstrument), instrumentId);
-        return;
-      }
+  // 楽器のカスタムテーマを読み込む関数（共通化）
+  const loadInstrumentCustomTheme = useCallback(async (instrumentId: string) => {
+    if (!instrumentId) {
+      return;
     }
 
     try {
-      setIsSyncing(true);
-      
-      // 1. ローカル状態を即座に更新
-      setSelectedInstrumentState(instrumentId);
-      await AsyncStorage.setItem(getKey(STORAGE_KEYS.selectedInstrument), instrumentId);
-      
-      // 2. その楽器のカスタムテーマを読み込む（ユーザーIDを明示的に取得）
+      // ユーザーIDを取得
       const { user: currentUserForTheme } = await getCurrentUser();
-      const uid = currentUserForTheme?.id || '';
+      const uid = currentUserForTheme?.id || currentUserId || '';
+      
+      if (!uid) {
+        // ユーザーIDがない場合は楽器のデフォルトテーマを使用
+        const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
+                           defaultInstruments.find(inst => inst.id === instrumentId);
+        if (instrument) {
+          setCurrentThemeState(instrument);
+        }
+        setCustomThemeState(null);
+        setIsCustomTheme(false);
+        return;
+      }
+
       const customThemeKey = `${getKey(STORAGE_KEYS.customTheme, uid)}:${instrumentId}`;
       const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme, uid)}:${instrumentId}`;
       
@@ -531,6 +537,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
           setCustomThemeState(parsedTheme);
           setIsCustomTheme(true);
           setCurrentThemeState(parsedTheme);
+          logger.debug('楽器のカスタムテーマを読み込みました', { instrumentId, themeName: parsedTheme.name });
         } catch (parseError) {
           logger.error('カスタムテーマのパースエラー:', parseError);
           // パースエラーの場合は楽器のデフォルトテーマを使用
@@ -544,17 +551,56 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         }
       } else {
         // カスタムテーマがない場合は楽器のデフォルトテーマを使用
+        const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
+                           defaultInstruments.find(inst => inst.id === instrumentId);
+        if (instrument) {
+          setCurrentThemeState(instrument);
+        }
+        setCustomThemeState(null);
+        setIsCustomTheme(false);
+        logger.debug('楽器のデフォルトテーマを使用します', { instrumentId });
+      }
+    } catch (error) {
+      logger.error('楽器のカスタムテーマ読み込みエラー:', error);
+      // エラー時は楽器のデフォルトテーマを使用
       const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
                          defaultInstruments.find(inst => inst.id === instrumentId);
       if (instrument) {
         setCurrentThemeState(instrument);
-        }
-        setCustomThemeState(null);
-        setIsCustomTheme(false);
       }
+      setCustomThemeState(null);
+      setIsCustomTheme(false);
+    }
+  }, [getKey, currentUserId, dbInstruments, defaultInstruments]);
 
-      // 3. サーバーに同期（認証済みの場合のみ）
-      const { user: currentUser } = await getCurrentUser();
+  const setSelectedInstrument = useCallback(async (instrumentId: string) => {
+    // ユーザーIDを取得（保存時に使用）
+    const { user: currentUser } = await getCurrentUser();
+    const uid = currentUser?.id || currentUserId || '';
+    
+    if (isSyncing) {
+      logger.debug('サーバー同期中です。少し待ってから再試行してください。');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (isSyncing) {
+        setSelectedInstrumentState(instrumentId);
+        await AsyncStorage.setItem(getKey(STORAGE_KEYS.selectedInstrument, uid), instrumentId);
+        // 楽器が変更されたので、その楽器のカスタムテーマを読み込む
+        await loadInstrumentCustomTheme(instrumentId);
+        return;
+      }
+    }
+
+    try {
+      setIsSyncing(true);
+      
+      // 1. ローカル状態を即座に更新
+      setSelectedInstrumentState(instrumentId);
+      await AsyncStorage.setItem(getKey(STORAGE_KEYS.selectedInstrument, uid), instrumentId);
+      
+      // 2. その楽器のカスタムテーマを読み込む
+      await loadInstrumentCustomTheme(instrumentId);
+
+      // 3. サーバーに同期（認証済みの場合のみ、タイムアウト付き）
       if (currentUser) {
         const online = isOnline();
         if (!online) {
@@ -564,36 +610,61 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         setSyncStatus('syncing');
         setLastSyncError(null);
         
-        let retryCount = 0;
-        const maxRetries = ERROR.MAX_RETRIES;
-        let lastError: Error | null = null;
+        try {
+          let retryCount = 0;
+          const maxRetries = ERROR.MAX_RETRIES;
+          let lastError: Error | null = null;
 
-        while (retryCount < maxRetries) {
-          const result = await updateSelectedInstrument(currentUser.id, instrumentId);
-          if (!result.error) {
-            setSyncStatus('success');
-            setLastSyncTime(new Date());
+          // タイムアウト付きでサーバー同期を実行
+          const syncPromise = (async () => {
+            while (retryCount < maxRetries) {
+              const result = await updateSelectedInstrument(currentUser.id, instrumentId);
+              if (!result.error) {
+                setSyncStatus('success');
+                setLastSyncTime(new Date());
+                setLastSyncError(null);
+                return;
+              }
+
+              lastError = result.error instanceof Error ? result.error : new Error(String(result.error));
+              retryCount++;
+
+              if (retryCount < maxRetries) {
+                const delay = Math.min(
+                  ERROR.RETRY_BASE_DELAY_MS * Math.pow(2, retryCount - 1),
+                  ERROR.RETRY_MAX_DELAY_MS
+                );
+                logger.debug(`サーバー同期失敗、${delay}ms後にリトライ (${retryCount}/${maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+              }
+            }
+
+            if (lastError && retryCount >= maxRetries) {
+              logger.warn('サーバー同期失敗（ローカル保存は成功）:', lastError);
+              setLastSyncError(lastError);
+              setSyncStatus('error');
+            }
+          })();
+
+          const timeoutPromise = new Promise<void>((_, reject) => {
+            setTimeout(() => {
+              reject(new Error('タイムアウト: サーバー同期に時間がかかりすぎました'));
+            }, TIMEOUT.INSTRUMENT_SYNC_MS * 3); // リトライを含むので少し長めに
+          });
+
+          await Promise.race([syncPromise, timeoutPromise]);
+        } catch (syncError) {
+          // タイムアウトやエラーが発生した場合でも、ローカル保存は成功しているので続行
+          const errorMessage = syncError instanceof Error ? syncError.message : String(syncError);
+          if (errorMessage.includes('タイムアウト')) {
+            logger.warn('サーバー同期タイムアウト（ローカル保存は成功）:', syncError);
+            setSyncStatus('idle'); // タイムアウトの場合は'idle'に戻す（エラーではない）
             setLastSyncError(null);
-            break;
+          } else {
+            logger.warn('サーバー同期エラー（ローカル保存は成功）:', syncError);
+            setSyncStatus('error');
+            setLastSyncError(syncError instanceof Error ? syncError : new Error(String(syncError)));
           }
-
-          lastError = result.error instanceof Error ? result.error : new Error(String(result.error));
-          retryCount++;
-
-          if (retryCount < maxRetries) {
-            const delay = Math.min(
-              ERROR.RETRY_BASE_DELAY_MS * Math.pow(2, retryCount - 1),
-              ERROR.RETRY_MAX_DELAY_MS
-            );
-            logger.debug(`サーバー同期失敗、${delay}ms後にリトライ (${retryCount}/${maxRetries})`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-          }
-        }
-
-        if (lastError && retryCount >= maxRetries) {
-          logger.warn('サーバー同期失敗（ローカル保存は成功）:', lastError);
-          setLastSyncError(lastError);
-          setSyncStatus('error');
         }
       } else {
         setSyncStatus('idle');
@@ -606,52 +677,33 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     } finally {
       setIsSyncing(false);
     }
-  }, [getKey, isSyncing, dbInstruments, defaultInstruments]);
+  }, [getKey, isSyncing, dbInstruments, defaultInstruments, loadInstrumentCustomTheme]);
 
-  // selectedInstrumentまたはuser.selected_instrument_idが変更されたらテーマを更新
+  // selectedInstrumentまたはuser.selected_instrument_idが変更されたら、その楽器のカスタムテーマを自動的に読み込む
+  // 楽器が変更されたときは常にその楽器のテーマ（カスタムテーマがあればそれ、なければデフォルト）を適用
   useEffect(() => {
-    const updateThemeForInstrument = async () => {
+    // カスタムテーマ設定中はスキップ（無限ループを防ぐ）
+    if (isSettingCustomThemeRef.current) {
+      logger.debug('カスタムテーマ設定中のため、テーマ更新をスキップ');
+      return;
+    }
+
+    // 初期化が完了していない場合はスキップ
+    if (isInitializing) {
+      return;
+    }
+
     const { getEffectiveInstrumentId } = require('@/lib/instrumentUtils');
     const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
-    if (!instrumentId) return;
-
-      // ユーザーIDを取得（保存時と読み込み時で同じキーを使用するため）
-      const { user: currentUser } = await getCurrentUser();
-      const uid = currentUser?.id || currentUserId || '';
-
-      // その楽器のカスタムテーマを確認（initialize関数と同じ形式を使用）
-      const customThemeKey = `${getKey(STORAGE_KEYS.customTheme, uid)}:${instrumentId}`;
-      const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme, uid)}:${instrumentId}`;
-      
-      const [storedCustomTheme, storedIsCustomTheme] = await Promise.all([
-        AsyncStorage.getItem(customThemeKey),
-        AsyncStorage.getItem(isCustomThemeKey),
-      ]);
-      
-      if (storedIsCustomTheme === 'true' && storedCustomTheme) {
-        try {
-          const parsedTheme = JSON.parse(storedCustomTheme);
-          setCustomThemeState(parsedTheme);
-          setIsCustomTheme(true);
-          setCurrentThemeState(parsedTheme);
-          return;
-        } catch (parseError) {
-          logger.error('カスタムテーマのパースエラー:', parseError);
-        }
-      }
-      
-      // カスタムテーマがない場合は楽器のデフォルトテーマを使用
-    const instrument = dbInstruments.find(inst => inst.id === instrumentId) || 
-                       defaultInstruments.find(inst => inst.id === instrumentId);
-    if (instrument && instrument.id !== currentTheme.id) {
-      setCurrentThemeState(instrument);
-        setCustomThemeState(null);
-        setIsCustomTheme(false);
-    }
-    };
     
-    updateThemeForInstrument();
-  }, [selectedInstrument, user?.selected_instrument_id, dbInstruments, defaultInstruments, currentTheme.id, getKey, currentUserId]);
+    if (!instrumentId) {
+      return;
+    }
+
+    // 楽器が変更されたときは、その楽器のカスタムテーマを読み込む
+    logger.debug('楽器が変更されました。その楽器のカスタムテーマを読み込みます', { instrumentId });
+    loadInstrumentCustomTheme(instrumentId);
+  }, [selectedInstrument, user?.selected_instrument_id, loadInstrumentCustomTheme, isInitializing]);
 
   // currentThemeの計算（カスタムテーマ優先）
   const currentThemeComputed = useMemo(() => {
@@ -674,11 +726,15 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
 
   const setCustomTheme = useCallback(async (theme: Instrument) => {
     try {
+      // カスタムテーマ設定中のフラグを立てる（無限ループを防ぐ）
+      isSettingCustomThemeRef.current = true;
+      
       const { getEffectiveInstrumentId } = require('@/lib/instrumentUtils');
       const instrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
       
       if (!instrumentId) {
         logger.warn('楽器IDが取得できないため、カスタムテーマを保存できません');
+        isSettingCustomThemeRef.current = false;
         return;
       }
 
@@ -690,16 +746,25 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
       const customThemeKey = `${getKey(STORAGE_KEYS.customTheme, uid)}:${instrumentId}`;
       const isCustomThemeKey = `${getKey(STORAGE_KEYS.isCustomTheme, uid)}:${instrumentId}`;
       
-      setCustomThemeState(theme);
-      setIsCustomTheme(true);
-      setCurrentThemeState(theme);
+      // まずAsyncStorageに保存
       await AsyncStorage.setItem(customThemeKey, JSON.stringify(theme));
       await AsyncStorage.setItem(isCustomThemeKey, 'true');
       
+      // その後、状態を更新（保存が成功した後）
+      setCustomThemeState(theme);
+      setIsCustomTheme(true);
+      setCurrentThemeState(theme);
+      
       logger.debug('カスタムテーマを保存しました', { instrumentId, uid, customThemeKey });
+      
+      // 少し待ってからフラグをリセット（useEffectの実行を確実にスキップ）
+      setTimeout(() => {
+        isSettingCustomThemeRef.current = false;
+      }, 100);
     } catch (error) {
       logger.error('カスタムテーマ保存エラー:', error);
       ErrorHandler.handle(error, 'カスタムテーマ保存', false);
+      isSettingCustomThemeRef.current = false;
     }
   }, [getKey, selectedInstrument, user?.selected_instrument_id, currentUserId]);
 

@@ -1277,7 +1277,15 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           logger.warn('録音保存は成功しましたが、savedRecordingがnullです');
         }
         
-        Alert.alert('保存完了', '録音を保存しました');
+        // レッスン録音の場合は自動削除について通知
+        if (audioRecordingType === 'lesson') {
+          Alert.alert(
+            'レッスン録音を保存しました',
+            'この録音は30日後に自動削除されます。重要な録音はお気に入りに追加してください。'
+          );
+        } else {
+          Alert.alert('保存完了', '録音を保存しました');
+        }
       }
     } catch (e) {
       Alert.alert('エラー', '録音の保存に失敗しました');
