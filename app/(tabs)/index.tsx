@@ -1121,7 +1121,7 @@ export default function CalendarScreen() {
               accessibilityLabel="前の月"
               accessibilityHint="前の月のカレンダーを表示します"
             >
-              <ChevronLeft size={24} color={currentTheme.textSecondary} />
+              <ChevronLeft size={24} color={currentTheme.text} />
             </TouchableOpacity>
             
             <View style={{ flex: 1, alignItems: 'center', position: 'relative' }}>
@@ -1150,7 +1150,7 @@ export default function CalendarScreen() {
               accessibilityLabel="次の月"
               accessibilityHint="次の月のカレンダーを表示します"
             >
-              <ChevronRight size={24} color={currentTheme.textSecondary} />
+              <ChevronRight size={24} color={currentTheme.text} />
             </TouchableOpacity>
           </View>
 
@@ -1240,6 +1240,7 @@ export default function CalendarScreen() {
       <QuickRecordModal
         visible={uiState.showQuickRecord}
         onClose={() => setShowQuickRecord(false)}
+        targetDate={uiState.selectedDate || new Date()}
         onRecord={async (minutes) => {
           // QuickRecordModal内で既に保存処理とpracticeRecordUpdatedイベントの発火が完了しているため、
           // データ更新はイベントリスナー（handlePracticeRecordUpdated）に任せる

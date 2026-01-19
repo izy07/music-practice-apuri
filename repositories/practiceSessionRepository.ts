@@ -530,8 +530,12 @@ export const savePracticeSessionWithIntegration = async (
       // 同じinput_methodのレコードを探す
       const sameMethodRecords = timeRecords.filter((record: any) => record.input_method === inputMethod);
       
-      if (sameMethodRecords.length > 0) {
-        // 同じinput_methodのレコードがある場合は、そのレコードに時間を加算
+      // タイマーとクイック記録は、毎回新しい記録として追加（既存の記録に加算しない）
+      // これにより、複数回実行しても重複加算されない
+      const shouldCreateNewRecord = inputMethod === 'timer' || inputMethod === 'voice';
+      
+      if (sameMethodRecords.length > 0 && !shouldCreateNewRecord) {
+        // 同じinput_methodのレコードがある場合は、そのレコードに時間を加算（タイマーとクイック記録を除く）
         const existing = sameMethodRecords[0];
         
         // Nullチェック: existing.idが存在しない場合はエラー
@@ -653,6 +657,32 @@ export const savePracticeSessionWithIntegration = async (
           preservedBasicPractice: basicPracticeRecords.length
         });
         
+        return { success: true };
+      } else if (shouldCreateNewRecord) {
+        // タイマーとクイック記録は、既存のレコードがあっても新しいレコードとして追加
+        // これにより、複数回実行しても重複加算されない
+        logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:タイマー/クイック記録は新しいレコードとして追加`, {
+          input_method: inputMethod,
+          existingRecordsCount: sameMethodRecords.length
+        });
+        
+        const sessionData: Omit<PracticeSession, 'id' | 'created_at' | 'updated_at'> = {
+          user_id: userId,
+          practice_date: targetDate,
+          duration_minutes: minutes,
+          content: content || null,
+          input_method: inputMethod,
+          instrument_id: instrumentId || null,
+        };
+        
+        const result = await createPracticeSession(sessionData);
+        const insertError = result.error;
+        
+        if (insertError) {
+          return { success: false, error: insertError };
+        }
+        
+        logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:タイマー/クイック記録を新規作成`, { minutes });
         return { success: true };
       } else {
         // 同じinput_methodのレコードがない場合、新しい時間記録を追加

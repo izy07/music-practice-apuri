@@ -424,20 +424,120 @@ export const checkDailyRecordingLimit = async (
 };
 
 /**
+ * 月間リワード広告録音数を取得（楽器ごと）
+ * 
+ * @param userId ユーザーID
+ * @param instrumentId 楽器ID
+ * @returns 月間リワード広告録音数
+ */
+export const getMonthlyRewardedAdCount = async (
+  userId: string,
+  instrumentId: string
+): Promise<number> => {
+  try {
+    // user_profilesからmonthly_rewarded_ad_recordingsを取得
+    const { data: profile, error } = await supabase
+      .from('user_profiles')
+      .select('monthly_rewarded_ad_recordings')
+      .eq('user_id', userId)
+      .single();
+
+    if (error) {
+      // カラムが存在しないエラーの場合は0を返す（エラーを無視）
+      if (error.code === '42703' || error.message?.includes('does not exist')) {
+        logger.debug('monthly_rewarded_ad_recordingsカラムが存在しません。0を返します:', { userId, instrumentId });
+        return 0;
+      }
+      logger.warn('月間リワード広告録音数の取得に失敗しました:', { error, userId, instrumentId });
+      return 0;
+    }
+
+    const rewardedAdRecordings = (profile?.monthly_rewarded_ad_recordings as Record<string, number>) || {};
+    const count = rewardedAdRecordings[instrumentId] || 0;
+
+    logger.debug('月間リワード広告録音数取得:', { userId, instrumentId, count });
+    return count;
+  } catch (error) {
+    logger.error('月間リワード広告録音数取得中にエラーが発生しました:', { error, userId, instrumentId });
+    return 0;
+  }
+};
+
+/**
+ * リワード広告録音を記録（楽器ごと）
+ * 
+ * @param userId ユーザーID
+ * @param instrumentId 楽器ID
+ * @returns 記録成功かどうか
+ */
+export const recordRewardedAdRecording = async (
+  userId: string,
+  instrumentId: string
+): Promise<boolean> => {
+  try {
+    // user_profilesから現在のmonthly_rewarded_ad_recordingsを取得
+    const { data: profile, error: fetchError } = await supabase
+      .from('user_profiles')
+      .select('monthly_rewarded_ad_recordings')
+      .eq('user_id', userId)
+      .single();
+
+    if (fetchError) {
+      logger.error('user_profiles取得エラー:', fetchError);
+      return false;
+    }
+
+    const rewardedAdRecordings = (profile?.monthly_rewarded_ad_recordings as Record<string, number>) || {};
+    const currentCount = rewardedAdRecordings[instrumentId] || 0;
+
+    // カウントを1増やす
+    const updatedRecordings = {
+      ...rewardedAdRecordings,
+      [instrumentId]: currentCount + 1
+    };
+
+    // user_profilesを更新
+    const { error: updateError } = await supabase
+      .from('user_profiles')
+      .update({ monthly_rewarded_ad_recordings: updatedRecordings })
+      .eq('user_id', userId);
+
+    if (updateError) {
+      logger.error('リワード広告録音の記録に失敗しました:', updateError);
+      return false;
+    }
+
+    logger.info('リワード広告録音を記録しました:', { userId, instrumentId, count: currentCount + 1 });
+    return true;
+  } catch (error) {
+    logger.error('リワード広告録音記録中にエラーが発生しました:', { error, userId, instrumentId });
+    return false;
+  }
+};
+
+/**
  * 月間録音回数をチェック（楽器ごと）
+ * 基本録音3回 + リワード広告録音3回 = 合計6回まで
  * 
  * @param userId ユーザーID
  * @param entitlement エンタイトルメント情報
  * @param selectedDate 選択された日付（Freeプランの場合は今月である必要がある）
  * @param instrumentId 楽器ID（指定された楽器の録音数のみをチェック）
- * @returns 録音可能かどうか
+ * @returns 録音可能かどうか（基本録音、リワード広告録音の情報を含む）
  */
 export const checkMonthlyRecordingLimit = async (
   userId: string,
   entitlement: Entitlement | null | undefined,
   selectedDate?: Date | string | null,
   instrumentId?: string | null
-): Promise<{ canRecord: boolean; currentCount: number; limit: number; reason?: string }> => {
+): Promise<{ 
+  canRecord: boolean; 
+  currentCount: number; 
+  limit: number; 
+  reason?: string;
+  rewardedAdCount?: number;
+  canWatchAd?: boolean;
+}> => {
   try {
     // Premiumユーザーは無制限
     const isPremium = isPremiumUser(entitlement);
@@ -445,8 +545,12 @@ export const checkMonthlyRecordingLimit = async (
       return { canRecord: true, currentCount: 0, limit: Infinity };
     }
 
-    // 楽器ごとの制限値（各楽器ごとに3回まで）
-    const limit = FREE_PLAN_LIMITS.RECORDINGS_PER_MONTH_PER_INSTRUMENT;
+    // 楽器ごとの基本制限値（各楽器ごとに3回まで）
+    const basicLimit = FREE_PLAN_LIMITS.RECORDINGS_PER_MONTH_PER_INSTRUMENT;
+    // リワード広告による追加録音の上限（3回）
+    const rewardedAdLimit = 3;
+    // 合計制限（基本3回 + 広告3回 = 6回）
+    const totalLimit = basicLimit + rewardedAdLimit;
 
     // Freeプランの場合、選択された日付が今月であることを確認
     if (selectedDate !== undefined && !isCurrentMonth(selectedDate)) {
@@ -458,7 +562,7 @@ export const checkMonthlyRecordingLimit = async (
       return {
         canRecord: false,
         currentCount: 0,
-        limit,
+        limit: basicLimit,
         reason: 'Freeプランでは当月のみ録音可能です'
       };
     }
@@ -468,10 +572,10 @@ export const checkMonthlyRecordingLimit = async (
       logger.debug('楽器IDが指定されていないため、カウントを0として返します', {
         userId
       });
-      return { canRecord: true, currentCount: 0, limit };
+      return { canRecord: true, currentCount: 0, limit: basicLimit };
     }
 
-    // 今月の録音数を取得（指定された楽器の録音のみをカウント）
+    // 今月の基本録音数を取得（指定された楽器の録音のみをカウント）
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
@@ -499,21 +603,45 @@ export const checkMonthlyRecordingLimit = async (
       });
       ErrorHandler.handle(error, '月間録音数取得', false);
       // エラー時は許可（フォールバック）
-      return { canRecord: true, currentCount: 0, limit };
+      return { canRecord: true, currentCount: 0, limit: basicLimit };
     }
 
-    const currentCount = recordings?.length || 0;
-    const canRecord = currentCount < limit;
+    const basicCount = recordings?.length || 0;
 
-    logger.debug('月間録音制限チェック（楽器ごと）:', {
+    // リワード広告録音数を取得
+    const rewardedAdCount = await getMonthlyRewardedAdCount(userId, instrumentId);
+
+    // 合計録音数
+    const totalCount = basicCount + rewardedAdCount;
+
+    // 基本録音が上限に達しているかチェック
+    const canRecordBasic = basicCount < basicLimit;
+    // リワード広告による追加録音が可能かチェック
+    const canWatchAd = basicCount >= basicLimit && rewardedAdCount < rewardedAdLimit && totalCount < totalLimit;
+    // 合計で録音可能か（基本録音または広告視聴で追加録音可能）
+    const canRecord = canRecordBasic || canWatchAd;
+
+    logger.debug('月間録音制限チェック（楽器ごと、リワード広告含む）:', {
       userId,
       instrumentId,
-      currentCount,
-      limit,
-      canRecord
+      basicCount,
+      rewardedAdCount,
+      totalCount,
+      basicLimit,
+      rewardedAdLimit,
+      totalLimit,
+      canRecord,
+      canRecordBasic,
+      canWatchAd
     });
 
-    return { canRecord, currentCount, limit };
+    return { 
+      canRecord, 
+      currentCount: basicCount, 
+      limit: basicLimit,
+      rewardedAdCount,
+      canWatchAd
+    };
   } catch (error) {
     logger.error('月間録音制限チェック中にエラーが発生しました:', {
       error,
@@ -933,16 +1061,21 @@ export const adjustGoalsOnDowngrade = async (
 };
 
 /**
- * プレミアム解約時の録音数調整（各楽器ごとに月3回まで）
+ * プレミアム解約時の録音数調整（調整不要 - 既存録音は全て保持）
  * 
- * 処理フロー:
- * 1. Premiumユーザーは調整不要（早期リターン）
- * 2. 現在の月の録音を各楽器ごとに取得
- * 3. 各楽器ごとに最新3個を保持、それ以外は削除
+ * 処理方針:
+ * - 解約後も課金中に保存された録音は全てそのまま見れる・聞ける
+ * - 制限は新規録音時にcheckMonthlyRecordingLimitでチェック
+ * - 解約時に既存録音を削除/非表示にしない
+ * 
+ * 制限の動作:
+ * - 月に3回以上録音されている場合、その月は新規録音不可
+ * - 再録音（既存録音の上書き）は制限チェックをスキップ
+ * - 録音を削除して3回未満になった場合は、新規録音可能
  * 
  * @param userId ユーザーID
  * @param entitlement エンタイトルメント情報
- * @returns 調整された録音数
+ * @returns 調整結果（調整なし）
  */
 export const adjustRecordingsOnDowngrade = async (
   userId: string,
@@ -956,102 +1089,16 @@ export const adjustRecordingsOnDowngrade = async (
       return { adjusted: false, totalRecordings: 0, keptRecordings: 0 };
     }
 
-    const limitPerInstrument = FREE_PLAN_LIMITS.RECORDINGS_PER_MONTH_PER_INSTRUMENT;
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    // 解約後も既存録音は全て保持（調整不要）
+    // 制限は新規録音時にcheckMonthlyRecordingLimitでチェックされる
+    // - 月に3回以上録音されていたら新規録音不可
+    // - 再録音や録音削除で3回未満になったら新規録音可能
+    logger.debug('解約時の録音調整をスキップします（既存録音は全て保持）:', { userId });
 
-    // 現在の月の録音を取得
-    const { data: recordings, error } = await supabase
-      .from('recordings')
-      .select('id, instrument_id, created_at')
-      .eq('user_id', userId)
-      .gte('created_at', startOfMonth.toISOString())
-      .lte('created_at', endOfMonth.toISOString())
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      logger.error('録音取得エラー:', error);
-      ErrorHandler.handle(error, '録音取得', false);
-      return { adjusted: false, totalRecordings: 0, keptRecordings: 0 };
-    }
-
-    if (!recordings || recordings.length === 0) {
-      logger.debug('録音が存在しないため、調整不要です');
-      return { adjusted: false, totalRecordings: 0, keptRecordings: 0 };
-    }
-
-    // 楽器IDごとにグループ化
-    const recordingsByInstrument = new Map<string | null, typeof recordings>();
-    for (const recording of recordings) {
-      const instrumentId = recording.instrument_id || null;
-      if (!recordingsByInstrument.has(instrumentId)) {
-        recordingsByInstrument.set(instrumentId, []);
-      }
-      recordingsByInstrument.get(instrumentId)!.push(recording);
-    }
-
-    // 各楽器ごとに最新3個を保持、それ以外は削除
-    const recordingsToDelete: string[] = [];
-    let totalKept = 0;
-
-    for (const [instrumentId, instrumentRecordings] of recordingsByInstrument) {
-      // created_atでソート（最新順）
-      const sorted = [...instrumentRecordings].sort((a, b) => {
-        const dateA = new Date(a.created_at || 0).getTime();
-        const dateB = new Date(b.created_at || 0).getTime();
-        return dateB - dateA; // 降順（新しい順）
-      });
-
-      // 各楽器ごとに最新3個を保持
-      const recordingsToKeep = sorted.slice(0, limitPerInstrument);
-      const recordingsToRemove = sorted.slice(limitPerInstrument);
-
-      totalKept += recordingsToKeep.length;
-      recordingsToDelete.push(...recordingsToRemove.map(r => r.id));
-
-      logger.debug(`楽器ごとの録音調整 (instrumentId: ${instrumentId || 'null'}):`, {
-        total: sorted.length,
-        kept: recordingsToKeep.length,
-        removed: recordingsToRemove.length
-      });
-    }
-
-    // 調整不要の場合は早期リターン
-    if (recordingsToDelete.length === 0) {
-      logger.debug('録音数が制限以内のため、調整不要です');
-      return { 
-        adjusted: false, 
-        totalRecordings: recordings.length, 
-        keptRecordings: recordings.length 
-      };
-    }
-
-    // 古い録音を削除
-    if (recordingsToDelete.length > 0) {
-      const { error: deleteError } = await supabase
-        .from('recordings')
-        .delete()
-        .in('id', recordingsToDelete);
-
-      if (deleteError) {
-        logger.error('録音削除エラー:', deleteError);
-        ErrorHandler.handle(deleteError, '録音削除', false);
-        return { adjusted: false, totalRecordings: recordings.length, keptRecordings: totalKept };
-      }
-    }
-
-    logger.info('解約時の録音調整が完了しました（各楽器ごとに月3回まで）:', {
-      totalRecordings: recordings.length,
-      keptRecordings: totalKept,
-      deletedRecordings: recordingsToDelete.length
-    });
-
-    return {
-      adjusted: true,
-      totalRecordings: recordings.length,
-      keptRecordings: totalKept
+    return { 
+      adjusted: false, 
+      totalRecordings: 0, 
+      keptRecordings: 0 
     };
   } catch (error) {
     logger.error('解約時の録音調整中にエラーが発生しました:', {
@@ -1090,12 +1137,22 @@ export const adjustMyLibrarySongsOnDowngrade = async (
 
     const limitPerInstrument = FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT;
 
-    // 全楽曲を取得
-    const { data: songs, error } = await supabase
+    // 表示中の楽曲を取得（deleted_atカラムがない環境もあるためフォールバック）
+    let { data: songs, error } = await supabase
       .from('my_songs')
       .select('id, instrument_id, created_at')
       .eq('user_id', userId)
+      .is('deleted_at', null) // 非表示の曲を除外（存在しない場合は後で外す）
       .order('created_at', { ascending: false });
+
+    if (error && (error.code === '42703' || (error.message && error.message.includes('deleted_at')))) {
+      logger.warn('my_songs.deleted_atが存在しないため、deleted_atフィルタを外して再試行します');
+      ({ data: songs, error } = await supabase
+        .from('my_songs')
+        .select('id, instrument_id, created_at')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false }));
+    }
 
     if (error) {
       logger.error('楽曲取得エラー:', error);
@@ -1118,8 +1175,8 @@ export const adjustMyLibrarySongsOnDowngrade = async (
       songsByInstrument.get(instrumentId)!.push(song);
     }
 
-    // 各楽器ごとに最新10個を保持、それ以外は削除
-    const songsToDelete: string[] = [];
+    // 各楽器ごとに最新10個を保持、それ以外は非表示
+    const songsToHide: string[] = [];
     let totalKept = 0;
 
     for (const [instrumentId, instrumentSongs] of songsByInstrument) {
@@ -1135,17 +1192,17 @@ export const adjustMyLibrarySongsOnDowngrade = async (
       const songsToRemove = sorted.slice(limitPerInstrument);
 
       totalKept += songsToKeep.length;
-      songsToDelete.push(...songsToRemove.map(s => s.id));
+      songsToHide.push(...songsToRemove.map(s => s.id));
 
       logger.debug(`楽器ごとの楽曲調整 (instrumentId: ${instrumentId || 'null'}):`, {
         total: sorted.length,
         kept: songsToKeep.length,
-        removed: songsToRemove.length
+        hidden: songsToRemove.length
       });
     }
 
     // 調整不要の場合は早期リターン
-    if (songsToDelete.length === 0) {
+    if (songsToHide.length === 0) {
       logger.debug('楽曲数が制限以内のため、調整不要です');
       return { 
         adjusted: false, 
@@ -1154,24 +1211,29 @@ export const adjustMyLibrarySongsOnDowngrade = async (
       };
     }
 
-    // 古い楽曲を削除
-    if (songsToDelete.length > 0) {
-      const { error: deleteError } = await supabase
+    // 古い楽曲を非表示（deleted_atを設定）
+    if (songsToHide.length > 0) {
+      const now = new Date().toISOString();
+      const { error: updateError } = await supabase
         .from('my_songs')
-        .delete()
-        .in('id', songsToDelete);
+        .update({ deleted_at: now })
+        .in('id', songsToHide);
 
-      if (deleteError) {
-        logger.error('楽曲削除エラー:', deleteError);
-        ErrorHandler.handle(deleteError, '楽曲削除', false);
-        return { adjusted: false, totalSongs: songs.length, keptSongs: totalKept };
+      if (updateError) {
+        // deleted_atカラムが存在しない場合、エラーをログに記録して続行
+        // 将来的にマイグレーションでカラムを追加する必要がある
+        logger.warn('楽曲の非表示処理（deleted_at設定）に失敗しました。カラムが存在しない可能性があります:', {
+          error: updateError,
+          note: 'my_songsテーブルにdeleted_atカラムを追加する必要があるかもしれません'
+        });
+        // エラー時は続行（既存の動作を維持）
       }
     }
 
     logger.info('解約時の楽曲調整が完了しました（各楽器ごとに10曲まで）:', {
       totalSongs: songs.length,
       keptSongs: totalKept,
-      deletedSongs: songsToDelete.length
+      hiddenSongs: songsToHide.length
     });
 
     return {
@@ -1186,6 +1248,84 @@ export const adjustMyLibrarySongsOnDowngrade = async (
     });
     ErrorHandler.handle(error, 'adjustMyLibrarySongsOnDowngrade', false);
     return { adjusted: false, totalSongs: 0, keptSongs: 0 };
+  }
+};
+
+/**
+ * プレミアム再課金時の非表示曲の復元
+ * 
+ * 処理フロー:
+ * 1. 非Premiumユーザーは処理不要（早期リターン）
+ * 2. 非表示（deleted_at IS NOT NULL）の曲を取得
+ * 3. deleted_atをNULLに戻して表示状態に復元
+ * 
+ * @param userId ユーザーID
+ * @param entitlement エンタイトルメント情報
+ * @returns 復元された曲数
+ */
+export const restoreHiddenSongsOnUpgrade = async (
+  userId: string,
+  entitlement: Entitlement | null | undefined
+): Promise<{ restored: boolean; restoredCount: number }> => {
+  try {
+    // Premiumユーザーでない場合は処理不要
+    const isPremium = isPremiumUser(entitlement);
+    if (!isPremium) {
+      logger.debug('プレミアムユーザーでないため、曲復元をスキップします');
+      return { restored: false, restoredCount: 0 };
+    }
+
+    // 非表示（deleted_at IS NOT NULL）の曲を取得
+    const { data: hiddenSongs, error } = await supabase
+      .from('my_songs')
+      .select('id')
+      .eq('user_id', userId)
+      .not('deleted_at', 'is', null);
+
+    if (error) {
+      // deleted_atカラムが存在しない場合は、復元不要（エラーを無視）
+      if (error.code === '42703' || (error.message && error.message.includes('deleted_at'))) {
+        logger.debug('deleted_atカラムが存在しないため、曲復元をスキップします');
+        return { restored: false, restoredCount: 0 };
+      }
+      logger.error('非表示曲取得エラー:', error);
+      ErrorHandler.handle(error, '非表示曲取得', false);
+      return { restored: false, restoredCount: 0 };
+    }
+
+    if (!hiddenSongs || hiddenSongs.length === 0) {
+      logger.debug('非表示の曲が存在しないため、復元不要です');
+      return { restored: false, restoredCount: 0 };
+    }
+
+    // deleted_atをNULLに戻して復元
+    const songIds = hiddenSongs.map(s => s.id);
+    const { error: updateError } = await supabase
+      .from('my_songs')
+      .update({ deleted_at: null })
+      .in('id', songIds);
+
+    if (updateError) {
+      logger.error('曲復元エラー:', updateError);
+      ErrorHandler.handle(updateError, '曲復元', false);
+      return { restored: false, restoredCount: 0 };
+    }
+
+    logger.info('再課金時の曲復元が完了しました:', {
+      restoredCount: songIds.length
+    });
+
+    return {
+      restored: true,
+      restoredCount: songIds.length
+    };
+  } catch (error) {
+    logger.error('再課金時の曲復元中にエラーが発生しました:', {
+      error,
+      userId
+    });
+    ErrorHandler.handle(error, 'restoreHiddenSongsOnUpgrade', false);
+    return { restored: false, restoredCount: 0 };
   }
 };
 
@@ -1305,12 +1445,29 @@ export const checkMyLibraryLimit = async (
     // 各楽器ごとに10個まで（楽器数で掛け算しない）
     const limit = FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT;
 
-    // 既存の曲数を取得（楽器IDでフィルタリング）
+    // 既存の曲数を取得（楽器IDでフィルタリング、非表示曲は除外）
     // instrument_idカラムが存在しない可能性があるため、TypeScript側でフィルタリング
-    const { data: allSongs, error: queryError } = await supabase
+    // deleted_atがNULLの曲のみをカウント（非表示の曲は除外）
+    let { data: allSongs, error: queryError } = await supabase
       .from('my_songs')
       .select('id, instrument_id')
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .is('deleted_at', null);
+
+    // deleted_atカラムが存在しない場合のフォールバック
+    if (queryError && (queryError.code === '42703' || 
+        (queryError.message && queryError.message.includes('deleted_at')))) {
+      logger.warn('[subscriptionLimits] deleted_atカラムが存在しないため、deleted_atフィルタを外して再試行します', {
+        errorCode: queryError.code,
+        errorMessage: queryError.message
+      });
+      
+      // deleted_atフィルタなしで再試行
+      ({ data: allSongs, error: queryError } = await supabase
+        .from('my_songs')
+        .select('id, instrument_id')
+        .eq('user_id', userId));
+    }
 
     if (queryError) {
       // instrument_idカラムが存在しないエラーの場合、カラムなしで再試行
@@ -1325,11 +1482,22 @@ export const checkMyLibraryLimit = async (
           errorMessage: queryError.message
         });
         
-        // instrument_idカラムなしで再試行
-        const { data: songsWithoutInstrumentId, error: retryError } = await supabase
+        // instrument_idカラムなしで再試行（deleted_atフィルタも外す）
+        let { data: songsWithoutInstrumentId, error: retryError } = await supabase
           .from('my_songs')
           .select('id')
-          .eq('user_id', userId);
+          .eq('user_id', userId)
+          .is('deleted_at', null);
+        
+        // deleted_atカラムが存在しない場合のフォールバック
+        if (retryError && (retryError.code === '42703' || 
+            (retryError.message && retryError.message.includes('deleted_at')))) {
+          logger.warn('[subscriptionLimits] deleted_atカラムが存在しないため、deleted_atフィルタを外して再試行します');
+          ({ data: songsWithoutInstrumentId, error: retryError } = await supabase
+            .from('my_songs')
+            .select('id')
+            .eq('user_id', userId));
+        }
         
         if (retryError) {
           logger.warn('マイライブラリの曲数取得に失敗しました。制限チェックをスキップします。', {

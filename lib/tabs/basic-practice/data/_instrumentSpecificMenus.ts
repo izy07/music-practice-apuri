@@ -290,26 +290,6 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
     ],
     violin: [
       { 
-        id: 'violin-7days-practice', 
-        title: '【超初心者】バイオリンを買ってから７日間の練習メニュー', 
-        description: 'バイオリンを買ったばかりの超初心者向けの7日間の練習メニュー', 
-        points: ['基礎的な姿勢と構え方', '弓の動かし方', '開放弦の練習', '7日間の段階的な学習'], 
-        difficulty: 'beginner',
-        howToPractice: [
-          '1. 1日目：楽器の持ち方・構え方を覚えます',
-          '2. 2日目：弓の持ち方と基本的な動かし方を練習します',
-          '3. 3日目：開放弦（指を使わない弦）で弓を動かす練習をします',
-          '4. 4日目：開放弦の練習を続け、美しい音を出す練習をします',
-          '5. 5日目：基本的な運指（指の押さえ方）を覚えます',
-          '6. 6日目：簡単な音階を練習します',
-          '7. 7日目：これまでの練習を復習し、基礎を固めます'
-        ],
-        recommendedTempo: '♩ = 60',
-        duration: '20〜30分',
-        videoUrl: 'https://youtu.be/8HqQ3XgxBhY?si=vRnRBmpnohWZfOj_',
-        tips: ['超初心者のための段階的なメニューです', '無理をせず、毎日少しずつ練習しましょう', '7日間続けることで基礎が身につきます']
-      },
-      { 
         id: 'violin-openstrings', 
         title: '開放弦で弓の練習', 
         description: '指を使わずに、弓の動かし方を練習します。美しい音を出すための基本です', 
@@ -943,26 +923,6 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         tips: ['良い姿勢は美しい音の基本', '無理な姿勢は疲労の原因', '毎日姿勢を確認', 'リラックスして構える']
       },
       { 
-        id: 'flute-practice-flow-beginner', 
-        title: '基礎練流れ', 
-        description: '効果的な個人練習の流れを身につける', 
-        points: ['練習の順序', '各メニューの組み合わせ', '継続的な練習習慣'], 
-        difficulty: 'beginner',
-        howToPractice: [
-          '1. 姿勢とフルートの構え方を確認します',
-          '2. 呼吸の練習を行います（腹式呼吸）',
-          '3. ロングトーンで音を安定させます',
-          '4. 音色の改善を意識して練習します',
-          '5. 基本的な音階練習を行います',
-          '6. 運指の練習で指の動きを確認します',
-          '7. 毎日この流れで練習を続けます'
-        ],
-        recommendedTempo: '♩ = 60',
-        duration: '30〜45分',
-        videoUrl: 'https://youtu.be/kYMn1FgPTWE?si=QKGJNT57xSZkHKs5',
-        tips: ['基礎練流れを身につけることで効率的に上達できます', '毎日継続することが大切です', '各メニューの目的を理解して練習しましょう']
-      },
-      { 
         id: 'flute-longtone', 
         title: '長い音を出す練習（ロングトーン）', 
         description: '息を一定に保って、美しい音を長く続ける練習です', 
@@ -1056,7 +1016,6 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         ],
         recommendedTempo: '♩ = 60',
         duration: '10〜15分',
-        videoUrl: 'https://youtu.be/P9Z6c09TmlU?si=huSrpqj3ZxnHg_rf',
         tips: ['音色は息の当て方と口の形で決まる', '鏡で確認', '録音して確認', '美しい音色を目指す']
       },
       { 
@@ -1077,26 +1036,6 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         recommendedTempo: '♩ = 60〜120（最初は60から）',
         duration: '10〜15分',
         tips: ['舌は軽く触れるだけで、強く押し付けないようにしましょう', '息の流れを止めず、舌だけを動かすことが大切です', '舌と息を別々に動かす感覚を身につけましょう']
-      },
-      { 
-        id: 'flute-practice-flow-intermediate', 
-        title: '基礎練流れ', 
-        description: '効果的な個人練習の流れを身につける', 
-        points: ['練習の順序', '各メニューの組み合わせ', '継続的な練習習慣'], 
-        difficulty: 'intermediate',
-        howToPractice: [
-          '1. 姿勢とフルートの構え方を確認します',
-          '2. 呼吸の練習を行います（腹式呼吸）',
-          '3. ロングトーンで音を安定させます',
-          '4. タンギングの練習で音の切り方を確認します',
-          '5. 音階練習（全調）を行います',
-          '6. ダイナミクスや表現の練習を行います',
-          '7. 毎日この流れで練習を続けます'
-        ],
-        recommendedTempo: '♩ = 60〜100',
-        duration: '45〜60分',
-        videoUrl: 'https://youtu.be/kYMn1FgPTWE?si=QKGJNT57xSZkHKs5',
-        tips: ['基礎練流れを身につけることで効率的に上達できます', '毎日継続することが大切です', '各メニューの目的を理解して練習しましょう']
       },
       { 
         id: 'flute-scales-all-keys', 
@@ -1598,27 +1537,6 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         tips: ['良い姿勢は美しい音の基本', '無理な姿勢は疲労の原因', '毎日姿勢を確認', 'リラックスして構える']
       },
       { 
-        id: 'tp-basic-sound', 
-        title: 'ソの音を出す練習（基本の音を出す）', 
-        description: 'トランペットの基本的な音（ソ、ドなど）を出す練習', 
-        points: ['マウスピースの位置', '息の使い方', '音を出す感覚'], 
-        difficulty: 'beginner',
-        howToPractice: [
-          '1. トランペットを正しく構えます',
-          '2. マウスピースを唇に軽く当てます',
-          '3. お腹から息を吸います',
-          '4. 何も押さえずに「ソ」の音を出します（基本の音）',
-          '5. 音が出たら、5秒間キープします',
-          '6. 慣れてきたら「ド」の音も出してみます',
-          '7. 無理に大きな音を出さず、自然な音を出します',
-          '8. 毎日続けて、音を出す感覚を身につけます'
-        ],
-        recommendedTempo: 'なし（音を出す練習）',
-        duration: '10〜15分',
-        videoUrl: 'https://youtu.be/-I5uCYLqwIE?si=U2C2h-Z6oB-qmYOB',
-        tips: ['最初は音が出なくても焦らない', 'マウスピースの位置を確認', '息の使い方を意識', '毎日継続することが大切']
-      },
-      { 
         id: 'tp-longtone', 
         title: '長い音を出す練習（ロングトーン）', 
         description: '息を一定に保って、美しい音を長く続ける練習です', 
@@ -1636,7 +1554,6 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         ],
         recommendedTempo: '♩ = 60（8拍、8秒間キープ）',
         duration: '10〜15分',
-        videoUrl: 'https://youtu.be/Nwy1ZoDuSvA?si=jSPJfEqtByVI2cal&t=10',
         tips: ['口周りを固めすぎず、柔軟に保つことが大切です', '息の圧力を一定に保つと、美しい音が出ます', '音色の美しさを重視して、無理に大きな音を出さないようにしましょう']
       },
       { 
@@ -1733,48 +1650,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         ],
         recommendedTempo: '♩ = 60〜80（最初は60から）',
         duration: '10〜15分',
-        videoUrl: 'https://youtu.be/Nwy1ZoDuSvA?si=jSPJfEqtByVI2cal&t=213',
         tips: ['喉を開いたまま保つことが大切です', '口の形は最小限の変化で、大きく変えないようにしましょう', '唇の柔軟性を育てることで、滑らかに音を変えられるようになります']
-      },
-      { 
-        id: 'tp-bending', 
-        title: 'ベンディング（音程を曲げる練習）', 
-        description: '音程をわずかに下げたり上げたりすることで、表現力豊かな演奏をする練習', 
-        points: ['音程の微調整', '息のコントロール', '表現力'], 
-        difficulty: 'intermediate',
-        howToPractice: [
-          '1. 基本的な音を出します',
-          '2. その音からわずかに下げる練習をします',
-          '3. その音からわずかに上げる練習をします',
-          '4. スムーズに音程を戻す練習をします',
-          '5. 様々な音でベンディングを練習します',
-          '6. メトロノームを使ってリズムを保ちます',
-          '7. 曲で応用します'
-        ],
-        recommendedTempo: '♩ = 60〜80',
-        duration: '10〜15分',
-        videoUrl: 'https://youtu.be/Nwy1ZoDuSvA?si=jSPJfEqtByVI2cal&t=120',
-        tips: ['音程の微調整が重要', '息のコントロール', '表現力が向上', '音楽性が向上']
-      },
-      { 
-        id: 'tp-legato-tonguing', 
-        title: 'レガートタンギング（滑らかなタンギング）', 
-        description: '音をつなげて滑らかに演奏するためのタンギング技術', 
-        points: ['息の流れを保つ', '舌の動きを最小限に', '滑らかな音の移行'], 
-        difficulty: 'intermediate',
-        howToPractice: [
-          '1. まず、レガート（音をつなげる）の練習をします',
-          '2. 舌を使わずに音を出し、次の音に滑らかに移行します',
-          '3. 必要最小限の舌の動きでタンギングします',
-          '4. 息の流れを止めないように意識します',
-          '5. 音階でレガートタンギングを練習します',
-          '6. メトロノームを使ってリズムを保ちます',
-          '7. 曲で応用します'
-        ],
-        recommendedTempo: '♩ = 60〜100',
-        duration: '10〜15分',
-        videoUrl: 'https://youtu.be/Nwy1ZoDuSvA?si=jSPJfEqtByVI2cal&t=320',
-        tips: ['息の流れを保つことが大切です', '舌の動きを最小限に', '滑らかな音の移行', '表現力が向上']
       },
       { 
         id: 'tp-scales-all-keys', 
@@ -1949,22 +1825,27 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
       },
       { 
         id: 'tp-jazz', 
-        title: 'ジャズスタイルの練習', 
-        description: 'ジャズでの表現技術', 
-        points: ['インプロビゼーション', '表現力', 'リズム感'], 
+        title: 'ジャズっぽい吹き方の練習（ノリ・アドリブ）', 
+        description: 'ジャズでよく使う「ノリ（リズム）」と短いフレーズ作りを練習します', 
+        points: ['ノリ（スウィング）', 'アドリブ（その場で作る）', 'フレーズ（短いメロディ）'], 
         difficulty: 'advanced',
         howToPractice: [
-          '1. 基本的なジャズフレーズを練習します',
-          '2. インプロビゼーションを練習します',
-          '3. メトロノームを使ってリズムを保ちます',
-          '4. 様々なジャズスタイルを練習します',
-          '5. 曲で応用します',
-          '6. 表現力を意識します',
-          '7. 録音して確認します'
+          '1. まずは「短いメロディ（フレーズ）」を2〜3個覚えて、同じテンポでくり返して吹きます',
+          '2. メトロノームを「2と4」に感じながら吹きます（ジャズのノリを作りやすい）',
+          '3. 覚えたフレーズの最後の音だけ変えて、少しずつ変化をつけます',
+          '4. バッキング（伴奏）に合わせて、同じフレーズを違うタイミングで入れてみます',
+          '5. アドリブ（その場でメロディを作って吹く）を“2小節だけ”など短く区切って試します',
+          '6. うまくいったフレーズはメモして「自分の定番（リック）」として増やします',
+          '7. 録音して「リズムが走っていないか」「音が大きすぎないか」を確認します'
         ],
         recommendedTempo: '♩ = 100〜200',
         duration: '20〜30分',
-        tips: ['ジャズは表現力が重要', 'インプロビゼーション', 'リズム感が向上', '表現力が向上']
+        tips: [
+          '最初はアドリブより「フレーズを覚える→少し変える」が近道',
+          '音の大きさ（強弱）をつけると一気にジャズっぽくなる',
+          '速さより、ノリ（スウィング）とリズムの正確さを優先',
+          '録音は上達が早い（客観的に分かる）'
+        ]
       },
     ],
     saxophone: [

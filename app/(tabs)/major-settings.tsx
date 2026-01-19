@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Palette, Globe, Bell, Shield, ChevronRight, ArrowLeft } from 'lucide-react-native';
@@ -9,11 +9,14 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { setCurrentRoute } from '@/lib/navigationHistory';
 import { asSafeRoutePath } from '@/lib/navigationHelpers';
 import { safeGoBack } from '@/lib/navigationUtils';
+import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
 
 export default function MajorSettingsScreen() {
   const router = useRouter();
   const { t } = useLanguage();
   const { currentTheme } = useInstrumentTheme();
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTopOnFocus(scrollRef);
 
   React.useEffect(() => {
     setCurrentRoute('/(tabs)/major-settings');
@@ -78,7 +81,12 @@ export default function MajorSettingsScreen() {
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.content} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={scrollRef}
+        style={styles.content}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
 
         <View style={[styles.settingsContainer, { backgroundColor: currentTheme?.surface || '#FFFFFF' }]}>
           {items.map((item) => (

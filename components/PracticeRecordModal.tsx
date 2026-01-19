@@ -1277,15 +1277,12 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           logger.warn('録音保存は成功しましたが、savedRecordingがnullです');
         }
         
-        // レッスン録音の場合は自動削除について通知
-        if (audioRecordingType === 'lesson') {
-          Alert.alert(
-            'レッスン録音を保存しました',
-            'この録音は30日後に自動削除されます。重要な録音はお気に入りに追加してください。'
-          );
-        } else {
-          Alert.alert('保存完了', '録音を保存しました');
-        }
+        // プランに応じたメッセージを表示
+        const isPremium = entitlement?.isEntitled;
+        const message = isPremium 
+          ? '録音を保存しました。60分まで録音可能です。'
+          : '録音を保存しました。フリープランは3分まで。プレミアムなら60分まで録音可能です。';
+        Alert.alert('保存完了', message);
       }
     } catch (e) {
       Alert.alert('エラー', '録音の保存に失敗しました');
@@ -1453,34 +1450,48 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       Alert.alert('エラー', '日付が選択されていません');
       return;
     }
-    if (Number.isNaN(minutesNumber) || minutesNumber <= 0) {
-      Alert.alert('エラー', '練習時間（分）を正しく入力してください');
+    
+    // 録音や動画があるかチェック
+    const hasMedia = !!(audioUrl || videoUrl);
+    
+    // 時間が0以下で、かつ録音や動画もない場合は保存をスキップ
+    if ((Number.isNaN(minutesNumber) || minutesNumber <= 0) && !hasMedia) {
+      Alert.alert('エラー', '練習時間（分）を入力するか、録音・動画を追加してください');
       return;
     }
     
+    // 時間が0以下の場合でも、録音や動画がある場合は保存を許可（時間は0として保存）
+    const finalMinutes = (Number.isNaN(minutesNumber) || minutesNumber <= 0) ? 0 : minutesNumber;
+    
     try {
-      // タイマー時間を加算した合計時間を計算
-      const totalMinutes = minutesNumber + timerMinutes;
+      // 重要: 手動入力は「手動入力そのもの」として保存する（合計扱いにして差し引かない）
+      // これにより、クイック記録/タイマーは“追加分”として合計にそのまま加算される
+      const newManualMinutes = finalMinutes;
       
-      // 録音や動画があるかチェック
-      const hasMedia = !!(audioUrl || videoUrl);
+      logger.debug('handleSaveRecord: 時間計算', {
+        finalMinutes,
+        newManualMinutes,
+        practiceBreakdown,
+        existingRecordMinutes: existingRecord?.minutes || 0
+      });
       
       // 保存処理を実行（完了を待つ）
-      await onSave?.(minutesNumber, content?.trim() || undefined, audioUrl || undefined, videoUrl || undefined);
+      // replaceMinutes: trueが指定されているため、既存の手動入力の時間を置き換える
+      await onSave?.(newManualMinutes, content?.trim() || undefined, audioUrl || undefined, videoUrl || undefined);
       
       // 保存完了後にカレンダーと統計を更新するイベントを発火
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('practiceRecordUpdated', {
           detail: { 
             action: 'practice_saved',
-            minutes: minutesNumber,
+            minutes: newManualMinutes,
             content: content?.trim(),
             date: selectedDate ? formatLocalDate(selectedDate) : new Date().toISOString().split('T')[0],
             verified: true
           }
         });
         window.dispatchEvent(event);
-        logger.debug('練習記録保存の即時反映イベントを発火:', { minutes: minutesNumber });
+        logger.debug('練習記録保存の即時反映イベントを発火:', { minutes: newManualMinutes });
       }
       
       // 録音や動画がある場合のみコールバックを呼び出す
@@ -1764,6 +1775,18 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 
                 // 練習記録を再読み込み
                 await loadPracticeSessions();
+
+                // カレンダーのデータを更新するためにイベントを発火
+                if (typeof window !== 'undefined') {
+                  const event = new CustomEvent('practiceRecordUpdated', {
+                    detail: {
+                      date: formatLocalDate(selectedDate!),
+                      action: 'delete',
+                      type: 'basicPractice'
+                    }
+                  });
+                  window.dispatchEvent(event);
+                }
 
                 // コールバックを呼び出してデータを更新
                 onRecordingSaved?.();
@@ -2480,8 +2503,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                         ) : (
                           <Text style={styles.mediaOptionSubtext}>
                             {entitlement?.isEntitled 
-                              ? '60分まで可能'
-                              : '録音1で記録、フリープランは3分まで。プレミアムなら2個、60分まで可能'}
+                              ? '60分まで録音可能'
+                              : 'フリープランは3分まで。プレミアムなら60分まで録音可能'}
                           </Text>
                         )}
                       </TouchableOpacity>
@@ -2536,15 +2559,53 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         </ScrollView>
         {/* 下部の保存ボタンと削除ボタン */}
         <View style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.primarySaveButton, (!minutes || Number(minutes) <= 0) && { opacity: 0.6 }]}
-            onPress={handleSaveRecord}
-            disabled={!minutes || Number(minutes) <= 0}
-            activeOpacity={0.8}
-          >
-            <Save size={18} color="#FFFFFF" />
-            <Text style={styles.primarySaveButtonText}>保存</Text>
-          </TouchableOpacity>
+          {(() => {
+            // 新しい記録があるかどうかを判定
+            const minutesNumber = Number(minutes) || 0;
+            const hasMedia = !!(audioUrl || videoUrl);
+            
+            let hasNewRecord: boolean;
+            
+            // 既存の記録がない場合：時間が0より大きいか、録音や動画がある場合は有効
+            if (!existingRecord) {
+              hasNewRecord = minutesNumber > 0 || hasMedia;
+            } else {
+              // 既存の記録がある場合：変更があるかどうかを判定
+              const existingMinutes = existingRecord.minutes || 0;
+              const existingContent = existingRecord.content || '';
+              const currentContent = content?.trim() || '';
+              
+              // 時間が変更されているか、録音や動画が追加されているか、コンテンツが変更されているか
+              const timeChanged = minutesNumber !== existingMinutes;
+              const contentChanged = currentContent !== existingContent;
+              hasNewRecord = timeChanged || hasMedia || contentChanged;
+            }
+            
+            logger.debug('保存ボタン無効化条件チェック:', {
+              minutesNumber,
+              existingMinutes: existingRecord?.minutes || 0,
+              timeChanged: existingRecord ? minutesNumber !== (existingRecord.minutes || 0) : undefined,
+              hasMedia,
+              contentChanged: existingRecord ? (content?.trim() || '') !== (existingRecord.content || '') : undefined,
+              hasNewRecord,
+              isDisabled: !hasNewRecord
+            });
+            
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.primarySaveButton,
+                  !hasNewRecord && { opacity: 0.6 }
+                ]}
+                onPress={handleSaveRecord}
+                disabled={!hasNewRecord}
+                activeOpacity={0.8}
+              >
+                <Save size={18} color="#FFFFFF" />
+                <Text style={styles.primarySaveButtonText}>保存</Text>
+              </TouchableOpacity>
+            );
+          })()}
           
           {/* 削除ボタン（既存の記録または録音がある場合のみ表示） */}
           {useMemo(() => {

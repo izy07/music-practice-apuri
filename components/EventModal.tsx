@@ -70,6 +70,11 @@ export default function EventModal({
       setDate(formatLocalDate(new Date()));
       setEventColor(DEFAULT_EVENT_COLOR);
     }
+    
+    // モーダルが開かれたときにloading状態をリセット
+    if (visible) {
+      setLoading(false);
+    }
   }, [event, selectedDate, visible]);
 
   // Webプラットフォームでのフォーカス管理
@@ -117,6 +122,7 @@ export default function EventModal({
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
+        setLoading(false);
         Alert.alert('エラー', 'ユーザーが認証されていません');
         return;
       }

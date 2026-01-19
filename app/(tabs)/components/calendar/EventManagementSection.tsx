@@ -235,8 +235,8 @@ export default function EventManagementSection({
   const displayEvents = sortedFilteredEvents.slice(0, 5);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.surface }]}>
-      <View style={styles.header}>
+    <View style={[styles.container, { backgroundColor: theme.surface }]} pointerEvents="box-none">
+      <View style={styles.header} pointerEvents="auto">
         <Calendar size={20} color={theme.primary} />
         <Text style={[styles.title, { color: theme.text }]}>イベント管理</Text>
       </View>
@@ -244,6 +244,7 @@ export default function EventManagementSection({
       <TouchableOpacity
         style={[styles.addButton, { backgroundColor: theme.primary }]}
         onPress={onAddEvent}
+        pointerEvents="auto"
       >
         <Plus size={16} color="#FFFFFF" />
         <Text style={styles.addButtonText}>イベントを登録</Text>
@@ -402,6 +403,7 @@ export default function EventManagementSection({
 const styles = StyleSheet.create({
   container: {
     marginTop: 0,
+    marginBottom: 80, // タブバーと重ならないように下部にマージンを追加
     padding: 8,
     backgroundColor: '#FFFFFF',
     borderRadius: 0,

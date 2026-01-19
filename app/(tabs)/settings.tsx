@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { User, Palette, BookOpen, LogOut, ChevronRight, Library, Zap, Crown, Heart, GraduationCap } from 'lucide-react-native';
@@ -11,6 +11,8 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { setCurrentRoute } from '@/lib/navigationHistory';
 import { asSafeRoutePath } from '@/lib/navigationHelpers';
 import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
+import { useSubscription } from '@/hooks/useSubscription';
+import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -18,6 +20,9 @@ export default function SettingsScreen() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const { language, setLanguage, t } = useLanguage();
   const { currentTheme } = useInstrumentTheme();
+  const { entitlement } = useSubscription();
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTopOnFocus(scrollRef);
   
   // 現在のルートを記録（マウント時）
   React.useEffect(() => {
@@ -88,74 +93,103 @@ export default function SettingsScreen() {
   };
 
 
-  const settingsItems = useMemo(() => [
-    {
-      id: 'profile',
-      title: t('profileSettings'),
-      subtitle: t('profileSettingsSubtitle'),
-      icon: User,
-      color: '#4CAF50',
-      onPress: () => router.push(asSafeRoutePath('/(tabs)/profile-settings'))
-    },
-    {
-      id: 'my-library',
-      title: t('myLibrary'),
-      subtitle: t('myLibrarySubtitle'),
-      icon: Library,
-      color: '#9C27B0',
-      onPress: () => router.push(asSafeRoutePath('/(tabs)/my-library'))
-    },
-    {
-      id: 'recordings-library',
-      title: t('recordingsLibrary'),
-      subtitle: t('recordingsLibrarySubtitle'),
-      icon: BookOpen,
-      color: '#607D8B',
-      onPress: () => router.push(asSafeRoutePath('/(tabs)/recordings-library'))
-    },
-    {
-      id: 'main-settings',
-      title: '楽器変更',
-      subtitle: '楽器の選択',
-      icon: Zap,
-      color: '#FF6B35',
-      onPress: () => router.push(asSafeRoutePath('/(tabs)/main-settings'))
-    },
-    {
-      id: 'major-settings',
-      title: '主要機能設定',
-      subtitle: '外観・言語・通知・プライバシー',
-      icon: Palette,
-      color: '#9C27B0',
-      onPress: () => router.push(asSafeRoutePath('/(tabs)/major-settings'))
-    },
-    {
-      id: 'tutorial',
-      title: t('tutorial'),
-      subtitle: t('tutorialSubtitle'),
-      icon: GraduationCap,
-      color: '#9C27B0',
-      onPress: () => router.push(asSafeRoutePath('/(tabs)/app-guide'))
-    },
-    {
-      id: 'pricing',
-      title: '料金プラン',
-      subtitle: 'プレミアム・年額プラン',
-      icon: Crown,
-      color: '#FFD700',
-      onPress: () => router.push(asSafeRoutePath('/(tabs)/pricing-plans'))
-    },
-    {
-      id: 'support',
-      title: t('feedbackTitle'),
-      subtitle: t('feedbackSubtitle'),
-      icon: Heart,
-      color: '#E91E63',
-      onPress: () => router.push(asSafeRoutePath('/(tabs)/support'))
-    },
-  ], [t, router]);
+  const settingsItems = useMemo(() => {
+    const allItems = [
+      {
+        id: 'profile',
+        title: t('profileSettings'),
+        subtitle: t('profileSettingsSubtitle'),
+        icon: User,
+        color: '#4CAF50',
+        onPress: () => router.push(asSafeRoutePath('/(tabs)/profile-settings')),
+        requiresPremium: false,
+      },
+      {
+        id: 'my-library',
+        title: t('myLibrary'),
+        subtitle: t('myLibrarySubtitle'),
+        icon: Library,
+        color: '#9C27B0',
+        onPress: () => router.push(asSafeRoutePath('/(tabs)/my-library')),
+        requiresPremium: false, // 10曲まで使用可能（プレミアムで無制限）
+      },
+      {
+        id: 'recordings-library',
+        title: t('recordingsLibrary'),
+        subtitle: t('recordingsLibrarySubtitle'),
+        icon: BookOpen,
+        color: '#607D8B',
+        onPress: () => router.push(asSafeRoutePath('/(tabs)/recordings-library')),
+        requiresPremium: false, // 常に表示
+      },
+      {
+        id: 'main-settings',
+        title: '楽器変更',
+        subtitle: '楽器の選択',
+        icon: Zap,
+        color: '#FF6B35',
+        onPress: () => router.push(asSafeRoutePath('/(tabs)/main-settings')),
+        requiresPremium: false,
+      },
+      {
+        id: 'major-settings',
+        title: '主要機能設定',
+        subtitle: '外観・言語・通知・\nプライバシー',
+        icon: Palette,
+        color: '#9C27B0',
+        onPress: () => router.push(asSafeRoutePath('/(tabs)/major-settings')),
+        requiresPremium: false,
+      },
+      {
+        id: 'tutorial',
+        title: t('tutorial'),
+        subtitle: t('tutorialSubtitle'),
+        icon: GraduationCap,
+        color: '#9C27B0',
+        onPress: () => router.push(asSafeRoutePath('/(tabs)/app-guide')),
+        requiresPremium: false,
+      },
+      {
+        id: 'pricing',
+        title: '料金プラン',
+        subtitle: 'プレミアム・年額プラン',
+        icon: Crown,
+        color: '#FFD700',
+        onPress: () => router.push(asSafeRoutePath('/(tabs)/pricing-plans')),
+        requiresPremium: false,
+      },
+      {
+        id: 'support',
+        title: t('feedbackTitle'),
+        subtitle: t('feedbackSubtitle'),
+        icon: Heart,
+        color: '#E91E63',
+        onPress: () => router.push(asSafeRoutePath('/(tabs)/support')),
+        requiresPremium: false,
+      },
+    ];
+
+    // プレミアム限定の項目に表示フラグを追加（位置を固定するためフィルタリングしない）
+    return allItems.map(item => ({
+      ...item,
+      visible: item.requiresPremium ? entitlement?.isEntitled === true : true,
+    }));
+  }, [t, router, entitlement?.isEntitled]);
 
   const renderSettingItem = (item: (typeof settingsItems)[number]) => {
+    // プレミアム限定で非表示の場合は、高さ0で非表示（位置を維持）
+    if (!item.visible) {
+      return (
+        <View
+          key={item.id}
+          style={[
+            styles.settingItem,
+            { height: 0, paddingVertical: 0, margin: 0, borderBottomWidth: 0, opacity: 0 },
+          ]}
+        />
+      );
+    }
+
     // 余白を減らす対象の項目ID
     const compactItems = ['major-settings', 'tutorial', 'pricing', 'support'];
     const isCompact = compactItems.includes(item.id);
@@ -177,7 +211,14 @@ export default function SettingsScreen() {
         </View>
         <View style={styles.settingContent}>
           <Text style={[styles.settingTitle, { color: currentTheme?.text || '#2D3748' }]}>{item.title}</Text>
-          <Text style={[styles.settingSubtitle, { color: currentTheme?.textSecondary || '#718096' }]}>{item.subtitle}</Text>
+          {item.id === 'major-settings' ? (
+            <View>
+              <Text style={[styles.settingSubtitle, { color: currentTheme?.textSecondary || '#718096' }]}>外観・言語・通知・</Text>
+              <Text style={[styles.settingSubtitle, { color: currentTheme?.textSecondary || '#718096' }]}>プライバシー</Text>
+            </View>
+          ) : (
+            <Text style={[styles.settingSubtitle, { color: currentTheme?.textSecondary || '#718096' }]}>{item.subtitle}</Text>
+          )}
         </View>
         <ChevronRight size={20} color={currentTheme?.textSecondary || '#CCCCCC'} />
       </TouchableOpacity>
@@ -188,7 +229,8 @@ export default function SettingsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme?.background || '#F7FAFC' }]} >
       <InstrumentHeader />
       
-      <ScrollView 
+      <ScrollView
+        ref={scrollRef}
         style={styles.content} 
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}

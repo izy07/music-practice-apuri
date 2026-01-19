@@ -219,6 +219,8 @@ export const updateSelectedInstrument = async (
                 color_primary: '#4682B4',
                 color_secondary: '#87CEEB',
                 color_accent: '#2F4F4F',
+                background_color: '#E0F6FF',
+                surface_color: '#FFFFFF',
                 starting_note: 'C4',
                 tuning_notes: ['C4'],
               }, { onConflict: 'id' });
@@ -337,61 +339,24 @@ export const updateSelectedInstrument = async (
           logger.warn(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:updateエラー - upsertを試みます`, errorDetails);
           
           // 外部キー制約違反の場合、楽器が存在するか確認
+          // 注意: 楽器の作成は試みません（RLSポリシーにより通常ユーザーは作成不可）
           if (isForeignKeyError && instrumentId) {
-            // その他楽器の場合は、データベースに存在することを確認し、存在しない場合は作成を試みる
-            if (instrumentId === '550e8400-e29b-41d4-a716-446655440016') { // OTHER_INSTRUMENT_ID
-              const { data: instrumentExists, error: checkError } = await supabase
-                .from('instruments')
-                .select('id')
-                .eq('id', instrumentId)
-                .maybeSingle();
-
-              if (checkError) {
-                logger.error(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:その他楽器存在確認エラー（エラーハンドリング中）:`, checkError);
-              }
-
-              if (!instrumentExists) {
-                logger.warn(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:その他楽器が存在しないため、作成を試みます（エラーハンドリング中）`, { instrumentId });
-                const { error: createError } = await supabase
-                  .from('instruments')
-                  .upsert({
-                    id: instrumentId,
-                    name: 'その他',
-                    name_en: 'Other',
-                    color_primary: '#4682B4',
-                    color_secondary: '#87CEEB',
-                    color_accent: '#2F4F4F',
-                    starting_note: 'C4',
-                    tuning_notes: ['C4'],
-                  }, { onConflict: 'id' });
-
-                if (createError) {
-                  // RLSポリシーにより通常ユーザーは作成できないため、エラーをログに記録
-                  logger.warn(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:その他楽器作成失敗（RLSポリシーにより通常ユーザーは作成不可）:`, createError);
-                  // エラーをスローせず、続行（データベースに手動で作成が必要）
-                } else {
-                  logger.debug(`[${REPOSITORY_CONTEXT}] updateSelectedInstrument:その他楽器を作成しました（エラーハンドリング中）`, { instrumentId });
-                }
-              }
+            // Web環境では直接インポートを使用、モバイル環境では動的インポートを使用
+            const isWeb = Platform.OS === 'web' || (typeof window !== 'undefined' && typeof document !== 'undefined');
+            let instrumentExists = false;
+            if (isWeb) {
+              instrumentExists = await staticEnsureInstrumentExists(instrumentId);
             } else {
-              // その他の楽器の場合は、既存のensureInstrumentExistsロジックを使用
-              // 注意: 楽器の作成は試みません（RLSポリシーにより通常ユーザーは作成不可）
-              const isWeb = Platform.OS === 'web' || (typeof window !== 'undefined' && typeof document !== 'undefined');
-              let instrumentExists = false;
-              if (isWeb) {
-                instrumentExists = await staticEnsureInstrumentExists(instrumentId);
-              } else {
-                const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
-                instrumentExists = await ensureInstrumentExists(instrumentId);
-              }
-              
-              // 楽器が存在しない場合はエラーを返す
-              if (!instrumentExists) {
-                const error = new Error(`楽器ID ${instrumentId} がデータベースに存在しません。管理者に連絡して楽器を作成してもらってください。`);
-                (error as any).code = '23503';
-                (error as any).status = 400;
-                throw error;
-              }
+              const { ensureInstrumentExists } = await import('@/lib/instrumentValidation');
+              instrumentExists = await ensureInstrumentExists(instrumentId);
+            }
+            
+            // 楽器が存在しない場合はエラーを返す
+            if (!instrumentExists) {
+              const error = new Error(`楽器ID ${instrumentId} がデータベースに存在しません。管理者に連絡して楽器を作成してもらってください。`);
+              (error as any).code = '23503';
+              (error as any).status = 400;
+              throw error;
             }
           }
           

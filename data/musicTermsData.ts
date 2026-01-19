@@ -443,6 +443,12 @@ export const DEFAULT_MUSIC_TERMS: Record<MusicTermCategory, MusicTermData[]> = {
       categories: ['wind', 'string'],
     },
     {
+      term_ja: '倍音',
+      term_en: 'Harmonic',
+      description_ja: '基音に対して整数倍の周波数を持つ音。楽器ではハーモニクス奏法で鳴らすことができる。',
+      categories: ['wind'],
+    },
+    {
       term_ja: 'シングルストローク',
       term_en: 'Single stroke',
       description_ja: '右・左を交互に1回ずつ叩く基本パターン（R L R L ...）',
@@ -459,6 +465,31 @@ export const DEFAULT_MUSIC_TERMS: Record<MusicTermCategory, MusicTermData[]> = {
       term_en: 'Rebound',
       description_ja: 'スティックが跳ね返ってくる力。力任せではなく跳ね返りを使うと疲れにくい',
       categories: ['percussion'],
+    },
+    // --- ジャズ練習で出てくる用語（初心者向けに説明を追加） ---
+    {
+      term_ja: 'スウィング',
+      term_en: 'Swing',
+      description_ja: 'ジャズでよくあるリズムのノリ。まっすぐ（8分を均等）より、少し跳ねる感じに聞こえることが多い',
+      categories: ['wind', 'string', 'keyboard'],
+    },
+    {
+      term_ja: 'アドリブ',
+      term_en: 'Ad-lib',
+      description_ja: 'その場でメロディを作って演奏すること（即興）。まずは短いフレーズを少し変えるところから始めると安心',
+      categories: ['wind', 'string', 'keyboard'],
+    },
+    {
+      term_ja: 'フレーズ',
+      term_en: 'Phrase',
+      description_ja: '短いメロディのかたまり。言葉の「文」みたいに、区切りや流れを作る単位',
+      categories: ['wind', 'string', 'keyboard'],
+    },
+    {
+      term_ja: 'リック',
+      term_en: 'Lick',
+      description_ja: 'ジャズでよく使う定番の短いフレーズ。うまくいったものを貯めるとアドリブが楽になる',
+      categories: ['wind', 'string', 'keyboard'],
     },
   ],
 };

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Globe } from 'lucide-react-native';
@@ -9,6 +9,7 @@ import { safeGoBack } from '@/lib/navigationUtils';
 import { saveLanguageSetting } from '@/lib/database';
 import { getInstrumentSpecificSettings, saveInstrumentSpecificSettings } from '@/repositories/userSettingsRepository';
 import { supabase } from '@/lib/supabase';
+import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
 
 // 多言語対応のテキスト
 const getTexts = (lang: 'ja' | 'en') => ({
@@ -40,6 +41,8 @@ export default function LanguageSettingsScreen() {
   const { selectedInstrument } = useInstrumentTheme();
   const [selectedLanguage, setSelectedLanguage] = useState(language);
   const [isLoading, setIsLoading] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTopOnFocus(scrollRef);
   
   // 楽器ごとの言語設定を読み込む
   useEffect(() => {
@@ -160,7 +163,7 @@ export default function LanguageSettingsScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Language Selection Section */}
         <View style={[styles.section, { backgroundColor: fallbackTheme.surface }]}>
           <View style={styles.sectionHeader}>

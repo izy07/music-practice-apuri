@@ -326,74 +326,51 @@ const mergeInstrumentData = (dbInstrument: InstrumentFromDB): Instrument | null 
 };
 
 /**
- * すべての楽器を取得（データベースとローカルの色設定をマージ）
+ * すべての楽器を取得（静的データから取得）
  */
 export const getAllInstruments = async (): Promise<ServiceResult<Instrument[]>> => {
   return safeServiceExecute(
     async () => {
-      logger.debug(`[${SERVICE_CONTEXT}] getAllInstruments:start`);
+      logger.debug(`[${SERVICE_CONTEXT}] getAllInstruments:start (静的データから取得)`);
       
-      const result = await instrumentRepository.getAllInstruments();
+      // 静的データから取得（データベースリクエスト不要）
+      const { getAllStaticInstruments } = await import('@/data/staticInstruments');
+      const staticInstruments = getAllStaticInstruments();
       
-      if (result.error || !result.data) {
-        // エラーの場合はローカルのdefaultInstrumentsを使用（警告は開発環境のみ、警告レベルを下げる）
-        // リロード時にデータベースから読み込まないため、これは正常な動作
-        if (__DEV__) {
-          logger.debug(`[${SERVICE_CONTEXT}] getAllInstruments:fallback to defaultInstruments (正常な動作)`, {
-            error: result.error
-          });
-        }
+      if (staticInstruments.length === 0) {
+        // 静的データが空の場合は、フォールバックとしてdefaultInstrumentsを使用
+        logger.warn(`[${SERVICE_CONTEXT}] getAllInstruments:静的データが空のため、defaultInstrumentsを使用`);
         return defaultInstruments;
       }
       
-      if (result.data.length === 0) {
-        // データベースに楽器がない場合はローカルのdefaultInstrumentsを使用（警告は開発環境のみ、警告レベルを下げる）
-        // リロード時にデータベースから読み込まないため、これは正常な動作
-        if (__DEV__) {
-          logger.debug(`[${SERVICE_CONTEXT}] getAllInstruments:no instruments in DB, using defaultInstruments (正常な動作)`);
-        }
-        return defaultInstruments;
-      }
-      
-      // データベースの楽器名とローカルの色設定をマージ
-      const mergedInstruments: Instrument[] = result.data
-        .map(mergeInstrumentData)
-        .filter((instrument): instrument is Instrument => instrument !== null);
-      
-      logger.debug(`[${SERVICE_CONTEXT}] getAllInstruments:success`, { count: mergedInstruments.length });
-      return mergedInstruments;
+      logger.debug(`[${SERVICE_CONTEXT}] getAllInstruments:success (静的データ)`, { count: staticInstruments.length });
+      return staticInstruments;
     },
     `${SERVICE_CONTEXT}.getAllInstruments`
   );
 };
 
 /**
- * IDで楽器を取得
+ * IDで楽器を取得（静的データから取得）
  */
 export const getInstrumentById = async (
   instrumentId: string
 ): Promise<ServiceResult<Instrument | null>> => {
   return safeServiceExecute(
     async () => {
-      logger.debug(`[${SERVICE_CONTEXT}] getInstrumentById:start`, { instrumentId });
+      logger.debug(`[${SERVICE_CONTEXT}] getInstrumentById:start (静的データから取得)`, { instrumentId });
       
-      const result = await instrumentRepository.getInstrumentById(instrumentId);
+      // 静的データから取得（データベースリクエスト不要）
+      const { getStaticInstrumentById } = await import('@/data/staticInstruments');
+      const instrument = getStaticInstrumentById(instrumentId);
       
-      if (result.error || !result.data) {
-        // エラーの場合はローカルのdefaultInstrumentsから探す
-        const localInstrument = defaultInstruments.find(inst => inst.id === instrumentId);
-        return localInstrument || null;
+      if (!instrument) {
+        logger.debug(`[${SERVICE_CONTEXT}] getInstrumentById:楽器が見つかりません`, { instrumentId });
+        return null;
       }
       
-      const mergedInstrument = mergeInstrumentData(result.data);
-      if (!mergedInstrument) {
-        // マージに失敗した場合はローカルのdefaultInstrumentsから探す
-        const localInstrument = defaultInstruments.find(inst => inst.id === instrumentId);
-        return localInstrument || null;
-      }
-      
-      logger.debug(`[${SERVICE_CONTEXT}] getInstrumentById:success`);
-      return mergedInstrument;
+      logger.debug(`[${SERVICE_CONTEXT}] getInstrumentById:success (静的データ)`, { instrumentId });
+      return instrument;
     },
     `${SERVICE_CONTEXT}.getInstrumentById`
   );

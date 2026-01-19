@@ -168,13 +168,6 @@ export default function SupportScreen() {
       >
         {/* フィードバックする */}
         <View style={[styles.section, { backgroundColor: currentTheme?.surface || '#FFFFFF' }]}>
-          <View style={styles.sectionHeader}>
-            <MessageSquare size={20} color={currentTheme?.primary || '#1976D2'} />
-            <Text style={[styles.sectionTitle, { color: currentTheme?.text || '#333333' }]}>
-              フィードバックする
-            </Text>
-          </View>
-          
           <TouchableOpacity
             style={[styles.actionButton, { borderColor: currentTheme?.primary || '#1976D2' }]}
             onPress={() => {

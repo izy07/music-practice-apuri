@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, ActivityIndicator } from 'react-native';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput, ActivityIndicator, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
@@ -13,7 +13,10 @@ import { canSaveDataForInstrument, getActiveInstrumentIds } from '@/lib/subscrip
 import { safeGoBack, navigateToCalendarScreen } from '@/lib/navigationUtils';
 import { updateSelectedInstrument } from '@/repositories/userRepository';
 import { supabase } from '@/lib/supabase';
-import { TIMEOUT } from '@/lib/constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
+
+const OTHER_INSTRUMENT_ID = '550e8400-e29b-41d4-a716-446655440016';
 
 interface Instrument {
   id: string;
@@ -27,32 +30,72 @@ export default function InstrumentSelectionScreen() {
   const { setSelectedInstrument, currentTheme, selectedInstrument, syncStatus } = useInstrumentTheme();
   const { user, fetchUserProfile } = useAuthAdvanced();
   const { entitlement } = useSubscription();
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTopOnFocus(scrollRef);
 
   const [selectedInstrumentId, setSelectedInstrumentId] = useState<string>('');
   const [customInstrumentName, setCustomInstrumentName] = useState<string>('');
   const [activeInstrumentIds, setActiveInstrumentIds] = useState<string[]>([]);
   const [canSaveNewInstrument, setCanSaveNewInstrument] = useState<{ canSave: boolean; reason?: string } | null>(null);
-  const [savedCustomInstrumentName, setSavedCustomInstrumentName] = useState<string | null>(null);
 
-  const instruments: Instrument[] = [
-    { id: '550e8400-e29b-41d4-a716-446655440001', name: 'ピアノ', nameEn: 'Piano', emoji: '🎹' },
-    { id: '550e8400-e29b-41d4-a716-446655440002', name: 'ギター', nameEn: 'Guitar', emoji: '🎸' },
-    { id: '550e8400-e29b-41d4-a716-446655440003', name: 'バイオリン', nameEn: 'Violin', emoji: '🎻' },
-    { id: '550e8400-e29b-41d4-a716-446655440004', name: 'フルート', nameEn: 'Flute', emoji: '🪈' },
-    { id: '550e8400-e29b-41d4-a716-446655440005', name: 'トランペット', nameEn: 'Trumpet', emoji: '🎺' },
-    { id: '550e8400-e29b-41d4-a716-446655440009', name: 'クラリネット', nameEn: 'Clarinet', emoji: '🎵' },
-    { id: '550e8400-e29b-41d4-a716-446655440011', name: 'チェロ', nameEn: 'Cello', emoji: '🎻' },
-    { id: '550e8400-e29b-41d4-a716-446655440007', name: 'サックス', nameEn: 'Saxophone', emoji: '🎷' },
-    { id: '550e8400-e29b-41d4-a716-446655440018', name: 'ヴィオラ', nameEn: 'Viola', emoji: '🎻' },
-    { id: '550e8400-e29b-41d4-a716-446655440008', name: 'ホルン', nameEn: 'Horn', emoji: '📯' },
-    { id: '550e8400-e29b-41d4-a716-446655440006', name: 'ドラム', nameEn: 'Drums', emoji: '🥁' },
-    { id: '550e8400-e29b-41d4-a716-446655440013', name: 'オーボエ', nameEn: 'Oboe', emoji: '🎵' },
-    { id: '550e8400-e29b-41d4-a716-446655440010', name: 'トロンボーン', nameEn: 'Trombone', emoji: '🎺' },
-    { id: '550e8400-e29b-41d4-a716-446655440015', name: 'コントラバス', nameEn: 'Contrabass', emoji: '🎻' },
-    { id: '550e8400-e29b-41d4-a716-446655440012', name: 'ファゴット', nameEn: 'Bassoon', emoji: '🎵' },
-    // 注意: 将来的に追加予定の楽器（ハープ、シンセサイザー、太鼓、琴）は実装時に追加
-    { id: '550e8400-e29b-41d4-a716-446655440016', name: 'その他', nameEn: 'Other', emoji: '❓' },
-  ];
+  // 「その他」の登録名をローカルから復元（DBカラム未作成/反映遅延でも表示を安定させる）
+  useEffect(() => {
+    if (!user?.id) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const key = `custom_instrument_name_${user.id}`;
+        let v: string | null = null;
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+          v = window.localStorage.getItem(key);
+        } else {
+          v = await AsyncStorage.getItem(key);
+        }
+        if (!cancelled && v && v.trim()) {
+          // 既に入力がある場合は上書きしない（編集中の邪魔をしない）
+          setCustomInstrumentName((prev) => (prev && prev.trim() ? prev : v || ''));
+        }
+      } catch {
+        // 無視
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  const instruments: Instrument[] = useMemo(() => {
+    const allInstruments: Instrument[] = [
+      { id: '550e8400-e29b-41d4-a716-446655440001', name: 'ピアノ', nameEn: 'Piano', emoji: '🎹' },
+      { id: '550e8400-e29b-41d4-a716-446655440002', name: 'ギター', nameEn: 'Guitar', emoji: '🎸' },
+      { id: '550e8400-e29b-41d4-a716-446655440003', name: 'バイオリン', nameEn: 'Violin', emoji: '🎻' },
+      { id: '550e8400-e29b-41d4-a716-446655440004', name: 'フルート', nameEn: 'Flute', emoji: '🪈' },
+      { id: '550e8400-e29b-41d4-a716-446655440005', name: 'トランペット', nameEn: 'Trumpet', emoji: '🎺' },
+      { id: '550e8400-e29b-41d4-a716-446655440009', name: 'クラリネット', nameEn: 'Clarinet', emoji: '🎵' },
+      { id: '550e8400-e29b-41d4-a716-446655440011', name: 'チェロ', nameEn: 'Cello', emoji: '🎻' },
+      { id: '550e8400-e29b-41d4-a716-446655440007', name: 'サックス', nameEn: 'Saxophone', emoji: '🎷' },
+      { id: '550e8400-e29b-41d4-a716-446655440018', name: 'ヴィオラ', nameEn: 'Viola', emoji: '🎻' },
+      { id: '550e8400-e29b-41d4-a716-446655440008', name: 'ホルン', nameEn: 'Horn', emoji: '📯' },
+      { id: '550e8400-e29b-41d4-a716-446655440006', name: 'ドラム', nameEn: 'Drums', emoji: '🥁' },
+      { id: '550e8400-e29b-41d4-a716-446655440013', name: 'オーボエ', nameEn: 'Oboe', emoji: '🎵' },
+      { id: '550e8400-e29b-41d4-a716-446655440010', name: 'トロンボーン', nameEn: 'Trombone', emoji: '🎺' },
+      { id: '550e8400-e29b-41d4-a716-446655440015', name: 'コントラバス', nameEn: 'Contrabass', emoji: '🎻' },
+      { id: '550e8400-e29b-41d4-a716-446655440012', name: 'ファゴット', nameEn: 'Bassoon', emoji: '🎵' },
+      // 注意: 将来的に追加予定の楽器（ハープ、シンセサイザー、太鼓、琴）は実装時に追加
+      {
+        id: OTHER_INSTRUMENT_ID,
+        // 「その他」で名前登録済みなら、その名前を“楽器名”として表示（その他とは別に見えるように）
+        name: customInstrumentName.trim() ? customInstrumentName.trim() : 'その他',
+        nameEn: customInstrumentName.trim() ? 'Custom' : 'Other',
+        emoji: customInstrumentName.trim() ? '🎵' : '❓',
+      },
+    ];
+
+    // 以前の並び（定義順）を維持し、「その他」だけ最後に固定
+    const otherInstrument = allInstruments.find(i => i.id === OTHER_INSTRUMENT_ID);
+    const regularInstruments = allInstruments.filter(i => i.id !== OTHER_INSTRUMENT_ID);
+    return otherInstrument ? [...regularInstruments, otherInstrument] : regularInstruments;
+  }, [customInstrumentName]);
 
   // すべての楽器を表示（非表示にしていた楽器も表示）
   const visibleInstruments = instruments;
@@ -81,70 +124,12 @@ export default function InstrumentSelectionScreen() {
     loadActiveInstruments();
   }, [user?.id]);
 
-  // 保存されたカスタム楽器名を取得（その他楽器が選択されていない場合でも過去の設定を表示するため）
-  useEffect(() => {
-    const loadSavedCustomInstrumentName = async () => {
-      if (!user?.id) {
-        setSavedCustomInstrumentName(null);
-        return;
-      }
-      
-      // まずuserオブジェクトから取得を試みる
-      if (user?.custom_instrument_name) {
-        setSavedCustomInstrumentName(user.custom_instrument_name);
-        return;
-      }
-      
-      // userオブジェクトにない場合は、データベースから直接取得
-      try {
-        const { data, error } = await supabase
-          .from('user_profiles')
-          .select('custom_instrument_name')
-          .eq('user_id', user.id)
-          .maybeSingle();
-        
-        if (error) {
-          // カラムが存在しないエラー（42703）の場合は無視
-          if (error.code !== '42703') {
-            logger.debug('保存されたカスタム楽器名取得エラー（無視）:', error);
-          }
-          setSavedCustomInstrumentName(null);
-        } else if (data?.custom_instrument_name) {
-          setSavedCustomInstrumentName(data.custom_instrument_name);
-        } else {
-          setSavedCustomInstrumentName(null);
-        }
-      } catch (error) {
-        logger.debug('保存されたカスタム楽器名取得例外（無視）:', error);
-        setSavedCustomInstrumentName(null);
-      }
-    };
-    
-    loadSavedCustomInstrumentName();
-  }, [user?.id, user?.custom_instrument_name]);
-
-  const handleInstrumentSelection = async (instrumentId: string, presetCustomName?: string) => {
-    // カスタム楽器名のプリセットが指定されている場合（保存されたカスタム楽器名を選択した場合）
-    if (presetCustomName) {
-      setSelectedInstrumentId('550e8400-e29b-41d4-a716-446655440016'); // その他楽器のIDを使用
-      setCustomInstrumentName(presetCustomName);
-      
-      // 既存の楽器を選択した場合は制限なし
-      setCanSaveNewInstrument({ canSave: true });
-      return;
-    }
-    
+  const handleInstrumentSelection = async (instrumentId: string) => {
     setSelectedInstrumentId(instrumentId);
     
     // その他以外の楽器を選択した場合はカスタム楽器名をクリア
-    if (instrumentId !== '550e8400-e29b-41d4-a716-446655440016') {
+    if (instrumentId !== OTHER_INSTRUMENT_ID) {
       setCustomInstrumentName('');
-    } else {
-      // その他楽器を選択した場合でも、カスタム楽器名が保存された値と一致する場合は空にする
-      // これにより、「その他」と「カスタム」が同時に選択されることを防ぐ
-      if (customInstrumentName === savedCustomInstrumentName && savedCustomInstrumentName && savedCustomInstrumentName.trim() !== '') {
-        setCustomInstrumentName('');
-      }
     }
 
     // 新しい楽器を選択した場合、保存可能かチェック
@@ -164,7 +149,7 @@ export default function InstrumentSelectionScreen() {
     }
 
     // その他楽器選択時の楽器名検証
-    if (selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016' && !customInstrumentName.trim()) {
+    if (selectedInstrumentId === OTHER_INSTRUMENT_ID && !customInstrumentName.trim()) {
       Alert.alert('エラー', '楽器名を入力してください');
       return;
     }
@@ -179,122 +164,77 @@ export default function InstrumentSelectionScreen() {
 
     // フリープランの場合、新しい楽器を追加できるかチェック（楽器数制限）
     if (user && selectedInstrumentId !== currentInstrumentId) {
-      try {
-        const canSaveCheckPromise = canSaveDataForInstrument(user.id, selectedInstrumentId, entitlement);
-        const timeoutPromise = new Promise<{ canSave: false; reason: string }>((resolve) => {
-          setTimeout(() => {
-            resolve({ canSave: false, reason: 'タイムアウト: 楽器数制限の確認に時間がかかりすぎました' });
-          }, TIMEOUT.INSTRUMENT_SYNC_MS);
-        });
-        
-        const canSaveCheck = await Promise.race([canSaveCheckPromise, timeoutPromise]);
-        if (!canSaveCheck.canSave) {
-          Alert.alert(
-            'アップグレードが必要です',
-            canSaveCheck.reason || 'Freeプランでは楽器を2個まで記録できます。3個目以降の楽器を追加するには、プレミアムへアップグレードしてください。',
-            [
-              { text: '了解', style: 'cancel' }
-            ]
-          );
-          return;
-        }
-      } catch (error) {
-        logger.error('楽器数制限チェックエラー:', error);
-        // エラー時は続行（ユーザーに選択を許可）
+      const canSaveCheck = await canSaveDataForInstrument(user.id, selectedInstrumentId, entitlement);
+      if (!canSaveCheck.canSave) {
+        Alert.alert(
+          'アップグレードが必要です',
+          canSaveCheck.reason || 'Freeプランでは楽器を2個まで記録できます。3個目以降の楽器を追加するには、プレミアムへアップグレードしてください。',
+          [
+            { text: '了解', style: 'cancel' }
+          ]
+        );
+        return;
       }
     }
 
     try {
       // カスタム楽器名を取得（その他楽器の場合のみ）
-      const customName = selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016' 
+      const customName = selectedInstrumentId === OTHER_INSTRUMENT_ID 
         ? customInstrumentName.trim() 
         : null;
-      
-      // データベースに楽器IDを保存（タイムアウト付き）
-      if (user) {
+
+      // ローカルにも保存（必ず user.id のキーで保存して、ヘッダー側と一致させる）
+      if (user?.id) {
         try {
-          const updatePromise = updateSelectedInstrument(user.id, selectedInstrumentId);
-          const timeoutPromise = new Promise<{ error: Error }>((resolve) => {
-            setTimeout(() => {
-              resolve({ error: new Error('タイムアウト: 楽器の保存に時間がかかりすぎました') });
-            }, TIMEOUT.INSTRUMENT_SYNC_MS);
-          });
-          
-          const result = await Promise.race([updatePromise, timeoutPromise]);
-          if (result.error) {
-            logger.error('楽器保存エラー（updateSelectedInstrument）:', result.error);
-            Alert.alert('エラー', '楽器の保存に失敗しました。時間をおいて再度お試しください。');
-            return;
+          const key = `custom_instrument_name_${user.id}`;
+          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+            if (customName) window.localStorage.setItem(key, customName);
+            else window.localStorage.removeItem(key);
+          } else {
+            if (customName) await AsyncStorage.setItem(key, customName);
+            else await AsyncStorage.removeItem(key);
           }
-        } catch (updateError) {
-          logger.error('楽器保存エラー:', updateError);
-          Alert.alert('エラー', '楽器の保存に失敗しました。時間をおいて再度お試しください。');
+        } catch {
+          // ローカル保存失敗は無視（DBが成功していれば問題ない）
+        }
+      }
+      
+      // データベースに楽器IDを保存
+      if (user) {
+        const result = await updateSelectedInstrument(user.id, selectedInstrumentId);
+        if (result.error) {
+          logger.error('楽器保存エラー（updateSelectedInstrument）:', result.error);
+          Alert.alert('エラー', '楽器の保存に失敗しました');
           return;
         }
         
         // カスタム楽器名を保存（その他楽器の場合のみ）
         if (customName) {
-          try {
-            const updatePromise = supabase
-              .from('user_profiles')
-              .update({ custom_instrument_name: customName })
-              .eq('user_id', user.id);
-            
-            const timeoutPromise = new Promise<{ error: Error }>((resolve) => {
-              setTimeout(() => {
-                resolve({ error: new Error('タイムアウト') });
-              }, TIMEOUT.INSTRUMENT_SYNC_MS);
-            });
-            
-            const result = await Promise.race([updatePromise, timeoutPromise]);
-            
-            if (result.error) {
-              logger.error('カスタム楽器名保存エラー:', result.error);
-              // カスタム楽器名の保存エラーは警告のみ（楽器IDは既に保存されている）
-            }
-          } catch (customNameSaveError) {
-            logger.warn('カスタム楽器名保存エラー（無視）:', customNameSaveError);
+          const { error: customNameError } = await supabase
+            .from('user_profiles')
+            .update({ custom_instrument_name: customName })
+            .eq('user_id', user.id);
+          
+          if (customNameError) {
+            logger.error('カスタム楽器名保存エラー:', customNameError);
+            // カスタム楽器名の保存エラーは警告のみ（楽器IDは既に保存されている）
           }
-        } else if (selectedInstrumentId !== '550e8400-e29b-41d4-a716-446655440016') {
+        } else if (selectedInstrumentId !== OTHER_INSTRUMENT_ID) {
           // その他楽器以外を選択した場合は、カスタム楽器名をクリア
-          try {
-            const updatePromise = supabase
-              .from('user_profiles')
-              .update({ custom_instrument_name: null })
-              .eq('user_id', user.id);
-            
-            const timeoutPromise = new Promise<{ error: Error }>((resolve) => {
-              setTimeout(() => {
-                resolve({ error: new Error('タイムアウト') });
-              }, TIMEOUT.INSTRUMENT_SYNC_MS);
-            });
-            
-            const result = await Promise.race([updatePromise, timeoutPromise]);
-            
-            if (result.error) {
-              logger.warn('カスタム楽器名クリアエラー:', result.error);
-              // エラーは無視（楽器IDは既に保存されている）
-            }
-          } catch (clearError) {
-            logger.warn('カスタム楽器名クリアエラー（無視）:', clearError);
+          const { error: clearError } = await supabase
+            .from('user_profiles')
+            .update({ custom_instrument_name: null })
+            .eq('user_id', user.id);
+          
+          if (clearError) {
+            logger.warn('カスタム楽器名クリアエラー:', clearError);
+            // エラーは無視（楽器IDは既に保存されている）
           }
         }
       }
       
-      // ContextのsetSelectedInstrumentを使用（唯一のエントリーポイント、タイムアウト付き）
-      try {
-        const setSelectedPromise = setSelectedInstrument(selectedInstrumentId);
-        const timeoutPromise = new Promise<void>((_, reject) => {
-          setTimeout(() => {
-            reject(new Error('タイムアウト: 楽器の設定に時間がかかりすぎました'));
-          }, TIMEOUT.INSTRUMENT_SYNC_MS * 2); // サーバー同期も含むので少し長めに
-        });
-        
-        await Promise.race([setSelectedPromise, timeoutPromise]);
-      } catch (setError) {
-        logger.error('楽器設定エラー:', setError);
-        // エラーが発生しても続行（ローカル保存は成功している可能性がある）
-      }
+      // ContextのsetSelectedInstrumentを使用（唯一のエントリーポイント）
+      await setSelectedInstrument(selectedInstrumentId);
       
       // 楽器の更新が完了するまで少し待つ（Contextの更新を待つ）
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -302,14 +242,7 @@ export default function InstrumentSelectionScreen() {
       // 認証状態を更新（user.selected_instrument_idを最新の状態に更新）
       // これにより、_layout.tsxのhasInstrumentSelected()が正しく動作する
       try {
-        const fetchPromise = fetchUserProfile();
-        const timeoutPromise = new Promise<void>((_, reject) => {
-          setTimeout(() => {
-            reject(new Error('タイムアウト'));
-          }, TIMEOUT.INSTRUMENT_SYNC_MS);
-        });
-        
-        await Promise.race([fetchPromise, timeoutPromise]);
+        await fetchUserProfile();
         logger.debug('認証状態を更新しました（楽器選択後）');
       } catch (profileError) {
         logger.warn('認証状態の更新に失敗しましたが、続行します:', profileError);
@@ -324,7 +257,7 @@ export default function InstrumentSelectionScreen() {
       navigateToCalendarScreen(router, `楽器「${instrumentName}」を選択してカレンダー画面に遷移`);
     } catch (error) {
       logger.error('楽器保存エラー:', error);
-      Alert.alert('エラー', '楽器の保存に失敗しました。時間をおいて再度お試しください。');
+      Alert.alert('エラー', '楽器の保存に失敗しました');
     }
   };
 
@@ -343,7 +276,7 @@ export default function InstrumentSelectionScreen() {
         </Text>
         <View style={styles.placeholder} />
       </View>
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={scrollRef} style={styles.content} showsVerticalScrollIndicator={false}>
         {/* フリープラン用の楽器数制限メッセージ（既存の楽器がある場合のみ表示） */}
         {!entitlement.isEntitled && user && currentInstrumentId && currentInstrumentId !== '' && activeInstrumentIds.length > 0 && (
           <View style={[styles.freePlanInfoBanner, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
@@ -414,77 +347,36 @@ export default function InstrumentSelectionScreen() {
               style={[
                 styles.instrumentItem,
                 {
-                  // その他楽器の場合、カスタム楽器名が設定されている場合は選択されていないように見せる
-                  backgroundColor: selectedInstrumentId === instrument.id && (instrument.id !== '550e8400-e29b-41d4-a716-446655440016' || customInstrumentName !== savedCustomInstrumentName || !savedCustomInstrumentName) ? currentTheme.primary : currentTheme.surface,
-                  borderColor: selectedInstrumentId === instrument.id && (instrument.id !== '550e8400-e29b-41d4-a716-446655440016' || customInstrumentName !== savedCustomInstrumentName || !savedCustomInstrumentName) ? currentTheme.primary : currentTheme.secondary,
-                  borderWidth: selectedInstrumentId === instrument.id && (instrument.id !== '550e8400-e29b-41d4-a716-446655440016' || customInstrumentName !== savedCustomInstrumentName || !savedCustomInstrumentName) ? 3 : 2,
+                  backgroundColor: selectedInstrumentId === instrument.id ? currentTheme.primary : currentTheme.surface,
+                  borderColor: selectedInstrumentId === instrument.id ? currentTheme.primary : currentTheme.secondary,
+                  borderWidth: selectedInstrumentId === instrument.id ? 3 : 2,
                 }
               ]}
               onPress={() => handleInstrumentSelection(instrument.id)}
               activeOpacity={0.7}
             >
               <Text
-                style={[styles.instrumentEmoji, { color: selectedInstrumentId === instrument.id && (instrument.id !== '550e8400-e29b-41d4-a716-446655440016' || customInstrumentName !== savedCustomInstrumentName || !savedCustomInstrumentName) ? '#FFFFFF' : currentTheme.text }]}
+                style={[styles.instrumentEmoji, { color: selectedInstrumentId === instrument.id ? '#FFFFFF' : currentTheme.text }]}
               >
                 {instrument.emoji}
               </Text>
               <Text
-                style={[styles.instrumentName, { color: selectedInstrumentId === instrument.id && (instrument.id !== '550e8400-e29b-41d4-a716-446655440016' || customInstrumentName !== savedCustomInstrumentName || !savedCustomInstrumentName) ? '#FFFFFF' : currentTheme.text }]}
+                style={[styles.instrumentName, { color: selectedInstrumentId === instrument.id ? '#FFFFFF' : currentTheme.text }]}
               >
                 {instrument.name}
               </Text>
               <Text
-                style={[styles.instrumentNameEn, { color: selectedInstrumentId === instrument.id && (instrument.id !== '550e8400-e29b-41d4-a716-446655440016' || customInstrumentName !== savedCustomInstrumentName || !savedCustomInstrumentName) ? '#FFFFFF' : currentTheme.textSecondary }]}
+                style={[styles.instrumentNameEn, { color: selectedInstrumentId === instrument.id ? '#FFFFFF' : currentTheme.textSecondary }]}
               >
                 {instrument.nameEn}
               </Text>
-              {selectedInstrumentId === instrument.id && (instrument.id !== '550e8400-e29b-41d4-a716-446655440016' || customInstrumentName !== savedCustomInstrumentName || !savedCustomInstrumentName) && (
+              {selectedInstrumentId === instrument.id && (
                 <View style={styles.checkmarkContainer}>
                   <CheckCircle size={24} color="#FFFFFF" />
                 </View>
               )}
             </TouchableOpacity>
           ))}
-          
-          {/* 保存されたカスタム楽器名がある場合、「その他」とは別に表示 */}
-          {savedCustomInstrumentName && savedCustomInstrumentName.trim() !== '' && (
-            <TouchableOpacity
-              style={[
-                styles.instrumentItem,
-                {
-                  backgroundColor: selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016' && customInstrumentName === savedCustomInstrumentName && customInstrumentName !== '' ? currentTheme.primary : currentTheme.surface,
-                  borderColor: selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016' && customInstrumentName === savedCustomInstrumentName && customInstrumentName !== '' ? currentTheme.primary : currentTheme.secondary,
-                  borderWidth: selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016' && customInstrumentName === savedCustomInstrumentName && customInstrumentName !== '' ? 3 : 2,
-                }
-              ]}
-              onPress={() => {
-                // カスタム楽器を選択する場合、その他楽器の選択を解除する（customInstrumentNameを設定）
-                handleInstrumentSelection('550e8400-e29b-41d4-a716-446655440016', savedCustomInstrumentName);
-              }}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[styles.instrumentEmoji, { color: selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016' && customInstrumentName === savedCustomInstrumentName ? '#FFFFFF' : currentTheme.text }]}
-              >
-                +
-              </Text>
-              <Text
-                style={[styles.instrumentName, { color: selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016' && customInstrumentName === savedCustomInstrumentName ? '#FFFFFF' : currentTheme.text }]}
-              >
-                {savedCustomInstrumentName}
-              </Text>
-              <Text
-                style={[styles.instrumentNameEn, { color: selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016' && customInstrumentName === savedCustomInstrumentName ? '#FFFFFF' : currentTheme.textSecondary }]}
-              >
-                Custom
-              </Text>
-              {selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016' && customInstrumentName === savedCustomInstrumentName && (
-                <View style={styles.checkmarkContainer}>
-                  <CheckCircle size={24} color="#FFFFFF" />
-                </View>
-              )}
-            </TouchableOpacity>
-          )}
         </View>
         {/* その他楽器選択時の楽器名入力欄 */}
         {selectedInstrumentId === '550e8400-e29b-41d4-a716-446655440016' && (
@@ -511,31 +403,16 @@ export default function InstrumentSelectionScreen() {
               onFocus={() => {
                 // フォーカス時に親要素のaria-hiddenを削除（aria-hidden警告を防ぐため）
                 if (typeof document !== 'undefined') {
-                  // 複数回実行して確実に削除（React Native Webのレンダリングタイミングに対応）
-                  setTimeout(() => {
-                    const input = document.querySelector('[nativeID="custom-instrument-name-input"]') as HTMLElement;
-                    if (input) {
-                      let parent: HTMLElement | null = input.parentElement;
-                      while (parent && parent !== document.body) {
-                        if (parent.getAttribute('aria-hidden') === 'true') {
-                          parent.removeAttribute('aria-hidden');
-                        }
-                        parent = parent.parentElement;
+                  const input = document.querySelector('[nativeID="custom-instrument-name-input"]') as HTMLElement;
+                  if (input) {
+                    let parent = input.parentElement;
+                    while (parent) {
+                      if (parent.getAttribute('aria-hidden') === 'true') {
+                        parent.removeAttribute('aria-hidden');
                       }
+                      parent = parent.parentElement;
                     }
-                  }, 0);
-                  setTimeout(() => {
-                    const input = document.querySelector('[nativeID="custom-instrument-name-input"]') as HTMLElement;
-                    if (input) {
-                      let parent: HTMLElement | null = input.parentElement;
-                      while (parent && parent !== document.body) {
-                        if (parent.getAttribute('aria-hidden') === 'true') {
-                          parent.removeAttribute('aria-hidden');
-                        }
-                        parent = parent.parentElement;
-                      }
-                    }
-                  }, 50);
+                  }
                 }
               }}
             />

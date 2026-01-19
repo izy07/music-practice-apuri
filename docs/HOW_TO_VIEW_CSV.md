@@ -10,8 +10,7 @@
 - 左メニューから「SQL Editor」をクリック
 - 「New query」をクリック
 
-### 3. SQLスクリプトを実行
-- `scripts/export_all_users_data_admin.sql` を開く
+### 3. SQLクエリを実行
 - 以下のクエリをコピー＆ペースト（練習記録を取得する例）：
 
 ```sql
@@ -262,7 +261,6 @@ ORDER BY session_count DESC;
 
 - [Google Sheets ヘルプ](https://support.google.com/sheets)
 - [Excel ヘルプ](https://support.microsoft.com/excel)
-- [SQLクエリ例](scripts/export_all_users_data_admin.sql)
 
 
 

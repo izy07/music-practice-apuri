@@ -19,7 +19,7 @@ export default function PrivacyPolicyScreen() {
       <View style={[styles.header, { borderBottomColor: currentTheme.secondary || '#E0E0E0' }]}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => safeGoBack(router, '/(tabs)/privacy-settings')}
+          onPress={() => safeGoBack(router, '/(tabs)/privacy-settings', true)}
         >
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
@@ -122,7 +122,7 @@ export default function PrivacyPolicyScreen() {
             <Text style={{ fontWeight: '600' }}>【データポータビリティ権 (Article 20)】</Text>{'\n'}
             • 機械可読形式でのデータ提供{'\n'}
             • 他のサービスへのデータ移行{'\n'}
-            • データエクスポート機能については、現在開発中です。データエクスポートをご希望の場合は、お問い合わせ先（app.gakki@gmail.com）までご連絡ください。SupabaseダッシュボードからSQLクエリを実行してエクスポートすることも可能です。詳細はアプリのドキュメント（docs/USER_DATA_EXPORT_GUIDE.md）をご参照ください。{'\n\n'}
+            • データエクスポートをご希望の場合は、お問い合わせ先（app.gakki@gmail.com）までご連絡ください。{'\n\n'}
             <Text style={{ fontWeight: '600' }}>【異議申し立て権 (Article 21)】</Text>{'\n'}
             • 特定のデータ処理への異議申し立て{'\n\n'}
             <Text style={{ fontWeight: '600' }}>【処理制限権 (Article 18)】</Text>{'\n'}

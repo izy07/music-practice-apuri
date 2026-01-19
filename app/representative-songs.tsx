@@ -110,6 +110,15 @@ export default function RepresentativeSongsScreen() {
       setLoading(true);
       
       logger.debug('[代表曲画面] 楽器ID:', instrumentId);
+      logger.debug('[代表曲画面] instrumentIdの型:', typeof instrumentId);
+      logger.debug('[代表曲画面] instrumentIdの値:', JSON.stringify(instrumentId));
+      
+      if (!instrumentId) {
+        logger.error('[代表曲画面] 楽器IDが未設定です');
+        Alert.alert('エラー', '楽器IDが指定されていません');
+        setLoading(false);
+        return;
+      }
       
       // 楽器情報を取得
       const { data: instrumentData, error: instrumentError } = await supabase
@@ -120,28 +129,115 @@ export default function RepresentativeSongsScreen() {
       
       if (instrumentError) {
         logger.error('[代表曲画面] 楽器情報取得エラー:', instrumentError);
+        logger.error('[代表曲画面] エラー詳細:', {
+          code: instrumentError.code,
+          message: instrumentError.message,
+          details: instrumentError.details,
+          hint: instrumentError.hint
+        });
         Alert.alert('エラー', `楽器情報の取得に失敗しました: ${instrumentError.message}`);
+        setLoading(false);
         return;
       }
       
       if (!instrumentData) {
         logger.error('[代表曲画面] 楽器データが見つかりません');
         Alert.alert('エラー', '楽器データが見つかりません');
+        setLoading(false);
         return;
       }
       
       logger.debug('[代表曲画面] 楽器情報取得成功:', instrumentData.name);
+      logger.debug('[代表曲画面] 楽器ID（確認）:', instrumentData.id);
       setInstrument(instrumentData);
       
       // 静的データから代表曲を取得（データベースリクエスト不要）
       const songsData = getRepresentativeSongsByInstrumentId(instrumentId);
+      logger.debug('[代表曲画面] 静的データ取得結果:', {
+        instrumentId,
+        songsCount: songsData?.length || 0,
+        hasData: !!songsData && songsData.length > 0
+      });
       
       if (songsData && songsData.length > 0) {
         logger.debug('[代表曲画面] 静的データから代表曲を取得:', songsData.length, '曲');
+        logger.debug('[代表曲画面] 静的データの最初の曲:', songsData[0]?.title);
         setSongs(songsData);
       } else {
-        logger.debug('[代表曲画面] 代表曲データなし');
-        setSongs([]);
+        // 静的データが空の場合は、データベースから直接取得（フォールバック）
+        logger.debug('[代表曲画面] 静的データが空のため、データベースから代表曲を取得します');
+        logger.debug('[代表曲画面] データベースクエリ実行:', {
+          table: 'representative_songs',
+          instrument_id: instrumentId
+        });
+        
+        const { data: dbSongsData, error: dbSongsError } = await supabase
+          .from('representative_songs')
+          .select('*')
+          .eq('instrument_id', instrumentId)
+          .order('display_order', { ascending: true });
+        
+        logger.debug('[代表曲画面] データベースクエリ結果:', {
+          hasError: !!dbSongsError,
+          errorCode: dbSongsError?.code,
+          errorMessage: dbSongsError?.message,
+          dataCount: dbSongsData?.length || 0,
+          data: dbSongsData ? dbSongsData.map((s: any) => ({ id: s.id, title: s.title, instrument_id: s.instrument_id })) : null
+        });
+        
+        if (dbSongsError) {
+          // テーブルが存在しない場合はエラーを無視
+          const isTableNotFound = dbSongsError.code === 'PGRST205' || 
+                                  dbSongsError.code === 'PGRST116' || 
+                                  dbSongsError.status === 404 ||
+                                  dbSongsError.message?.includes('Could not find the table') ||
+                                  dbSongsError.message?.includes('does not exist');
+          
+          if (!isTableNotFound) {
+            logger.error('[代表曲画面] データベースから代表曲取得エラー:', dbSongsError);
+            logger.error('[代表曲画面] エラー詳細:', {
+              code: dbSongsError.code,
+              message: dbSongsError.message,
+              details: dbSongsError.details,
+              hint: dbSongsError.hint
+            });
+          } else {
+            logger.debug('[代表曲画面] representative_songsテーブルが存在しません');
+          }
+          setSongs([]);
+        } else if (dbSongsData && dbSongsData.length > 0) {
+          logger.debug('[代表曲画面] データベースから代表曲を取得:', dbSongsData.length, '曲');
+          logger.debug('[代表曲画面] 取得した曲のタイトル:', dbSongsData.map((s: any) => s.title));
+          // データベースから取得したデータをStaticRepresentativeSong形式に変換
+          const convertedSongs: StaticRepresentativeSong[] = dbSongsData.map((song: any) => ({
+            id: song.id,
+            instrument_id: song.instrument_id,
+            title: song.title,
+            composer: song.composer,
+            era: song.era,
+            genre: song.genre,
+            difficulty_level: song.difficulty_level,
+            youtube_url: song.youtube_url,
+            spotify_url: song.spotify_url,
+            description_ja: song.description_ja,
+            description_en: song.description_en,
+            is_popular: song.is_popular,
+            display_order: song.display_order,
+            famous_performer: song.famous_performer,
+            famous_video_url: song.famous_video_url,
+            famous_note: song.famous_note,
+          }));
+          logger.debug('[代表曲画面] 変換後の曲数:', convertedSongs.length);
+          setSongs(convertedSongs);
+        } else {
+          logger.debug('[代表曲画面] 代表曲データなし（データベースにもデータがありません）');
+          logger.debug('[代表曲画面] デバッグ情報:', {
+            instrumentId,
+            queryResult: dbSongsData,
+            queryResultLength: dbSongsData?.length || 0
+          });
+          setSongs([]);
+        }
       }
       
       // お気に入り曲を読み込む（認証済みの場合）
@@ -422,14 +518,34 @@ export default function RepresentativeSongsScreen() {
 
               if (error) {
                 logger.error('[代表曲画面] お気に入り曲削除エラー:', error);
+                logger.error('[代表曲画面] エラー詳細:', {
+                  code: error.code,
+                  message: error.message,
+                  details: error.details,
+                  hint: error.hint
+                });
                 Alert.alert('エラー', `お気に入り曲の削除に失敗しました: ${error.message}`);
                 return;
               }
 
               logger.debug('[代表曲画面] お気に入り曲削除成功:', { songId, deletedData: data });
 
-              // データベースから最新の状態を再読み込み（確実に反映させるため）
-              await loadFavoriteSongs();
+              // 即座に状態を更新（UIの応答性を向上）
+              setSongs(prevSongs => prevSongs.filter(song => song.id !== songId));
+              setFavoriteSongs(prevFavorites => prevFavorites.filter(song => song.id !== songId));
+              
+              logger.debug('[代表曲画面] 状態を即座に更新しました');
+
+              // データベースの反映を待ってから再読み込み（確実に反映させるため）
+              setTimeout(async () => {
+                try {
+                  await loadFavoriteSongs();
+                  logger.debug('[代表曲画面] お気に入り曲を再読み込みしました');
+                } catch (reloadError) {
+                  logger.error('[代表曲画面] お気に入り曲再読み込みエラー:', reloadError);
+                  // 再読み込みエラーは無視（既に状態は更新済み）
+                }
+              }, 300);
               
               Alert.alert('成功', 'お気に入り曲を削除しました');
             } catch (error) {

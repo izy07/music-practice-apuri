@@ -255,7 +255,11 @@ export default function MusicDictionaryScreen() {
       </ScrollView>
 
       {/* 用語一覧 */}
-      <ScrollView style={styles.content}>
+      <ScrollView 
+        style={styles.content}
+        contentContainerStyle={{ paddingBottom: 125 }}
+        showsVerticalScrollIndicator={false}
+      >
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color={currentTheme.primary} />

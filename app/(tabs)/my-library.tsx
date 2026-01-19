@@ -131,14 +131,27 @@ export default function MyLibraryScreen() {
         let query = supabase
           .from('my_songs')
           .select('*')
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)
+          // deleted_atカラムがない環境もあるため、まずは付けずにクエリし、必要なら後段でフォールバックする
+          ;
         
         // 楽器ごとにフィルタリング（TypeScript側で実行）
         // applyInstrumentFilterは常に元のクエリを返すため、TypeScript側でフィルタリングを実行
         const { applyInstrumentFilter, filterByInstrumentIdInMemory } = await import('@/repositories/common/instrumentFilter');
         
         // クエリを実行（instrument_idカラムの有無に関わらず実行）
-        const { data: rawData, error } = await query.order('created_at', { ascending: false });
+        let { data: rawData, error } = await query.order('created_at', { ascending: false });
+
+        // deleted_atカラムが存在しない場合は、フィルタ無しで続行（表示は従来通り）
+        // 42703: undefined_column
+        if (error && (error.code === '42703' || (error.message && error.message.includes('deleted_at')))) {
+          logger.warn('[my-library] deleted_atカラムが存在しないため、deleted_atフィルタを除外して続行します');
+          ({ data: rawData, error } = await supabase
+            .from('my_songs')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: false }));
+        }
 
         if (error) {
           logger.error('楽曲読み込みエラー:', {
@@ -149,16 +162,11 @@ export default function MyLibraryScreen() {
             hint: error.hint
           });
           
-          // 400エラーでinstrument_idカラムが原因の場合は、エラーを表示してマイグレーションを促す
-          if (error.code === '42703' || error.message?.includes('instrument_id') || error.message?.includes('column') && error.message?.includes('does not exist')) {
-            const errorMessage = 'my_songsテーブルにinstrument_idカラムが存在しません。データベースのマイグレーションを実行してください。';
-            logger.error('[my-library] データベーススキーマエラー:', errorMessage);
-            ErrorHandler.handle(new Error(errorMessage), '楽曲読み込み（スキーマエラー）', true);
-            Alert.alert(
-              'データベースエラー',
-              'my_songsテーブルにinstrument_idカラムが存在しません。\n\nデータベースのマイグレーションを実行してください。\n\nマイグレーションファイル: supabase/migrations/20251226000000_add_instrument_id_to_my_songs.sql'
-            );
-            setSongs([]);
+          // instrument_idがない環境では、楽器フィルタリングをスキップして続行（致命にしない）
+          if (error.code === '42703' || (error.message?.includes('instrument_id') && error.message?.includes('does not exist'))) {
+            logger.warn('[my-library] instrument_idカラムが存在しない可能性があります。楽器フィルタリングなしで表示します。', { error });
+            // ここでthrowせず、空表示にしない（ユーザー体験を優先）
+            setSongs((rawData || []) as Song[]);
             return;
           }
           

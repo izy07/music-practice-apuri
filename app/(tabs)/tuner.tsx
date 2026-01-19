@@ -399,7 +399,6 @@ export default function TunerScreen() {
   const audioProcessingIntervalRef = useRef<number | null>(null);
   const smoothedFrequencyRef = useRef<number>(0);
   const frequencyHistoryRef = useRef<number[]>([]); // 周波数履歴をrefで保持
-  const updateTimeoutRef = useRef<NodeJS.Timeout | null>(null); // UI更新デバウンス用
   
   // 音名表示モード（CDEかドレミか）- 開放弦の音を聞く機能で使用
   const [noteDisplayMode, setNoteDisplayMode] = useState<'en' | 'ja'>('en');
@@ -407,6 +406,14 @@ export default function TunerScreen() {
   
   // A4周波数の設定（デフォルト440Hz）
   const [a4Frequency, setA4Frequency] = useState<number>(DEFAULT_A4_FREQUENCY);
+  const a4FrequencyRef = useRef<number>(DEFAULT_A4_FREQUENCY);
+  useEffect(() => {
+    a4FrequencyRef.current = a4Frequency;
+  }, [a4Frequency]);
+
+  // 端末の再生環境差（スピーカー/OS処理など）で基準音が僅かにズレて聞こえる場合の微調整（セント）
+  const REFERENCE_TONE_CENTS_OFFSET_KEY = '@tuner_reference_tone_cents_offset';
+  const [referenceToneCentsOffset, setReferenceToneCentsOffset] = useState<number>(0);
   
   // プロ仕様設定
   // データベースの楽器IDとチューナー楽器キーのマッピング（useMemoでメモ化）
@@ -502,6 +509,15 @@ export default function TunerScreen() {
         if (savedMode === 'en' || savedMode === 'ja') {
           setNoteDisplayMode(savedMode);
         }
+
+        // 基準音の微調整（セント）を読み込み
+        const savedOffset = await AsyncStorage.getItem(REFERENCE_TONE_CENTS_OFFSET_KEY);
+        if (savedOffset !== null) {
+          const parsed = Number(savedOffset);
+          if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
+            setReferenceToneCentsOffset(Math.max(-50, Math.min(50, parsed)));
+          }
+        }
         
         // A4周波数を設定から読み込み
         const { user, error: userError } = await getCurrentUser();
@@ -528,6 +544,16 @@ export default function TunerScreen() {
       setNoteDisplayMode(mode);
     } catch (error) {
       ErrorHandler.handle(error, '音名表示モードの保存', false);
+    }
+  }, []);
+
+  const saveReferenceToneCentsOffset = useCallback(async (value: number) => {
+    const clamped = Math.max(-50, Math.min(50, value));
+    try {
+      await AsyncStorage.setItem(REFERENCE_TONE_CENTS_OFFSET_KEY, String(clamped));
+      setReferenceToneCentsOffset(clamped);
+    } catch (error) {
+      ErrorHandler.handle(error, '基準音微調整の保存', false);
     }
   }, []);
 
@@ -695,7 +721,7 @@ export default function TunerScreen() {
           smoothedFrequencyRef.current = smoothedFreq;
 
           // 音名を取得（設定されたA4周波数を使用）
-          const noteInfo = getNoteFromFrequency(smoothedFreq, a4Frequency);
+          const noteInfo = getNoteFromFrequency(smoothedFreq, a4FrequencyRef.current);
           
           // デバッグ情報（開発時のみ、本番環境でもコンソールに出力）
           if (__DEV__) {
@@ -712,36 +738,27 @@ export default function TunerScreen() {
               isInTune: noteInfo.isInTune
             });
           }
+          // 本番環境でも重要な情報をコンソールに出力（デバッグ用）
+          console.log(`[Tuner] 検出周波数: ${detectedFrequency.toFixed(2)}Hz, 平滑化後: ${smoothedFreq.toFixed(2)}Hz, 音名: ${noteInfo.note}${noteInfo.octave}, セント: ${noteInfo.cents.toFixed(1)}, A4: ${a4FrequencyRef.current}Hz`);
           
-          // UI更新をデバウンス（100ms遅延で更新頻度を制限）
-          // これにより、60fpsの高速更新によるパフォーマンス問題を軽減
-          if (updateTimeoutRef.current) {
-            clearTimeout(updateTimeoutRef.current);
-          }
-          
-          updateTimeoutRef.current = setTimeout(() => {
-            // 本番環境でも重要な情報をコンソールに出力（デバッグ用、デバウンス後）
-            console.log(`[Tuner] 検出周波数: ${detectedFrequency.toFixed(2)}Hz, 平滑化後: ${smoothedFreq.toFixed(2)}Hz, 音名: ${noteInfo.note}${noteInfo.octave}, セント: ${noteInfo.cents.toFixed(1)}, A4: ${a4Frequency}Hz`);
-            
-            // UIを更新（デバウンス処理後）
-            setCurrentFrequency(smoothedFreq);
-            setCurrentNote(noteInfo.note);
-            setCurrentNoteJa(noteInfo.noteJa);
-            setCurrentOctave(noteInfo.octave);
-            setCurrentCents(noteInfo.cents);
+          // UIを更新（滑らかな更新のため、状態更新を最適化）
+          setCurrentFrequency(smoothedFreq);
+          setCurrentNote(noteInfo.note);
+          setCurrentNoteJa(noteInfo.noteJa);
+          setCurrentOctave(noteInfo.octave);
+          setCurrentCents(noteInfo.cents);
 
-            // チューニングバーの位置を更新（より滑らかなアニメーション）
-            Animated.timing(tuningBarAnimation, {
-              toValue: noteInfo.cents,
-              duration: 200, // より長いdurationで滑らかに
-              easing: Easing.out(Easing.cubic), // より滑らかなイージング
-              useNativeDriver: false,
-            }).start();
+          // チューニングバーの位置を更新（より滑らかなアニメーション）
+          Animated.timing(tuningBarAnimation, {
+            toValue: noteInfo.cents,
+            duration: 200, // より長いdurationで滑らかに
+            easing: Easing.out(Easing.cubic), // より滑らかなイージング
+            useNativeDriver: false,
+          }).start();
 
-            // インジケーターの色を更新
-            const { color } = getTuningColor(Math.abs(noteInfo.cents));
-            setIndicatorColor(color);
-          }, 100); // 100msデバウンス
+          // インジケーターの色を更新
+          const { color } = getTuningColor(Math.abs(noteInfo.cents));
+          setIndicatorColor(color);
         } else {
           // 音が検出されない場合、履歴をクリア
           frequencyHistoryRef.current = [];
@@ -767,7 +784,7 @@ export default function TunerScreen() {
               }).start();
             } else {
               // フェードアウト中もUIを更新（滑らかに）
-              const noteInfo = getNoteFromFrequency(smoothedFrequencyRef.current, a4Frequency);
+              const noteInfo = getNoteFromFrequency(smoothedFrequencyRef.current, a4FrequencyRef.current);
               setCurrentFrequency(smoothedFrequencyRef.current);
               setCurrentNote(noteInfo.note);
               setCurrentNoteJa(noteInfo.noteJa);
@@ -802,12 +819,6 @@ export default function TunerScreen() {
     if (audioProcessingIntervalRef.current) {
       clearInterval(audioProcessingIntervalRef.current);
       audioProcessingIntervalRef.current = null;
-    }
-
-    // UI更新デバウンスのタイムアウトをクリア
-    if (updateTimeoutRef.current) {
-      clearTimeout(updateTimeoutRef.current);
-      updateTimeoutRef.current = null;
     }
 
     // マイクストリームを解放
@@ -884,7 +895,9 @@ export default function TunerScreen() {
       oscillator.connect(gainNode);
       gainNode.connect(audioCtx.destination);
       
-      oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+      // 微調整（セント）を周波数に反映
+      const adjustedFrequency = frequency * Math.pow(2, referenceToneCentsOffset / 1200);
+      oscillator.frequency.setValueAtTime(adjustedFrequency, audioCtx.currentTime);
       oscillator.type = 'sine';
       
       // フェードインしてから連続再生
@@ -913,7 +926,10 @@ export default function TunerScreen() {
       oscillator.start(audioCtx.currentTime);
       setPlayingOpenString(note);
       
-      logger.debug(`Playing open string continuously: ${note} at ${frequency}Hz`);
+      logger.debug(`Playing open string continuously: ${note} at ${adjustedFrequency}Hz`, {
+        base: frequency,
+        centsOffset: referenceToneCentsOffset,
+      });
     } catch (error) {
       ErrorHandler.handle(error, '開放弦の音再生', true);
       // エラーメッセージを詳細化
@@ -935,7 +951,9 @@ export default function TunerScreen() {
             
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
-            oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+            // 微調整（セント）を周波数に反映（リトライ経路にも必ず適用）
+            const adjustedFrequency = frequency * Math.pow(2, referenceToneCentsOffset / 1200);
+            oscillator.frequency.setValueAtTime(adjustedFrequency, audioCtx.currentTime);
             oscillator.type = 'sine';
             // 低周波数（100Hz以下）では体感音量が小さく感じられるため、gainを上げる
             // 周波数に応じたgain補正: 100Hz以下は1.0、それ以上は0.3
@@ -944,6 +962,10 @@ export default function TunerScreen() {
             gainNode.gain.linearRampToValueAtTime(baseGain, audioCtx.currentTime + 0.1);
             oscillator.start(audioCtx.currentTime);
             setPlayingOpenString(note);
+            logger.debug(`Playing open string retry: ${note} at ${adjustedFrequency}Hz`, {
+              base: frequency,
+              centsOffset: referenceToneCentsOffset,
+            });
             return;
           } catch (retryError) {
             logger.error('再試行も失敗:', retryError);
@@ -1056,7 +1078,8 @@ export default function TunerScreen() {
       oscillator.connect(gainNode);
       gainNode.connect(audioCtx.destination);
       
-      oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
+      const adjustedFrequency = frequency * Math.pow(2, referenceToneCentsOffset / 1200);
+      oscillator.frequency.setValueAtTime(adjustedFrequency, audioCtx.currentTime);
       oscillator.type = 'sine';
       
       // フェードインしてから連続再生
@@ -1081,7 +1104,10 @@ export default function TunerScreen() {
       oscillator.start(audioCtx.currentTime);
       setPlayingScaleNote(noteKey);
       
-      logger.debug(`Playing scale note continuously: ${noteKey} at ${frequency}Hz`);
+      logger.debug(`Playing scale note continuously: ${noteKey} at ${adjustedFrequency}Hz`, {
+        base: frequency,
+        centsOffset: referenceToneCentsOffset,
+      });
     } catch (error) {
       ErrorHandler.handle(error, '音階の音再生', true);
       Alert.alert('エラー', '音の再生に失敗しました。');
@@ -1637,6 +1663,35 @@ export default function TunerScreen() {
               >
                 <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>+</Text>
               </TouchableOpacity>
+            </View>
+
+            {/* 基準音の微調整（再生環境差の補正） */}
+            <View style={{ marginTop: 14 }}>
+              <Text style={[styles.settingsTitle, { color: currentTheme.text, fontSize: 14 }]}>
+                基準音の微調整（セント）
+              </Text>
+              <Text style={[styles.settingDescription, { color: currentTheme.textSecondary }]}>
+                端末のスピーカー等で「少しズレる」と感じる場合に、基準音/音階の再生だけを微調整できます（-50〜+50）
+              </Text>
+              <View style={styles.frequencyAdjuster}>
+                <TouchableOpacity
+                  style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
+                  onPress={() => saveReferenceToneCentsOffset(referenceToneCentsOffset - 1)}
+                >
+                  <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>-</Text>
+                </TouchableOpacity>
+                <View style={[styles.frequencyDisplay, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary }]}>
+                  <Text style={[styles.frequencyValue, { color: currentTheme.primary, marginBottom: 0 }]}>
+                    {referenceToneCentsOffset > 0 ? '+' : ''}{referenceToneCentsOffset} cent
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
+                  onPress={() => saveReferenceToneCentsOffset(referenceToneCentsOffset + 1)}
+                >
+                  <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>+</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         )}

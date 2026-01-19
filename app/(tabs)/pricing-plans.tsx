@@ -79,7 +79,7 @@ export default function PricingPlansScreen() {
 
       <ScrollView 
         style={styles.content} 
-        contentContainerStyle={{ paddingBottom: 125 }}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {/* ヒーロー */}
@@ -214,6 +214,9 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     padding: 16,
+  },
+  scrollContent: {
+    paddingBottom: 165, // タブバーの高さ + 広告バナー分 + 余裕
   },
   hero: {
     borderRadius: 16,

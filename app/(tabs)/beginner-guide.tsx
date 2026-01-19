@@ -10,6 +10,7 @@ import PostureCameraModal from '@/components/PostureCameraModal';
 import logger from '@/lib/logger';
 import { getInstrumentCategory } from '@/lib/instrumentUtils';
 import { getTermsForInstrument } from '@/data/musicTermsData';
+import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
 // Web環境（GitHub Pages等）では直接インポートを使用（動的インポートが動作しない場合があるため）
 // モバイル環境では動的インポートで遅延読み込み（軽量化）
 import { instrumentGuides as staticInstrumentGuides } from '@/data/instrumentGuides';
@@ -175,6 +176,8 @@ export default function BeginnerGuideScreen() {
   const router = useRouter();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const { t, language } = useLanguage();
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTopOnFocus(scrollRef);
   const [activeSection, setActiveSection] = useState('overview');
   const [showFingeringChart, setShowFingeringChart] = useState(false);
   const [showMaintenanceTips, setShowMaintenanceTips] = useState(false);
@@ -1550,7 +1553,8 @@ export default function BeginnerGuideScreen() {
           </Text>
         </View>
       ) : (
-        <ScrollView 
+        <ScrollView
+          ref={scrollRef}
           style={styles.content} 
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}

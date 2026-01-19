@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { useLanguage } from '@/components/LanguageContext';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { safeGoBack } from '@/lib/navigationUtils';
 import { AppearanceSettings } from '@/components/main-settings/AppearanceSettings';
+import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
 
 export default function AppearanceSettingsScreen() {
   const router = useRouter();
@@ -26,6 +27,8 @@ export default function AppearanceSettingsScreen() {
     resetToInstrumentTheme,
     isInitializing,
   } = useInstrumentTheme();
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTopOnFocus(scrollRef);
   
   // 初期化が完了していない場合、またはcurrentThemeが存在しない場合のフォールバック
   // タイムアウト処理も追加（初期化が完了しない場合のフォールバック）
@@ -152,7 +155,8 @@ export default function AppearanceSettingsScreen() {
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView 
+      <ScrollView
+        ref={scrollRef}
         style={styles.content} 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}

@@ -38,7 +38,6 @@ interface Recording {
   recorded_at: string;
   created_at: string;
   recording_type?: 'performance' | 'lesson'; // 録音種類
-  auto_delete_at?: string | null; // 自動削除日時（レッスン録音の場合、30日後に設定）
 }
 
 type TimeFilter = 'all' | '1week' | '1month' | '3months' | '6months' | '1year';
@@ -201,136 +200,21 @@ export default function RecordingsLibraryScreen() {
       container.appendChild(slider);
       progressSliderRefs.current[playingRecording] = slider;
 
-      // シーク位置を設定する共通関数（改善版: タイムアウトと境界チェックを追加）
-      const seekToPosition = (newTime: number) => {
-        if (!audioElement) {
-          logger.warn('seekToPosition: audioElementが存在しません');
-          return;
-        }
-        
-        // src属性が有効であることを確認
-        if (!audioElement.src || audioElement.src === '' || audioElement.src === 'null' || audioElement.src === 'undefined') {
-          logger.error('seekToPosition: audioElementのsrc属性が無効です', {
-            src: audioElement.src,
-            networkState: audioElement.networkState,
-            readyState: audioElement.readyState
-          });
-          // srcが無効な場合、再生を停止してエラーを通知
-          setPlayingRecording(null);
-          setAudioElement(null);
-          Alert.alert('再生エラー', '録音の再生に失敗しました。もう一度再生ボタンを押してください。');
-          return;
-        }
-        
-        // 境界チェック: 再生位置をdurationの範囲内に制限
-        const validDuration = isFinite(audioElement.duration) && !isNaN(audioElement.duration) && audioElement.duration > 0 
-          ? audioElement.duration 
-          : 0;
-        const clampedTime = validDuration > 0 
-          ? Math.max(0, Math.min(newTime, validDuration)) 
-          : Math.max(0, newTime);
-        
-        logger.debug('シーク処理開始:', { 
-          requestedTime: newTime, 
-          clampedTime, 
-          duration: validDuration,
-          readyState: audioElement.readyState 
-        });
-        
-        // メタデータがロードされているか確認
-        if (audioElement.readyState >= HTMLMediaElement.HAVE_METADATA) {
-          // 再生位置を設定
-          try {
-            audioElement.currentTime = clampedTime;
-            setCurrentTime(clampedTime);
-            logger.debug('録音再生位置を変更:', { clampedTime, duration: audioElement.duration });
-          } catch (error) {
-            logger.error('currentTime設定エラー:', error);
-            // エラーが発生した場合、メタデータの再ロードを試みる
-            audioElement.load();
-          }
-        } else {
-          // メタデータがロードされていない場合、ロード完了を待つ（タイムアウト付き）
-          let timeoutId: NodeJS.Timeout | null = null;
-          
-          const handleLoadedMetadata = () => {
-            // タイムアウトをクリア
-            if (timeoutId) {
-              clearTimeout(timeoutId);
-              timeoutId = null;
-            }
-            
-            if (audioElement && audioElement.readyState >= HTMLMediaElement.HAVE_METADATA) {
-              try {
-                audioElement.currentTime = clampedTime;
-                setCurrentTime(clampedTime);
-                logger.debug('録音再生位置を変更（メタデータロード後）:', { clampedTime, duration: audioElement.duration });
-              } catch (error) {
-                logger.error('currentTime設定エラー（メタデータロード後）:', error);
-              }
-            }
-            audioElement?.removeEventListener('loadedmetadata', handleLoadedMetadata);
-          };
-          
-          // タイムアウト設定（5秒でタイムアウト）
-          timeoutId = setTimeout(() => {
-            logger.warn('メタデータロードがタイムアウトしました（5秒）');
-            audioElement?.removeEventListener('loadedmetadata', handleLoadedMetadata);
-            timeoutId = null;
-            // タイムアウト時は、可能な限りシークを試みる
-            if (audioElement && audioElement.readyState > 0) {
-              try {
-                audioElement.currentTime = clampedTime;
-                setCurrentTime(clampedTime);
-                logger.debug('録音再生位置を変更（タイムアウト後、強制実行）:', { clampedTime });
-              } catch (error) {
-                logger.error('currentTime設定エラー（タイムアウト後）:', error);
-              }
-            }
-          }, 5000);
-          
-          audioElement.addEventListener('loadedmetadata', handleLoadedMetadata);
-        }
-      };
-
       // イベントハンドラーを設定
       const handleInput = (e: Event) => {
         const target = e.target as HTMLInputElement;
         const newTime = parseFloat(target.value);
-        // ドラッグ中は、UIのみ更新（audioElement.currentTimeは変更しない）
-        // これにより、ドラッグ中の連続的なcurrentTime更新を防ぐ
         setCurrentTime(newTime);
-      };
-
-      // changeイベント（シーク終了時）で再生位置を更新
-      // 注: changeイベントはmouseup/touchendの後に発生する場合があるため、
-      // mouseup/touchendで既にシークが実行されている可能性がある
-      const handleChange = (e: Event) => {
-        // isSeekingが既にfalseの場合（mouseup/touchendで既に処理済み）、
-        // 重複実行を避けるため少し遅延してチェック
-        const target = e.target as HTMLInputElement;
-        const newTime = parseFloat(target.value);
-        
-        // 少し遅延してから実行（mouseup/touchendの処理完了を待つ）
-        setTimeout(() => {
-          // isSeekingがまだtrueの場合は、mouseup/touchendで処理されていない可能性がある
-          // その場合はシークを実行
-          if (isSeeking) {
-            seekToPosition(newTime);
-            setIsSeeking(false);
-          }
-        }, 50);
+        if (audioElement) {
+          audioElement.currentTime = newTime;
+        }
       };
 
       const handleMouseDown = () => {
         setIsSeeking(true);
       };
 
-      const handleMouseUp = (e: MouseEvent) => {
-        // mouseup時にシーク位置を確定（changeイベントより先に実行される）
-        const target = e.target as HTMLInputElement;
-        const newTime = parseFloat(target.value);
-        seekToPosition(newTime);
+      const handleMouseUp = () => {
         setIsSeeking(false);
       };
 
@@ -338,16 +222,11 @@ export default function RecordingsLibraryScreen() {
         setIsSeeking(true);
       };
 
-      const handleTouchEnd = (e: TouchEvent) => {
-        // touchend時にシーク位置を確定（changeイベントより先に実行される）
-        const target = e.target as HTMLInputElement;
-        const newTime = parseFloat(target.value);
-        seekToPosition(newTime);
+      const handleTouchEnd = () => {
         setIsSeeking(false);
       };
 
       slider.addEventListener('input', handleInput);
-      slider.addEventListener('change', handleChange);
       slider.addEventListener('mousedown', handleMouseDown);
       slider.addEventListener('mouseup', handleMouseUp);
       slider.addEventListener('touchstart', handleTouchStart);
@@ -356,7 +235,6 @@ export default function RecordingsLibraryScreen() {
       // クリーンアップ関数を保存
       (slider as any)._cleanup = () => {
         slider.removeEventListener('input', handleInput);
-        slider.removeEventListener('change', handleChange);
         slider.removeEventListener('mousedown', handleMouseDown);
         slider.removeEventListener('mouseup', handleMouseUp);
         slider.removeEventListener('touchstart', handleTouchStart);
@@ -445,23 +323,8 @@ export default function RecordingsLibraryScreen() {
           setRecordings([]);
         } else {
           logger.debug('録音データ取得成功:', data?.length || 0, '件');
-          
-          // file_pathが空またはnullの録音を除外（無効な録音をフィルタリング）
-          const validRecordings = (data || []).filter(rec => {
-            const hasValidPath = rec.file_path && rec.file_path.trim() !== '';
-            if (!hasValidPath) {
-              logger.warn('file_pathが空の録音を除外しました:', {
-                id: rec.id,
-                title: rec.title,
-                file_path: rec.file_path
-              });
-            }
-            return hasValidPath;
-          });
-          
-          logger.debug('有効な録音データ:', validRecordings.length, '件（除外:', (data || []).length - validRecordings.length, '件）');
           // データを更新（0件の場合は空配列を設定）
-          setRecordings(validRecordings);
+          setRecordings(data || []);
         }
       } else {
         logger.debug('ユーザー情報なし');
@@ -547,19 +410,6 @@ export default function RecordingsLibraryScreen() {
   };
 
   const playRecording = async (recording: Recording) => {
-    // ファイルパスの検証（最初に確認）
-    if (!recording.file_path || recording.file_path.trim() === '') {
-      logger.error('録音再生エラー: ファイルパスが空です', {
-        recordingId: recording.id,
-        title: recording.title,
-        file_path: recording.file_path
-      });
-      Alert.alert('エラー', '録音ファイルのパスが無効です。この録音は再生できません。');
-      // 無効な録音をリストから削除
-      setRecordings(prev => prev.filter(rec => rec.id !== recording.id));
-      return;
-    }
-
     // 動画URLの場合はブラウザで開く
     if (isVideoUrl(recording.file_path)) {
       if (typeof window !== 'undefined') {
@@ -589,6 +439,13 @@ export default function RecordingsLibraryScreen() {
       }
 
       logger.debug('録音再生開始:', recording.file_path);
+
+      // ファイルパスの検証
+      if (!recording.file_path || recording.file_path.trim() === '') {
+        logger.error('録音再生エラー: ファイルパスが空です');
+        Alert.alert('エラー', '録音ファイルのパスが無効です');
+        return;
+      }
 
       // 新しい録音を再生
       let publicUrl: string;
@@ -726,10 +583,7 @@ export default function RecordingsLibraryScreen() {
             
             audio.onended = () => {
               logger.debug('録音再生終了');
-              // onended時は、まだ再生中かもしれないので、cleanupは遅延させる
-              setTimeout(() => {
-                cleanup();
-              }, 100);
+              cleanup();
               setPlayingRecording(null);
               setAudioElement(null);
               setCurrentTime(0);
@@ -749,21 +603,15 @@ export default function RecordingsLibraryScreen() {
                 errorMessage: audio.error?.message,
                 networkState: audio.networkState,
                 readyState: audio.readyState,
-                src: audio.src,
                 isGitHubPages
               });
               
-              // エラー時はすぐにcleanupしない（デバッグのため）
-              // cleanup();
+              cleanup();
               
               // エラーメッセージを改善
               let alertMessage = '録音の再生に失敗しました。';
               if (audio.error?.code === 4) {
-                if (!audio.src || audio.src === '' || audio.src === 'null' || audio.src === 'undefined') {
-                  alertMessage += '\n\n音声ファイルの読み込みに失敗しました。もう一度再生ボタンを押してください。';
-                } else {
-                  alertMessage += '\n\nCORSエラーが発生しました。Supabase StorageのCORS設定を確認してください。';
-                }
+                alertMessage += '\n\nCORSエラーが発生しました。Supabase StorageのCORS設定を確認してください。';
               } else if (audio.networkState === 3) {
                 alertMessage += '\n\nネットワークエラーが発生しました。インターネット接続を確認してください。';
               } else {
@@ -773,8 +621,6 @@ export default function RecordingsLibraryScreen() {
               Alert.alert('再生エラー', alertMessage);
               setPlayingRecording(null);
               setAudioElement(null);
-              // エラー時はcleanupを実行
-              cleanup();
             };
             
             // ロードイベントを追加
@@ -790,20 +636,9 @@ export default function RecordingsLibraryScreen() {
               logger.debug('録音データの再生準備完了');
             };
             
-            // 再生を開始する前に、src属性が有効であることを再確認
-            if (!audio.src || audio.src === '' || audio.src === 'null' || audio.src === 'undefined') {
-              throw new Error('Audio要素のsrc属性が無効です（再生前）');
-            }
-            
             // 再生を開始
             await audio.play();
-            logger.debug('録音再生中（Blob URL使用）', { 
-              isGitHubPages,
-              src: audio.src,
-              blobUrl,
-              networkState: audio.networkState,
-              readyState: audio.readyState
-            });
+            logger.debug('録音再生中（Blob URL使用）', { isGitHubPages });
             setPlayingRecording(recording.id);
             setAudioElement(audio);
             
@@ -1044,7 +879,11 @@ export default function RecordingsLibraryScreen() {
 
         {/* 検索バー */}
         <View style={[styles.searchContainer, { backgroundColor: currentTheme.surface }]}>
-          <Search size={20} color={currentTheme.textSecondary} />
+          {Platform.OS === 'web' ? (
+            <Text style={[styles.searchIconText, { color: currentTheme.textSecondary }]}>🔍</Text>
+          ) : (
+            <Search size={20} color={currentTheme.textSecondary} />
+          )}
           <TextInput
             style={[styles.searchInput, { color: currentTheme.text }]}
             placeholder="タイトルで検索..."
@@ -1059,7 +898,11 @@ export default function RecordingsLibraryScreen() {
               onPress={() => setSearchQuery('')}
               style={styles.clearButton}
             >
-              <X size={18} color={currentTheme.textSecondary} />
+              {Platform.OS === 'web' ? (
+                <Text style={[styles.clearIconText, { color: currentTheme.textSecondary }]}>✕</Text>
+              ) : (
+                <X size={18} color={currentTheme.textSecondary} />
+              )}
             </TouchableOpacity>
           )}
         </View>
@@ -1302,15 +1145,6 @@ export default function RecordingsLibraryScreen() {
                             {formatDuration(recording.duration_seconds)}
                           </Text>
                         </View>
-                        {/* レッスン録音で削除予定日がある場合に表示 */}
-                        {recording.recording_type === 'lesson' && recording.auto_delete_at && !recording.is_favorite && (
-                          <View style={styles.metaItem}>
-                            <Calendar size={14} color="#FF9500" />
-                            <Text style={[styles.metaText, { color: '#FF9500' }]}>
-                              削除予定: {formatDate(recording.auto_delete_at)}
-                            </Text>
-                          </View>
-                        )}
                       </View>
                     </View>
                     
@@ -1439,7 +1273,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   header: {
-    paddingVertical: 20,
+    paddingVertical: 14,
     alignItems: 'center',
   },
   headerTop: {
@@ -1447,11 +1281,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
   },
   backButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    marginTop: -4,
     borderRadius: 8,
     backgroundColor: 'rgba(0,0,0,0.1)',
     minWidth: 60,
@@ -1483,12 +1318,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '400',
   },
   loadingContainer: {
@@ -1518,9 +1353,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
   },
   timeFilterContainer: {
-    marginBottom: 6,
-    padding: 8,
-    borderRadius: 16,
+    marginBottom: 4,
+    padding: 6,
+    borderRadius: 14,
     elevation: 2,
     ...createShadowStyle({
       shadowColor: '#000',
@@ -1533,7 +1368,7 @@ const styles = StyleSheet.create({
   timeFilterTitle: {
     fontSize: 13,
     fontWeight: '600',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   timeFilterButtons: {
     flexDirection: 'row',
@@ -1542,7 +1377,7 @@ const styles = StyleSheet.create({
   },
   timeFilterButton: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingVertical: 3,
     borderRadius: 16,
     minWidth: 60,
     alignItems: 'center',
@@ -1614,6 +1449,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 8,
+    marginTop: -6,
     marginBottom: 12,
     borderRadius: 12,
     gap: 12,
@@ -1623,8 +1459,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingVertical: 6,
   },
+  searchIconText: {
+    fontSize: 18,
+    lineHeight: 18,
+  },
   clearButton: {
     padding: 4,
+  },
+  clearIconText: {
+    fontSize: 16,
+    lineHeight: 16,
+    fontWeight: '700',
   },
   progressContainer: {
     marginTop: 12,

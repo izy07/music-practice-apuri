@@ -2051,7 +2051,7 @@ export default function ProfileSettingsScreen() {
                   <View style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    justifyContent: 'space-between',
+                    justifyContent: 'flex-start',
                   }}>
                     <Text style={[styles.formLabel, { color: currentTheme.textSecondary }]}>楽器情報</Text>
                     <TouchableOpacity
@@ -2067,15 +2067,16 @@ export default function ProfileSettingsScreen() {
                           flexDirection: 'row',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          gap: 4,
                           margin: 0,
+                          marginLeft: 12,
                           paddingHorizontal: 16,
                           paddingVertical: 10,
                         }
                       ]}
                       activeOpacity={0.8}
+                      pointerEvents="auto"
                     >
-                      <Plus size={16} color="#FFFFFF" />
+                      <Plus size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
                       <Text style={styles.saveAllButtonText}>
                         追加
                       </Text>

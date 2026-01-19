@@ -31,11 +31,13 @@ interface QuickRecordModalProps {
   visible: boolean;
   onClose: () => void;
   onRecord: (minutes: number) => void;
+  // カレンダー等で選択中の日付に紐付けたい場合に指定（未指定なら今日）
+  targetDate?: Date | null;
 }
 
 const { height } = Dimensions.get('window');
 
-const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose, onRecord }: QuickRecordModalProps) {
+const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose, onRecord, targetDate }: QuickRecordModalProps) {
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const { user } = useAuthAdvanced();
   const { entitlement } = useSubscription();
@@ -51,6 +53,9 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
       if (!user) {
         throw new Error('ユーザーが認証されていません');
       }
+
+      const resolvedDate = targetDate || new Date();
+      const practiceDate = formatLocalDate(resolvedDate);
 
       // 共通関数を使用して楽器IDを取得
       const currentInstrumentId = getInstrumentId(selectedInstrument);
@@ -76,7 +81,8 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
           instrumentId: currentInstrumentId,
           content: 'クイック記録',
           inputMethod: 'voice',
-          existingContentPrefix: 'クイック記録'
+          existingContentPrefix: 'クイック記録',
+          practiceDate,
         }
       );
 
@@ -94,7 +100,7 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
       }
 
       logger.info(`クイック記録を保存: ${minutes}分`, {
-        practiceDate: formatLocalDate(new Date()),
+        practiceDate,
         instrumentId: currentInstrumentId
       });
 
@@ -103,7 +109,7 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
         window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
           detail: {
             action: 'saved',
-            date: new Date(),
+            date: resolvedDate,
             source: 'quick_record',
             minutes: minutes
           }

@@ -124,7 +124,7 @@ export default function TabLayout() {
             bottom: 0,
             left: 0,
             right: 0,
-            zIndex: 1000, // 他の要素の上に表示
+            zIndex: 10000, // 他の要素の上に表示（イベント管理セクションと重ならないように高く設定）
             overflow: 'hidden', // 余計な要素が表示されないように
           },
           

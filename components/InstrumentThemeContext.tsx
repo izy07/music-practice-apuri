@@ -121,8 +121,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
   // 楽器データ読み込み中のフラグ（無限ループを防ぐ）
   const isLoadingInstrumentsRef = useRef(false);
 
-  // 楽器データをDBから取得（計画に従って独立した関数として実装）
-  // キャッシュ戦略を改善：ContextレベルとRepositoryレベルの両方でキャッシュを使用
+  // 楽器データを静的データから取得（データベースリクエスト不要）
   const loadInstrumentsFromDB = useCallback(async (): Promise<void> => {
     // 既に読み込み中の場合はスキップ（無限ループを防ぐ）
     if (isLoadingInstrumentsRef.current) {
@@ -141,52 +140,24 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         return;
       }
 
-      // 2. まずデフォルト楽器を即座に設定（UIの応答性を向上）
-      const safeDefaultInstruments = defaultInstruments.length > 0 ? defaultInstruments : [defaultTheme];
-      setDbInstruments(safeDefaultInstruments);
+      // 2. 静的データから楽器データを取得（データベースリクエスト不要）
+      const { getAllStaticInstruments } = await import('@/data/staticInstruments');
+      const staticInstruments = getAllStaticInstruments();
 
-      // 3. 認証状態を確認
-      const { user: currentUser, error: authError } = await getCurrentUser();
-
-      // 認証されていない場合はデフォルト楽器のみを使用
-      if (authError || !currentUser) {
-        logger.debug('認証されていないため、デフォルト楽器のみを使用します');
-        isLoadingInstrumentsRef.current = false;
-        return;
-      }
-
-      // 4. 認証されている場合のみ、サービス層経由で楽器データを取得
-      // Repositoryレベルでもキャッシュが使用されるため、二重キャッシュで最適化
-      const fetchPromise = instrumentService.getAllInstruments();
-      const timeoutPromise = new Promise<{ success: false; data: null; error: Error }>((resolve) => {
-        setTimeout(() => {
-          resolve({
-            success: false,
-            data: null,
-            error: new Error('楽器データ取得がタイムアウトしました'),
-          });
-        }, TIMEOUT.INSTRUMENT_FETCH_MS);
-      });
-
-      const result = await Promise.race([fetchPromise, timeoutPromise]);
-
-      if (result.success && result.data && result.data.length > 0) {
-        // 5. データベースから取得した楽器データで更新
-        setDbInstruments(result.data);
-        // 6. Contextレベルのキャッシュに保存（次回は即座に表示）
-        instrumentsCacheRef.current = result.data;
-        logger.debug('楽器データをContextキャッシュに保存');
+      if (staticInstruments && staticInstruments.length > 0) {
+        setDbInstruments(staticInstruments);
+        instrumentsCacheRef.current = staticInstruments;
+        logger.debug('静的データから楽器データを読み込み:', staticInstruments.length, '件');
       } else {
-        // エラーの場合はローカルのdefaultInstrumentsを使用（既に設定済み）
-        // エラー時のフォールバック処理を統一
-        if (__DEV__) {
-          logger.warn('楽器データの取得に失敗しました。デフォルト楽器を使用します。', result.error);
-        }
+        // 静的データが空の場合はデフォルト楽器を使用
+        const safeDefaultInstruments = defaultInstruments.length > 0 ? defaultInstruments : [defaultTheme];
+        setDbInstruments(safeDefaultInstruments);
+        logger.debug('静的データが空のため、デフォルト楽器を使用');
       }
     } catch (error) {
-      logger.error('Error loading instruments from DB:', error);
+      logger.error('Error loading instruments from static data:', error);
       ErrorHandler.handle(error, '楽器データ読み込み', false);
-      // エラー時のフォールバック処理を統一
+      // エラー時のフォールバック処理
       const safeDefaultInstruments = defaultInstruments.length > 0 ? defaultInstruments : [defaultTheme];
       setDbInstruments(safeDefaultInstruments);
     } finally {
@@ -614,22 +585,34 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
           let retryCount = 0;
           const maxRetries = ERROR.MAX_RETRIES;
           let lastError: Error | null = null;
+          let isCancelled = false; // タイムアウト時にsyncPromiseの処理をキャンセルするフラグ
+
+          // タイムアウト時間を設定（リトライを含むので少し長めに）
+          const timeoutMs = TIMEOUT.INSTRUMENT_SYNC_MS * 3;
+          let timeoutId: NodeJS.Timeout | null = null;
 
           // タイムアウト付きでサーバー同期を実行
           const syncPromise = (async () => {
-            while (retryCount < maxRetries) {
+            while (retryCount < maxRetries && !isCancelled) {
               const result = await updateSelectedInstrument(currentUser.id, instrumentId);
+              if (isCancelled) {
+                return; // タイムアウトが発生した場合は処理を中断
+              }
+              
               if (!result.error) {
                 setSyncStatus('success');
                 setLastSyncTime(new Date());
                 setLastSyncError(null);
+                if (timeoutId) {
+                  clearTimeout(timeoutId);
+                }
                 return;
               }
 
               lastError = result.error instanceof Error ? result.error : new Error(String(result.error));
               retryCount++;
 
-              if (retryCount < maxRetries) {
+              if (retryCount < maxRetries && !isCancelled) {
                 const delay = Math.min(
                   ERROR.RETRY_BASE_DELAY_MS * Math.pow(2, retryCount - 1),
                   ERROR.RETRY_MAX_DELAY_MS
@@ -639,33 +622,55 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
               }
             }
 
-            if (lastError && retryCount >= maxRetries) {
-              logger.warn('サーバー同期失敗（ローカル保存は成功）:', lastError);
-              setLastSyncError(lastError);
-              setSyncStatus('error');
+            if (!isCancelled) {
+              if (lastError && retryCount >= maxRetries) {
+                logger.warn('サーバー同期失敗（ローカル保存は成功）:', lastError);
+                setLastSyncError(lastError);
+                setSyncStatus('error');
+              }
             }
           })();
 
           const timeoutPromise = new Promise<void>((_, reject) => {
-            setTimeout(() => {
+            timeoutId = setTimeout(() => {
+              isCancelled = true;
+              // タイムアウト時は即座にsyncStatusを更新
+              setSyncStatus('idle');
+              setLastSyncError(null);
+              logger.warn('サーバー同期タイムアウト（ローカル保存は成功）');
               reject(new Error('タイムアウト: サーバー同期に時間がかかりすぎました'));
-            }, TIMEOUT.INSTRUMENT_SYNC_MS * 3); // リトライを含むので少し長めに
+            }, timeoutMs);
           });
 
-          await Promise.race([syncPromise, timeoutPromise]);
-        } catch (syncError) {
-          // タイムアウトやエラーが発生した場合でも、ローカル保存は成功しているので続行
-          const errorMessage = syncError instanceof Error ? syncError.message : String(syncError);
-          if (errorMessage.includes('タイムアウト')) {
-            logger.warn('サーバー同期タイムアウト（ローカル保存は成功）:', syncError);
-            setSyncStatus('idle'); // タイムアウトの場合は'idle'に戻す（エラーではない）
-            setLastSyncError(null);
-          } else {
-            logger.warn('サーバー同期エラー（ローカル保存は成功）:', syncError);
-            setSyncStatus('error');
-            setLastSyncError(syncError instanceof Error ? syncError : new Error(String(syncError)));
+          try {
+            await Promise.race([syncPromise, timeoutPromise]);
+          } catch (syncError) {
+            // タイムアウトやエラーが発生した場合でも、ローカル保存は成功しているので続行
+            const errorMessage = syncError instanceof Error ? syncError.message : String(syncError);
+            if (isCancelled || errorMessage.includes('タイムアウト')) {
+              // タイムアウト時は既に'idle'に設定されている
+              logger.debug('サーバー同期タイムアウト処理完了');
+            } else {
+              logger.warn('サーバー同期エラー（ローカル保存は成功）:', syncError);
+              setSyncStatus('error');
+              setLastSyncError(syncError instanceof Error ? syncError : new Error(String(syncError)));
+            }
+          } finally {
+            // タイムアウトタイマーをクリア
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+            }
+            // 念のため、syncStatusが'syncing'のままの場合、'idle'に戻す（セーフティネット）
+            setTimeout(() => {
+              setSyncStatus((prev) => {
+                if (prev === 'syncing') {
+                  logger.warn('syncStatusがsyncingのまま残っていたため、idleに戻します');
+                  return 'idle';
+                }
+                return prev;
+              });
+            }, timeoutMs + 2000); // タイムアウト時間 + 2秒後に確認
           }
-        }
       } else {
         setSyncStatus('idle');
       }

@@ -520,6 +520,13 @@ export default function TimerScreen() {
     soundType: 'beep',
   });
   
+  // settings.autoSaveをrefで保持（コールバック内で最新の値を参照するため）
+  const autoSaveRef = useRef(settings.autoSave);
+  useEffect(() => {
+    autoSaveRef.current = settings.autoSave;
+    logger.debug('autoSaveRefを更新:', settings.autoSave);
+  }, [settings.autoSave]);
+  
   // 固定値: 音量とバイブレーション
   const VOLUME = 0.7;
   const VIBRATE_ON = true;
@@ -568,12 +575,16 @@ export default function TimerScreen() {
       ? Math.round(timerPresetRef.current / 60) 
       : 0;
     
+    // 最新のautoSave設定をrefから取得（クロージャ問題を回避）
+    const currentAutoSave = autoSaveRef.current;
+    
     logger.debug('タイマー完了コールバック実行', { 
       practiceMinutes,
       timerPreset: timerPresetRef.current,
       soundOn: settings.soundOn, 
       vibrateOn: VIBRATE_ON,
-      autoSave: settings.autoSave
+      autoSave: currentAutoSave,
+      autoSaveFromState: settings.autoSave
     });
     
     // 重複実行を防ぐ（既に処理済みの場合はスキップ）
@@ -624,8 +635,8 @@ export default function TimerScreen() {
       }
     }
     
-    // 練習記録の保存処理
-    if (settings.autoSave) {
+    // 練習記録の保存処理（refから最新の値を取得）
+    if (currentAutoSave) {
       logger.debug('自動記録を開始:', practiceMinutes, '分');
       // 保存処理を確実にawaitして、完了を待つ
       (async () => {
@@ -853,15 +864,18 @@ export default function TimerScreen() {
       });
       
       // イベントを発火（保存処理の戻り値で成功を確認済みのため、検証処理は不要）
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
-                detail: { 
-                  action: 'saved', 
-                  date: new Date(), 
-                  source: 'timer',
-            minutes: minutes
-                }
-              }));
+      if (typeof window !== 'undefined') {
+        const practiceDate = formatLocalDate(new Date());
+        window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
+          detail: { 
+            action: 'saved', 
+            date: practiceDate, // 今日の日付を文字列形式で指定
+            source: 'timer',
+            minutes: minutes,
+            verified: true // データベースへの保存が完了していることを示す
+          }
+        }));
+        logger.debug('タイマー記録保存イベントを発火:', { practiceDate, minutes });
       }
       
       return true;
@@ -917,13 +931,13 @@ export default function TimerScreen() {
       [
         { text: 'いいえ', style: 'cancel' },
         { 
-          text: '次回から自動で記録', 
+          text: 'タイマー完了時に自動で練習記録を保存', 
           onPress: async () => {
             await savePracticeRecord(practiceMinutes);
             // 自動記録を有効化
             setAutoSave(true);
             await AsyncStorage.setItem('timer_auto_save', '1');
-            Alert.alert('設定完了', '次回から自動で記録されます');
+            Alert.alert('設定完了', 'タイマー完了時に自動で練習記録を保存します（1分以上で記録されます）');
           }
         },
         { 
@@ -1944,9 +1958,9 @@ export default function TimerScreen() {
               {/* 自動記録設定 */}
               <View style={styles.settingRow}>
                 <View style={styles.settingLeft}>
-                  <Text style={[styles.settingLabel, { color: currentTheme.text }]}>{t('autoRecord') || '次回から自動で記録'}</Text>
+                  <Text style={[styles.settingLabel, { color: currentTheme.text }]}>{t('autoRecord') || 'タイマー完了時に自動で練習記録を保存'}</Text>
                   <Text style={[styles.settingDescription, { color: currentTheme.textSecondary }]}>
-                    {t('autoRecordDescription') || 'タイマー完了時に自動で練習記録を保存'}
+                    {t('autoRecordDescription') || '1分以上で記録されます'}
                   </Text>
                 </View>
                   <Switch

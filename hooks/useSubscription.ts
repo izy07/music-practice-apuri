@@ -70,6 +70,20 @@ export const useSubscription = () => {
         }
       }
       
+      // 再課金を検知（フリープランからプレミアムに変更された場合）
+      if (previousEntitlement?.isEntitled === false && computedEntitlement.isEntitled === true) {
+        logger.info('プレミアム再課金を検知しました。非表示の曲を復元します。');
+        try {
+          // 再課金時の非表示曲復元を実行（非同期、エラーは無視）
+          const { restoreHiddenSongsOnUpgrade } = await import('@/lib/subscriptionLimits');
+          restoreHiddenSongsOnUpgrade(user.id, computedEntitlement).catch((restoreError) => {
+            logger.error('再課金時の曲復元中にエラーが発生しました（続行）:', restoreError);
+          });
+        } catch (restoreError) {
+          logger.error('再課金時の曲復元の呼び出し中にエラーが発生しました（続行）:', restoreError);
+        }
+      }
+      
       // 前回の状態を更新
       previousEntitlementRef.current = { isEntitled: computedEntitlement.isEntitled };
       

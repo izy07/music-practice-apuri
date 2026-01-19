@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import { ArrowLeft, ChevronDown, ChevronUp, BookOpen, Calendar, Target, BarChart
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { safeGoBack } from '@/lib/navigationUtils';
 import { createShadowStyle } from '@/lib/shadowStyles';
+import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
 
 /**
  * 【アプリ使い方ガイド画面】既存ユーザー向けの詳細な機能説明
@@ -24,6 +25,8 @@ export default function AppGuideScreen() {
   const router = useRouter();
   const { currentTheme } = useInstrumentTheme();
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const scrollRef = useRef<ScrollView>(null);
+  useScrollToTopOnFocus(scrollRef);
 
   const guideSections = [
     {
@@ -46,7 +49,6 @@ export default function AppGuideScreen() {
         '📅 カレンダー画面で日付をタップすると、練習記録を入力できます。',
         '⏱️ クイック記録ボタンで、その日の練習時間をワンタップで記録できます。',
         '📝 練習内容を自由に記録できます（基礎練のメニュー名など）。',
-        '✅ 基礎練メニューで「練習した！」ボタンを押すと、カレンダーに✅マークが表示されます。',
         '🎤 録音機能を使って、演奏を毎日録音して保存することもできます。録音はその他の録音ライブラリから一覧で確認することができます。',
         '🎨 カレンダー上のマークについて：練習時間のみの記録は濃いカスタムカラー、録音のみの記録は赤、両方記録で薄いカスタムカラーのマークがつきます。'
       ]
@@ -59,9 +61,7 @@ export default function AppGuideScreen() {
       content: [
         '🎯 基礎練画面では、レベル別（初級・中級・マスター）の練習メニューを提供しています。',
         '📋 各メニューには、練習の仕方、推奨テンポ、練習ポイントが記載されています。',
-        '▶️ メニューをタップして詳細を確認し、「練習した！」ボタンを押すと記録されます。',
-        '✅ 「練習した！」ボタンを押すと、カレンダーに✅マークが表示され、統計画面に反映されます。',
-        '📊 統計画面の「基礎練内容別の分析」で、よく練習している基礎練を確認できます。'
+        '▶️ メニューをタップして詳細を確認し、「練習した！」ボタンを押すと記録されます。'
       ]
     },
     {
@@ -72,9 +72,6 @@ export default function AppGuideScreen() {
       content: [
         '📈 日別・週別・月別・年別の統計を確認できます。',
         '📊 グラフで練習時間の推移を視覚的に確認できます。',
-        '🎯 基礎練内容別の分析で、よく練習しているメニューを確認できます。',
-        '📅 週間練習パターンで、どの曜日に多く練習しているか確認できます。',
-        '⏰ 練習時間帯統計で、いつ練習しているか確認できます。',
         '🔥 連続練習日数で、練習の継続状況を確認できます。'
       ]
     },
@@ -97,7 +94,6 @@ export default function AppGuideScreen() {
       content: [
         '🎤 カレンダー画面や練習記録モーダルから録音機能を起動できます。',
         '⏺️ 録音ボタンを押すと、演奏を録音できます。',
-        '⏸️ 録音を停止すると、録音データが保存されます。',
         '📚 録音ライブラリで、過去の録音を確認・再生できます。',
         '⭐ お気に入りの録音にマークを付けることができます。'
       ]
@@ -109,8 +105,6 @@ export default function AppGuideScreen() {
       description: '練習目標を設定して、モチベーションを維持しましょう。',
       content: [
         '🎯 目標画面で、短期・長期の目標を設定できます。',
-        '📅 目標の期限を設定できます。',
-        '📊 目標の進捗状況を確認できます。',
         '📈 目標達成の履歴を確認できます。'
       ]
     },
@@ -123,8 +117,7 @@ export default function AppGuideScreen() {
         '👤 プロフィール設定で、個人情報を登録でき自分の経歴を一目で確認することができます。',
         '📚 マイライブラリで、過去に弾いた曲や弾きたい曲を管理することができます。',
         '🌐 録音ライブラリで演奏録音を一覧で確認することができ、上達を実感しやすくなります。',
-        '🎨 画面の背景は楽器変更画面にある外観設定からお好みの色にすることができます。',
-        '📚 マイライブラリで、楽曲を管理できます。'
+        '🎨 画面の背景は楽器変更画面にある外観設定からお好みの色にすることができます。'
       ]
     }
   ];
@@ -149,7 +142,7 @@ export default function AppGuideScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+      <ScrollView ref={scrollRef} style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         {/* セクション一覧 */}
         {guideSections.map((section) => {
           const IconComponent = section.icon;

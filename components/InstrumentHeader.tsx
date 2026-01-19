@@ -13,7 +13,7 @@ import { getSession } from '@/lib/authService';
 import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
 import { getCurrentRouteFromHistory } from '@/lib/navigationHistory';
 import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
-import { supabase } from '@/lib/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 export default function InstrumentHeader() {
   const router = useRouter();
   const segments = useSegments();
@@ -23,7 +23,21 @@ export default function InstrumentHeader() {
   const { isAuthenticated, user } = useAuthAdvanced();
   const [showLearningTools, setShowLearningTools] = useState(false);
   const [showAppealModal, setShowAppealModal] = useState(false);
+  const [localCustomInstrumentName, setLocalCustomInstrumentName] = useState<string | null>(null);
   
+  // 楽器IDを一度だけ算出（表示・スタイル判定で使う）
+  const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+  const shouldUseSmallInstrumentFont = (() => {
+    // クラリネット / トランペット / トロンボーン / コントラバスは文字数が長めなので少し小さく表示
+    const SMALL_FONT_IDS = new Set<string>([
+      '550e8400-e29b-41d4-a716-446655440009', // Clarinet
+      '550e8400-e29b-41d4-a716-446655440005', // Trumpet
+      '550e8400-e29b-41d4-a716-446655440010', // Trombone
+      '550e8400-e29b-41d4-a716-446655440015', // Contrabass
+    ]);
+    return Boolean(currentInstrumentId && SMALL_FONT_IDS.has(currentInstrumentId));
+  })();
+
   // 楽器情報をコンテキストから取得（単一のデータソース）
   const instrumentInfo = useMemo(() => {
     // 有効な楽器IDを取得（統一的なフォールバック処理）
@@ -44,9 +58,6 @@ export default function InstrumentHeader() {
 
   // ユーザーの過去の楽器選択を取得（初回のみ、最適化）
   const [userInstrumentInfo, setUserInstrumentInfo] = useState<{ id: string; name: string; name_en: string } | null>(null);
-  
-  // カスタム楽器名（その他楽器の場合）
-  const [customInstrumentName, setCustomInstrumentName] = useState<string | null>(null);
   
   useEffect(() => {
     let cancelled = false;
@@ -172,70 +183,6 @@ export default function InstrumentHeader() {
     };
   }, [isAuthenticated, user, selectedInstrument, dbInstruments, setSelectedInstrument]);
 
-  // カスタム楽器名を取得（その他楽器が選択されている場合のみ）
-  useEffect(() => {
-    let cancelled = false;
-    
-    const fetchCustomInstrumentName = async () => {
-      if (!isAuthenticated || !user?.id) {
-        setCustomInstrumentName(null);
-        return;
-      }
-      
-      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
-      
-      // その他楽器が選択されている場合のみ、カスタム楽器名を取得
-      if (currentInstrumentId === '550e8400-e29b-41d4-a716-446655440016') {
-        // まずuserオブジェクトから取得を試みる
-        if (user?.custom_instrument_name) {
-          if (!cancelled) {
-            setCustomInstrumentName(user.custom_instrument_name);
-          }
-          return;
-        }
-        
-        // userオブジェクトにない場合は、データベースから直接取得
-        try {
-          const { data, error } = await supabase
-            .from('user_profiles')
-            .select('custom_instrument_name')
-            .eq('user_id', user.id)
-            .maybeSingle();
-          
-          if (!cancelled) {
-            if (error) {
-              // カラムが存在しないエラー（42703）の場合は無視
-              if (error.code !== '42703') {
-                logger.debug('カスタム楽器名取得エラー（無視）:', error);
-              }
-              setCustomInstrumentName(null);
-            } else if (data?.custom_instrument_name) {
-              setCustomInstrumentName(data.custom_instrument_name);
-            } else {
-              setCustomInstrumentName(null);
-            }
-          }
-        } catch (error) {
-          if (!cancelled) {
-            logger.debug('カスタム楽器名取得例外（無視）:', error);
-            setCustomInstrumentName(null);
-          }
-        }
-      } else {
-        // その他楽器以外が選択されている場合はカスタム楽器名をクリア
-        if (!cancelled) {
-          setCustomInstrumentName(null);
-        }
-      }
-    };
-    
-    fetchCustomInstrumentName();
-    
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated, user, selectedInstrument, user?.custom_instrument_name]);
-
   // Webプラットフォームでのフォーカス管理
   useEffect(() => {
     if (Platform.OS === 'web') {
@@ -253,6 +200,41 @@ export default function InstrumentHeader() {
       }
     };
   }, [showLearningTools, showAppealModal]);
+
+  // 「その他」カスタム名のローカルフォールバックを読み込み（DBカラム未作成/反映遅延対策）
+  useEffect(() => {
+    const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+    if (currentInstrumentId !== '550e8400-e29b-41d4-a716-446655440016') {
+      setLocalCustomInstrumentName(null);
+      return;
+    }
+
+    const userId = user?.id;
+    if (!userId) {
+      setLocalCustomInstrumentName(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const key = `custom_instrument_name_${userId}`;
+        if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+          const v = window.localStorage.getItem(key);
+          if (!cancelled) setLocalCustomInstrumentName(v && v.trim() ? v : null);
+          return;
+        }
+        const v = await AsyncStorage.getItem(key);
+        if (!cancelled) setLocalCustomInstrumentName(v && v.trim() ? v : null);
+      } catch {
+        if (!cancelled) setLocalCustomInstrumentName(null);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedInstrument, user?.selected_instrument_id, user?.id]);
 
   // 絵文字を削除する関数
   const removeEmoji = (text: string): string => {
@@ -275,22 +257,12 @@ export default function InstrumentHeader() {
     const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
     
     // その他楽器（ID: 550e8400-e29b-41d4-a716-446655440016）の場合は、カスタム楽器名を優先的に表示
-    // customInstrumentName（状態）を優先的に使用し、フォールバックとしてuser?.custom_instrument_nameを使用
     if (currentInstrumentId === '550e8400-e29b-41d4-a716-446655440016') {
-      const displayName = customInstrumentName || user?.custom_instrument_name;
-      if (displayName) {
-        return displayName;
-      }
+      const custom = user?.custom_instrument_name || localCustomInstrumentName;
+      if (custom) return custom;
     }
     
     if (currentInstrumentId && instrumentInfo) {
-      // その他楽器の場合は、カスタム楽器名を優先的に表示
-      if (instrumentInfo.id === '550e8400-e29b-41d4-a716-446655440016') {
-        const displayName = customInstrumentName || user?.custom_instrument_name;
-        if (displayName) {
-          return displayName;
-        }
-      }
       const displayName = language === 'en' ? instrumentInfo.name_en : instrumentInfo.name;
       return removeEmoji(displayName);
     }
@@ -298,11 +270,8 @@ export default function InstrumentHeader() {
     // 過去に選択されていた楽器がある場合はそれを表示
     if (userInstrumentInfo) {
       // その他楽器の場合は、カスタム楽器名を優先的に表示
-      if (userInstrumentInfo.id === '550e8400-e29b-41d4-a716-446655440016') {
-        const displayName = customInstrumentName || user?.custom_instrument_name;
-        if (displayName) {
-          return displayName;
-        }
+      if (userInstrumentInfo.id === '550e8400-e29b-41d4-a716-446655440016' && user?.custom_instrument_name) {
+        return user.custom_instrument_name;
       }
       const displayName = language === 'en' ? userInstrumentInfo.name_en : userInstrumentInfo.name;
       return removeEmoji(displayName);
@@ -311,11 +280,8 @@ export default function InstrumentHeader() {
     // user.selected_instrument_idから直接楽器情報を取得
     if (user?.selected_instrument_id && dbInstruments.length > 0) {
       // その他楽器の場合は、カスタム楽器名を優先的に表示
-      if (user.selected_instrument_id === '550e8400-e29b-41d4-a716-446655440016') {
-        const displayName = customInstrumentName || user?.custom_instrument_name;
-        if (displayName) {
-          return displayName;
-        }
+      if (user.selected_instrument_id === '550e8400-e29b-41d4-a716-446655440016' && user?.custom_instrument_name) {
+        return user.custom_instrument_name;
       }
       const instrument = dbInstruments.find(inst => inst.id === user.selected_instrument_id);
       if (instrument) {
@@ -328,11 +294,8 @@ export default function InstrumentHeader() {
     // Contextから取得した楽器情報を使用（単一のデータソース）
     if (instrumentInfo) {
       // その他楽器の場合は、カスタム楽器名を優先的に表示
-      if (instrumentInfo.id === '550e8400-e29b-41d4-a716-446655440016') {
-        const displayName = customInstrumentName || user?.custom_instrument_name;
-        if (displayName) {
-          return displayName;
-        }
+      if (instrumentInfo.id === '550e8400-e29b-41d4-a716-446655440016' && user?.custom_instrument_name) {
+        return user.custom_instrument_name;
       }
       const displayName = language === 'en' ? instrumentInfo.name_en : instrumentInfo.name;
       return removeEmoji(displayName);
@@ -513,8 +476,13 @@ export default function InstrumentHeader() {
     }, 150); // 少し長めの遅延（モーダルのアニメーションが完了するのを待つ）
   };
 
+  // ステータスバーの高さを計算（Web環境でもスマホでの見た目を確認できるようにスペースを確保）
+  const statusBarHeight = Platform.OS === 'web' 
+    ? 44 // Web環境でもiOSのステータスバー相当のスペースを確保（スマホでの見た目確認用）
+    : Math.max(insets.top, Platform.OS === 'ios' ? 44 : 24);
+
   return (
-    <View style={[styles.headerContainer, { paddingTop: insets.top }]}>
+    <View style={[styles.headerContainer, { paddingTop: statusBarHeight }]}>
 
       <TouchableOpacity
         style={[
@@ -528,7 +496,11 @@ export default function InstrumentHeader() {
         activeOpacity={0.8}
       >
         <Text 
-          style={[styles.instrumentName, { color: currentTheme.surface }]}
+          style={[
+            styles.instrumentName,
+            { color: currentTheme.surface },
+            shouldUseSmallInstrumentFont ? styles.instrumentNameSmall : null,
+          ]}
           numberOfLines={1}
           adjustsFontSizeToFit={true}
           minimumFontScale={0.8}
@@ -780,7 +752,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginHorizontal: 16,
-    marginTop: 8,
+    marginTop: 0,
     marginBottom: 6,
   },
   container: {
@@ -831,6 +803,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 4,
     paddingVertical: 2,
+  },
+  instrumentNameSmall: {
+    fontSize: 15,
   },
   modalOverlay: {
     flex: 1,
