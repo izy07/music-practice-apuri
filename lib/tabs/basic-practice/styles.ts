@@ -168,7 +168,19 @@ export const styles = StyleSheet.create({
   },
   practiceList: {
     paddingHorizontal: 16,
+    paddingTop: 8,
     paddingBottom: 20,
+  },
+  practiceListEmpty: {
+    paddingTop: 24,
+    paddingBottom: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  practiceListEmptyText: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
   },
   compactCard: {
     backgroundColor: '#FFFFFF',
