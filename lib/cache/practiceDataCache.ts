@@ -5,6 +5,7 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import logger from '@/lib/logger';
+import { shouldUsePersistentCache } from '@/lib/cache/cachePolicy';
 
 interface CacheEntry<T> {
   data: T;
@@ -82,6 +83,9 @@ export class PracticeDataCache {
    * ローカルストレージキャッシュからデータを取得
    */
   async getFromStorage<T>(key: string): Promise<T | null> {
+    if (!shouldUsePersistentCache()) {
+      return null;
+    }
     try {
       const stored = await AsyncStorage.getItem(`cache:${key}`);
       if (!stored) {
@@ -107,6 +111,9 @@ export class PracticeDataCache {
    * ローカルストレージキャッシュにデータを保存
    */
   async setToStorage<T>(key: string, data: T, ttl?: number): Promise<void> {
+    if (!shouldUsePersistentCache()) {
+      return;
+    }
     try {
       const now = Date.now();
       const expiresAt = now + (ttl || this.STORAGE_CACHE_TTL);
@@ -134,6 +141,9 @@ export class PracticeDataCache {
    * ローカルストレージキャッシュから削除
    */
   async deleteFromStorage(key: string): Promise<void> {
+    if (!shouldUsePersistentCache()) {
+      return;
+    }
     try {
       await AsyncStorage.removeItem(`cache:${key}`);
     } catch (error) {
@@ -154,6 +164,9 @@ export class PracticeDataCache {
    * ローカルストレージキャッシュをクリア
    */
   async clearStorage(): Promise<void> {
+    if (!shouldUsePersistentCache()) {
+      return;
+    }
     try {
       const keys = await AsyncStorage.getAllKeys();
       const cacheKeys = keys.filter(key => key.startsWith('cache:'));

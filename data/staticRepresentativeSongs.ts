@@ -36,24 +36,6 @@ export interface StaticRepresentativeSong {
 export const staticRepresentativeSongs: Record<string, StaticRepresentativeSong[]> = {
   "550e8400-e29b-41d4-a716-446655440001": [
     {
-      "id": "845b4816-3e0f-46b1-8d58-ebecf6df17aa",
-      "instrument_id": "550e8400-e29b-41d4-a716-446655440001",
-      "title": "エリーゼのために",
-      "composer": "ベートーヴェン",
-      "era": "古典派",
-      "genre": "バガテル",
-      "difficulty_level": 2,
-      "youtube_url": "https://www.youtube.com/watch?v=_mVW8tgGY_w",
-      "spotify_url": null,
-      "description_ja": "ベートーヴェンの最も有名な作品の一つ。美しいメロディーで親しまれています。",
-      "description_en": null,
-      "is_popular": true,
-      "display_order": 1,
-      "famous_performer": null,
-      "famous_video_url": null,
-      "famous_note": null
-    },
-    {
       "id": "fcd37ae0-9626-4cb3-98f6-714957b9538e",
       "instrument_id": "550e8400-e29b-41d4-a716-446655440001",
       "title": "ラ・カンパネラ",
@@ -121,24 +103,6 @@ export const staticRepresentativeSongs: Record<string, StaticRepresentativeSong[
       "description_en": null,
       "is_popular": true,
       "display_order": 4,
-      "famous_performer": null,
-      "famous_video_url": null,
-      "famous_note": null
-    },
-    {
-      "id": "02809f36-7bc4-4cd9-846f-b06c5f6a76b9",
-      "instrument_id": "550e8400-e29b-41d4-a716-446655440001",
-      "title": "子犬のワルツ",
-      "composer": "ショパン",
-      "era": "ロマン派",
-      "genre": "ワルツ",
-      "difficulty_level": 2,
-      "youtube_url": "https://www.youtube.com/watch?v=oGXf6t7a5gE",
-      "spotify_url": null,
-      "description_ja": "軽やかで可愛らしいワルツ。初心者にも人気。",
-      "description_en": null,
-      "is_popular": true,
-      "display_order": 5,
       "famous_performer": null,
       "famous_video_url": null,
       "famous_note": null

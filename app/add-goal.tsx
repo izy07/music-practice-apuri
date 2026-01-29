@@ -144,7 +144,7 @@ export default function AddGoalScreen() {
         return;
       }
       
-      // Freeプランの場合、目標設定数をチェック（各楽器ごとに2個まで）
+      // Freeプランの場合、目標設定数をチェック（各楽器ごとに4個まで）
       // プレミアムユーザーはチェック不要
       logger.debug('目標作成: entitlement状態を確認', { 
         isEntitled: entitlement?.isEntitled,
@@ -345,7 +345,7 @@ export default function AddGoalScreen() {
                   setNewGoal({...newGoal, title: text});
                 }
               }}
-              placeholder={newGoal.goal_type === 'personal_short' ? "例: 〇〇を完璧にする\n製本する" : "例: 憧れの曲を弾けるようにする"}
+              placeholder={newGoal.goal_type === 'personal_short' ? "例: 曲の譜読みをする\nスケールを正確に弾ける\nカノンを弾けるようになる" : "例: 憧れの曲を弾けるようになる\n高い音域を安定して出せるようにする"}
               placeholderTextColor={currentTheme.textSecondary}
               maxLength={50}
               multiline={true}

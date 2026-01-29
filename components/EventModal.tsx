@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
+  Dimensions,
   Alert,
   Platform,
 } from 'react-native';
@@ -28,6 +29,7 @@ interface Event {
   title: string;
   date: string;
   description?: string;
+  location?: string | null;
   is_completed: boolean;
   color?: EventColor | string | null;
 }
@@ -50,24 +52,41 @@ export default function EventModal({
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const [title, setTitle] = useState('');
   const [date, setDate] = useState('');
+  const [location, setLocation] = useState('');
   const [eventColor, setEventColor] = useState<EventColor>(DEFAULT_EVENT_COLOR);
   const [loading, setLoading] = useState(false);
+  const [screenWidth, setScreenWidth] = useState(Dimensions.get('window').width);
+  
+  useEffect(() => {
+    const subscription = Dimensions.addEventListener('change', ({ window }) => {
+      setScreenWidth(window.width);
+    });
+    return () => subscription?.remove();
+  }, []);
   const [showDatePicker, setShowDatePicker] = useState(false);
+  
+  // レスポンシブ対応: 画面幅に応じた色ボタンのサイズと間隔を計算
+  const colorOptionSize = screenWidth < 400 ? 35 : screenWidth < 600 ? 40 : 45;
+  const colorOptionGap = screenWidth < 400 ? 6 : screenWidth < 600 ? 8 : 10;
+  const colorOptionContainerWidth = screenWidth < 400 ? 50 : screenWidth < 600 ? 60 : 70;
   const modalContentRef = useRef<View>(null);
 
   useEffect(() => {
     if (event) {
       setTitle(event.title);
       setDate(event.date);
+      setLocation(event.location || '');
       setEventColor((event.color as EventColor) || DEFAULT_EVENT_COLOR);
     } else if (selectedDate) {
       setTitle('');
       setDate(formatLocalDate(selectedDate));
+      setLocation('');
       setEventColor(DEFAULT_EVENT_COLOR);
     } else if (visible && !event && !selectedDate) {
       // 新規イベント作成時でselectedDateがない場合は、今日の日付を初期値として設定
       setTitle('');
       setDate(formatLocalDate(new Date()));
+      setLocation('');
       setEventColor(DEFAULT_EVENT_COLOR);
     }
     
@@ -134,6 +153,7 @@ export default function EventModal({
           title: title.trim(),
           date,
           description: null,
+          location: location.trim() || null,
           color: eventColor,
           updated_at: new Date().toISOString(),
         };
@@ -149,19 +169,16 @@ export default function EventModal({
           updateData.instrument_id = instrumentId;
         }
         
-        // event_dateカラムが存在する場合は、dateと同じ値を設定
-        if (date) {
-          updateData.event_date = date;
-        }
-        
-        let { error } = await supabase
+        let { data: updatedEvent, error } = await supabase
           .from('events')
           .update(updateData)
-          .eq('id', event.id);
+          .eq('id', event.id)
+          .select()
+          .single();
 
         // カラムが存在しないエラーの場合、該当カラムを除外して再試行
         if (error && isColumnNotFoundError(error)) {
-          const optionalColumns = ['instrument_id', 'event_date', 'color'];
+          const optionalColumns = ['instrument_id', 'event_date'];
           const handled = handleColumnError(error, updateData, optionalColumns);
           
           if (handled) {
@@ -174,7 +191,9 @@ export default function EventModal({
             let retryResult = await supabase
               .from('events')
               .update(handled.payload)
-              .eq('id', event.id);
+              .eq('id', event.id)
+              .select()
+              .single();
             
             // 再試行後もエラーが発生した場合、さらに他のカラムを除外して再試行
             if (retryResult.error && isColumnNotFoundError(retryResult.error)) {
@@ -183,7 +202,9 @@ export default function EventModal({
                 retryResult = await supabase
                   .from('events')
                   .update(secondHandled.payload)
-                  .eq('id', event.id);
+                  .eq('id', event.id)
+                  .select()
+                  .single();
               }
             }
             
@@ -210,6 +231,7 @@ export default function EventModal({
           title: title.trim(),
           date,
           description: null,
+          location: location.trim() || null,
           color: eventColor,
         };
         
@@ -224,13 +246,15 @@ export default function EventModal({
           insertData.instrument_id = instrumentId;
         }
         
-        let { error } = await supabase
+        let { data: newEvent, error } = await supabase
           .from('events')
-          .insert(insertData);
+          .insert(insertData)
+          .select()
+          .single();
 
         // カラムが存在しないエラーの場合、該当カラムを除外して再試行
         if (error && isColumnNotFoundError(error)) {
-          const optionalColumns = ['instrument_id', 'event_date', 'color'];
+          const optionalColumns = ['instrument_id', 'event_date'];
           const handled = handleColumnError(error, insertData, optionalColumns);
           
           if (handled) {
@@ -242,7 +266,9 @@ export default function EventModal({
             
             let retryResult = await supabase
               .from('events')
-              .insert(handled.payload);
+              .insert(handled.payload)
+              .select()
+              .single();
             
             // 再試行後もエラーが発生した場合、さらに他のカラムを除外して再試行
             if (retryResult.error && isColumnNotFoundError(retryResult.error)) {
@@ -250,7 +276,9 @@ export default function EventModal({
               if (secondHandled) {
                 retryResult = await supabase
                   .from('events')
-                  .insert(secondHandled.payload);
+                  .insert(secondHandled.payload)
+                  .select()
+                  .single();
               }
             }
             
@@ -281,8 +309,32 @@ export default function EventModal({
       blurActiveElement();
       onClose();
     } catch (error) {
+      logger.error('[EventModal] イベント保存エラー:', error);
       ErrorHandler.handle(error, 'イベント保存', true);
-      Alert.alert('エラー', 'イベントの保存に失敗しました');
+      
+      // エラーの詳細を取得
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : (error && typeof error === 'object' && 'message' in error)
+          ? String(error.message)
+          : 'イベントの保存に失敗しました';
+      
+      // エラーコードがある場合は表示
+      const errorCode = error && typeof error === 'object' && 'code' in error
+        ? String(error.code)
+        : null;
+      
+      Alert.alert(
+        'エラー', 
+        errorCode 
+          ? `イベントの保存に失敗しました
+
+エラーコード: ${errorCode}
+${errorMessage}`
+          : `イベントの保存に失敗しました
+
+${errorMessage}`
+      );
     } finally {
       setLoading(false);
     }
@@ -460,7 +512,7 @@ export default function EventModal({
                   ]}
                   value={title}
                   onChangeText={setTitle}
-                  placeholder="例：定期演奏会、発表会、レッスン"
+                  placeholder="例：定期演奏会、レッスン、定期メンテナンス"
                   placeholderTextColor={currentTheme.textSecondary}
                   maxLength={50}
                 />
@@ -498,17 +550,47 @@ export default function EventModal({
                 </View>
               </View>
 
+              {/* 場所入力 */}
+              <View style={styles.inputContainer}>
+                <Text style={[styles.label, { color: currentTheme.text }]}>
+                  場所
+                </Text>
+                <TextInput
+                  style={[
+                    styles.textInput,
+                    {
+                      backgroundColor: currentTheme.background,
+                      color: currentTheme.text,
+                      borderColor: currentTheme.secondary,
+                    },
+                  ]}
+                  value={location}
+                  onChangeText={setLocation}
+                  placeholder="例：〇〇ホール、〇〇会場"
+                  placeholderTextColor={currentTheme.textSecondary}
+                  maxLength={100}
+                />
+              </View>
+
               {/* 色選択 */}
               <View style={styles.inputContainer}>
                 <Text style={[styles.label, { color: currentTheme.text }]}>
                   イベントの色 *
                 </Text>
-                <Text style={[styles.colorDescription, { color: currentTheme.textSecondary }]}>
-                  {getEventColorOption(eventColor).description}
-                </Text>
-                <View style={styles.colorPickerContainer}>
-                  {Object.values(EVENT_COLORS).map((colorOption) => (
-                    <View key={colorOption.value} style={styles.colorOptionContainer}>
+                <ScrollView 
+                  horizontal 
+                  showsHorizontalScrollIndicator={false}
+                  style={styles.colorPickerScroll}
+                  contentContainerStyle={styles.colorPickerContainer}
+                >
+                  {Object.values(EVENT_COLORS).map((colorOption, index) => (
+                    <View key={colorOption.value} style={[
+                          styles.colorOptionContainer,
+                          {
+                            width: colorOptionContainerWidth,
+                            marginRight: index === Object.values(EVENT_COLORS).length - 1 ? 0 : colorOptionGap,
+                          },
+                        ]}>
                       <TouchableOpacity
                         style={[
                           styles.colorOption,
@@ -516,6 +598,9 @@ export default function EventModal({
                             backgroundColor: colorOption.color,
                             borderColor: eventColor === colorOption.value ? currentTheme.text : 'transparent',
                             borderWidth: eventColor === colorOption.value ? 3 : 1,
+                            width: colorOptionSize,
+                            height: colorOptionSize,
+                            borderRadius: colorOptionSize / 2,
                           },
                         ]}
                         onPress={() => setEventColor(colorOption.value)}
@@ -532,12 +617,15 @@ export default function EventModal({
                             fontWeight: eventColor === colorOption.value ? '600' : '400',
                           },
                         ]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit={true}
+                        minimumFontScale={0.7}
                       >
                         {colorOption.label}
                       </Text>
                     </View>
                   ))}
-                </View>
+                </ScrollView>
               </View>
 
               {/* ボタン */}
@@ -642,29 +730,34 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   contentContainer: {
-    padding: 20,
-    paddingBottom: 40,
+    padding: 8,
+    paddingBottom: 24,
   },
   inputContainer: {
-    marginBottom: 20,
+    marginBottom: 6,
   },
   label: {
     fontSize: 16,
     fontWeight: '600',
+    marginBottom: 4,
+  },
+  exampleText: {
+    fontSize: 13,
     marginBottom: 8,
+    opacity: 0.7,
   },
   textInput: {
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     fontSize: 16,
   },
   textArea: {
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     fontSize: 16,
     textAlignVertical: 'top',
     minHeight: 100,
@@ -711,7 +804,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   calendarButton: {
-    padding: 12,
+    padding: 8,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
@@ -751,22 +844,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginBottom: 12,
   },
+  colorPickerScroll: {
+    marginBottom: 6,
+  },
   colorPickerContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    flexWrap: 'nowrap',
-    marginBottom: 8,
-    gap: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    minWidth: '100%', // 画面幅いっぱいに広げて中央揃えを有効にする
   },
   colorOptionContainer: {
     alignItems: 'center',
-    flex: 1,
-    minWidth: 0, // flex: 1で均等に配置するため、minWidthを0に設定
+    // サイズと間隔はインラインスタイルで動的に設定される
   },
   colorOption: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    // サイズはインラインスタイルで動的に設定される
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -778,7 +871,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   colorLabel: {
-    fontSize: 11,
+    fontSize: 10,
     textAlign: 'center',
     lineHeight: 14,
   },

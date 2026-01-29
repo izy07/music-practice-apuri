@@ -76,13 +76,37 @@ if (typeof window !== 'undefined') {
 
 // オフライン対応のためのローカルストレージユーティリティ
 export class OfflineStorage {
-  // 練習記録の保存
+  // 練習記録の保存（一意IDを付与して重複を防ぐ）
   static async savePracticeRecord(record: Partial<PracticeSession> & { user_id: string; practice_date: string; duration_minutes: number }) {
     try {
-      const key = `practice_${Date.now()}`;
+      // 一意IDを生成（user_id + practice_date + input_method + timestamp）
+      // これにより、複数端末から同時保存された場合でも重複を検出可能
+      const inputMethod = record.input_method || 'manual';
+      const uniqueId = `${record.user_id}_${record.practice_date}_${inputMethod}_${Date.now()}`;
+      const key = `practice_${uniqueId}`;
+      
+      // 既存のオフライン記録をチェック（重複を防ぐ）
+      const existingRecords = await this.getPracticeRecords();
+      const isDuplicate = existingRecords.some((existing: any) => {
+        return existing.user_id === record.user_id &&
+               existing.practice_date === record.practice_date &&
+               existing.input_method === inputMethod &&
+               Math.abs(new Date(existing.created_at).getTime() - Date.now()) < 5000; // 5秒以内の記録は重複とみなす
+      });
+      
+      if (isDuplicate) {
+        logger.debug('オフライン記録の重複を検出、保存をスキップ', {
+          user_id: record.user_id,
+          practice_date: record.practice_date,
+          input_method: inputMethod
+        });
+        return { success: true, id: null, skipped: true };
+      }
+      
       await AsyncStorage.setItem(key, JSON.stringify({
         ...record,
         id: key,
+        unique_id: uniqueId, // 一意IDを保存
         created_at: new Date().toISOString(),
         is_synced: false
       }));

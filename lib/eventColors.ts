@@ -38,9 +38,9 @@ export const EVENT_COLORS: Record<EventColor, EventColorOption> = {
   },
   purple: {
     value: 'purple',
-    label: 'その他',
+    label: '音楽鑑賞',
     color: '#9C27B0',
-    description: 'その他のイベント',
+    description: '音楽鑑賞、コンサート鑑賞など',
   },
 };
 

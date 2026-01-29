@@ -1711,10 +1711,10 @@ export default function TimerScreen() {
               // タイマーモード：円形ボタン
               <>
                 <TouchableOpacity
-                  style={[styles.controlButton, { backgroundColor: currentTheme.secondary }]}
+                  style={[styles.controlButton, { backgroundColor: currentTheme.background }]}
                   onPress={resetTimer}
                 >
-                  <RotateCcw size={20} color={currentTheme.text} />
+                  <RotateCcw size={20} color={currentTheme.primary} />
                 </TouchableOpacity>
 
                 <TouchableOpacity

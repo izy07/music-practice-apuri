@@ -224,9 +224,9 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
           style={[
             styles.stopwatchControlButton,
             { 
-              backgroundColor: isStopwatchRunning ? currentTheme.primary : currentTheme.secondary,
+              backgroundColor: isStopwatchRunning ? currentTheme.primary : currentTheme.background,
               borderWidth: isStopwatchRunning ? 0 : 1,
-              borderColor: currentTheme.secondary,
+              borderColor: currentTheme.primary,
             }
           ]}
           onPress={() => {
@@ -242,7 +242,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
           <Text 
             style={[
               styles.stopwatchControlButtonText,
-              { color: isStopwatchRunning ? currentTheme.surface : currentTheme.text }
+              { color: isStopwatchRunning ? currentTheme.surface : currentTheme.primary }
             ]}
             numberOfLines={1}
           >
@@ -254,7 +254,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
           style={[
             styles.stopwatchControlButton,
             { 
-              backgroundColor: currentTheme.secondary,
+              backgroundColor: currentTheme.background,
               borderWidth: 1,
               borderColor: currentTheme.primary,
             }
@@ -267,7 +267,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
           <Text 
             style={[
               styles.stopwatchControlButtonText,
-              { color: currentTheme.textSecondary }
+              { color: currentTheme.primary }
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit={true}
@@ -281,9 +281,9 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
           style={[
             styles.stopwatchControlButton,
             { 
-              backgroundColor: currentTheme.secondary,
+              backgroundColor: currentTheme.background,
               borderWidth: 1,
-              borderColor: currentTheme.secondary,
+              borderColor: currentTheme.primary,
             }
           ]}
           onPress={handleClear}
@@ -292,7 +292,7 @@ export default function Stopwatch({ onComplete }: StopwatchProps) {
           <Text 
             style={[
               styles.stopwatchControlButtonText,
-              { color: currentTheme.text }
+              { color: currentTheme.primary }
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit={true}

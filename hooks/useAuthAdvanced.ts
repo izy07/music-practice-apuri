@@ -10,11 +10,12 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useSegments, useRootNavigationState } from 'expo-router';
-import { Platform } from 'react-native';
+import { Platform, Linking } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { createRateLimiter } from '@/lib/authSecurity';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as WebBrowser from 'expo-web-browser';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { TIMEOUT } from '@/lib/constants';
@@ -206,6 +207,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
   
   // ローカル状態（グローバル状態のコピー）
   const [authState, setAuthState] = useState<AuthState>(globalAuthState);
+  
+  // AsyncStorageから読み込んだ楽器IDを保持（ネットワークエラー時のフォールバック）
+  const [storedInstrumentId, setStoredInstrumentId] = useState<string | null>(null);
   
   // 認証状態の初期化
   const initializeAuth = useCallback(async () => {
@@ -2187,10 +2191,57 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     updateAuthState({ error: null });
   }, []);
 
-  // 楽器選択状態のチェック
+  // AsyncStorageから楽器IDを読み込む（ネットワークエラー時のフォールバック）
+  useEffect(() => {
+    if (!authState.user?.id) {
+      setStoredInstrumentId(null);
+      return;
+    }
+    
+    let cancelled = false;
+    const loadStoredInstrument = async () => {
+      try {
+        const { STORAGE_KEYS } = await import('@/lib/storageKeys');
+        const getKey = (key: string, uid?: string) => uid ? `${key}_${uid}` : key;
+        const stored = await AsyncStorage.getItem(getKey(STORAGE_KEYS.selectedInstrument, authState.user?.id));
+        if (!cancelled && stored && stored.trim() !== '') {
+          setStoredInstrumentId(stored);
+          logger.debug('AsyncStorageから楽器IDを読み込みました（フォールバック用）:', { instrumentId: stored });
+        } else if (!cancelled) {
+          setStoredInstrumentId(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          logger.debug('AsyncStorageからの楽器ID読み込みエラー（無視）:', error);
+          setStoredInstrumentId(null);
+        }
+      }
+    };
+    
+    loadStoredInstrument();
+    return () => {
+      cancelled = true;
+    };
+  }, [authState.user?.id]);
+
+  // 楽器選択状態のチェック（ネットワークエラー時のフォールバック対応）
+  // 1. user.selected_instrument_idを最優先でチェック
+  // 2. ネットワークエラー時はAsyncStorageから読み込んだ値もチェック
+  // これにより、エラー時に誤って楽器選択画面に遷移することを防ぐ
   const hasInstrumentSelected = useCallback((): boolean => {
-    return !!(authState.user?.selected_instrument_id);
-  }, [authState.user]);
+    // 最優先: user.selected_instrument_id
+    if (authState.user?.selected_instrument_id) {
+      return true;
+    }
+    
+    // フォールバック: AsyncStorageから読み込んだ値
+    if (storedInstrumentId) {
+      logger.debug('AsyncStorageから読み込んだ楽器IDを使用（フォールバック）:', { instrumentId: storedInstrumentId });
+      return true;
+    }
+    
+    return false;
+  }, [authState.user?.selected_instrument_id, storedInstrumentId]);
 
   // 新規登録フラグの状態を初期化（認証状態が初期化された時に実行）
   useEffect(() => {

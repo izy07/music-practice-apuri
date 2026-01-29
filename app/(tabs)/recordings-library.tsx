@@ -38,6 +38,7 @@ interface Recording {
   recorded_at: string;
   created_at: string;
   recording_type?: 'performance' | 'lesson'; // 録音種類
+  auto_delete_at?: string | null; // 自動削除予定日
 }
 
 type TimeFilter = 'all' | '1week' | '1month' | '3months' | '6months' | '1year';
@@ -591,19 +592,35 @@ export default function RecordingsLibraryScreen() {
             };
             
             audio.onerror = (e) => {
+              const currentSrc = audio.src;
               const errorMessage = audio.error 
                 ? `エラーコード: ${audio.error.code}, メッセージ: ${audio.error.message || '不明なエラー'}`
                 : '不明なエラー';
+              
+              // srcが空の場合、再設定を試みる
+              if ((!currentSrc || currentSrc === '' || currentSrc === 'null' || currentSrc === 'undefined') && blobUrl) {
+                logger.warn('audio.srcが空のため、再設定を試みます', { blobUrl, currentSrc });
+                try {
+                  audio.src = blobUrl;
+                  audio.load();
+                  return; // 再設定後はエラーハンドリングをスキップ
+                } catch (retryError) {
+                  logger.error('audio.srcの再設定に失敗しました', { retryError, blobUrl });
+                }
+              }
+              
               logger.error('録音再生エラー:', {
                 error: errorMessage,
                 filePath: recording.file_path,
                 publicUrl,
                 blobUrl,
+                currentSrc,
                 errorCode: audio.error?.code,
                 errorMessage: audio.error?.message,
                 networkState: audio.networkState,
                 readyState: audio.readyState,
-                isGitHubPages
+                isGitHubPages,
+                srcIsEmpty: !currentSrc || currentSrc === '' || currentSrc === 'null' || currentSrc === 'undefined'
               });
               
               cleanup();
@@ -629,7 +646,16 @@ export default function RecordingsLibraryScreen() {
             };
             
             audio.onloadstart = () => {
-              logger.debug('録音データのロード開始');
+              logger.debug('録音データのロード開始', {
+                src: audio.src,
+                blobUrl,
+                srcIsEmpty: !audio.src || audio.src === '' || audio.src === 'null' || audio.src === 'undefined'
+              });
+              // srcが空の場合は再設定を試みる
+              if ((!audio.src || audio.src === '' || audio.src === 'null' || audio.src === 'undefined') && blobUrl) {
+                logger.warn('audio.srcが空のため、再設定を試みます', { blobUrl });
+                audio.src = blobUrl;
+              }
             };
             
             audio.oncanplay = () => {
@@ -871,7 +897,7 @@ export default function RecordingsLibraryScreen() {
               </Text>
               <Text style={[styles.subtitle, { color: currentTheme.textSecondary }]}>
                 {sortedRecordings.length}件の録音
-                {((timeFilter !== 'all' || searchQuery.trim() !== '') && recordings.length !== sortedRecordings.length) ? ` (全${recordings.length}件)` : ''}
+                {((timeFilter !== 'all' || searchQuery.trim() !== '') && recordings.length !== sortedRecordings.length) ? ` (全${recordings.length}件)` : null}
               </Text>
             </View>
           </View>
@@ -1146,6 +1172,14 @@ export default function RecordingsLibraryScreen() {
                           </Text>
                         </View>
                       </View>
+                      {/* レッスン録音の削除予定日表示 */}
+                      {recording.recording_type === 'lesson' && recording.auto_delete_at && !recording.is_favorite && (
+                        <View style={styles.recordingMeta}>
+                          <Text style={[styles.deleteWarningText, { color: currentTheme.textSecondary }]}>
+                            ※ この録音は{formatDate(recording.auto_delete_at)}に自動削除されます
+                          </Text>
+                        </View>
+                      )}
                     </View>
                     
                     <View style={styles.recordingActions}>
@@ -1270,7 +1304,7 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 8,
   },
   header: {
     paddingVertical: 14,
@@ -1415,7 +1449,7 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   recordingTitle: {
-    fontSize: 18,
+    fontSize: 15,
     fontWeight: '600',
     flex: 1,
   },
@@ -1429,6 +1463,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   metaText: {
+  deleteWarningText: {
+    fontSize: 11,
+    marginTop: 4,
+    lineHeight: 14,
+    opacity: 0.75,
+    fontStyle: 'italic',
+  },
     fontSize: 14,
     fontWeight: '400',
   },

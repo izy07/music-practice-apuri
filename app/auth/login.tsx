@@ -124,10 +124,12 @@ export default function LoginScreen() {
       // 既存ユーザーで楽器IDが取得できていない場合、カレンダー画面に遷移（楽器情報は後で取得される）
       if (isExistingUser && !user.selected_instrument_id) {
         logger.debug('[ログイン画面] 既存ユーザー → カレンダー画面に遷移', { userId: user.id });
-        // ナビゲーションを少し遅延させて、Root Layoutが確実にマウントされるようにする
-        setTimeout(() => {
-          router.replace('/(tabs)/index');
-        }, 100);
+        // ナビゲーションを次のフレームで実行して、Root Layoutが確実にマウントされるようにする
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            router.replace('/(tabs)/index');
+          });
+        });
         return;
       }
 
@@ -143,10 +145,12 @@ export default function LoginScreen() {
         : '/(tabs)/instrument-selection';
 
       logger.debug('[ログイン画面] 認証成功 → 画面遷移:', targetPath);
-      // ナビゲーションを少し遅延させて、Root Layoutが確実にマウントされるようにする
-      setTimeout(() => {
-        router.replace(targetPath as any);
-      }, 100);
+      // ナビゲーションを次のフレームで実行して、Root Layoutが確実にマウントされるようにする
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          router.replace(targetPath as any);
+        });
+      });
     }, [isAuthenticated, isLoading, user, router, isLoggingIn, segments, hasInstrumentSelected, needsTutorial, canAccessMainApp])
   );
 
@@ -351,56 +355,13 @@ export default function LoginScreen() {
   };
 
 
-  // パスワード再設定メール送信
-  const handleResetPassword = async () => {
-    try {
-      const email = formData.email.trim().toLowerCase();
-      if (!email) {
-        Alert.alert(
-          'メールアドレスが必要です',
-          'パスワードリセットメールを送信するために、メールアドレスを入力してください。',
-          [
-            { text: 'キャンセル', style: 'cancel' },
-            {
-              text: 'メールアドレスを入力',
-              onPress: () => {
-                // メールアドレスフィールドにフォーカス
-                logger.debug('メールアドレスフィールドにフォーカス');
-              },
-            },
-          ]
-        );
-        return;
-      }
-
-      logger.debug('パスワードリセットメール送信開始:', email);
-      
-      const redirectTo = Platform.OS === 'web'
-        ? `${window.location.origin}${getBasePath()}/auth/callback`
-        : 'exp+bolt-expo-nativewind://auth/callback';
-        
-      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, { 
-        redirectTo,
-      });
-      
-      if (resetError) {
-        ErrorHandler.handle(resetError, 'パスワードリセットメール送信', true);
-        // パスワードリセットエラーはuseAuthAdvancedのerrorに含まれないため、Alertで表示
-        Alert.alert('エラー', resetError.message || 'メール送信に失敗しました');
-        return;
-      }
-
-      logger.debug('パスワードリセットメール送信成功');
-      Alert.alert(
-        'メール送信完了',
-        'パスワード再設定用のメールを送信しました。\n\n受信箱をご確認いただき、メール内のリンクをクリックしてパスワードを再設定してください。',
-        [{ text: 'OK' }]
-      );
-    } catch (e: any) {
-      ErrorHandler.handle(e, 'パスワードリセット処理', true);
-      // パスワードリセット例外はuseAuthAdvancedのerrorに含まれないため、Alertで表示
-      Alert.alert('エラー', e?.message || 'メール送信に失敗しました');
-    }
+  // パスワード再設定（未実装・テスト中）
+  const handleResetPassword = () => {
+    Alert.alert(
+      '未実装です',
+      'パスワード再設定はテスト中です。現在は動きません。',
+      [{ text: 'OK' }]
+    );
   };
 
   // 新規登録画面への遷移
@@ -600,19 +561,16 @@ export default function LoginScreen() {
                 <View style={styles.dividerLine} />
               </View>
 
-              {/* Googleログインボタン */}
+              {/* Googleログインボタン（未実装・テスト中） */}
               <TouchableOpacity
                 style={styles.googleButton}
-                onPress={async () => {
-                  setIsLoggingIn(true);
-                  try {
-                    await signInWithGoogle();
-                  } catch (error) {
-                    logger.error('Googleログインエラー:', error);
-                    setIsLoggingIn(false);
-                  }
+                onPress={() => {
+                  Alert.alert(
+                    'テスト中です',
+                    'Googleでログインは未実装です。現在は動きません。',
+                    [{ text: 'OK' }]
+                  );
                 }}
-                disabled={isLoggingIn}
               >
                 <Text style={styles.googleIcon}>🔍</Text>
                 <Text style={styles.googleButtonText}>Googleでログイン</Text>

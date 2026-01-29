@@ -437,9 +437,29 @@ export const DEFAULT_MUSIC_TERMS: Record<MusicTermCategory, MusicTermData[]> = {
       categories: ['wind'],
     },
     {
+      term_ja: 'フラッター',
+      term_en: 'Flutter',
+      description_ja: 'フラッタータンギングの略称。舌を震わせて「rrrr」のような音にする特殊奏法。',
+      categories: ['wind'],
+    },
+    {
+      term_ja: 'マルテレ',
+      term_en: 'Martelé',
+      description_ja: '弓を弦に強く当てて、各音をはっきりと区切って弾く弦楽器の奏法。ハンマーで打つような鋭い発音。',
+      example_usage: '例: 弓を弦に当てて、はっきりと発音する',
+      categories: ['string'],
+    },
+    {
+      term_ja: 'スピッカート',
+      term_en: 'Spiccato',
+      description_ja: '弓を弦から跳ねさせるように弾く奏法。軽くてはっきりした音になる。',
+      example_usage: '例: 弓を跳ねさせて、軽く短い音を出す',
+      categories: ['string'],
+    },
+    {
       term_ja: 'ハーモニクス',
       term_en: 'Harmonics',
-      description_ja: '倍音を鳴らす奏法（普段より高い響きが出る）',
+      description_ja: 'ヴァイオリンやヴィオラ,チェロ,コントラバスなどの弦楽器には, ハーモニクスと呼ばれる奏法があります。 これらの弦楽器では弦の上のある一点を左指で軽く指を触れ(押さえつけずに), 右手の弓で演奏すると振動の節ができ、倍音（１オクターブ上など）を得ることができます。 これがハーモニクス奏法です。',
       categories: ['wind', 'string'],
     },
     {

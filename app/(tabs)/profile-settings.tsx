@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Fragment, useRef } from 'react';
+import React, { useState, useEffect, Fragment, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Image, Platform, Linking, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, User, Music, Target, Plus, Minus, Edit, Trash2, Award, Users, Clock, MapPin, Camera, Calendar } from 'lucide-react-native';
@@ -21,10 +21,18 @@ import EventCalendar from '@/components/EventCalendar';
 import { formatLocalDate } from '@/lib/dateUtils';
 import { styles } from '@/lib/tabs/profile-settings/styles';
 // DateTimePickerは環境によって未導入の場合があるため動的ロード
-let DateTimePicker: any;
+type DateTimePickerComponent = React.ComponentType<{
+  value: Date;
+  mode: 'date' | 'time' | 'datetime';
+  display?: 'default' | 'spinner' | 'calendar' | 'compact';
+  onChange: (event: unknown, selectedDate?: Date) => void;
+  minimumDate?: Date;
+  maximumDate?: Date;
+}>;
+let DateTimePicker: DateTimePickerComponent | null = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  DateTimePicker = require('@react-native-community/datetimepicker').default;
+  DateTimePicker = require('@react-native-community/datetimepicker').default as DateTimePickerComponent;
 } catch {}
 
 export default function ProfileSettingsScreen() {
@@ -159,7 +167,7 @@ export default function ProfileSettingsScreen() {
           
           // 所属団体を読み込み（カンマ区切りから配列に変換）
           // current_organizationまたはorganizationのどちらかを使用
-          const organizationValue = (profile as any).current_organization || profile.organization;
+          const organizationValue = profile.current_organization || profile.organization;
           if (organizationValue) {
             const orgs = organizationValue.split(',').filter((name: string) => name.trim() !== '');
             setCurrentOrganizations(
@@ -190,8 +198,17 @@ export default function ProfileSettingsScreen() {
                   // 新しいJSON形式を試行
                   const parsed = JSON.parse(instrumentData.custom_instrument_name);
                   if (Array.isArray(parsed) && parsed.length > 0) {
-                    // JSON形式のデータ
-                    const instruments = parsed.map((item: any, index: number) => {
+                    // JSON形式のデータ（型安全性のため明示的に型を指定）
+                    interface CustomInstrumentItem {
+                      id?: string;
+                      name?: string;
+                      maker?: string;
+                      model?: string;
+                      purchaseDate?: string | null;
+                      purchasePrice?: string;
+                      notes?: string;
+                    }
+                    const instruments = parsed.map((item: CustomInstrumentItem, index: number) => {
                       let purchaseYear = '';
                       let purchaseMonth = '';
                       let purchaseDay = '';
@@ -260,10 +277,16 @@ export default function ProfileSettingsScreen() {
                     ? careerData.performancesUi 
                     : [{ id: undefined, title: '' }]);
                 }
-                // 休止期間も楽器ごとのデータから読み込む
+                // 休止期間も楽器ごとのデータから読み込む（型安全性のため明示的に型を指定）
+                interface BreakPeriodItem {
+                  id?: string;
+                  startDate?: string;
+                  endDate?: string;
+                  reason?: string;
+                }
                 if (careerData.breakPeriodsUi && Array.isArray(careerData.breakPeriodsUi)) {
                   setBreakPeriods(careerData.breakPeriodsUi.length > 0 
-                    ? careerData.breakPeriodsUi.map((bp: any) => ({
+                    ? careerData.breakPeriodsUi.map((bp: BreakPeriodItem) => ({
                       id: bp.id || Date.now().toString(),
                       startDate: bp.startDate || '',
                       endDate: bp.endDate || '',
@@ -312,10 +335,16 @@ export default function ProfileSettingsScreen() {
                     ? careerData.performancesUi 
                     : [{ id: undefined, title: '' }]);
                 }
-                // 休止期間も楽器ごとのデータから読み込む
+                // 休止期間も楽器ごとのデータから読み込む（型安全性のため明示的に型を指定）
+                interface BreakPeriodItem {
+                  id?: string;
+                  startDate?: string;
+                  endDate?: string;
+                  reason?: string;
+                }
                 if (careerData.breakPeriodsUi && Array.isArray(careerData.breakPeriodsUi)) {
                   setBreakPeriods(careerData.breakPeriodsUi.length > 0 
-                    ? careerData.breakPeriodsUi.map((bp: any) => ({
+                    ? careerData.breakPeriodsUi.map((bp: BreakPeriodItem) => ({
                       id: bp.id || Date.now().toString(),
                       startDate: bp.startDate || '',
                       endDate: bp.endDate || '',
@@ -392,6 +421,31 @@ export default function ProfileSettingsScreen() {
     }
   };
 
+  // 演奏歴年数を自動計算（useCallbackでメモ化）
+  const calculateMusicExperienceYears = useCallback((startAge: string, currentAge: string) => {
+    if (!startAge || !currentAge) return 0;
+    const startAgeNum = parseInt(startAge);
+    const currentAgeNum = parseInt(currentAge);
+    if (isNaN(startAgeNum) || isNaN(currentAgeNum)) return 0;
+    return Math.max(0, currentAgeNum - startAgeNum);
+  }, []);
+
+  // 誕生日から年齢を計算（useCallbackでメモ化）
+  const calculateAgeFromBirthday = useCallback((birthdayInput: Date | string | null) => {
+    if (!birthdayInput) return 0;
+    const birthday = birthdayInput instanceof Date ? birthdayInput : new Date(birthdayInput);
+    const today = new Date();
+    
+    let age = today.getFullYear() - birthday.getFullYear();
+    const monthDiff = today.getMonth() - birthday.getMonth();
+    
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthday.getDate())) {
+      age--;
+    }
+    
+    return Math.max(0, age);
+  }, []);
+
   // 認証チェック（副作用の無限ループ防止のため依存から isAuthenticated を外す）
   useEffect(() => {
     if (isLoading) return;
@@ -412,7 +466,7 @@ export default function ProfileSettingsScreen() {
       const age = calculateAgeFromBirthday(birthday);
       setCurrentAge(age.toString());
     }
-  }, [birthday]);
+  }, [birthday, calculateAgeFromBirthday]);
 
   // 楽器開始年齢と現在の年齢から演奏歴年数を自動計算
   useEffect(() => {
@@ -423,7 +477,7 @@ export default function ProfileSettingsScreen() {
       // どちらかが空の場合は0にリセット
       setMusicExperienceYears(0);
     }
-  }, [musicStartAge, currentAge]);
+  }, [musicStartAge, currentAge, calculateMusicExperienceYears]);
 
 
   // 認証中または認証されていない場合は何も表示しない
@@ -432,32 +486,6 @@ export default function ProfileSettingsScreen() {
   }
 
   // 楽器・練習レベル設定はこの画面では扱わない（主要機能で管理）
-
-
-  // 演奏歴年数を自動計算
-  const calculateMusicExperienceYears = (startAge: string, currentAge: string) => {
-    if (!startAge || !currentAge) return 0;
-    const startAgeNum = parseInt(startAge);
-    const currentAgeNum = parseInt(currentAge);
-    if (isNaN(startAgeNum) || isNaN(currentAgeNum)) return 0;
-    return Math.max(0, currentAgeNum - startAgeNum);
-  };
-
-  // 誕生日から年齢を計算
-  const calculateAgeFromBirthday = (birthdayInput: Date | string | null) => {
-    if (!birthdayInput) return 0;
-    const birthday = birthdayInput instanceof Date ? birthdayInput : new Date(birthdayInput);
-    const today = new Date();
-    
-    let age = today.getFullYear() - birthday.getFullYear();
-    const monthDiff = today.getMonth() - birthday.getMonth();
-    
-    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthday.getDate())) {
-      age--;
-    }
-    
-    return Math.max(0, age);
-  };
 
   // 全角数字を半角数字に変換する関数
   const convertToHalfWidth = (text: string): string => {
@@ -686,8 +714,8 @@ export default function ProfileSettingsScreen() {
       }
       
       // リトライ機能付きでアップロード
-      let uploadError: any = null;
-      let uploadData: any = null;
+      let uploadError: Error | null = null;
+      let uploadData: { path: string } | null = null;
       const maxRetries = 3;
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -735,8 +763,8 @@ export default function ProfileSettingsScreen() {
           uploadData = data;
       logger.info('アップロード成功:', data);
           break;
-        } catch (err: any) {
-          uploadError = err;
+        } catch (err: unknown) {
+          uploadError = err instanceof Error ? err : new Error(String(err));
           // バケットが存在しないエラーの場合（catch節でも確認）
           if (
             err?.message?.includes('Bucket not found') || 
@@ -784,7 +812,7 @@ export default function ProfileSettingsScreen() {
 
       setAvatarUrl(publicUrl);
       Alert.alert('成功', 'プロフィール画像を更新しました');
-    } catch (error: any) {
+    } catch (error: unknown) {
       logger.error('画像アップロードエラー:', error);
       
       // エラーメッセージを詳細化
@@ -1679,7 +1707,7 @@ export default function ProfileSettingsScreen() {
   // };
 
   // 誕生日選択のハンドラー
-  const handleBirthdayChange = (event: any, selectedDate?: Date) => {
+  const handleBirthdayChange = (_event: unknown, selectedDate?: Date) => {
     setShowBirthdayPicker(false);
     if (selectedDate) {
       setBirthday(selectedDate);
@@ -2049,11 +2077,12 @@ export default function ProfileSettingsScreen() {
                 {!showInstrumentInfo ? (
                   // 初期状態：追加ボタンのみ表示
                   <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'flex-start',
+                    flexDirection: 'column',
+                    alignItems: 'stretch',
+                    width: '100%',
                   }}>
                     <Text style={[styles.formLabel, { color: currentTheme.textSecondary }]}>楽器情報</Text>
+                    <View style={{ marginBottom: 8 }} />
                     <TouchableOpacity
                       onPress={() => {
                         setShowInstrumentInfo(true);
@@ -2067,16 +2096,16 @@ export default function ProfileSettingsScreen() {
                           flexDirection: 'row',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          margin: 0,
-                          marginLeft: 12,
-                          paddingHorizontal: 16,
+                          gap: 4,
+                          marginHorizontal: 12,
+                          paddingHorizontal: 32,
                           paddingVertical: 10,
                         }
                       ]}
                       activeOpacity={0.8}
                       pointerEvents="auto"
                     >
-                      <Plus size={16} color="#FFFFFF" style={{ marginRight: 4 }} />
+                      <Plus size={16} color="#FFFFFF" />
                       <Text style={styles.saveAllButtonText}>
                         追加
                       </Text>
@@ -2106,8 +2135,8 @@ export default function ProfileSettingsScreen() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             gap: 4,
-                            margin: 0,
-                            paddingHorizontal: 16,
+                            marginHorizontal: 12,
+                            paddingHorizontal: 32,
                             paddingVertical: 10,
                           }
                         ]}
@@ -2492,8 +2521,8 @@ export default function ProfileSettingsScreen() {
                 alignItems: 'center',
                 justifyContent: 'center',
                 gap: 4,
-                margin: 0,
-                paddingHorizontal: 16,
+                marginHorizontal: 12,
+                paddingHorizontal: 32,
                 paddingVertical: 10,
               }
             ]}
@@ -2754,6 +2783,7 @@ export default function ProfileSettingsScreen() {
           >
             <Text style={styles.saveAllButtonText}>経歴・実績を保存</Text>
           </TouchableOpacity>
+        </View>
 
           {/* プロフィール削除セクション */}
           <View style={[styles.infoSection, { backgroundColor: currentTheme.surface, marginTop: 16, marginBottom: 24, paddingHorizontal: 8, paddingVertical: 8 }]}>
@@ -2786,8 +2816,6 @@ export default function ProfileSettingsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-
-        </View>
       </ScrollView>
       
       {/* モーダルコンポーネント */}

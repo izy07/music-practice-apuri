@@ -24,6 +24,7 @@ import { initializeGoalRepository } from '@/repositories/goalRepository'; // 目
 import audioResourceManager from '@/lib/audioResourceManager'; // オーディオリソース管理
 import { isOnline } from '@/lib/offlineStorage'; // ネットワーク状態確認
 import Constants from 'expo-constants'; // 設定値取得用
+import { GlobalErrorBoundary } from '@/components/GlobalErrorBoundary'; // グローバルエラーバウンダリー
 
 // Web環境ではexpo-status-barをインポートしない
 type StatusBarComponent = React.ComponentType<{ style: 'dark' | 'light' | 'auto' }>;
@@ -123,7 +124,7 @@ function RootLayoutContent() {
   // segmentsをrefで保持（Web環境での強制遷移を防ぐため）
   const segmentsRef = useRef(segments);
 
-  // segmentsが変更されたらrefを更新
+  // segmentsが変更されたらrefを更新（重複を削除）
   React.useEffect(() => {
     segmentsRef.current = segments;
   }, [segments]);
@@ -179,11 +180,6 @@ function RootLayoutContent() {
     // TODO: ネイティブ環境でのオフライン検出を実装する場合は、@react-native-community/netinfoを使用
     // 現時点では、ネイティブ環境ではオフライン検出を行わない（Web環境のみ対応）
   }, [isReady, isInitialized, router, segments]);
-  
-  // segmentsが変更されたらrefを更新
-  React.useEffect(() => {
-    segmentsRef.current = segments;
-  }, [segments]);
 
 
   // データベーススキーマの整合性をチェック（認証完了後、一度だけ実行）
@@ -191,8 +187,8 @@ function RootLayoutContent() {
   React.useEffect(() => {
     if (isAuthenticated && isInitialized && !isLoading) {
       // 目標リポジトリのカラム存在確認を初期化（一度だけ実行）
-      // 強制再チェックを有効にして、localStorageのフラグを無視してDBクエリを実行
-      initializeGoalRepository(true).catch((error: unknown) => {
+      // 強制再チェックを無効にして、キャッシュを活用（効率化）
+      initializeGoalRepository(false).catch((error: unknown) => {
         logger.error('目標リポジトリの初期化中にエラーが発生しました:', error);
       });
     }
@@ -549,11 +545,10 @@ function RootLayoutContent() {
       if (Platform.OS === 'web') {
         const firstSegment = currentSegments[0];
         const isInTabsGroup = firstSegment === '(tabs)';
-        const isInOrgGroup = firstSegment === 'organization-dashboard' || firstSegment === 'organization-settings';
         const isInAuthGroup = firstSegment === 'auth';
         
         // 有効なアプリ画面にいる場合は、画面を維持（デフォルト画面を表示しない）
-        if (isInTabsGroup || isInOrgGroup || isInAuthGroup) {
+        if (isInTabsGroup || isInAuthGroup) {
           logger.debug('フレームワーク準備中・有効な画面 - 画面を維持', { isReady, currentSegments });
           return;
         }
@@ -674,7 +669,10 @@ function RootLayoutContent() {
     // その他の認証画面（callback、reset-passwordなど）は後続処理で対応
     
     // 楽器未選択の場合の処理
-    if (!hasInstrumentSelected()) {
+    // 重要: ネットワークエラー時や初期化中は楽器選択画面に遷移しない
+    // これにより、エラー時に誤って楽器選択画面が表示されることを防ぐ
+    const instrumentSelected = hasInstrumentSelected();
+    if (!instrumentSelected) {
       // チュートリアル画面にいる場合は許可（遷移をブロックしない）
       if (currentTab === 'tutorial') {
         return;
@@ -682,6 +680,20 @@ function RootLayoutContent() {
       
       // 楽器選択画面にいる場合は許可（遷移をブロックしない）
       if (currentTab === 'instrument-selection') {
+        return;
+      }
+      
+      // 既に適切な画面（タブグループ内）にいる場合は、エラー時でも画面を維持
+      // これにより、ネットワークエラー時に誤って楽器選択画面に遷移することを防ぐ
+      // 特に、カレンダー画面やその他のメイン画面にいる場合は、エラー時でも画面を維持
+      if (isInTabsGroup && currentTab && currentTab !== 'tutorial' && currentTab !== 'instrument-selection') {
+        logger.debug('楽器未選択だが、既に適切な画面にいるため画面を維持（エラー時の誤遷移を防止）', { 
+          currentTab, 
+          isAuthenticated,
+          isInitialized,
+          isLoading,
+          userSelectedInstrument: user?.selected_instrument_id
+        });
         return;
       }
       
@@ -693,8 +705,26 @@ function RootLayoutContent() {
       }
       
       // その他の場合は楽器選択画面に遷移
-      logger.debug('楽器未選択のため、楽器選択画面にリダイレクト');
-      router.replace('/(tabs)/instrument-selection');
+      // ただし、ルートパスや認証画面からの遷移のみ（既存画面からの誤遷移を防ぐ）
+      // また、初期化中やローディング中は遷移しない（エラー時の誤遷移を防ぐ）
+      if ((isAtRoot || isInAuthGroup) && isInitialized && !isLoading) {
+        logger.debug('楽器未選択のため、楽器選択画面にリダイレクト', { 
+          isAtRoot, 
+          isInAuthGroup,
+          isInitialized,
+          isLoading
+        });
+        router.replace('/(tabs)/instrument-selection');
+        return;
+      }
+      
+      // その他の場合は画面を維持（エラー時の誤遷移を防止）
+      logger.debug('楽器未選択だが、既存画面からの遷移または初期化中のため画面を維持（エラー時の誤遷移を防止）', { 
+        currentSegments,
+        isInitialized,
+        isLoading,
+        isAuthenticated
+      });
       return;
     }
 
@@ -777,18 +807,21 @@ function RootLayoutContent() {
 // アプリのルートレイアウト - 全体的なプロバイダーとコンテキストを設定
 export default function RootLayout() {
   return (
-    // 多言語対応を管理するプロバイダー
-    <LanguageProvider>
-      {/* 楽器別テーマを管理するプロバイダー */}
-      <InstrumentThemeProvider>
-        {/* サブスクリプション状態を管理するプロバイダー */}
-        <SubscriptionProvider>
-          {/* メインコンテンツ */}
-          <RootLayoutContent />
-          {/* ステータスバーの設定（ダークテーマ） */}
-          {StatusBar && <StatusBar style="dark" />}
-        </SubscriptionProvider>
-      </InstrumentThemeProvider>
-    </LanguageProvider>
+    // グローバルエラーバウンダリー（アプリ全体のエラーをキャッチ）
+    <GlobalErrorBoundary>
+      {/* 多言語対応を管理するプロバイダー */}
+      <LanguageProvider>
+        {/* 楽器別テーマを管理するプロバイダー */}
+        <InstrumentThemeProvider>
+          {/* サブスクリプション状態を管理するプロバイダー */}
+          <SubscriptionProvider>
+            {/* メインコンテンツ */}
+            <RootLayoutContent />
+            {/* ステータスバーの設定（ダークテーマ） */}
+            {StatusBar && <StatusBar style="dark" />}
+          </SubscriptionProvider>
+        </InstrumentThemeProvider>
+      </LanguageProvider>
+    </GlobalErrorBoundary>
   );
 }

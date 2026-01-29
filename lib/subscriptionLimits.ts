@@ -34,7 +34,7 @@ export const isPremiumUser = (entitlement: Entitlement | null | undefined): bool
  */
 export const FREE_PLAN_LIMITS = {
   RECORDINGS_PER_MONTH_PER_INSTRUMENT: 3,
-  GOALS_COUNT_PER_INSTRUMENT: 2,
+  GOALS_COUNT_PER_INSTRUMENT: 4,
   MY_LIBRARY_SONGS_PER_INSTRUMENT: 10, // 各楽器ごとに10個まで（ステータスに関係なく）
   MAX_INSTRUMENTS: 2, // Freeプランで使用可能な楽器の最大数
 } as const;
@@ -344,11 +344,10 @@ export const getMaxRecordingDuration = (entitlement: Entitlement | null | undefi
 export const getMaxDailyRecordings = (entitlement: Entitlement | null | undefined): number => {
   const isPremium = isPremiumUser(entitlement);
   if (isPremium) {
-    return 2; // プレミアム: 2個
+    return Infinity; // プレミアム: 無制限
   }
   return 1; // フリープラン: 1個
 };
-
 /**
  * 1日の録音数制限をチェック
  * 
@@ -363,19 +362,22 @@ export const checkDailyRecordingLimit = async (
   selectedDate?: Date | string | null
 ): Promise<{ canRecord: boolean; currentCount: number; limit: number; reason?: string }> => {
   try {
-    // Premiumユーザーも1日2個までという制限があるため、チェックは必要
+    // Premiumユーザーは無制限
+    const isPremium = isPremiumUser(entitlement);
+    if (isPremium) {
+      logger.debug("プレミアムユーザーのため、1日録音制限チェックをスキップします");
+      return { canRecord: true, currentCount: 0, limit: Infinity };
+    }
+
+    // Freeプランの場合のみ制限チェックを実行
     const maxDaily = getMaxDailyRecordings(entitlement);
-    
     // チェック対象の日付を決定
     const targetDate = selectedDate ? new Date(selectedDate) : new Date();
-    
-    // 指定日の0時00分00秒と23時59分59秒を取得
     const startOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
+    // Freeプランの場合のみ制限チェックを実行
     const endOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 23, 59, 59);
-
     const { data: recordings, error } = await supabase
       .from('recordings')
-      .select('id', { count: 'exact', head: false })
       .eq('user_id', userId)
       .gte('recorded_at', startOfDay.toISOString())
       .lte('recorded_at', endOfDay.toISOString());
@@ -401,8 +403,6 @@ export const checkDailyRecordingLimit = async (
       canRecord,
       targetDate: targetDate.toISOString()
     });
-
-    const isPremium = isPremiumUser(entitlement);
     return { 
       canRecord, 
       currentCount, 
@@ -541,6 +541,7 @@ export const checkMonthlyRecordingLimit = async (
   try {
     // Premiumユーザーは無制限
     const isPremium = isPremiumUser(entitlement);
+    logger.debug("プレミアムユーザーチェック:", { isPremium, entitlement, isEntitled: entitlement?.isEntitled });
     if (isPremium) {
       return { canRecord: true, currentCount: 0, limit: Infinity };
     }
@@ -656,7 +657,7 @@ export const checkMonthlyRecordingLimit = async (
 };
 
 /**
- * 目標設定数をチェック（各楽器ごとに2個まで）
+ * 目標設定数をチェック（各楽器ごとに4個まで）
  * 
  * @param userId ユーザーID
  * @param instrumentId 楽器ID（指定された楽器の目標数のみをチェック）
@@ -686,7 +687,7 @@ export const checkGoalLimit = async (
       return { canCreate: true, currentCount: 0, limit: Infinity };
     }
 
-    // 各楽器ごとに2個まで（楽器数を掛け算しない）
+    // 各楽器ごとに4個まで（楽器数を掛け算しない）
     const limit = FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT;
 
     // 指定された楽器IDの目標数のみを取得（各楽器ごとにチェック）
@@ -725,12 +726,12 @@ export const checkGoalLimit = async (
  * 2. 全目標を取得（楽器IDでフィルタリングしない）
  * 3. 達成済み目標と未達成目標を分離（制限は未達成目標のみに適用）
  * 4. 楽器IDごとにグループ化
- * 5. 各楽器ごとに最新2個を保持、それ以外は非表示（show_on_calendar = false）
+ * 5. 各楽器ごとに最新4個を保持、それ以外は非表示（show_on_calendar = false）
  * 6. 各楽器ごとに最新の目標のshow_on_calendarをtrueにする
  * 7. カレンダー更新イベントを発火
  * 
  * 注意: データは削除しない（show_on_calendarをfalseにするだけ）
- * 注意: 各楽器ごとに2個までの制限を適用（楽器数を掛け算しない）
+ * 注意: 各楽器ごとに4個までの制限を適用（楽器数を掛け算しない）
  * 
  * @param userId ユーザーID
  * @param entitlement エンタイトルメント情報
@@ -919,7 +920,7 @@ export const adjustGoalsOnDowngrade = async (
       return { adjusted: false, totalGoals: 0, keptGoals: 0 };
     }
 
-    // 各楽器ごとに2個まで（楽器数を掛け算しない）
+    // 各楽器ごとに4個まで（楽器数を掛け算しない）
     const limitPerInstrument = FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT;
 
     // 全目標を取得（楽器IDでフィルタリングしない）
@@ -939,7 +940,7 @@ export const adjustGoalsOnDowngrade = async (
       !g.is_completed && (g.progress_percentage ?? 0) < 100
     );
     
-    logger.debug('解約時の目標調整開始（各楽器ごとに2個まで）:', {
+    logger.debug('解約時の目標調整開始（各楽器ごとに4個まで）:', {
       userId,
       limitPerInstrument,
       totalGoals: allGoals.length,
@@ -958,7 +959,7 @@ export const adjustGoalsOnDowngrade = async (
       goalsByInstrument.get(instrumentId)!.push(goal);
     }
 
-    // 各楽器ごとに最新2個を保持、それ以外は非表示にする
+    // 各楽器ごとに最新4個を保持、それ以外は非表示にする
     // FIFO (First In, First Out) アプローチ: 最新に作成した目標を優先的に保持
     const goalsToKeep: GoalForAdjustment[] = [];
     const goalsToHide: GoalForAdjustment[] = [];
@@ -973,7 +974,7 @@ export const adjustGoalsOnDowngrade = async (
         return dateB - dateA; // 降順（新しい順）
       });
 
-      // 各楽器ごとに最新2個を保持（limitPerInstrument = 2）
+      // 各楽器ごとに最新4個を保持（limitPerInstrument = 4）
       // 残りは非表示にする（削除はしない - データは保持）
       const instrumentGoalsToKeep = sorted.slice(0, limitPerInstrument);
       const instrumentGoalsToHide = sorted.slice(limitPerInstrument);
@@ -1038,7 +1039,7 @@ export const adjustGoalsOnDowngrade = async (
       window.dispatchEvent(new CustomEvent('calendarGoalUpdated'));
     }
 
-    logger.info('解約時の目標調整が完了しました（各楽器ごとに2個まで）:', {
+    logger.info('解約時の目標調整が完了しました（各楽器ごとに4個まで）:', {
       totalGoals: activeGoals.length,
       keptGoals: goalsToKeep.length,
       hiddenGoals: goalsToHide.length

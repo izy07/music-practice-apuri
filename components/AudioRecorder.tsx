@@ -19,7 +19,7 @@ import { useRouter } from 'expo-router';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
-import { checkMonthlyRecordingLimit, checkDailyRecordingLimit, isCurrentMonth, canSaveDataForInstrument, getMaxRecordingDuration, recordRewardedAdRecording } from '@/lib/subscriptionLimits';
+import { checkMonthlyRecordingLimit, checkDailyRecordingLimit, isCurrentMonth, canSaveDataForInstrument, getMaxRecordingDuration, recordRewardedAdRecording, isPremiumUser } from '@/lib/subscriptionLimits';
 import { RewardedAdModal } from './ads/RewardedAdModal';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import logger from '@/lib/logger';
@@ -248,7 +248,8 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       }
       
       // Freeプランの場合、月間録音数の制限をチェック（楽器ごと）
-      if (!entitlement?.isEntitled && user?.id) {
+      if (!isPremiumUser(entitlement) && user?.id) {
+        logger.debug("録音制限チェック開始:", { isPremium: isPremiumUser(entitlement), entitlement, isEntitled: entitlement?.isEntitled });
         const instrumentId = getInstrumentId(selectedInstrument);
         const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined, instrumentId);
         setRecordingLimitStatus(limitCheck);
@@ -289,7 +290,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       }
       
       // Freeプランの場合、選択された日付が今月であることを確認
-      if (!entitlement?.isEntitled && selectedDate && !isCurrentMonth(selectedDate)) {
+      if (!isPremiumUser(entitlement) && selectedDate && !isCurrentMonth(selectedDate)) {
         Alert.alert(
           '録音できません',
           'Freeプランでは当月のみ録音できます。\n\n過去の月や未来の月に録音するには、プレミアムへアップグレードしてください。',
@@ -1338,6 +1339,12 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
                   </Text>
                 </TouchableOpacity>
               </View>
+              {/* レッスン録音の説明 */}
+              {recordingType === 'lesson' && (
+                <Text style={[styles.recordingTypeDescription, { color: currentTheme.textSecondary }]}>
+                  ※ レッスン録音は1ヶ月後に自動削除されます。お気に入りに追加すると削除されません。
+                </Text>
+              )}
             </View>
             
             {/* タイトル入力 */}
@@ -1649,6 +1656,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   recordingTypeButtonText: {
+  recordingTypeDescription: {
+    fontSize: 12,
+    marginTop: 8,
+    lineHeight: 16,
+    opacity: 0.8,
+  },
     fontSize: 16,
     fontWeight: '600',
   },

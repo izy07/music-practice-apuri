@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView, Platform } from 'react-native';
 import { Calendar, Plus, Edit3, Trash2, Filter } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -67,7 +67,7 @@ const defaultTheme: InstrumentTheme = {
   textSecondary: '#666666',
 };
 
-export default function EventManagementSection({
+const EventManagementSection = memo(function EventManagementSection({
   currentTheme,
   events,
   onAddEvent,
@@ -155,12 +155,14 @@ export default function EventManagementSection({
     }
   };
 
-  // eventsは { [dateStr: string]: Event[] } の形式なので、各イベントに日付を追加
-  const allEvents = events 
-    ? Object.entries(events).flatMap(([dateStr, eventArray]) => 
-        eventArray.map(event => ({ ...event, date: event.date || dateStr }))
-      )
-    : [];
+  // eventsは { [dateStr: string]: Event[] } の形式なので、各イベントに日付を追加（useMemoでメモ化）
+  const allEvents = useMemo(() => {
+    return events 
+      ? Object.entries(events).flatMap(([dateStr, eventArray]) => 
+          eventArray.map(event => ({ ...event, date: event.date || dateStr }))
+        )
+      : [];
+  }, [events]);
   
   // 色でフィルタリング
   const filteredEvents = useMemo(() => {
@@ -245,6 +247,9 @@ export default function EventManagementSection({
         style={[styles.addButton, { backgroundColor: theme.primary }]}
         onPress={onAddEvent}
         pointerEvents="auto"
+        accessibilityRole="button"
+        accessibilityLabel="イベントを追加"
+        accessibilityHint="新しいイベントを作成します"
       >
         <Plus size={16} color="#FFFFFF" />
         <Text style={styles.addButtonText}>イベントを登録</Text>
@@ -387,24 +392,20 @@ export default function EventManagementSection({
           );
         })
       )}
-      
-      {filteredEvents.length > 5 && (
-        <TouchableOpacity
-          style={[styles.viewAllButton, { backgroundColor: theme.secondary }]}
-          onPress={() => router.push('/(tabs)/goals')}
-        >
-          <Text style={styles.viewAllButtonText}>すべてのイベントを見る</Text>
-        </TouchableOpacity>
-      )}
     </View>
   );
-}
+});
+
+EventManagementSection.displayName = 'EventManagementSection';
+
+export default EventManagementSection;
 
 const styles = StyleSheet.create({
   container: {
     marginTop: 0,
-    marginBottom: 80, // タブバーと重ならないように下部にマージンを追加
+    marginBottom: 100, // タブバーと重ならないように下部にマージンを追加
     padding: 8,
+    paddingBottom: 20,
     backgroundColor: '#FFFFFF',
     borderRadius: 0,
     elevation: 4,
@@ -491,34 +492,25 @@ const styles = StyleSheet.create({
     lineHeight: 12,
     marginTop: 2,
   },
-  viewAllButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 0,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  viewAllButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-  },
   maintenanceInfo: {
     padding: 6,
     borderRadius: 8,
     borderWidth: 1,
     marginBottom: 6,
+    flexDirection: 'column',
   },
   maintenanceLabel: {
     fontSize: 12,
     fontWeight: '600',
-    marginBottom: 1,
-    lineHeight: 14,
+    marginBottom: 2,
+    lineHeight: 16,
   },
   maintenanceDate: {
     fontSize: 14,
     fontWeight: '500',
     marginBottom: 0,
     lineHeight: 16,
+    marginTop: 2,
   },
   maintenanceTitle: {
     fontSize: 12,
@@ -534,8 +526,11 @@ const styles = StyleSheet.create({
   filterScroll: {
     flex: 1,
   },
+  // 注意: filterScrollにはalignItemsを含めない（contentContainerStyleに適用）
   filterContent: {
-    gap: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 3,
   },
   filterButton: {
     flexDirection: 'row',
@@ -546,6 +541,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 6,
     minWidth: 60,
+    marginRight: 6,
   },
   filterButtonText: {
     fontSize: 11,

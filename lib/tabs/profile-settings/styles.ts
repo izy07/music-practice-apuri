@@ -8,7 +8,7 @@ export const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     paddingHorizontal: 20,
     paddingVertical: 20,
     ...createShadowStyle({
@@ -25,6 +25,7 @@ export const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
     ...createShadowStyle({
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
@@ -36,7 +37,7 @@ export const styles = StyleSheet.create({
   headerCenter: {
     flex: 1,
     alignItems: 'center',
-    marginHorizontal: 16,
+    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 20,
@@ -502,7 +503,7 @@ export const styles = StyleSheet.create({
   // 新しいスタイル
   inputRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: 8,
     marginBottom: 4,
   },
@@ -534,7 +535,7 @@ export const styles = StyleSheet.create({
   subSectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     marginBottom: 4,
   },
   subSectionTitle: {
@@ -549,7 +550,7 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
-    marginTop: 4, // テキスト入力の上部パディングと揃える
+    marginTop: 4,
   },
   careerItem: {
     padding: 8,
@@ -678,13 +679,8 @@ export const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 6,
     alignSelf: 'center',
-    ...createShadowStyle({
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.15,
-      shadowRadius: 4,
-      elevation: 3,
-    }),
+    boxShadow: "0px 2px 4px rgba(0, 0, 0, 0.15)",
+    elevation: 3,
   },
   deleteButtonText: {
     color: '#FFFFFF',

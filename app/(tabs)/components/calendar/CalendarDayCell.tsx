@@ -34,13 +34,13 @@ interface CalendarDayCellProps {
   hasPracticeRecord: boolean; // 練習時間が記録されたか（タイマー、クイック、手動入力など）
   hasBasicPractice: boolean; // 基礎練（input_method: 'preset'）があるか
   hasRecording: boolean;
-  dayEvents: Array<{id: string, title: string, description?: string, color?: EventColor | string | null, date?: string}>;
+  dayEvents: Array<{id: string, title: string, description?: string, location?: string | null, color?: EventColor | string | null, date?: string}>;
   isToday: boolean;
   isSunday: boolean;
   isSaturday: boolean;
   currentTheme: InstrumentTheme;
   onDatePress: (date: Date) => void;
-  onEventPress: (event: {id: string, title: string, description?: string, color?: EventColor | string | null, date?: string}) => void;
+  onEventPress: (event: {id: string, title: string, description?: string, location?: string | null, color?: EventColor | string | null, date?: string}) => void;
 }
 
 const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement => {
@@ -121,7 +121,7 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
       
       <View style={styles.indicatorsContainer}>
         {hasPracticeRecord && hasRecording ? (
-          <View style={[styles.bothIndicator, { backgroundColor: currentTheme.accent }]} />
+          <View style={[styles.bothIndicator, { backgroundColor: '#CC0000' }]} />
         ) : (
           <>
             {/* 練習時間が記録された場合、色マークを表示 */}

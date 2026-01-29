@@ -11,6 +11,7 @@ import logger from '@/lib/logger';
 import { getInstrumentCategory } from '@/lib/instrumentUtils';
 import { getTermsForInstrument } from '@/data/musicTermsData';
 import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
+import { shouldUsePersistentCache } from '@/lib/cache/cachePolicy';
 // Web環境（GitHub Pages等）では直接インポートを使用（動的インポートが動作しない場合があるため）
 // モバイル環境では動的インポートで遅延読み込み（軽量化）
 import { instrumentGuides as staticInstrumentGuides } from '@/data/instrumentGuides';
@@ -32,6 +33,9 @@ const PRACTICE_TERM_WHITELIST = new Set<string>([
   'ビブラート',
   'グリッサンド',
   'フラッタータンギング',
+  'フラッター',
+  'マルテレ',
+  'スピッカート',
   'ハーモニクス',
   'シングルストローク',
   'ダブルストローク',
@@ -192,13 +196,12 @@ export default function BeginnerGuideScreen() {
 
     const loadGuides = async () => {
       try {
-        // 開発環境ではキャッシュを無効化（常に最新データを読み込む）
-        const isDevelopment = __DEV__ || process.env.NODE_ENV === 'development';
+        // 開発環境では永続キャッシュを使わない（古いキャッシュが残って挙動がブレるのを防ぐ）
+        const useCache = shouldUsePersistentCache();
         
         // まずキャッシュから読み込みを試行（オフライン対応・最優先）
-        // ただし開発環境ではキャッシュをスキップ
         let loadedFromCache = false;
-        if (!isDevelopment) {
+        if (useCache) {
           try {
             const cachedData = await AsyncStorage.getItem('instrumentGuides_cache');
             if (cachedData) {
@@ -236,20 +239,17 @@ export default function BeginnerGuideScreen() {
             logger.debug('キャッシュ読み込みエラー（無視）:', cacheError);
           }
         } else {
-          logger.debug('🔧 開発環境: キャッシュをスキップして最新データを読み込みます');
+          logger.debug('🔧 開発環境: 永続キャッシュをスキップして最新データを読み込みます');
         }
 
         // キャッシュから読み込めた場合は、バックグラウンドで最新データを更新
-        // 開発環境では常に最新データを読み込む
-        if (loadedFromCache && !isDevelopment) {
+        if (loadedFromCache && useCache) {
           // バックグラウンドで最新データを読み込んで更新（非ブロッキング）
           loadInstrumentGuides()
             .then((guides) => {
               if (guides && isMounted) {
                 try {
-                  AsyncStorage.setItem('instrumentGuides_cache', JSON.stringify(guides)).catch(() => {
-                    // キャッシュ保存エラーは無視
-                  });
+                  AsyncStorage.setItem('instrumentGuides_cache', JSON.stringify(guides)).catch(() => {});
                   instrumentGuides = guides;
                   logger.debug('✅ ガイドデータを最新版に更新しました');
                 } catch (updateError) {
@@ -290,8 +290,7 @@ export default function BeginnerGuideScreen() {
           Object.values(guides).some((guide: any) => guide && typeof guide === 'object')
         ) {
           // キャッシュに保存（オフライン対応）
-          // 開発環境ではキャッシュを保存しない（常に最新データを読み込むため）
-          if (!isDevelopment) {
+          if (useCache) {
             try {
               await AsyncStorage.setItem('instrumentGuides_cache', JSON.stringify(guides));
               logger.debug('✅ ガイドデータをキャッシュに保存しました');
@@ -299,7 +298,7 @@ export default function BeginnerGuideScreen() {
               logger.debug('キャッシュ保存エラー（無視）:', saveError);
             }
           } else {
-            logger.debug('🔧 開発環境: キャッシュを保存しません');
+            logger.debug('🔧 開発環境: 永続キャッシュを保存しません');
           }
           
           if (isMounted) {
@@ -317,7 +316,7 @@ export default function BeginnerGuideScreen() {
         ErrorHandler.handle(error, 'ガイドデータ読み込み', false);
         
         // エラー時もキャッシュがあれば使用（最後の手段）
-        if (!instrumentGuides || Object.keys(instrumentGuides).length === 0) {
+        if (shouldUsePersistentCache() && (!instrumentGuides || Object.keys(instrumentGuides).length === 0)) {
           try {
             const cachedData = await AsyncStorage.getItem('instrumentGuides_cache');
             if (cachedData) {
@@ -394,8 +393,9 @@ export default function BeginnerGuideScreen() {
       '550e8400-e29b-41d4-a716-446655440014': 'harp',      // ハープ
       '550e8400-e29b-41d4-a716-446655440015': 'contrabass', // コントラバス
       '550e8400-e29b-41d4-a716-446655440016': 'other',    // その他
-      '550e8400-e29b-41d4-a716-446655440018': 'viola',     // ヴィオラ
+      '550e8400-e29b-41d4-a716-446655440018': 'viola',     // ヴィオラ（選択画面では非表示）
       '550e8400-e29b-41d4-a716-446655440019': 'guitar',    // 琴（ギターとして）
+      '550e8400-e29b-41d4-a716-446655440022': 'tuba',      // チューバ
       '550e8400-e29b-41d4-a716-446655440020': 'piano',     // シンセサイザー（ピアノとして）
       '550e8400-e29b-41d4-a716-446655440021': 'drums',     // 太鼓（ドラムとして）
     };
@@ -907,6 +907,14 @@ export default function BeginnerGuideScreen() {
                 <View style={styles.infoItem}>
                   <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>{t('tips')}</Text>
                   <Text style={[styles.infoText, { color: currentTheme.text }]}>{currentGuide.fingering.tips}</Text>
+                </View>
+              )}
+              
+              {/* 弦楽器：なぜ重音でチューニングするのか */}
+              {(currentGuide as any)?.tuning?.whyDoubleStop && (
+                <View style={styles.infoItem}>
+                  <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>なぜ重音でチューニングするのか</Text>
+                  <Text style={[styles.infoText, { color: currentTheme.text }]}>{(currentGuide as any).tuning.whyDoubleStop}</Text>
                 </View>
               )}
               

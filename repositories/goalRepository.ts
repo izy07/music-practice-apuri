@@ -841,11 +841,51 @@ export const goalRepository = {
     );
     const isFirstGoal = existingGoalsCount === 0;
     
+    // 競合チェック: 保存前に既存データを確認（完全に同一の目標が既に存在する場合）
+    const trimmedTitle = goal.title.trim();
+    const trimmedDescription = goal.description?.trim() || null;
+    const targetDate = goal.target_date || null;
+    
+    let conflictCheckQuery = supabase
+      .from('goals')
+      .select('id, title, description, target_date, goal_type, instrument_id, created_at')
+      .eq('user_id', userId)
+      .eq('title', trimmedTitle)
+      .eq('goal_type', goal.goal_type);
+    
+    if (supportsInstrumentId) {
+      const instrumentId = goal.instrument_id || null;
+      conflictCheckQuery = conflictCheckQuery.eq('instrument_id', instrumentId);
+    }
+    
+    const { data: conflictingGoals } = await conflictCheckQuery;
+    
+    // 完全に同一の目標（タイトル、説明、目標日、楽器IDが一致）が5秒以内に作成された場合は重複とみなす
+    if (conflictingGoals && conflictingGoals.length > 0) {
+      const now = Date.now();
+      const recentConflicts = conflictingGoals.filter((g: any) => {
+        const isSameDescription = (g.description || null) === trimmedDescription;
+        const isSameTargetDate = (g.target_date || null) === targetDate;
+        const createdTime = new Date(g.created_at).getTime();
+        const timeDiff = now - createdTime;
+        return isSameDescription && isSameTargetDate && timeDiff < 5000; // 5秒以内
+      });
+      
+      if (recentConflicts.length > 0) {
+        logger.warn('[goalRepository.createGoal] 競合を検出: 完全に同一の目標が最近作成されました', {
+          conflictingGoalId: recentConflicts[0].id,
+          title: trimmedTitle
+        });
+        // 既存の目標のIDを返す（重複作成を防ぐ）
+        return recentConflicts[0].id;
+      }
+    }
+    
     const insertData: any = {
       user_id: userId,
-      title: goal.title.trim(),
-      description: goal.description?.trim() || null,
-      target_date: goal.target_date || null,
+      title: trimmedTitle,
+      description: trimmedDescription,
+      target_date: targetDate,
       goal_type: goal.goal_type,
       progress_percentage: 0,
       is_active: true,
@@ -1060,8 +1100,34 @@ export const goalRepository = {
       description?: string | null;
       target_date?: string | null;
       goal_type?: 'personal_short' | 'personal_long';
+      expectedUpdatedAt?: string; // 楽観的ロック用: 更新前のupdated_at
     }
   ): Promise<void> {
+    // 楽観的ロック: 更新前に現在のupdated_atを取得してチェック
+    if (updates.expectedUpdatedAt) {
+      const { data: currentGoal, error: fetchError } = await supabase
+        .from('goals')
+        .select('updated_at')
+        .eq('id', goalId)
+        .eq('user_id', userId)
+        .single();
+      
+      if (fetchError) {
+        logger.error('[goalRepository.updateGoal] 現在の目標取得エラー:', fetchError);
+        throw fetchError;
+      }
+      
+      // updated_atが一致しない場合は競合とみなす
+      if (currentGoal?.updated_at && currentGoal.updated_at !== updates.expectedUpdatedAt) {
+        logger.warn('[goalRepository.updateGoal] 楽観的ロック: 競合を検出', {
+          goalId,
+          expected: updates.expectedUpdatedAt,
+          actual: currentGoal.updated_at
+        });
+        throw new Error('目標は他の端末で更新されています。最新の状態を取得してから再度お試しください。');
+      }
+    }
+    
     const updateData: any = {
       updated_at: new Date().toISOString(),
     };

@@ -478,8 +478,8 @@ export default function InstrumentHeader() {
 
   // ステータスバーの高さを計算（Web環境でもスマホでの見た目を確認できるようにスペースを確保）
   const statusBarHeight = Platform.OS === 'web' 
-    ? 44 // Web環境でもiOSのステータスバー相当のスペースを確保（スマホでの見た目確認用）
-    : Math.max(insets.top, Platform.OS === 'ios' ? 44 : 24);
+    ? 16 // Web環境では適度な余白を確保
+    : Math.max(insets.top, Platform.OS === 'ios' ? 16 : 12); // ネイティブ環境でも適度な余白を確保
 
   return (
     <View style={[styles.headerContainer, { paddingTop: statusBarHeight }]}>
@@ -559,13 +559,13 @@ export default function InstrumentHeader() {
                 {language === 'en' ? 'Learning Tools' : '学習ツール'}
               </Text>
               <TouchableOpacity
-                            onPress={() => {
-              closeModal();
-            }}
-                style={styles.closeButton}
+                onPress={() => {
+                  closeModal();
+                }}
+                style={[styles.closeButton, { backgroundColor: currentTheme.background }]}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <X size={24} color={currentTheme.text} />
+                <X size={24} color={currentTheme.primary} />
               </TouchableOpacity>
             </View>
             
@@ -695,10 +695,10 @@ export default function InstrumentHeader() {
                 onPress={() => {
                   closeAppealModal();
                 }}
-                style={styles.closeButton}
+                style={[styles.closeButton, { backgroundColor: currentTheme.background }]}
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <X size={24} color={currentTheme.text} />
+                <X size={24} color={currentTheme.primary} />
               </TouchableOpacity>
             </View>
 
@@ -726,7 +726,7 @@ export default function InstrumentHeader() {
                 activeOpacity={0.85}
               >
                 <Text style={[styles.modalActionText, { color: currentTheme.surface }]}>
-                  {language === 'en' ? 'View Songs' : '楽器が登場する曲一覧を見る'}
+                  {language === 'en' ? 'View Songs' : '演奏を聞く'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity

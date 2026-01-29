@@ -139,12 +139,12 @@ interface PracticeRecordModalProps {
   visible: boolean;
   onClose: () => void;
   selectedDate: Date | null;
-  events?: Array<{id: string, title: string, description?: string}>; // 選択された日付のイベント
-  onSave?: (minutes: number, content?: string, audioUrl?: string, videoUrl?: string) => void | Promise<void>;
+  events?: Array<{id: string, title: string, description?: string, location?: string | null}>; // 選択された日付のイベント
+  onSave?: (minutes: number, content?: string, audioUrl?: string, videoUrl?: string, startTime?: string, endTime?: string) => void | Promise<void>;
   onRecordingSaved?: () => void; // 録音保存後のコールバック
   onRefresh?: number; // データ再読み込みのトリガー（数値が変更されると再読み込み）
-  onEventEdit?: (event: {id: string, title: string, description?: string}) => void; // イベント編集のコールバック
-  onEventDelete?: (event: {id: string, title: string, description?: string}) => void; // イベント削除のコールバック
+  onEventEdit?: (event: {id: string, title: string, description?: string, location?: string | null}) => void; // イベント編集のコールバック
+  onEventDelete?: (event: {id: string, title: string, description?: string, location?: string | null}) => void; // イベント削除のコールバック
   onEventCreate?: (date: Date) => void; // イベント作成のコールバック
 }
 
@@ -778,6 +778,9 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         setMinutes('');
         setContent('');
         setPracticeBreakdown([]);
+        // エラー時はデフォルト値を設定
+        setStartTime({ hours: 13, minutes: 0 });
+        setEndTime({ hours: 18, minutes: 0 });
         return;
       }
 
@@ -875,7 +878,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           
           // 既存の記録を設定（合計時間を使用）
           // otherSessionsがある場合は最初のセッションのIDとcontentを使用
-          let primarySession = otherSessions.length > 0 ? otherSessions[0] : timerSessions[0];
+          // 手動入力（manual）のセッションを優先的に使用（開始時間と終了時間が保存されているため）
+          let primarySession = manualSessions.length > 0 ? manualSessions[0] : (otherSessions.length > 0 ? otherSessions[0] : timerSessions[0]);
           
           // primarySessionが無効な場合は、timeRecordsの最初の有効なセッションを使用
           if (!primarySession || !primarySession.id) {
@@ -922,6 +926,20 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           setMinutes(totalMinutes.toString());
           // 基礎練と手動入力のcontentを表示（クイック記録、タイマー記録のcontentは表示しない）
           setContent(combinedContent || '');
+          
+          // 日付ごとの開始時間と終了時間を読み込む
+          if (primarySession.start_time) {
+            const [hours, minutes] = primarySession.start_time.split(':').map(Number);
+            setStartTime({ hours: hours || 13, minutes: minutes || 0 });
+          } else {
+            setStartTime({ hours: 13, minutes: 0 }); // デフォルト値
+          }
+          if (primarySession.end_time) {
+            const [hours, minutes] = primarySession.end_time.split(':').map(Number);
+            setEndTime({ hours: hours || 18, minutes: minutes || 0 });
+          } else {
+            setEndTime({ hours: 18, minutes: 0 }); // デフォルト値
+          }
         } else {
           // 時間記録がない場合（基礎練のみ、または記録なし）
           if (basicPracticeRecordsLocal.length > 0) {
@@ -944,6 +962,9 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             setExistingRecord(null);
             setMinutes('');
             setContent('');
+            // 記録がない場合はデフォルト値を設定
+            setStartTime({ hours: 13, minutes: 0 });
+            setEndTime({ hours: 18, minutes: 0 });
           }
         }
       } else {
@@ -960,6 +981,9 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         setContent('');
         // セッションがない場合でも、内訳は空にする
         setPracticeBreakdown([]);
+        // セッションがない場合はデフォルト値を設定
+        setStartTime({ hours: 13, minutes: 0 });
+        setEndTime({ hours: 18, minutes: 0 });
       }
     } catch (error) {
       // エラーログを出力（練習記録の読み込み失敗は致命的ではないが、ログは残す）
@@ -1477,7 +1501,13 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       
       // 保存処理を実行（完了を待つ）
       // replaceMinutes: trueが指定されているため、既存の手動入力の時間を置き換える
-      await onSave?.(newManualMinutes, content?.trim() || undefined, audioUrl || undefined, videoUrl || undefined);
+      // 保存前に開始時間と終了時間を保存
+      const savedStartTime = startTime;
+      const savedEndTime = endTime;
+      // 開始時間と終了時間を文字列形式（HH:MM:SS）に変換
+      const startTimeStr = startTime ? `${String(startTime.hours).padStart(2, '0')}:${String(startTime.minutes).padStart(2, '0')}:00` : undefined;
+      const endTimeStr = endTime ? `${String(endTime.hours).padStart(2, '0')}:${String(endTime.minutes).padStart(2, '0')}:00` : undefined;
+      await onSave?.(newManualMinutes, content?.trim() || undefined, audioUrl || undefined, videoUrl || undefined, startTimeStr, endTimeStr);
       
       // 保存完了後にカレンダーと統計を更新するイベントを発火
       if (typeof window !== 'undefined') {
@@ -1503,6 +1533,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       // データベース反映を待つため少し遅延してから再読み込み
       await new Promise(resolve => setTimeout(resolve, 500));
       await loadPracticeSessions();
+      
+      // 保存後に開始時間と終了時間を復元（後から見返したときに不自然にならないように）
+      if (savedStartTime) setStartTime(savedStartTime);
+      if (savedEndTime) setEndTime(savedEndTime);
       
       // 保存が完了したらモーダルを閉じる
       onClose();
@@ -2018,6 +2052,11 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                     <View style={styles.eventItemContent}>
                       <View style={styles.eventItemText}>
                         <Text style={[styles.eventTitle, { color: currentTheme.text }]}>{event.title}</Text>
+                        {event.location && event.location.trim() && (
+                          <Text style={[styles.eventLocation, { color: currentTheme.textSecondary }]}>
+                            {event.location}
+                          </Text>
+                        )}
                         {event.description && (
                           <Text style={[styles.eventDescription, { color: currentTheme.textSecondary }]}>
                             {event.description}
@@ -2182,7 +2221,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.timeButtonLabel, { color: currentTheme.textSecondary }]}>
-                    開始日時
+                    開始時間
                   </Text>
                   <Text style={[styles.timeButtonValue, { color: currentTheme.text }]}>
                     {formatTime(startTime)}
@@ -2201,7 +2240,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.timeButtonLabel, { color: currentTheme.textSecondary }]}>
-                    終了日時
+                    終了時間
                   </Text>
                   <Text style={[styles.timeButtonValue, { color: currentTheme.text }]}>
                     {formatTime(endTime)}
@@ -2222,17 +2261,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 return null;
               })()}
             </View>
-            
-            <Text style={styles.hintText}>
-              {existingRecord 
-                ? '開始時刻と終了時刻を選択してください（+は既存の記録に追加されます）'
-                : '開始時刻と終了時刻を選択してください'
-              }
-            </Text>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>練習内容</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={content}
@@ -2871,6 +2899,9 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     padding: 8,
+    width: 40, // アイコンサイズ(24) + padding(8*2) = 40
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontSize: 18,
@@ -2885,7 +2916,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   headerSpacer: {
-    width: 8,
+    width: 40, // closeButtonと同じ幅で中央揃えを保証
   },
   deleteButton: {
     padding: 8,
@@ -2961,7 +2992,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
   },
   input: {
     borderWidth: 0.5,
@@ -3027,12 +3057,13 @@ const styles = StyleSheet.create({
   hintText: {
     fontSize: 12,
     color: '#888888',
-    marginTop: 4,
+    marginTop: 0,
+    marginBottom: 4,
     textAlign: 'center',
   },
   customTimeInputContainer: {
     marginTop: 4,
-    marginBottom: 8,
+    marginBottom: 0,
     padding: 16,
     backgroundColor: 'transparent',
     borderRadius: 0,
@@ -3077,7 +3108,7 @@ const styles = StyleSheet.create({
   customTimeDisplay: {
     fontSize: 14,
     fontWeight: '600',
-    marginTop: 8,
+    marginTop: 0,
     textAlign: 'center',
   },
   mediaSelectionContainer: {
@@ -3627,6 +3658,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 2,
     letterSpacing: 0,
+  },
+  eventLocation: {
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: 1,
+    marginBottom: 2,
+    opacity: 0.75,
   },
   eventDescription: {
     fontSize: 11,

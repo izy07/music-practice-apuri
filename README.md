@@ -43,6 +43,79 @@ npx supabase start
 npm start
 ```
 
+### Android SHA-1の取得（Google OAuth認証・クローズドテスト用）
+
+AndroidのクローズドテストやGoogle OAuth認証に必要なSHA-1フィンガープリントを取得する方法：
+
+#### 方法1: スクリプトを使用（推奨）
+
+```bash
+./scripts/get_sha1.sh
+```
+
+#### 方法2: 手動で取得
+
+**デバッグキーストアから取得（開発用）:**
+
+```bash
+# デバッグキーストアが存在しない場合は作成
+mkdir -p ~/.android
+keytool -genkeypair -v \
+  -keystore ~/.android/debug.keystore \
+  -storepass android \
+  -alias androiddebugkey \
+  -keypass android \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000 \
+  -dname "CN=Android Debug,O=Android,C=US"
+
+# SHA-1を取得
+keytool -keystore ~/.android/debug.keystore \
+  -list -v \
+  -alias androiddebugkey \
+  -storepass android | grep -E "(SHA1:|SHA-1:)"
+```
+
+**EAS Buildを使用している場合（本番用）:**
+
+1. **Google Play Consoleから取得（最も簡単）:**
+   - Google Play Console → アプリ → リリース → 設定 → アプリの署名
+   - 「アプリの署名証明書」セクションにSHA-1が表示されます
+
+2. **EAS Buildのビルドログから取得:**
+   ```bash
+   eas build --platform android
+   ```
+   ビルドログにSHA-1が表示されます
+
+**ローカルキーストアから取得:**
+
+```bash
+keytool -keystore /path/to/keystore.jks \
+  -list -v \
+  -alias your-key-alias
+```
+
+#### SHA-1の登録先
+
+取得したSHA-1は以下の場所に登録してください：
+
+1. **Google Cloud Console（OAuth認証用）**
+   - https://console.cloud.google.com/
+   - APIとサービス → 認証情報 → OAuth 2.0 クライアントID
+   - Androidアプリタイプを選択 → SHA-1証明書フィンガープリントに追加
+
+2. **Firebase Console（Firebase認証用）**
+   - https://console.firebase.google.com/
+   - プロジェクト設定 → アプリ → Androidアプリ
+   - SHA証明書フィンガープリントに追加
+
+**注意**: Java JDKが必要です。macOSの場合：
+```bash
+brew install openjdk
+```
+
 ### 必要な環境変数
 
 `.env`（または `.env.local`）に以下を設定してください。

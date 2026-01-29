@@ -66,7 +66,9 @@ const HIDDEN_TABS = [
   'help-support',
   'basic-practice',
   'support',
-  'share', // 音楽団体管理画面を非表示
+  // 'share', // 削除: このルートは(tabs)内に存在しません
+  // 'events', // 削除: このルートは(tabs)内に存在しません
+  // 'calendar', // 削除: このルートは(tabs)内に存在しません（indexがカレンダー画面）
 ] as const;
 
 export default function TabLayout() {
@@ -225,6 +227,10 @@ export default function TabLayout() {
                     onPress={onPress}
                     activeOpacity={0.7}
                     data-custom-tab="true"
+                    accessibilityRole="tab"
+                    accessibilityLabel={tabTitle}
+                    accessibilityState={{ selected: focused }}
+                    accessibilityHint={`${tabTitle}タブに切り替えます`}
                     style={{
                       flex: 1,
                       alignItems: 'center',
@@ -299,7 +305,7 @@ export default function TabLayout() {
           'legal-info': '法的情報',
           'score-auto-scroll': '楽譜自動スクロール',
           'support': t('help'),
-          'share': t('share'),
+          // 'share', 'events', 'calendar'は存在しないため、titleMapからも削除
         };
         
         const screenTitle = titleMap[tabName] || tabName;

@@ -24,6 +24,10 @@ CREATE TABLE IF NOT EXISTS public.instruments (
   updated_at timestamptz DEFAULT now()
 );
 
+-- カラムのコメント
+COMMENT ON COLUMN public.events.location IS 'イベントの場所（例：ホール名、会場名など）';
+COMMENT ON COLUMN public.events.color IS 'イベントの色（red, green, blue, orange, purple）';
+
 -- RLSの有効化
 ALTER TABLE public.instruments ENABLE ROW LEVEL SECURITY;
 
@@ -269,6 +273,8 @@ CREATE TABLE IF NOT EXISTS public.practice_sessions (
   content text,
   audio_url text,
   input_method text DEFAULT 'manual' CHECK (input_method IN ('manual', 'preset', 'voice')),
+  start_time time,
+  end_time time,
   created_at timestamptz DEFAULT now()
 );
 
@@ -302,6 +308,10 @@ END $$;
 -- インデックス
 CREATE INDEX IF NOT EXISTS idx_practice_sessions_user_id ON public.practice_sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_practice_sessions_instrument_id ON public.practice_sessions(instrument_id);
+
+-- カラムのコメント
+COMMENT ON COLUMN public.practice_sessions.start_time IS '練習開始時間（各日付ごとに記録）';
+COMMENT ON COLUMN public.practice_sessions.end_time IS '練習終了時間（各日付ごとに記録）';
 CREATE INDEX IF NOT EXISTS idx_practice_sessions_practice_date ON public.practice_sessions(practice_date);
 
 -- ============================================
@@ -625,6 +635,8 @@ CREATE TABLE IF NOT EXISTS public.events (
   title text NOT NULL,
   date date NOT NULL,
   description text,
+  location text,
+  color text,
   practice_schedule_id uuid REFERENCES public.practice_schedules(id) ON DELETE SET NULL,
   instrument_id uuid REFERENCES public.instruments(id) ON DELETE SET NULL,
   is_completed boolean DEFAULT false,

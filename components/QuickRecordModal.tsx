@@ -108,12 +108,14 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('practiceRecordUpdated', {
           detail: {
-            action: 'saved',
+            action: 'practice_saved',
             date: resolvedDate,
             source: 'quick_record',
-            minutes: minutes
+            minutes: minutes,
+            verified: true  // データベースへの反映が確認済み
           }
         }));
+        logger.debug('クイック記録保存の即時反映イベントを発火:', { minutes, date: resolvedDate });
       }
     } catch (error) {
       ErrorHandler.handle(error, '練習記録の保存', true);

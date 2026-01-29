@@ -1,7 +1,7 @@
 /**
  * 目標カードコンポーネント
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Target, Calendar, CircleCheck as CheckCircle, Square, CheckSquare2, Plus, Edit, Trash2, List } from 'lucide-react-native';
 import { Goal, SubGoal } from '@/lib/tabs/goals/types';
@@ -21,7 +21,7 @@ interface GoalCardProps {
   onGoalUpdated?: (updatedGoal: Goal) => void; // サブ目標更新時に親コンポーネントに通知
 }
 
-export const GoalCard: React.FC<GoalCardProps> = ({
+export const GoalCard: React.FC<GoalCardProps> = memo(({
   goal,
   justCompletedId,
   onUpdateProgress,
@@ -44,7 +44,7 @@ export const GoalCard: React.FC<GoalCardProps> = ({
   }, [goal.sub_goals]);
 
   // サブ目標の完了状態をトグル
-  const handleToggleSubGoal = async (subGoalId: string) => {
+  const handleToggleSubGoal = useCallback(async (subGoalId: string) => {
     if (!user?.id) return;
     
     setIsLoadingSubGoals(true);
@@ -75,13 +75,20 @@ export const GoalCard: React.FC<GoalCardProps> = ({
     } finally {
       setIsLoadingSubGoals(false);
     }
-  };
+  }, [user?.id, subGoals, goal, onGoalUpdated, onUpdateProgress]);
 
-  // サブ目標がある場合の進捗率計算
-  const hasSubGoals = subGoals && subGoals.length > 0;
-  const displayProgress = hasSubGoals 
-    ? subGoalRepository.calculateProgressFromSubGoals(subGoals)
-    : goal.progress_percentage;
+  // サブ目標がある場合の進捗率計算（useMemoで最適化）
+  const hasSubGoals = useMemo(() => subGoals && subGoals.length > 0, [subGoals]);
+  const completedSubGoalsCount = useMemo(() => 
+    hasSubGoals ? subGoals.filter(sg => sg.is_completed).length : 0,
+    [hasSubGoals, subGoals]
+  );
+  const displayProgress = useMemo(() => {
+    if (hasSubGoals) {
+      return subGoalRepository.calculateProgressFromSubGoals(subGoals);
+    }
+    return goal.progress_percentage || 0;
+  }, [hasSubGoals, subGoals, goal.progress_percentage]);
 
   return (
     <View key={goal.id} style={[styles.goalCard, { backgroundColor: currentTheme.surface }]}>
@@ -374,5 +381,13 @@ export const GoalCard: React.FC<GoalCardProps> = ({
       )}
     </View>
   );
-};
-
+  },
+  (prevProps, nextProps) => {
+    return (
+      prevProps.goal.id === nextProps.goal.id &&
+      prevProps.goal.progress_percentage === nextProps.goal.progress_percentage &&
+      prevProps.goal.sub_goals?.length === nextProps.goal.sub_goals?.length &&
+      prevProps.justCompletedId === nextProps.justCompletedId
+    );
+  }
+);

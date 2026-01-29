@@ -259,7 +259,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: 6,
     paddingHorizontal: 18,
     borderRadius: 20,
     gap: 8,
@@ -421,7 +421,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: 6,
     paddingHorizontal: 6,
     borderWidth: 1,
     borderStyle: 'solid',
@@ -981,7 +981,7 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
+    paddingVertical: 6,
     paddingHorizontal: 28,
     borderRadius: 16,
     gap: 8,
@@ -997,10 +997,11 @@ export const styles = StyleSheet.create({
     backgroundColor: '#4CAF50',
   },
   bigAchievementBadge: {
-    paddingVertical: 10,
+    paddingVertical: 6,
     paddingHorizontal: 20,
     borderRadius: 16,
     transform: [{ scale: 1.02 }],
+    alignSelf: 'center', // 短期目標に合わせて中央揃え
   },
   achievementBadgeText: {
     fontSize: 15,
@@ -1162,7 +1163,7 @@ export const styles = StyleSheet.create({
   },
   uncompleteButton: {
     marginTop: 12,
-    paddingVertical: 10,
+    paddingVertical: 6,
     paddingHorizontal: 16,
     borderRadius: 8,
     alignItems: 'center',
@@ -1205,7 +1206,11 @@ export const styles = StyleSheet.create({
     gap: 10,
   },
   subGoalDeleteButton: {
-    padding: 4,
+    padding: 8,
+    minWidth: 32,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   subGoalText: {
     flex: 1,
@@ -1239,7 +1244,7 @@ export const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 6,
     fontSize: 14,
   },
   subGoalInputButtons: {

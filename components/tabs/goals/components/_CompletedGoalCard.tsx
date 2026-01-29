@@ -1,7 +1,7 @@
 /**
  * 達成済み目標カードコンポーネント
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Target, Calendar, CircleCheck as CheckCircle, List, Square, CheckSquare2 } from 'lucide-react-native';
 import { Goal, SubGoal } from '@/lib/tabs/goals/types';
@@ -19,7 +19,7 @@ interface CompletedGoalCardProps {
   onGoalUpdated?: (goal: Goal) => void;
 }
 
-export const CompletedGoalCard: React.FC<CompletedGoalCardProps> = ({
+export const CompletedGoalCard: React.FC<CompletedGoalCardProps> = memo(({
   goal,
   onUpdateProgress,
   onDeleteGoal,
@@ -31,25 +31,33 @@ export const CompletedGoalCard: React.FC<CompletedGoalCardProps> = ({
   const [subGoals, setSubGoals] = useState<SubGoal[]>(goal.sub_goals || []);
   const [isLoadingSubGoals, setIsLoadingSubGoals] = useState(false);
 
-  // サブ目標を取得（goalが更新されたとき）
+  // サブ目標を取得（goalが更新されたとき）- 最適化版
+  const hasSubGoalsLoaded = useMemo(() => goal.sub_goals !== undefined, [goal.sub_goals]);
+  
   useEffect(() => {
     if (goal.sub_goals) {
       setSubGoals(goal.sub_goals);
-    } else if (goal.goal_type === 'personal_long' && user?.id) {
-      // サブ目標が読み込まれていない場合、取得を試みる
+    } else if (goal.goal_type === 'personal_long' && user?.id && !hasSubGoalsLoaded) {
+      // サブ目標が明示的に読み込まれていない場合のみ取得
+      let isMounted = true;
       (async () => {
         try {
           const loadedSubGoals = await subGoalRepository.getSubGoalsByGoalId(goal.id, user.id);
-          setSubGoals(loadedSubGoals);
+          if (isMounted) {
+            setSubGoals(loadedSubGoals);
+          }
         } catch (error) {
           // エラーは無視（サブ目標がない可能性がある）
         }
       })();
+      return () => {
+        isMounted = false;
+      };
     }
-  }, [goal.sub_goals, goal.id, goal.goal_type, user?.id]);
+  }, [goal.sub_goals, goal.id, goal.goal_type, user?.id, hasSubGoalsLoaded]);
 
-  // サブ目標の完了状態をトグル
-  const handleToggleSubGoal = async (subGoalId: string) => {
+  // サブ目標の完了状態をトグル（useCallbackで最適化）
+  const handleToggleSubGoal = useCallback(async (subGoalId: string) => {
     if (!user?.id) return;
     
     setIsLoadingSubGoals(true);
@@ -80,9 +88,9 @@ export const CompletedGoalCard: React.FC<CompletedGoalCardProps> = ({
     } finally {
       setIsLoadingSubGoals(false);
     }
-  };
+  }, [user?.id, subGoals, goal, onGoalUpdated, onUpdateProgress]);
 
-  const hasSubGoals = subGoals && subGoals.length > 0;
+  const hasSubGoals = useMemo(() => subGoals && subGoals.length > 0, [subGoals]);
 
   return (
     <View key={goal.id} style={[styles.goalCard, styles.completedGoalCard]}>
@@ -120,7 +128,7 @@ export const CompletedGoalCard: React.FC<CompletedGoalCardProps> = ({
         </View>
       )}
 
-      {/* 長期目標の達成済み: 進捗表示とパーセンテージ変更ボタン（いつでも戻せる） */}
+      {/* 長期目標の達成済み: 達成済みバッジのみ表示（進捗テキストと100%は非表示） */}
       {goal.goal_type === 'personal_long' && (
         <View style={styles.progressSection}>
           {/* 達成済みバッジ（大） */}
@@ -128,24 +136,7 @@ export const CompletedGoalCard: React.FC<CompletedGoalCardProps> = ({
             <CheckCircle size={20} color="#FFFFFF" />
             <Text style={styles.bigAchievementText}>達成成功！</Text>
           </View>
-          <View style={styles.progressHeader}>
-            <Text style={[styles.progressLabel, { color: currentTheme.text }]}>進捗</Text>
-            <Text style={[styles.progressPercentage, { color: getGoalTypeColor(goal.goal_type) }]}>
-              {goal.progress_percentage || 0}%
-              {hasSubGoals && ` (${subGoals.filter(sg => sg.is_completed).length}/${subGoals.length})`}
-            </Text>
-          </View>
-          <View style={[styles.progressBar, { backgroundColor: currentTheme.secondary }]}>
-            <View 
-              style={[
-                styles.progressFill, 
-                { 
-                  width: `${goal.progress_percentage || 0}%`,
-                  backgroundColor: getGoalTypeColor(goal.goal_type)
-                }
-              ]} 
-            />
-          </View>
+          {/* 進捗テキストと100%は非表示（達成済みのため） */}
 
           {/* サブ目標がある場合: サブ目標リストを表示 */}
           {hasSubGoals ? (
@@ -188,32 +179,31 @@ export const CompletedGoalCard: React.FC<CompletedGoalCardProps> = ({
               </View>
             </>
           ) : (
-            <View style={styles.progressButtons}>
-              <TouchableOpacity
-                style={[styles.progressButton, styles.progressButtonMinus]}
-                activeOpacity={0.7}
-                onPress={() => {
-                  const currentProgress = goal.progress_percentage || 0;
-                  onUpdateProgress(goal.id, Math.max(0, currentProgress - 10));
-                }}
-              >
-                <Text style={styles.progressButtonText}>−10%</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.progressButton, styles.progressButtonPlus, { backgroundColor: getGoalTypeColor(goal.goal_type) }]}
-                activeOpacity={0.7}
-                onPress={() => {
-                  const currentProgress = goal.progress_percentage || 0;
-                  onUpdateProgress(goal.id, Math.min(100, currentProgress + 10));
-                }}
-              >
-                <Text style={[styles.progressButtonText, { color: '#FFFFFF' }]}>+10%</Text>
-              </TouchableOpacity>
-              <View style={styles.achievementBadgeInline}>
-                <CheckCircle size={16} color="#4CAF50" />
-                <Text style={[styles.achievementText, { color: '#4CAF50' }]}>達成済み</Text>
+            // 達成成功（100%）の場合は±10%ボタンを非表示
+            (goal.progress_percentage === 100 || goal.is_completed) ? null : (
+              <View style={styles.progressButtons}>
+                <TouchableOpacity
+                  style={[styles.progressButton, styles.progressButtonMinus]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const currentProgress = goal.progress_percentage || 0;
+                    onUpdateProgress(goal.id, Math.max(0, currentProgress - 10));
+                  }}
+                >
+                  <Text style={styles.progressButtonText}>−10%</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.progressButton, styles.progressButtonPlus, { backgroundColor: getGoalTypeColor(goal.goal_type) }]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const currentProgress = goal.progress_percentage || 0;
+                    onUpdateProgress(goal.id, Math.min(100, currentProgress + 10));
+                  }}
+                >
+                  <Text style={[styles.progressButtonText, { color: '#FFFFFF' }]}>+10%</Text>
+                </TouchableOpacity>
               </View>
-            </View>
+            )
           )}
         </View>
       )}
@@ -240,5 +230,13 @@ export const CompletedGoalCard: React.FC<CompletedGoalCardProps> = ({
       )}
     </View>
   );
-};
-
+  },
+  (prevProps, nextProps) => {
+    return (
+      prevProps.goal.id === nextProps.goal.id &&
+      prevProps.goal.progress_percentage === nextProps.goal.progress_percentage &&
+      prevProps.goal.sub_goals?.length === nextProps.goal.sub_goals?.length &&
+      prevProps.goal.is_completed === nextProps.goal.is_completed
+    );
+  }
+);

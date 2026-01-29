@@ -45,7 +45,7 @@ export const PersonalGoalsSection: React.FC<PersonalGoalsSectionProps> = ({
         >
           <Text style={[styles.goalTypeTitle, { color: primaryColor }]}>短期目標</Text>
           <Text style={[styles.goalTypeDescription, { color: '#666666' }]}>
-            {shortTermGoal?.title || 'もっと高い音を出せるようにする'}
+            {shortTermGoal?.title || 'スケールを正確に弾ける'}
           </Text>
         </TouchableOpacity>
         
@@ -55,7 +55,7 @@ export const PersonalGoalsSection: React.FC<PersonalGoalsSectionProps> = ({
         >
           <Text style={[styles.goalTypeTitle, { color: primaryColor }]}>長期目標</Text>
           <Text style={[styles.goalTypeDescription, { color: '#666666' }]}>
-            {longTermGoal?.title || '〇〇を弾けるようになりたい。'}
+            {longTermGoal?.title || '憧れの曲を弾けるようになる'}
           </Text>
         </TouchableOpacity>
       </View>

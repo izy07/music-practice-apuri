@@ -21,6 +21,8 @@ export interface PracticeSession {
   content?: string | null;
   audio_url?: string | null;
   input_method: 'manual' | 'preset' | 'voice' | 'timer';
+  start_time?: string | null; // 開始時間（HH:MM:SS形式）
+  end_time?: string | null; // 終了時間（HH:MM:SS形式）
   created_at?: string;
   updated_at?: string;
 }
@@ -43,14 +45,34 @@ export const getTodayPracticeSessions = async (
     
     let query = supabase
       .from('practice_sessions')
-      .select('id, duration_minutes, input_method, content, instrument_id')
+      .select('id, duration_minutes, input_method, content, instrument_id, start_time, end_time')
       .eq('user_id', userId)
       .eq('practice_date', today);
     
     // 楽器IDでフィルタリング（統一関数を使用、テーブル名を指定して自動作成を試みる）
     query = await applyInstrumentFilter(query, instrumentId, true, 'practice_sessions');
     
-    const { data, error } = await query.order('created_at', { ascending: true });
+let { data, error } = await query.order('created_at', { ascending: true });
+    
+    // start_timeまたはend_timeカラムが存在しない場合（エラーコード42703）は、カラムを除外して再試行
+    if (error && error.code === '42703' && (error.message?.includes('start_time') || error.message?.includes('end_time'))) {
+      logger.warn(`[${REPOSITORY_CONTEXT}] getTodayPracticeSessions: start_time/end_timeカラムが存在しないため、除外して再試行します`, {
+        error: error.message,
+        userId,
+        today
+      });
+      
+      // start_timeとend_timeを除外して再試行
+      query = supabase
+        .from('practice_sessions')
+        .select('id, duration_minutes, input_method, content, instrument_id')
+        .eq('user_id', userId)
+        .eq('practice_date', today);
+      
+      const retryResult = await query.order('created_at', { ascending: true });
+      data = retryResult.data;
+      error = retryResult.error;
+    }
     
     // テーブルが存在しない場合のエラーハンドリング
     if (error && error.code === 'PGRST205') {
@@ -144,7 +166,7 @@ export const createPracticeSession = async (
     const { data, error } = await supabase
       .from('practice_sessions')
       .insert(insertPayload)
-      .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, created_at')
+      .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, start_time, end_time, created_at')
       .single();
     
     // 保存後のデータを確認
@@ -177,7 +199,7 @@ export const createPracticeSession = async (
           const { data: retryData, error: retryError } = await supabase
             .from('practice_sessions')
             .insert(handled.payload)
-            .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, created_at')
+            .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, start_time, end_time, created_at')
             .single();
           
           if (retryError) {
@@ -271,7 +293,7 @@ export const updatePracticeSession = async (
       .from('practice_sessions')
       .update(payload)
       .eq('id', sessionId)
-      .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, created_at')
+      .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, start_time, end_time, created_at')
       .single();
     
     if (error) {
@@ -283,7 +305,7 @@ export const updatePracticeSession = async (
           .from('practice_sessions')
           .update(updatesWithoutTimestamp)
           .eq('id', sessionId)
-          .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, created_at')
+          .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, start_time, end_time, created_at')
           .single();
         
         if (retryError) {
@@ -433,6 +455,8 @@ export const savePracticeSessionWithIntegration = async (
     replaceMinutes?: boolean; // trueの場合、既存の時間を置き換える（デフォルト: false = 加算）
     audioUrl?: string | null;
     videoUrl?: string | null;
+    startTime?: string | null; // 開始時間（HH:MM:SS形式）
+    endTime?: string | null; // 終了時間（HH:MM:SS形式）
   } = {}
 ): Promise<{ success: boolean; error?: SupabaseError }> => {
   try {
@@ -444,7 +468,9 @@ export const savePracticeSessionWithIntegration = async (
       practiceDate,
       replaceMinutes = false, // デフォルトは加算
       audioUrl = null,
-      videoUrl = null
+      videoUrl = null,
+      startTime = null,
+      endTime = null
     } = options;
     
     // 練習日付が指定されていない場合は今日の日付を使用
@@ -471,7 +497,7 @@ export const savePracticeSessionWithIntegration = async (
     // 同じ日付に異なる楽器の記録が存在する可能性があるため、すべての記録を取得してから手動でフィルタリングする
     let query = supabase
       .from('practice_sessions')
-      .select('id, duration_minutes, input_method, content, instrument_id')
+      .select('id, duration_minutes, input_method, content, instrument_id, start_time, end_time')
       .eq('user_id', userId)
       .eq('practice_date', targetDate);
     
@@ -479,7 +505,27 @@ export const savePracticeSessionWithIntegration = async (
     // query = await applyInstrumentFilter(query, instrumentId, true, 'practice_sessions');
     
     logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration: 既存記録検索クエリ実行（フィルタリングなし）`);
-    const { data: allRecords, error: fetchError } = await query.order('created_at', { ascending: true });
+    let { data: allRecords, error: fetchError } = await query.order('created_at', { ascending: true });
+    
+    // start_timeまたはend_timeカラムが存在しない場合（エラーコード42703）は、カラムを除外して再試行
+    if (fetchError && fetchError.code === '42703' && (fetchError.message?.includes('start_time') || fetchError.message?.includes('end_time'))) {
+      logger.warn(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration: start_time/end_timeカラムが存在しないため、除外して再試行します`, {
+        error: fetchError.message,
+        userId,
+        targetDate
+      });
+      
+      // start_timeとend_timeを除外して再試行
+      query = supabase
+        .from('practice_sessions')
+        .select('id, duration_minutes, input_method, content, instrument_id')
+        .eq('user_id', userId)
+        .eq('practice_date', targetDate);
+      
+      const retryResult = await query.order('created_at', { ascending: true });
+      allRecords = retryResult.data;
+      fetchError = retryResult.error;
+    }
     
     logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration: フィルタリング前の既存記録`, {
       count: allRecords?.length || 0,
@@ -579,6 +625,8 @@ export const savePracticeSessionWithIntegration = async (
           content: updateContent,
           instrument_id: instrumentId !== undefined ? instrumentId : existing.instrument_id, // 指定されていない場合は既存の値を保持
           input_method: inputMethod, // 既に検証済みの値を使用
+          start_time: startTime !== undefined ? startTime : existing.start_time, // 指定されていない場合は既存の値を保持
+          end_time: endTime !== undefined ? endTime : existing.end_time, // 指定されていない場合は既存の値を保持
         };
         
         // audio_urlとvideo_urlを更新（指定されている場合）
@@ -673,17 +721,71 @@ export const savePracticeSessionWithIntegration = async (
           content: content || null,
           input_method: inputMethod,
           instrument_id: instrumentId || null,
+          start_time: startTime || null,
+          end_time: endTime || null,
         };
         
-        const result = await createPracticeSession(sessionData);
-        const insertError = result.error;
+      const result = await createPracticeSession(sessionData);
+      const insertError = result.error;
+      
+      if (insertError) {
+        return { success: false, error: insertError };
+      }
+      
+      // 複数端末からの同時保存を防ぐため、保存後に再度既存記録を確認
+      // タイマー/クイック記録は複数レコードを許可するが、完全に同一の記録（同じ時間、同じ内容）は重複とみなす
+      await new Promise(resolve => setTimeout(resolve, 200)); // データベース反映を待つ
+      
+      const { data: recheckRecords, error: recheckError } = await supabase
+        .from('practice_sessions')
+        .select('id, duration_minutes, input_method, content, instrument_id, created_at')
+        .eq('user_id', userId)
+        .eq('practice_date', targetDate);
+      
+      if (!recheckError && recheckRecords) {
+        const recheckFiltered = recheckRecords.filter((record: any) => {
+          if (instrumentId) {
+            return record.instrument_id === instrumentId || record.instrument_id === null;
+          }
+          return record.instrument_id === null;
+        });
         
-        if (insertError) {
-          return { success: false, error: insertError };
+        const recheckSameMethod = recheckFiltered.filter((record: any) => 
+          record.input_method === inputMethod &&
+          record.duration_minutes === minutes &&
+          record.content === (content || null)
+        );
+        
+        // 完全に同一の記録が複数ある場合、最初の1つを残して他を削除
+        if (recheckSameMethod.length > 1) {
+          // 作成時刻でソートして、最も古いものを残す
+          recheckSameMethod.sort((a: any, b: any) => 
+            new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+          const keepRecord = recheckSameMethod[0];
+          const duplicateIds = recheckSameMethod.slice(1).map((r: any) => r.id).filter((id: any): id is string => typeof id === 'string');
+          
+          if (duplicateIds.length > 0) {
+            logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:タイマー/クイック記録の重複を削除`, {
+              keepId: keepRecord.id,
+              duplicateIds,
+              input_method: inputMethod
+            });
+            
+            const { error: deleteError } = await deletePracticeSessions(duplicateIds, instrumentId, {
+              maxRetries: 2,
+              baseDelay: 100
+            });
+            
+            if (deleteError) {
+              logger.warn(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:タイマー/クイック記録の重複削除エラー`, { error: deleteError });
+            }
+          }
         }
-        
-        logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:タイマー/クイック記録を新規作成`, { minutes });
-        return { success: true };
+      }
+      
+      logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:タイマー/クイック記録を新規作成`, { minutes });
+      return { success: true };
       } else {
         // 同じinput_methodのレコードがない場合、新しい時間記録を追加
         // 異なるinput_methodのレコードは保持し、新しい時間記録を別レコードとして作成
@@ -694,6 +796,8 @@ export const savePracticeSessionWithIntegration = async (
           content: content || null,
           input_method: inputMethod,
           instrument_id: instrumentId || null,
+          start_time: startTime || null,
+          end_time: endTime || null,
         };
         
         logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:creating-time-record-with-basic-practice`, {
@@ -707,6 +811,49 @@ export const savePracticeSessionWithIntegration = async (
         if (insertError) {
           // ErrorHandler.handle(insertError, `${REPOSITORY_CONTEXT}:savePracticeSessionWithIntegration:insert`, false);
           return { success: false, error: insertError };
+        }
+        
+        // 複数端末からの同時保存を防ぐため、保存後に再度既存記録を確認して重複をチェック
+        await new Promise(resolve => setTimeout(resolve, 200)); // データベース反映を待つ
+        
+        const { data: recheckRecords, error: recheckError } = await supabase
+          .from('practice_sessions')
+          .select('id, duration_minutes, input_method, content, instrument_id, start_time, end_time')
+          .eq('user_id', userId)
+          .eq('practice_date', targetDate);
+        
+        if (!recheckError && recheckRecords) {
+          const recheckFiltered = recheckRecords.filter((record: any) => {
+            if (instrumentId) {
+              return record.instrument_id === instrumentId || record.instrument_id === null;
+            }
+            return record.instrument_id === null;
+          });
+          
+          const recheckSameMethod = recheckFiltered.filter((record: any) => record.input_method === inputMethod);
+          
+          // 同じinput_methodのレコードが複数ある場合、最初の1つを残して他を削除
+          if (recheckSameMethod.length > 1) {
+            const keepRecord = recheckSameMethod[0];
+            const duplicateIds = recheckSameMethod.slice(1).map((r: any) => r.id).filter((id: any): id is string => typeof id === 'string');
+            
+            if (duplicateIds.length > 0) {
+              logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:重複記録を削除（保存後チェック）`, {
+                keepId: keepRecord.id,
+                duplicateIds,
+                input_method: inputMethod
+              });
+              
+              const { error: deleteError } = await deletePracticeSessions(duplicateIds, instrumentId, {
+                maxRetries: 2,
+                baseDelay: 100
+              });
+              
+              if (deleteError) {
+                logger.warn(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:重複削除エラー（保存後チェック）`, { error: deleteError });
+              }
+            }
+          }
         }
         
         logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:created-time-record`, { minutes });
@@ -758,9 +905,63 @@ export const savePracticeSessionWithIntegration = async (
       const insertError = result.error;
       const newRecord = result.data;
       
+      if (insertError) {
+        return { success: false, error: insertError };
+      }
+      
+      // 複数端末からの同時保存を防ぐため、保存後に再度既存記録を確認して重複をチェック
+      await new Promise(resolve => setTimeout(resolve, 200)); // データベース反映を待つ
+      
+      const { data: recheckRecords, error: recheckError } = await supabase
+        .from('practice_sessions')
+        .select('id, duration_minutes, input_method, content, instrument_id, start_time, end_time')
+        .eq('user_id', userId)
+        .eq('practice_date', targetDate);
+      
+      if (!recheckError && recheckRecords) {
+        const recheckFiltered = recheckRecords.filter((record: any) => {
+          if (instrumentId) {
+            return record.instrument_id === instrumentId || record.instrument_id === null;
+          }
+          return record.instrument_id === null;
+        });
+        
+        const recheckSameMethod = recheckFiltered.filter((record: any) => record.input_method === inputMethod);
+        
+        // 同じinput_methodのレコードが複数ある場合、最初の1つを残して他を削除
+        if (recheckSameMethod.length > 1) {
+          const keepRecord = recheckSameMethod[0];
+          const duplicateIds = recheckSameMethod.slice(1).map((r: any) => r.id).filter((id: any): id is string => typeof id === 'string');
+          
+          if (duplicateIds.length > 0) {
+            logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:重複記録を削除（新規作成後チェック）`, {
+              keepId: keepRecord.id,
+              duplicateIds,
+              input_method: inputMethod
+            });
+            
+            const { error: deleteError } = await deletePracticeSessions(duplicateIds, instrumentId, {
+              maxRetries: 2,
+              baseDelay: 100
+            });
+            
+            if (deleteError) {
+              logger.warn(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:重複削除エラー（新規作成後チェック）`, { error: deleteError });
+            }
+          }
+        }
+      }
+      
+      if (insertError) {
+        logger.error('savePracticeSessionWithIntegration: 新規記録作成エラー', {
+          error: insertError?.message,
+          errorCode: insertError?.code
+        });
+        return { success: false, error: insertError };
+      }
+      
       logger.debug('savePracticeSessionWithIntegration: 新規記録作成結果', {
-        success: !insertError,
-        error: insertError?.message,
+        success: true,
         recordId: newRecord?.id,
         savedInstrumentId: newRecord?.instrument_id,
         savedInstrumentId_type: typeof newRecord?.instrument_id,
@@ -768,11 +969,6 @@ export const savePracticeSessionWithIntegration = async (
         requestedInstrumentId_type: typeof instrumentId,
         match: newRecord?.instrument_id === instrumentId
       });
-      
-      if (insertError) {
-        // ErrorHandler.handle(insertError, `${REPOSITORY_CONTEXT}:savePracticeSessionWithIntegration:insert`, false);
-        return { success: false, error: insertError };
-      }
       
       logger.debug(`[${REPOSITORY_CONTEXT}] savePracticeSessionWithIntegration:created`, { minutes });
       return { success: true };
@@ -886,9 +1082,10 @@ export const getPracticeSessionsByDate = async (
 ): Promise<{ data: PracticeSession[] | null; error: SupabaseError }> => {
   try {
     // 必要なフィールドのみ取得（パフォーマンス最適化）
+    // start_timeとend_timeが存在しない場合でも動作するように、エラーハンドリングを追加
     let query = supabase
       .from('practice_sessions')
-      .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, created_at')
+      .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, start_time, end_time, created_at')
       .eq('user_id', userId)
       .eq('practice_date', practiceDate);
     
@@ -896,7 +1093,28 @@ export const getPracticeSessionsByDate = async (
     // 直接クエリを実行し、TypeScript側でフィルタリングする
     query = query.order('created_at', { ascending: true });
     
-    const { data: rawData, error } = await query;
+    let { data: rawData, error } = await query;
+    
+    // start_timeまたはend_timeカラムが存在しない場合（エラーコード42703）は、カラムを除外して再試行
+    if (error && error.code === '42703' && (error.message?.includes('start_time') || error.message?.includes('end_time'))) {
+      logger.warn(`[${REPOSITORY_CONTEXT}] getPracticeSessionsByDate: start_time/end_timeカラムが存在しないため、除外して再試行します`, {
+        error: error.message,
+        userId,
+        practiceDate
+      });
+      
+      // start_timeとend_timeを除外して再試行
+      query = supabase
+        .from('practice_sessions')
+        .select('id, user_id, instrument_id, practice_date, duration_minutes, content, audio_url, input_method, created_at')
+        .eq('user_id', userId)
+        .eq('practice_date', practiceDate)
+        .order('created_at', { ascending: true });
+      
+      const retryResult = await query;
+      rawData = retryResult.data;
+      error = retryResult.error;
+    }
     
     if (error) {
       // ErrorHandler.handle(error, `${REPOSITORY_CONTEXT}:getPracticeSessionsByDate`, false);

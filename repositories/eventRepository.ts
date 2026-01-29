@@ -16,6 +16,7 @@ export interface Event {
   title: string;
   date: string; // YYYY-MM-DD形式
   description?: string | null;
+  location?: string | null; // イベントの場所
   color?: string | null; // イベントの色（red, green, blue, orange, purple）
   practice_schedule_id?: string | null; // 練習日程との連携用
   instrument_id?: string | null; // 楽器ID（楽器ごとにイベントを分けて管理）
@@ -30,6 +31,42 @@ export const createEvent = async (
   event: Omit<Event, 'id' | 'created_at' | 'updated_at'>
 ): Promise<{ data: Event | null; error: any }> => {
   try {
+    // 競合チェック: 保存前に既存データを確認（完全に同一のイベントが既に存在する場合）
+    let conflictCheckQuery = supabase
+      .from('events')
+      .select('id, title, date, description, user_id, created_at')
+      .eq('user_id', event.user_id)
+      .eq('title', event.title)
+      .eq('date', event.date);
+    
+    const { data: conflictingEvents } = await conflictCheckQuery;
+    
+    // 完全に同一のイベント（タイトル、日付、説明が一致）が5秒以内に作成された場合は重複とみなす
+    if (conflictingEvents && conflictingEvents.length > 0) {
+      const now = Date.now();
+      const recentConflicts = conflictingEvents.filter((e: any) => {
+        const isSameDescription = (e.description || null) === (event.description || null);
+        const createdTime = new Date(e.created_at).getTime();
+        const timeDiff = now - createdTime;
+        return isSameDescription && timeDiff < 5000; // 5秒以内
+      });
+      
+      if (recentConflicts.length > 0) {
+        logger.warn(`[${REPOSITORY_CONTEXT}] createEvent: 競合を検出: 完全に同一のイベントが最近作成されました`, {
+          conflictingEventId: recentConflicts[0].id,
+          title: event.title,
+          date: event.date
+        });
+        // 既存のイベントを返す（重複作成を防ぐ）
+        const { data: existingEvent } = await supabase
+          .from('events')
+          .select()
+          .eq('id', recentConflicts[0].id)
+          .single();
+        return { data: existingEvent, error: null };
+      }
+    }
+    
     // dateとevent_dateの両方を設定（テーブルスキーマの互換性のため）
     const payload: any = {
       user_id: event.user_id,
@@ -136,9 +173,39 @@ export const createEvent = async (
  */
 export const updateEvent = async (
   eventId: string,
-  updates: Partial<Event>
+  updates: Partial<Event> & { expectedUpdatedAt?: string } // 楽観的ロック用: 更新前のupdated_at
 ): Promise<{ data: Event | null; error: any }> => {
   try {
+    // 楽観的ロック: 更新前に現在のupdated_atを取得してチェック
+    if (updates.expectedUpdatedAt) {
+      const { data: currentEvent, error: fetchError } = await supabase
+        .from('events')
+        .select('updated_at')
+        .eq('id', eventId)
+        .single();
+      
+      if (fetchError) {
+        logger.error(`[${REPOSITORY_CONTEXT}] updateEvent: 現在のイベント取得エラー`, fetchError);
+        return { data: null, error: fetchError };
+      }
+      
+      // updated_atが一致しない場合は競合とみなす
+      if (currentEvent?.updated_at && currentEvent.updated_at !== updates.expectedUpdatedAt) {
+        logger.warn(`[${REPOSITORY_CONTEXT}] updateEvent: 楽観的ロック: 競合を検出`, {
+          eventId,
+          expected: updates.expectedUpdatedAt,
+          actual: currentEvent.updated_at
+        });
+        return { 
+          data: null, 
+          error: { 
+            code: 'CONCURRENT_UPDATE', 
+            message: 'イベントは他の端末で更新されています。最新の状態を取得してから再度お試しください。' 
+          } 
+        };
+      }
+    }
+    
     // dateとevent_dateの両方を設定（テーブルスキーマの互換性のため）
     const payload: any = {
       updated_at: new Date().toISOString(),
@@ -295,9 +362,14 @@ export const getEventsByUserId = async (
     const hasColor = !colorCheckError || 
       (colorCheckError.code !== '42703' && !colorCheckError.message?.includes('color'));
     
+    // locationカラムの存在を確認し、存在しない場合は作成
+    const { ensureLocationColumn } = await import('./common/ensureLocationColumn');
+    const hasLocation = await ensureLocationColumn();
+    
     // SELECT句を構築（カラムが存在する場合のみ含める）
     let selectColumns = 'id,user_id,title,date,description';
     if (hasColor) selectColumns += ',color';
+    if (hasLocation) selectColumns += ',location';
     selectColumns += ',practice_schedule_id';
     if (hasInstrumentId) selectColumns += ',instrument_id';
     selectColumns += ',is_completed,completed_at,created_at,updated_at';

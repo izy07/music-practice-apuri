@@ -581,68 +581,67 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
         setSyncStatus('syncing');
         setLastSyncError(null);
         
-        try {
-          let retryCount = 0;
-          const maxRetries = ERROR.MAX_RETRIES;
-          let lastError: Error | null = null;
-          let isCancelled = false; // タイムアウト時にsyncPromiseの処理をキャンセルするフラグ
+        let retryCount = 0;
+        const maxRetries = ERROR.MAX_RETRIES;
+        let lastError: Error | null = null;
+        let isCancelled = false; // タイムアウト時にsyncPromiseの処理をキャンセルするフラグ
 
-          // タイムアウト時間を設定（リトライを含むので少し長めに）
-          const timeoutMs = TIMEOUT.INSTRUMENT_SYNC_MS * 3;
-          let timeoutId: NodeJS.Timeout | null = null;
+        // タイムアウト時間を設定（リトライを含むので少し長めに）
+        const timeoutMs = TIMEOUT.INSTRUMENT_SYNC_MS * 3;
+        let timeoutId: NodeJS.Timeout | null = null;
 
-          // タイムアウト付きでサーバー同期を実行
-          const syncPromise = (async () => {
-            while (retryCount < maxRetries && !isCancelled) {
-              const result = await updateSelectedInstrument(currentUser.id, instrumentId);
-              if (isCancelled) {
-                return; // タイムアウトが発生した場合は処理を中断
-              }
-              
-              if (!result.error) {
-                setSyncStatus('success');
-                setLastSyncTime(new Date());
-                setLastSyncError(null);
-                if (timeoutId) {
-                  clearTimeout(timeoutId);
-                }
-                return;
-              }
-
-              lastError = result.error instanceof Error ? result.error : new Error(String(result.error));
-              retryCount++;
-
-              if (retryCount < maxRetries && !isCancelled) {
-                const delay = Math.min(
-                  ERROR.RETRY_BASE_DELAY_MS * Math.pow(2, retryCount - 1),
-                  ERROR.RETRY_MAX_DELAY_MS
-                );
-                logger.debug(`サーバー同期失敗、${delay}ms後にリトライ (${retryCount}/${maxRetries})`);
-                await new Promise(resolve => setTimeout(resolve, delay));
-              }
+        // タイムアウト付きでサーバー同期を実行
+        const syncPromise = (async () => {
+          while (retryCount < maxRetries && !isCancelled) {
+            const result = await updateSelectedInstrument(currentUser.id, instrumentId);
+            if (isCancelled) {
+              return; // タイムアウトが発生した場合は処理を中断
             }
-
-            if (!isCancelled) {
-              if (lastError && retryCount >= maxRetries) {
-                logger.warn('サーバー同期失敗（ローカル保存は成功）:', lastError);
-                setLastSyncError(lastError);
-                setSyncStatus('error');
-              }
-            }
-          })();
-
-          const timeoutPromise = new Promise<void>((_, reject) => {
-            timeoutId = setTimeout(() => {
-              isCancelled = true;
-              // タイムアウト時は即座にsyncStatusを更新
-              setSyncStatus('idle');
+            
+            if (!result.error) {
+              setSyncStatus('success');
+              setLastSyncTime(new Date());
               setLastSyncError(null);
-              logger.warn('サーバー同期タイムアウト（ローカル保存は成功）');
-              reject(new Error('タイムアウト: サーバー同期に時間がかかりすぎました'));
-            }, timeoutMs);
-          });
+              if (timeoutId) {
+                clearTimeout(timeoutId);
+              }
+              return;
+            }
 
-          try {
+            lastError = result.error instanceof Error ? result.error : new Error(String(result.error));
+            retryCount++;
+
+            if (retryCount < maxRetries && !isCancelled) {
+              const delay = Math.min(
+                ERROR.RETRY_BASE_DELAY_MS * Math.pow(2, retryCount - 1),
+                ERROR.RETRY_MAX_DELAY_MS
+              );
+              logger.debug(`サーバー同期失敗、${delay}ms後にリトライ (${retryCount}/${maxRetries})`);
+              await new Promise(resolve => setTimeout(resolve, delay));
+            }
+          }
+
+          if (!isCancelled) {
+            if (lastError && retryCount >= maxRetries) {
+              logger.warn('サーバー同期失敗（ローカル保存は成功）:', lastError);
+              setLastSyncError(lastError);
+              setSyncStatus('error');
+            }
+          }
+        })();
+
+        const timeoutPromise = new Promise<void>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            isCancelled = true;
+            // タイムアウト時は即座にsyncStatusを更新
+            setSyncStatus('idle');
+            setLastSyncError(null);
+            logger.warn('サーバー同期タイムアウト（ローカル保存は成功）');
+            reject(new Error('タイムアウト: サーバー同期に時間がかかりすぎました'));
+          }, timeoutMs);
+        });
+
+        try {
             await Promise.race([syncPromise, timeoutPromise]);
           } catch (syncError) {
             // タイムアウトやエラーが発生した場合でも、ローカル保存は成功しているので続行

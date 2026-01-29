@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Dimensions, Linking, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Modal, Dimensions, Linking, TextInput, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, ExternalLink, Youtube, Plus, Trash2, Edit2 } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
@@ -491,17 +491,78 @@ export default function RepresentativeSongsScreen() {
     }
   };
 
-  const handleDeleteFavoriteSong = async (songId: string) => {
+    const handleDeleteFavoriteSong = async (songId: string) => {
+    logger.debug('[代表曲画面] handleDeleteFavoriteSong関数が呼ばれました:', { songId, isAuthenticated, hasUser: !!user });
+    
     if (!isAuthenticated || !user) {
+      logger.warn('[代表曲画面] 認証されていません');
       Alert.alert('エラー', 'ログインが必要です');
       return;
     }
 
+    // Web環境ではwindow.confirmを使用（Alert.alertが正しく動作しない場合があるため）
+    if (Platform.OS === 'web') {
+      const confirmed = (window as any).confirm('このお気に入り曲を削除しますか？');
+      if (!confirmed) {
+        logger.debug('[代表曲画面] 削除がキャンセルされました');
+        return;
+      }
+      
+      try {
+        logger.debug('[代表曲画面] お気に入り曲削除開始:', { songId, userId: user.id });
+        
+        const { error, data } = await supabase
+          .from('user_favorite_songs')
+          .delete()
+          .eq('id', songId)
+          .eq('user_id', user.id)
+          .select();
+
+        if (error) {
+          logger.error('[代表曲画面] お気に入り曲削除エラー:', error);
+          logger.error('[代表曲画面] エラー詳細:', {
+            code: error.code,
+            message: error.message,
+            details: error.details,
+            hint: error.hint
+          });
+          (window as any).alert(`お気に入り曲の削除に失敗しました: ${error.message}`);
+          return;
+        }
+
+        logger.debug('[代表曲画面] お気に入り曲削除成功:', { songId, deletedData: data });
+
+        // 即座に状態を更新（UIの応答性を向上）
+        setSongs(prevSongs => prevSongs.filter(song => song.id !== songId));
+        setFavoriteSongs(prevFavorites => prevFavorites.filter(song => song.id !== songId));
+        
+        logger.debug('[代表曲画面] 状態を即座に更新しました');
+
+        // データベースの反映を待ってから再読み込み（確実に反映させるため）
+        setTimeout(async () => {
+          try {
+            await loadFavoriteSongs();
+            logger.debug('[代表曲画面] お気に入り曲を再読み込みしました');
+          } catch (reloadError) {
+            logger.error('[代表曲画面] お気に入り曲再読み込みエラー:', reloadError);
+            // 再読み込みエラーは無視（既に状態は更新済み）
+          }
+        }, 300);
+        
+        (window as any).alert('お気に入り曲を削除しました');
+      } catch (error) {
+        logger.error('[代表曲画面] お気に入り曲削除で予期しないエラー:', error);
+        (window as any).alert('お気に入り曲の削除に失敗しました');
+      }
+      return;
+    }
+
+    // モバイル環境ではAlert.alertを使用
     Alert.alert(
       '削除確認',
       'このお気に入り曲を削除しますか？',
       [
-        { text: 'キャンセル', style: 'cancel' },
+        { text: 'キャンセル', style: 'cancel', onPress: () => logger.debug('[代表曲画面] 削除がキャンセルされました') },
         {
           text: '削除',
           style: 'destructive',
@@ -594,7 +655,7 @@ export default function RepresentativeSongsScreen() {
           <TouchableOpacity onPress={() => safeGoBack(router, '/(tabs)/index', false)} style={styles.backButton}>
             <ArrowLeft size={24} color={currentTheme.text} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: currentTheme.text }]}>楽器が登場する曲一覧</Text>
+          <View style={{ flex: 1 }} />
           <View style={{ width: 24 }} />
         </View>
         <View style={[styles.loadingContainer, { backgroundColor: currentTheme.background }]}>
@@ -612,7 +673,7 @@ export default function RepresentativeSongsScreen() {
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
-          {instrument?.name}による名演奏
+          {instrument?.name}による演奏
         </Text>
         <View style={{ width: 24 }} />
       </View>
@@ -662,6 +723,7 @@ export default function RepresentativeSongsScreen() {
                   style={[styles.songCard, { backgroundColor: currentTheme.surface }]}
                   onPress={() => handleSongPress(song)}
                   activeOpacity={0.7}
+                  delayPressIn={0}
                 >
                   <View style={styles.songHeader}>
                     <View style={styles.songTitleContainer}>
@@ -675,24 +737,42 @@ export default function RepresentativeSongsScreen() {
                       </Text>
                     </View>
                     {isFavorite && isAuthenticated && user && (
-                      <View style={styles.actionButtonsContainer}>
+                      <View style={styles.actionButtonsContainer} pointerEvents="box-none">
                         <TouchableOpacity
                           onPress={(e) => {
                             e.stopPropagation();
+                            e.preventDefault();
+                            logger.debug('[代表曲画面] 編集ボタンが押されました:', { songId: song.id, songTitle: song.title });
                             handleEditFavoriteSong(song as UserFavoriteSong);
                           }}
                           style={styles.editButton}
                           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          activeOpacity={0.7}
                         >
                           <Edit2 size={18} color={currentTheme.primary} />
                         </TouchableOpacity>
                         <TouchableOpacity
-                          onPress={(e) => {
-                            e.stopPropagation();
-                            handleDeleteFavoriteSong(song.id);
+                          onPress={async (e) => {
+                            try {
+                              e.stopPropagation();
+                              e.preventDefault();
+                              logger.debug('[代表曲画面] 削除ボタンが押されました:', { songId: song.id, songTitle: song.title });
+                              if (song.id) {
+                                logger.debug('[代表曲画面] handleDeleteFavoriteSongを呼び出します:', song.id);
+                                await handleDeleteFavoriteSong(song.id);
+                                logger.debug('[代表曲画面] handleDeleteFavoriteSongの呼び出しが完了しました');
+                              } else {
+                                logger.error('[代表曲画面] 削除ボタン: song.idが存在しません', song);
+                                Alert.alert('エラー', '曲IDが見つかりません');
+                              }
+                            } catch (error) {
+                              logger.error('[代表曲画面] 削除ボタンのonPressでエラーが発生しました:', error);
+                              Alert.alert('エラー', '削除処理中にエラーが発生しました');
+                            }
                           }}
                           style={styles.deleteButton}
                           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                          activeOpacity={0.7}
                         >
                           <Trash2 size={18} color='#F44336' />
                         </TouchableOpacity>

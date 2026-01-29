@@ -354,10 +354,19 @@ const convertNoteName = (noteString: string, mode: 'en' | 'ja'): string => {
     return noteString; // パターンに一致しない場合はそのまま返す
   }
   
-  const noteName = match[1]; // E, C# など
+  let noteName = match[1]; // E, C# など
   const octave = match[2]; // 4, 3 など
   
-  // 音名を日本語に変換
+  
+  // フラット記号（♭）をシャープ記号（#）に変換
+  // NOTE_NAMES配列はシャープ記号を使用しているため
+  const flatToSharp: { [key: string]: string } = {
+    'B♭': 'A#', 'E♭': 'D#', 'A♭': 'G#', 'D♭': 'C#', 'G♭': 'F#', 'C♭': 'B', 'F♭': 'E',
+    'Bb': 'A#', 'Eb': 'D#', 'Ab': 'G#', 'Db': 'C#', 'Gb': 'F#', 'Cb': 'B', 'Fb': 'E'
+  };
+  if (flatToSharp[noteName]) {
+    noteName = flatToSharp[noteName];
+  }
   const noteIndex = NOTE_NAMES.indexOf(noteName);
   if (noteIndex === -1) {
     return noteString; // 見つからない場合はそのまま返す
@@ -427,7 +436,7 @@ export default function TunerScreen() {
     '550e8400-e29b-41d4-a716-446655440011': 'cello',     // チェロ
     '550e8400-e29b-41d4-a716-446655440015': 'contrabass', // コントラバス
     '550e8400-e29b-41d4-a716-446655440008': 'horn',      // ホルン
-    // チューバは楽器選択画面にないため、ホルンをフォールバックとして使用
+    '550e8400-e29b-41d4-a716-446655440022': 'tuba',      // チューバ
     '550e8400-e29b-41d4-a716-446655440013': 'guitar',    // オーボエ（フォールバック）
     '550e8400-e29b-41d4-a716-446655440004': 'guitar',    // フルート（フォールバック）
     '550e8400-e29b-41d4-a716-446655440007': 'guitar',    // サックス（フォールバック）
@@ -635,7 +644,19 @@ export default function TunerScreen() {
       const HISTORY_SIZE = 10; // 10フレームの履歴を使用（安定性を優先）
       frequencyHistoryRef.current = []; // 履歴をリセット
 
-      const processAudio = () => {
+      
+  
+  
+const processAudio = () => {
+        // オクターブ関係をチェックする関数（±5%の誤差を許容）
+        const isOctaveRelation = (freq1: number, freq2: number): boolean => {
+          if (freq1 <= 0 || freq2 <= 0) return false;
+          const ratio = freq1 > freq2 ? freq1 / freq2 : freq2 / freq1;
+          // 2倍（オクターブ）、4倍（2オクターブ）、1/2倍、1/4倍の関係をチェック
+          return (ratio > 1.9 && ratio < 2.1) || (ratio > 3.8 && ratio < 4.2) || 
+                 (ratio > 0.475 && ratio < 0.525) || (ratio > 0.2375 && ratio < 0.2625);
+        };
+        
         if (!analyserNodeRef.current || !audioContextRef.current) return;
 
         const bufferLength = analyserNodeRef.current.frequencyBinCount;
@@ -645,7 +666,21 @@ export default function TunerScreen() {
         // 周波数を検出（複数アルゴリズムを統合して高精度化）
         const detectedFrequency = combineAlgorithms(dataArray, audioContextRef.current.sampleRate);
 
-        if (detectedFrequency > 0 && detectedFrequency < 10000) {
+        if (detectedFrequency > 0 && detectedFrequency < 2000) {
+          // 異常値の検出：前回の平滑化値と比較して、異常に大きな変化（100%以上）の場合は無視
+          // ただし、オクターブ関係（2倍、4倍、1/2倍、1/4倍）の場合は正常な検出として扱う
+          if (smoothedFrequencyRef.current > 0) {
+            const changeRatio = Math.abs(detectedFrequency - smoothedFrequencyRef.current) / smoothedFrequencyRef.current;
+            
+            // オクターブ関係の場合は正常な検出として扱う
+            if (isOctaveRelation(detectedFrequency, smoothedFrequencyRef.current)) {
+              // オクターブ関係の場合は正常な検出として扱う（スキップしない）
+            } else if (changeRatio > 1.0) {
+              // 異常値の可能性が高いため、履歴に追加せずにスキップ（100%以上の変化）
+              // デバッグログは削除（高頻度で出力されるため）
+              return;
+            }
+          }
           // 履歴に追加
           frequencyHistoryRef.current.push(detectedFrequency);
           if (frequencyHistoryRef.current.length > HISTORY_SIZE) {
@@ -670,6 +705,19 @@ export default function TunerScreen() {
             // 中央値70%、平均30%の加重平均（安定性と精度のバランス）
             medianFreq = medianFreq * 0.7 + trimmedMean * 0.3;
           } else if (frequencyHistoryRef.current.length >= 3) {
+          // 異常値の再チェック：中央値も前回の平滑化値と比較
+          // 中央値計算後も、前回の値と比較して異常に大きな変化（100%以上）がある場合は無視
+          // ただし、オクターブ関係の場合は正常な検出として扱う
+          if (smoothedFrequencyRef.current > 0) {
+            const medianChangeRatio = Math.abs(medianFreq - smoothedFrequencyRef.current) / smoothedFrequencyRef.current;
+            
+            // オクターブ関係の場合は正常な検出として扱う
+            if (!isOctaveRelation(medianFreq, smoothedFrequencyRef.current) && medianChangeRatio > 1.0) {
+              // 中央値も異常値の可能性が高いため、前回の値を維持（100%以上の変化）
+              // デバッグログは削除（高頻度で出力されるため）
+              return;
+            }
+          }
             // 3フレーム以上の場合、中央値を使用
             const sortedFreqs = [...frequencyHistoryRef.current].sort((a, b) => a - b);
             medianFreq = sortedFreqs[Math.floor(sortedFreqs.length / 2)];
@@ -678,47 +726,63 @@ export default function TunerScreen() {
             medianFreq = frequencyHistoryRef.current.reduce((a, b) => a + b, 0) / frequencyHistoryRef.current.length;
           }
 
-          // 安定した検出のため、より強力な平滑化を適用
-          // ただし、初回検出時は即座に反映
+          // 安定した検出のため、変化量に応じた段階的な平滑化を適用
+          // 平滑化の強度は変化量に反比例（小さな変化ほど強く平滑化、大きな変化ほど弱く平滑化）
+          // これにより、実際の音の変化は反映しつつ、誤検出による急激な変化は抑制される
           const freqDiff = Math.abs(medianFreq - smoothedFrequencyRef.current);
           let smoothedFreq: number;
           
           if (smoothedFrequencyRef.current === 0) {
-            // 初回検出時は即座に反映
+            // 初回検出時は即座に反映（平滑化なし）
             smoothedFreq = medianFreq;
           } else if (freqDiff < 2) {
-            // 非常に小さな変化（2Hz未満）の場合は、強力な平滑化（安定性を優先）
-            smoothedFreq = smoothedFrequencyRef.current * 0.3 + medianFreq * 0.7;
+            // 非常に小さな変化（2Hz未満）: 50%平滑化（安定性を最優先）
+            // チューニング時の微調整を滑らかに表示
+            smoothedFreq = smoothedFrequencyRef.current * 0.5 + medianFreq * 0.5;
           } else if (freqDiff < 5) {
-            // 小さな変化（2-5Hz）の場合は、中程度の平滑化
-            smoothedFreq = smoothedFrequencyRef.current * 0.2 + medianFreq * 0.8;
+            // 小さな変化（2-5Hz）: 40%平滑化（中程度の安定性）
+            // 楽器の音程の自然な揺れを滑らかに
+            smoothedFreq = smoothedFrequencyRef.current * 0.4 + medianFreq * 0.6;
           } else if (freqDiff < 10) {
-            // 中程度の変化（5-10Hz）の場合は、軽い平滑化
+            // 中程度の変化（5-10Hz）: smoothValue関数で軽い平滑化
+            // 音程の変更を比較的速やかに反映
             smoothedFreq = smoothValue(
               smoothedFrequencyRef.current,
               medianFreq,
-              0.8, // alpha（高い値でより速く反映）
-              50   // maxChange
+              0.4, // alpha: 変化の反映速度（0.4 = 40%反映）
+              20   // maxChange: 1回の更新で許容する最大変化量（Hz）
             );
           } else if (freqDiff < 20) {
-            // 大きな変化（10-20Hz）の場合は、標準的な平滑化
-            smoothedFreq = smoothValue(
-              smoothedFrequencyRef.current,
-              medianFreq,
-              0.6, // alpha
-              30   // maxChange
-            );
-          } else {
-            // 非常に大きな変化（20Hz以上）の場合は、強い平滑化（外れ値の可能性）
+            // 大きな変化（10-20Hz）: 標準的な平滑化
+            // 楽器の変更や大きな音程の変更に対応
             smoothedFreq = smoothValue(
               smoothedFrequencyRef.current,
               medianFreq,
               0.4, // alpha
               20   // maxChange
             );
+          } else {
+            // 非常に大きな変化（20Hz以上）: 強い平滑化（外れ値の可能性が高い）
+            // 誤検出やノイズによる急激な変化を抑制
+            smoothedFreq = smoothValue(
+              smoothedFrequencyRef.current,
+              medianFreq,
+              0.2, // alpha: より強い平滑化（20%反映）
+              10   // maxChange: より厳しい制限（10Hz/回）
+            );
           }
           
-          smoothedFrequencyRef.current = smoothedFreq;
+          smoothedFrequencyRef.current = smoothedFreq;          
+          // 最終的な異常値チェック：平滑化後の値も妥当性を確認
+          if (smoothedFrequencyRef.current > 0) {
+            const finalChangeRatio = Math.abs(smoothedFreq - smoothedFrequencyRef.current) / smoothedFrequencyRef.current;
+            if (finalChangeRatio > 0.3) {
+              // 平滑化後も異常に大きな変化がある場合は、前回の値を維持
+              if (__DEV__) console.warn(`[Tuner] 平滑化後の値が異常値のためスキップ: ${smoothedFreq.toFixed(2)}Hz (前回: ${smoothedFrequencyRef.current.toFixed(2)}Hz, 変化率: ${(finalChangeRatio * 100).toFixed(1)}%)`);
+              return;
+            }
+          }          
+
 
           // 音名を取得（設定されたA4周波数を使用）
           const noteInfo = getNoteFromFrequency(smoothedFreq, a4FrequencyRef.current);
@@ -1369,7 +1433,7 @@ export default function TunerScreen() {
                       style={[
                         styles.noteDisplayModeButton,
                         {
-                          backgroundColor: noteDisplayMode === 'en' ? currentTheme.primary : currentTheme.secondary,
+                          backgroundColor: noteDisplayMode === 'en' ? currentTheme.primary : currentTheme.background,
                           borderColor: currentTheme.primary,
                         }
                       ]}
@@ -1377,7 +1441,7 @@ export default function TunerScreen() {
                     >
                       <Text style={[
                         styles.noteDisplayModeButtonText,
-                        { color: noteDisplayMode === 'en' ? currentTheme.surface : currentTheme.text }
+                        { color: noteDisplayMode === 'en' ? currentTheme.surface : currentTheme.primary }
                       ]}>
                         CDE
                       </Text>
@@ -1386,7 +1450,7 @@ export default function TunerScreen() {
                       style={[
                         styles.noteDisplayModeButton,
                         {
-                          backgroundColor: noteDisplayMode === 'ja' ? currentTheme.primary : currentTheme.secondary,
+                          backgroundColor: noteDisplayMode === 'ja' ? currentTheme.primary : currentTheme.background,
                           borderColor: currentTheme.primary,
                         }
                       ]}
@@ -1394,7 +1458,7 @@ export default function TunerScreen() {
                     >
                       <Text style={[
                         styles.noteDisplayModeButtonText,
-                        { color: noteDisplayMode === 'ja' ? currentTheme.surface : currentTheme.text }
+                        { color: noteDisplayMode === 'ja' ? currentTheme.surface : currentTheme.primary }
                       ]}>
                         ドレミ
                       </Text>

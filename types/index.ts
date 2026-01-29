@@ -4,7 +4,6 @@
 
 export * from './models';
 export * from './common';
-export * from './organization';
 
 // 再エクスポート（後方互換性のため）
 export type {

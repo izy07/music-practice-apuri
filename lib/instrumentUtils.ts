@@ -27,6 +27,7 @@ const INSTRUMENT_NAME_TO_EMOJI_MAP: Record<string, string> = {
   'Synthesizer': '🎹',
   'Taiko': '🥁',
   'Other': '❓',
+  'Tuba': '🎺',
 };
 
 /**
@@ -50,8 +51,9 @@ const INSTRUMENT_ID_TO_KEY_MAP: Record<string, string> = {
   '550e8400-e29b-41d4-a716-446655440014': 'harp',      // ハープ
   '550e8400-e29b-41d4-a716-446655440015': 'contrabass', // コントラバス
   '550e8400-e29b-41d4-a716-446655440016': 'other',     // その他
-  '550e8400-e29b-41d4-a716-446655440018': 'viola',     // ヴィオラ
+  '550e8400-e29b-41d4-a716-446655440018': 'viola',     // ヴィオラ（選択画面では非表示）
   '550e8400-e29b-41d4-a716-446655440019': 'koto',      // 琴
+  '550e8400-e29b-41d4-a716-446655440022': 'tuba',      // チューバ
   '550e8400-e29b-41d4-a716-446655440020': 'synthesizer', // シンセサイザー
   '550e8400-e29b-41d4-a716-446655440021': 'taiko',     // 太鼓
 };

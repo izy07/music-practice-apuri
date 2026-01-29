@@ -244,8 +244,28 @@ export const autoCorrelate = (
   const adaptiveThresholds = calculateAdaptiveThresholds(rms, 0);
   if (rms < adaptiveThresholds.rmsThreshold) return -1; // 無音検出（環境適応型閾値）
 
-  // エッジトリミング（動的閾値）
-  const thres = Math.max(0.1, rms * 0.3);
+  // クリッピング検出：音が大きすぎる場合（RMS > 0.5）は処理を調整
+  const isClipping = rms > 0.5;
+  if (isClipping) {
+    // クリッピング時は、バッファを正規化して処理を継続
+    const maxValue = Math.max(...Array.from(windowedBuffer).map(Math.abs));
+    if (maxValue > 0) {
+      for (let i = 0; i < SIZE; i++) {
+        windowedBuffer[i] = windowedBuffer[i] / maxValue * 0.9; // 0.9にスケールして余裕を持たせる
+      }
+      // 正規化後のRMSを再計算
+      rms = 0;
+      for (let i = 0; i < SIZE; i++) {
+        rms += windowedBuffer[i] * windowedBuffer[i];
+      }
+      rms = Math.sqrt(rms / SIZE);
+    }
+  }
+
+  // エッジトリミング（動的閾値、上限を設定して音が大きすぎても処理できるようにする）
+  // 音が大きすぎる場合でも、バッファが小さくなりすぎないように上限を設定
+  const maxThreshold = 0.3; // 最大閾値を0.3に制限
+  const thres = Math.min(maxThreshold, Math.max(0.01, rms * 0.3));
   let r1 = 0;
   let r2 = SIZE - 1;
   for (let i = 0; i < SIZE / 2; i++) {
@@ -292,7 +312,7 @@ export const autoCorrelate = (
   // 周波数範囲制限（拡張版）
   // コントラバスのE1 (41.20Hz)を検出するため、最低周波数を40Hzに下げる
   // フルートなどの高音域楽器に対応するため、最高周波数を6000Hzに拡張
-  const minPeriod = Math.floor(sampleRate / 6000); // 最高周波数6000Hz（拡張）
+  const minPeriod = Math.floor(sampleRate / 2000); // 最高周波数2000Hz（実用的な上限）
   const maxPeriod = Math.floor(sampleRate / 40);   // 最低周波数40Hz（コントラバス対応）
 
   // 候補となるピークを複数見つける（ハーモニクス除去のため）
@@ -398,17 +418,36 @@ export const autoCorrelate = (
   }
 
   // 候補が見つからなかった場合、または相関値が非常に高い場合は、最も相関値の高いものを使用
-  // 相関値が0.7以上の場合、ハーモニクス判定を無視して採用（信頼性が高い）
+  // ただし、2000Hz以下の候補のみを考慮（ハーモニクスを除外）
+  // より大きいperiod（低い周波数 = 基本周波数）を優先
   if (fundamentalPeriod === -1 && candidates.length > 0) {
-    const highestCorrelation = candidates[0].correlation;
-    if (highestCorrelation > 0.7) {
-      // 相関値が非常に高い場合は、ハーモニクス判定を無視
+    // 2000Hz以下の候補のみをフィルタリング
+    const validCandidates = candidates.filter(c => {
+      const freq = sampleRate / c.period;
+      return freq >= 40 && freq <= 2000;
+    });
+    
+    if (validCandidates.length > 0) {
+      // 有効な候補をperiodでソート（大きい順 = 低い周波数順 = 基本周波数順）
+      validCandidates.sort((a, b) => b.period - a.period);
+      
+      // 相関値が0.7以上の場合、ハーモニクス判定を無視して採用（信頼性が高い）
+      const highCorrelationCandidates = validCandidates.filter(c => c.correlation > 0.7);
+      if (highCorrelationCandidates.length > 0) {
+        // 相関値が高い候補の中から、最も大きいperiod（最も低い周波数 = 基本周波数）を選択
+        highCorrelationCandidates.sort((a, b) => b.period - a.period);
+        fundamentalPeriod = highCorrelationCandidates[0].period;
+        fundamentalCorrelation = highCorrelationCandidates[0].correlation;
+      } else {
+        // 相関値が低い場合でも、最も大きいperiod（最も低い周波数 = 基本周波数）を優先
+        fundamentalPeriod = validCandidates[0].period;
+        fundamentalCorrelation = validCandidates[0].correlation;
+      }
+    } else {
+      // 有効な候補がない場合、元の候補から最も大きいperiodを選択
+      candidates.sort((a, b) => b.period - a.period);
       fundamentalPeriod = candidates[0].period;
       fundamentalCorrelation = candidates[0].correlation;
-    } else {
-      // それでも見つからない場合は、最も相関値の高いものを使用
-    fundamentalPeriod = candidates[0].period;
-    fundamentalCorrelation = candidates[0].correlation;
     }
   }
 
@@ -507,10 +546,11 @@ export const autoCorrelate = (
 
   const freq = sampleRate / T0;
 
-  // 周波数の範囲チェック（40Hz - 6000Hzの範囲内のみ有効）
+  // 周波数の範囲チェック（40Hz - 2000Hzの範囲内のみ有効）
   // コントラバスのE1 (41.20Hz)を検出するため、最低周波数を40Hzに下げる
-  // フルートなどの高音域楽器に対応するため、最高周波数を6000Hzに拡張
-  if (!isFinite(freq) || freq < 40 || freq > 6000) {
+  // 2000Hz以上は通常ハーモニクス（倍音）なので、基本周波数の検出では除外
+  // 通常の楽器の基本周波数は2000Hz以下（ピアノの最高音C8でも約4186Hzだが、実用的には2000Hz以下）
+  if (!isFinite(freq) || freq < 40 || freq > 2000) {
     return -1;
   }
 
@@ -667,7 +707,7 @@ export const yinPitchDetection = (
   
   // 差関数（difference function）を計算
   const maxLag = Math.min(SIZE / 2, Math.floor(sampleRate / 40)); // 最低周波数40Hz
-  const minLag = Math.floor(sampleRate / 6000); // 最高周波数6000Hz
+  const minLag = Math.floor(sampleRate / 2000); // 最高周波数2000Hz（実用的な上限）
   const d = new Array<number>(maxLag + 1).fill(0);
   
   for (let tau = 0; tau <= maxLag; tau++) {
@@ -821,8 +861,9 @@ export const yinPitchDetection = (
   
   const freq = sampleRate / refinedTau;
   
-  // 周波数の範囲チェック
-  if (!isFinite(freq) || freq < 40 || freq > 6000) {
+  // 周波数の範囲チェック（40Hz - 2000Hzの範囲内のみ有効）
+  // 2000Hz以上は通常ハーモニクス（倍音）なので、基本周波数の検出では除外
+  if (!isFinite(freq) || freq < 40 || freq > 2000) {
     return -1;
   }
   
@@ -853,11 +894,11 @@ export const combineAlgorithms = (
   
   // 両方の結果が有効な場合
   if (autocorrFreq > 0 && yinFreq > 0) {
-    // オクターブ関係にある場合、より高い周波数を優先
+    // オクターブ関係にある場合、より低い周波数（基本周波数）を優先
+    // ハーモニクス（倍音）ではなく、基本周波数を検出するため
     if (isOctaveRelation(autocorrFreq, yinFreq)) {
-      // より高い周波数を選択（通常、チューナーは実際に鳴っている音の基本周波数を検出すべき）
-      // E5がE4として検出される問題を回避するため、より高い周波数を優先
-      return Math.max(autocorrFreq, yinFreq);
+      // より低い周波数（基本周波数）を選択
+      return Math.min(autocorrFreq, yinFreq);
     }
     
     // 周波数の差が小さい場合（5%以内）、平均を取る
@@ -870,24 +911,25 @@ export const combineAlgorithms = (
       return autocorrFreq * (1 - weight) + yinFreq * weight;
     } else {
       // 差が大きい場合（5%以上）、どちらがより信頼できるかを判定
-      // 通常、より高い周波数（実際の音）を優先
-      // ただし、非常に大きな差（50%以上）の場合は、より低い周波数が正しい可能性もある
+      // 通常、より低い周波数（基本周波数）を優先（ハーモニクスを除外）
+      // ただし、非常に大きな差（50%以上）の場合は、より低い周波数が正しい可能性が高い
       const largeDiff = diff / avgFreq > 0.5;
       
       if (largeDiff) {
         // 非常に大きな差の場合、両方の周波数の妥当性をチェック
         // 一般的な楽器の周波数範囲（40-6000Hz）内の方を優先
+        // 6000Hz以上はハーモニクスの可能性が高い
         const autocorrInRange = autocorrFreq >= 40 && autocorrFreq <= 6000;
         const yinInRange = yinFreq >= 40 && yinFreq <= 6000;
         
         if (autocorrInRange && !yinInRange) return autocorrFreq;
         if (yinInRange && !autocorrInRange) return yinFreq;
         
-        // 両方とも範囲内の場合、より高い周波数を優先
-        return Math.max(autocorrFreq, yinFreq);
+        // 両方とも範囲内の場合、より低い周波数（基本周波数）を優先
+        return Math.min(autocorrFreq, yinFreq);
       } else {
-        // 中程度の差の場合、より高い周波数を優先（オクターブ誤検出対策）
-        return Math.max(autocorrFreq, yinFreq);
+        // 中程度の差の場合、より低い周波数（基本周波数）を優先
+        return Math.min(autocorrFreq, yinFreq);
       }
     }
   }

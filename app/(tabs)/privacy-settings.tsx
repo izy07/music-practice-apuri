@@ -413,6 +413,12 @@ export default function PrivacySettingsScreen() {
       const instrument = defaultInstruments.find(i => i.id === instrumentId);
       const instrumentName = instrument?.name || '楽器';
 
+      // カレンダー画面の目標データを更新するためのカスタムイベントを発火
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('calendarGoalUpdated', { detail: { reason: 'instrumentDataDeleted' } }));
+        logger.debug('[PrivacySettings] カレンダー目標更新イベントを発火しました');
+      }
+
       Alert.alert(
         '削除完了',
         `「${instrumentName}」のデータを削除しました。`,

@@ -140,6 +140,20 @@ const presetPalettes: PresetPalette[] = [
       textSecondary: '#00695C',
     }
   },
+  // シルバー系（旧フルート）
+  {
+    id: 'silver',
+    name: 'シルバー',
+    colors: {
+      background: '#F0F8FF',
+      surface: '#FFFFFF',
+      primary: '#C0C0C0',
+      secondary: '#E6E6FA',
+      accent: '#A9A9A9',
+      text: '#2F4F4F',
+      textSecondary: '#708090',
+    }
+  },
   {
     id: 'turquoise',
     name: 'ターコイズ',

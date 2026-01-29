@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal, Platform, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Plus, Music, Edit3, Trash2, Star, Play, Clock, CheckCircle2 } from 'lucide-react-native';
@@ -57,6 +57,29 @@ export default function MyLibraryScreen() {
     notes: ''
   });
 
+  // 画面表示時に楽曲数の制限を事前チェック（useCallbackでメモ化）
+  const checkLimitOnMount = useCallback(async () => {
+    if (!entitlement || entitlement.isEntitled) {
+      setLibraryLimitStatus(null); // プレミアムユーザーはチェック不要
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return;
+      }
+
+      const { getInstrumentId } = await import('@/lib/instrumentUtils');
+      const instrumentId = getInstrumentId(selectedInstrument);
+      
+      const limitCheck = await checkMyLibraryLimit(user.id, entitlement, instrumentId);
+      setLibraryLimitStatus(limitCheck);
+    } catch (error) {
+      logger.error('楽曲制限チェックエラー:', error);
+    }
+  }, [entitlement, selectedInstrument]);
+
   // 初期ロード + 権限変化時・楽器変更時に再評価
   useEffect(() => {
     loadSongs();
@@ -64,30 +87,8 @@ export default function MyLibraryScreen() {
 
   // 画面表示時に楽曲数の制限を事前チェック
   useEffect(() => {
-    const checkLimitOnMount = async () => {
-      if (!entitlement || entitlement.isEntitled) {
-        setLibraryLimitStatus(null); // プレミアムユーザーはチェック不要
-        return;
-      }
-
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          return;
-        }
-
-        const { getInstrumentId } = await import('@/lib/instrumentUtils');
-        const instrumentId = getInstrumentId(selectedInstrument);
-        
-        const limitCheck = await checkMyLibraryLimit(user.id, entitlement, instrumentId);
-        setLibraryLimitStatus(limitCheck);
-      } catch (error) {
-        logger.error('楽曲制限チェックエラー:', error);
-      }
-    };
-
     checkLimitOnMount();
-  }, [entitlement, selectedInstrument]);
+  }, [checkLimitOnMount]);
 
   // モーダルの開閉に応じてフォーカス管理（aria-hidden警告を根本的に解決）
   useEffect(() => {
@@ -1148,6 +1149,9 @@ export default function MyLibraryScreen() {
                       }}
                       activeOpacity={0.7}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${song.title}を編集`}
+                      accessibilityHint="楽曲情報を編集します"
                     >
                       <Edit3 size={18} color={currentTheme.textSecondary} />
                     </TouchableOpacity>
@@ -1160,6 +1164,9 @@ export default function MyLibraryScreen() {
                       }}
                       activeOpacity={0.7}
                       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${song.title}を削除`}
+                      accessibilityHint="楽曲を削除します"
                     >
                       <Trash2 size={18} color="#F44336" />
                     </TouchableOpacity>
@@ -1540,6 +1547,7 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 20,
+    paddingBottom: 80, // 下部タブメニューの高さ分のパディングを追加
   },
   filterContainer: {
     marginVertical: 20,
@@ -1568,6 +1576,7 @@ const styles = StyleSheet.create({
   songsContainer: {
     gap: 8,
     paddingBottom: 20,
+    marginBottom: 20, // 下部タブメニューとの間隔を追加
   },
   emptyContainer: {
     alignItems: 'center',
@@ -1626,7 +1635,7 @@ const styles = StyleSheet.create({
     paddingLeft: 4,
   },
   songTitle: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: '700',
     marginBottom: 2,
   },
