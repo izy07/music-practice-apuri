@@ -759,7 +759,7 @@ export const getActiveInstrumentIds = async (userId: string): Promise<string[]> 
     }
 
     // すべての楽器IDを取得（重複を排除）
-    const [recordingsResult, goalsResult, mySongsResult, practiceSessionsResult, eventsResult] = await Promise.all([
+    const [recordingsResult, goalsResult, mySongsResult, practiceSessionsResult, eventsResult, customInstrumentsResult] = await Promise.all([
       supabase
         .from('recordings')
         .select('instrument_id')
@@ -785,6 +785,12 @@ export const getActiveInstrumentIds = async (userId: string): Promise<string[]> 
         .select('instrument_id')
         .eq('user_id', userId)
         .not('instrument_id', 'is', null),
+      // カスタム楽器も取得（テーブルが存在する場合のみ）
+      supabase
+        .from('user_custom_instruments')
+        .select('instrument_id')
+        .eq('user_id', userId)
+        .catch(() => ({ data: null, error: null })), // テーブルが存在しない場合はエラーを無視
     ]);
 
     // すべての楽器IDを収集（重複を排除 - Setを使用）
@@ -800,7 +806,8 @@ export const getActiveInstrumentIds = async (userId: string): Promise<string[]> 
       goalsResult.data,
       mySongsResult.data,
       practiceSessionsResult.data,
-      eventsResult.data
+      eventsResult.data,
+      customInstrumentsResult.data, // カスタム楽器のinstrument_idも含める
     ];
     
     allResults.forEach(data => {
@@ -1005,7 +1012,7 @@ export const adjustGoalsOnDowngrade = async (
       };
     }
 
-    logger.debug('目標調整（各楽器ごとに2個まで）:', {
+    logger.debug('目標調整（各楽器ごとに4個まで）:', {
       totalGoals: activeGoals.length,
       keptGoals: goalsToKeep.length,
       hiddenGoals: goalsToHide.length

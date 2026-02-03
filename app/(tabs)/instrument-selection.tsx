@@ -15,6 +15,7 @@ import { updateSelectedInstrument } from '@/repositories/userRepository';
 import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
+import { getCustomInstruments, createCustomInstrument, CustomInstrument } from '@/repositories/customInstrumentRepository';
 
 const OTHER_INSTRUMENT_ID = '550e8400-e29b-41d4-a716-446655440016';
 
@@ -37,6 +38,7 @@ export default function InstrumentSelectionScreen() {
   const [customInstrumentName, setCustomInstrumentName] = useState<string>('');
   const [activeInstrumentIds, setActiveInstrumentIds] = useState<string[]>([]);
   const [canSaveNewInstrument, setCanSaveNewInstrument] = useState<{ canSave: boolean; reason?: string } | null>(null);
+  const [customInstruments, setCustomInstruments] = useState<CustomInstrument[]>([]);
 
   // 「その他」の登録名をローカルから復元（DBカラム未作成/反映遅延でも表示を安定させる）
   useEffect(() => {
@@ -124,6 +126,22 @@ export default function InstrumentSelectionScreen() {
       }
     };
     loadActiveInstruments();
+  }, [user?.id]);
+
+  // カスタム楽器一覧を取得
+  useEffect(() => {
+    const loadCustomInstruments = async () => {
+      if (!user?.id) return;
+      try {
+        const result = await getCustomInstruments(user.id);
+        if (result.data) {
+          setCustomInstruments(result.data);
+        }
+      } catch (error) {
+        logger.error('カスタム楽器一覧の取得に失敗しました:', error);
+      }
+    };
+    loadCustomInstruments();
   }, [user?.id]);
 
   const handleInstrumentSelection = async (instrumentId: string) => {

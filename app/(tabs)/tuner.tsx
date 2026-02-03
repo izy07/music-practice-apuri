@@ -586,6 +586,10 @@ export default function TunerScreen() {
   // チューナー機能：音程検出を開始
   const startListening = async () => {
     try {
+      // 制作途中のため音程が合わない旨を通知
+      Alert.alert('お知らせ', '制作途中のため音程が合いません。', [{ text: 'OK' }]);
+      return;
+
       if (Platform.OS !== 'web') {
         Alert.alert(t('notSupported'), 'チューナー機能はWeb環境でのみ利用できます');
         return;

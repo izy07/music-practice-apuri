@@ -85,7 +85,7 @@ export async function checkGoalLimits(
       
       return {
         canSave: false,
-        error: `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
+        error: `Freeプランでは各楽器ごとに目標を4つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に設定できます。`,
         showUpgrade: true,
       };
     }

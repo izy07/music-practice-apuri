@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo, useReducer } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -9,22 +9,17 @@ import PracticeRecordModal from '@/components/PracticeRecordModal';
 import EventModal from '@/components/EventModal';
 import CalendarDayCell from './components/calendar/CalendarDayCell';
 import EventManagementSection from './components/calendar/EventManagementSection';
-import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { useCalendarData } from '@/hooks/tabs/useCalendarData';
 import { supabase } from '@/lib/supabase';
-import { ErrorHandler } from '@/lib/errorHandler';
 import { saveRecording } from '@/lib/database';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
-import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
+import { getInstrumentId } from '@/lib/instrumentUtils';
 import { formatLocalDate, formatMinutesToHours } from '@/lib/dateUtils';
 import { OfflineStorage, isOnline } from '../../lib/offlineStorage';
 import { COMMON_STYLES } from '@/lib/appStyles';
 import logger from '@/lib/logger';
 import { savePracticeSessionWithIntegration } from '@/repositories/practiceSessionRepository';
-import { setCurrentRoute } from '@/lib/navigationHistory';
-import { useSubscription } from '@/hooks/useSubscription';
-import { canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 
 // テーマの型定義
 interface InstrumentTheme {
@@ -56,7 +51,7 @@ interface UIState {
   showQuickRecord: boolean;
   showPracticeRecord: boolean;
   showEventModal: boolean;
-  selectedEvent: {id: string, title: string, description?: string, color?: string | null, date?: string} | null;
+  selectedEvent: {id: string, title: string, description?: string} | null;
   successMessage: string;
   selectedDate: Date | null;
 }
@@ -66,7 +61,7 @@ type UIAction =
   | { type: 'SHOW_QUICK_RECORD'; payload: boolean }
   | { type: 'SHOW_PRACTICE_RECORD'; payload: boolean }
   | { type: 'SHOW_EVENT_MODAL'; payload: boolean }
-  | { type: 'SET_SELECTED_EVENT'; payload: {id: string, title: string, description?: string, color?: string | null, date?: string} | null }
+  | { type: 'SET_SELECTED_EVENT'; payload: {id: string, title: string, description?: string} | null }
   | { type: 'SET_SUCCESS_MESSAGE'; payload: string }
   | { type: 'SET_SELECTED_DATE'; payload: Date | null }
   | { type: 'CLOSE_ALL_MODALS' };
@@ -111,37 +106,18 @@ const initialUIState: UIState = {
 
 export default function CalendarScreen() {
   const router = useRouter();
-  const [allEvents, setAllEvents] = useState<{ [key: string]: Array<{id: string, title: string, description?: string, color?: string | null, date?: string}> }>({});
-  const { isAuthenticated, isLoading, isInitialized, user } = useAuthAdvanced();
+  const { isAuthenticated, isLoading, isInitialized } = useAuthAdvanced();
   const { currentTheme, practiceSettings, selectedInstrument, isInitializing: isInstrumentInitializing } = useInstrumentTheme();
-  const { entitlement } = useSubscription();
   const { Platform } = require('react-native');
-  
-  // 現在のルートを記録（マウント時）
-  useEffect(() => {
-    setCurrentRoute('/(tabs)/index');
-    return () => {
-      // アンマウント時はクリアしない（他の画面に遷移する際に使用するため）
-    };
-  }, []);
   
   // 初期化完了を追跡するためのref（初回データ読み込み用）
   const hasInitialLoadRef = useRef(false);
-  // 全イベント読み込み完了を追跡するためのref（重複読み込み防止用）
-  const hasLoadedAllEventsRef = useRef(false);
   
   // データ取得のデバウンス用ref
-  const loadAllDataTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadAllDataTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastDataFetchTimeRef = useRef<number>(0);
   const lastMonthRef = useRef<{ year: number; month: number } | null>(null);
   const lastInstrumentRef = useRef<string | null>(null);
-  // イベント保存後のデータ更新用タイマーIDを保持（メモリリーク防止）
-  const eventUpdateTimerRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
-  // 成功メッセージ表示用タイマーIDを保持（メモリリーク防止）
-  const successMessageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
-  // 練習記録更新処理の重複実行を防ぐためのフラグ
-  const isUpdatingRef = useRef(false);
   
   // 日付管理
   const [currentDate, setCurrentDate] = useState(() => {
@@ -174,7 +150,7 @@ export default function CalendarScreen() {
   const setShowEventModal = useCallback((show: boolean) => {
     dispatchUI({ type: 'SHOW_EVENT_MODAL', payload: show });
   }, []);
-  const setSelectedEvent = useCallback((event: {id: string, title: string, description?: string, color?: string | null, date?: string} | null) => {
+  const setSelectedEvent = useCallback((event: {id: string, title: string, description?: string} | null) => {
     dispatchUI({ type: 'SET_SELECTED_EVENT', payload: event });
   }, []);
   const setSuccessMessage = useCallback((message: string) => {
@@ -199,7 +175,6 @@ export default function CalendarScreen() {
     loadEvents,
     loadRecordingsData,
     loadShortTermGoal,
-    loadAllEvents,
   } = useCalendarData(currentDate);
 
   // 認証チェック
@@ -208,19 +183,6 @@ export default function CalendarScreen() {
       return; // 認証されていない場合は早期リターン
     }
   }, [isLoading, isAuthenticated]);
-
-  // 全イベントを読み込む（イベント管理セクション用）
-  // 注意: 初回マウント時と認証状態が変わった時にのみ読み込む（効率化）
-  useEffect(() => {
-    const loadAllEventsData = async () => {
-      if (isAuthenticated && !isLoading && loadAllEvents && !hasLoadedAllEventsRef.current) {
-        hasLoadedAllEventsRef.current = true;
-        const allEventsData = await loadAllEvents();
-        setAllEvents(allEventsData || {});
-      }
-    };
-    loadAllEventsData();
-  }, [isAuthenticated, isLoading, loadAllEvents]);
 
   // ネットワーク状態監視
   useEffect(() => {
@@ -249,31 +211,6 @@ export default function CalendarScreen() {
     }
   }, [currentDate]);
 
-  // ログイン成功時にカレンダーの日付を今日にリセット
-  useEffect(() => {
-    if (!isAuthenticated || isLoading || !isInitialized) {
-      return;
-    }
-    
-    if (typeof window !== 'undefined') {
-      try {
-        const loginSuccessFlag = localStorage.getItem('login_success_reset_calendar');
-        if (loginSuccessFlag === 'true') {
-          // ログイン成功フラグが存在する場合、カレンダーの日付を今日にリセット
-          const today = new Date();
-          setCurrentDate(today);
-          localStorage.removeItem('login_success_reset_calendar');
-          logger.debug('ログイン成功を検出 - カレンダーの日付を今日にリセットしました', {
-            year: today.getFullYear(),
-            month: today.getMonth() + 1
-          });
-        }
-      } catch (error) {
-        logger.warn('ログイン成功時のカレンダー日付リセットに失敗しました（続行）:', error);
-      }
-    }
-  }, [isAuthenticated, isLoading, isInitialized]);
-
   // 初回データ読み込み（初期化完了後、認証済み、楽器選択済みの場合）
   useEffect(() => {
     if (isLoading || !isInitialized || !isAuthenticated || isInstrumentInitializing || !selectedInstrument || selectedInstrument.trim() === '') {
@@ -286,7 +223,7 @@ export default function CalendarScreen() {
         selectedInstrument, 
         isInitialized, 
         isInstrumentInitializing,
-        instrumentId: getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id)
+        instrumentId: getInstrumentId(selectedInstrument)
       });
       hasInitialLoadRef.current = true;
       const currentYear = currentDate.getFullYear();
@@ -297,7 +234,7 @@ export default function CalendarScreen() {
         lastInstrumentRef.current = selectedInstrument || null;
       });
     }
-  }, [isLoading, isInitialized, isAuthenticated, isInstrumentInitializing, selectedInstrument]); // loadAllDataを依存配列から削除（安定した参照を保持）
+  }, [isLoading, isInitialized, isAuthenticated, isInstrumentInitializing, selectedInstrument, loadAllData]);
   
   // クリーンアップ: タイマーをクリア
   useEffect(() => {
@@ -375,7 +312,7 @@ export default function CalendarScreen() {
         year: currentDate.getFullYear(), 
         month: currentDate.getMonth() + 1,
         selectedInstrument,
-        instrumentId: getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id)
+        instrumentId: getInstrumentId(selectedInstrument)
       });
       debouncedLoadAllData();
     }
@@ -392,7 +329,7 @@ export default function CalendarScreen() {
       // 楽器が変更された時はデバウンス付きでデータを読み込む
       logger.debug('楽器が変更されました、デバウンス付きでデータを再読み込みします', { 
         selectedInstrument,
-        instrumentId: getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id)
+        instrumentId: getInstrumentId(selectedInstrument)
       });
       debouncedLoadAllData();
     }
@@ -411,7 +348,7 @@ export default function CalendarScreen() {
           const lastTimestamp = window.localStorage.getItem('last_practice_record_timestamp');
           const lastInstrumentId = window.localStorage.getItem('last_practice_record_instrument_id');
           // 共通関数を使用して楽器IDを取得
-          const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
+          const currentInstrumentId = getInstrumentId(selectedInstrument);
           
           if (lastTimestamp && Date.now() - parseInt(lastTimestamp) < 60000) {
             // 60秒以内に記録があった場合、楽器IDが一致する場合は強制更新（デバウンスなし）
@@ -423,19 +360,13 @@ export default function CalendarScreen() {
                 timeDiff: Date.now() - parseInt(lastTimestamp)
               });
               // データベースの反映を待つため、少し遅延させてから更新（1回のみ）
-              // 既存のタイマーをクリア（メモリリーク防止）
-              if (loadAllDataTimeoutRef.current) {
-                clearTimeout(loadAllDataTimeoutRef.current);
-              }
-              loadAllDataTimeoutRef.current = setTimeout(async () => {
+              setTimeout(async () => {
                 try {
                   await loadAllData();
                   lastDataFetchTimeRef.current = Date.now();
                   logger.debug('useFocusEffect: 強制データ更新完了');
-                  loadAllDataTimeoutRef.current = null;
                 } catch (error) {
                   logger.error('useFocusEffect: 強制データ更新エラー:', error);
-                  loadAllDataTimeoutRef.current = null;
                 }
               }, 500); // 1500msから500msに短縮
               return;
@@ -452,101 +383,33 @@ export default function CalendarScreen() {
         selectedInstrument 
       });
       debouncedLoadAllData();
-      
-      // 目標データも強制リフレッシュ（楽器データ削除後の更新を確実にするため）
-      setTimeout(async () => {
-        try {
-          await loadShortTermGoal(undefined, true);
-          logger.debug('useFocusEffect: 目標データを強制リフレッシュしました');
-        } catch (error) {
-          logger.error('useFocusEffect: 目標データリフレッシュエラー:', error);
-        }
-      }, 300);
-    }, [isLoading, isInitialized, isAuthenticated, debouncedLoadAllData, selectedInstrument, loadShortTermGoal])
+    }, [isLoading, isInitialized, isAuthenticated, debouncedLoadAllData, selectedInstrument])
   );
 
   // 練習記録保存後のデータ更新関数（直接呼び出し用）
   const refreshPracticeData = useCallback(async (includeRecordings: boolean = false) => {
-    logger.debug('[refreshPracticeData] ========== refreshPracticeData開始 ==========');
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        logger.debug('[refreshPracticeData] ❌ ユーザーが存在しません');
-        return;
+      if (user) {
+        logger.debug('refreshPracticeData開始', { includeRecordings, userId: user.id });
+        if (includeRecordings) {
+          await Promise.all([
+            loadPracticeData(user),
+            loadTotalPracticeTime(user),
+            loadRecordingsData(user)
+          ]);
+        } else {
+          await Promise.all([
+            loadPracticeData(user),
+            loadTotalPracticeTime(user)
+          ]);
+        }
+        logger.debug('refreshPracticeData完了');
       }
-      
-      logger.debug('[refreshPracticeData] パラメータ:', { 
-        includeRecordings, 
-        userId: user.id,
-        loadPracticeDataExists: typeof loadPracticeData === 'function',
-        loadTotalPracticeTimeExists: typeof loadTotalPracticeTime === 'function',
-        loadRecordingsDataExists: typeof loadRecordingsData === 'function'
-      });
-      
-      if (includeRecordings) {
-        logger.debug('[refreshPracticeData] 録音データを含めてデータを読み込みます');
-        await Promise.all([
-          (async () => {
-            logger.debug('[refreshPracticeData] loadPracticeData呼び出し開始');
-            try {
-              await loadPracticeData(user);
-              logger.debug('[refreshPracticeData] loadPracticeData完了');
-            } catch (error) {
-              logger.error('[refreshPracticeData] loadPracticeDataエラー:', error);
-              throw error;
-            }
-          })(),
-          (async () => {
-            logger.debug('[refreshPracticeData] loadTotalPracticeTime呼び出し開始');
-            try {
-              await loadTotalPracticeTime(user);
-              logger.debug('[refreshPracticeData] loadTotalPracticeTime完了');
-            } catch (error) {
-              logger.error('[refreshPracticeData] loadTotalPracticeTimeエラー:', error);
-              throw error;
-            }
-          })(),
-          (async () => {
-            logger.debug('[refreshPracticeData] loadRecordingsData呼び出し開始');
-            try {
-              await loadRecordingsData(user);
-              logger.debug('[refreshPracticeData] loadRecordingsData完了');
-            } catch (error) {
-              logger.error('[refreshPracticeData] loadRecordingsDataエラー:', error);
-              throw error;
-            }
-          })()
-        ]);
-      } else {
-        logger.debug('[refreshPracticeData] 練習データと合計練習時間を読み込みます');
-        await Promise.all([
-          (async () => {
-            logger.debug('[refreshPracticeData] loadPracticeData呼び出し開始');
-            try {
-              await loadPracticeData(user);
-              logger.debug('[refreshPracticeData] loadPracticeData完了');
-            } catch (error) {
-              logger.error('[refreshPracticeData] loadPracticeDataエラー:', error);
-              throw error;
-            }
-          })(),
-          (async () => {
-            logger.debug('[refreshPracticeData] loadTotalPracticeTime呼び出し開始');
-            try {
-              await loadTotalPracticeTime(user);
-              logger.debug('[refreshPracticeData] loadTotalPracticeTime完了');
-            } catch (error) {
-              logger.error('[refreshPracticeData] loadTotalPracticeTimeエラー:', error);
-              throw error;
-            }
-          })()
-        ]);
-      }
-      logger.debug('[refreshPracticeData] ========== refreshPracticeData完了 ==========');
     } catch (error) {
       // エラーは無視（データ読み込み失敗は致命的ではない）
-      logger.error('[refreshPracticeData] ❌ カレンダーデータ読み込みエラー:', error);
       console.error('カレンダーデータ読み込みエラー:', error);
+      logger.error('カレンダーデータ読み込みエラー:', error);
     }
   }, [loadPracticeData, loadTotalPracticeTime, loadRecordingsData]);
 
@@ -557,23 +420,22 @@ export default function CalendarScreen() {
         // 即時更新の場合は少し待ってから読み込み（データベース反映を待つ）
         setTimeout(async () => {
           try {
-            // 強制リフレッシュでキャッシュを無視してデータベースから読み込む
-            await loadShortTermGoal(undefined, true);
-            logger.debug('目標表示を即時再読み込みしました（強制リフレッシュ）');
+            await loadShortTermGoal();
+            logger.debug('目標表示を即時再読み込みしました');
           } catch (error) {
             logger.error('目標表示即時再読み込みエラー:', error);
           }
         }, 300); // データベース反映を待つため300ms待機
       } else {
         // データベースの反映を待つため、少し遅延させてから読み込み
-        // 初回読み込み（強制リフレッシュでキャッシュを無視）
-        await loadShortTermGoal(undefined, true);
+        // 初回読み込み
+        await loadShortTermGoal();
         
         // データベースの反映が遅い場合に備えて、少し待ってから再読み込み
         setTimeout(async () => {
           try {
-            await loadShortTermGoal(undefined, true);
-            logger.debug('目標表示を再読み込みしました（強制リフレッシュ）');
+            await loadShortTermGoal();
+            logger.debug('目標表示を再読み込みしました');
           } catch (error) {
             logger.error('目標表示再読み込みエラー:', error);
           }
@@ -591,14 +453,13 @@ export default function CalendarScreen() {
       return;
     }
 
-    const handleCalendarGoalUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      logger.debug('📅 カレンダー目標更新イベントを受信、目標を再読み込みします', customEvent?.detail);
+    const handleCalendarGoalUpdated = (event?: CustomEvent) => {
+      logger.debug('📅 カレンダー目標更新イベントを受信、目標を再読み込みします', event?.detail);
       // ボタン押下時は即座に反映（ラグを解消）
       refreshGoalDisplay(true);
     };
 
-    window.addEventListener('calendarGoalUpdated', handleCalendarGoalUpdated as EventListener);
+    window.addEventListener('calendarGoalUpdated', handleCalendarGoalUpdated);
 
     return () => {
       window.removeEventListener('calendarGoalUpdated', handleCalendarGoalUpdated);
@@ -606,51 +467,49 @@ export default function CalendarScreen() {
   }, [refreshGoalDisplay]);
 
   // 練習記録更新イベントをリッスン（タイマー記録など）
-  // 練習記録更新イベントの処理（重複実行を防ぐ）
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
 
-    const handlePracticeRecordUpdated = (event: Event) => {
-      // 既に更新処理中の場合はスキップ（重複実行を防ぐ）
-      if (isUpdatingRef.current) {
-        logger.debug('📅 練習記録更新イベントを受信しましたが、既に更新処理中のためスキップします');
-        return;
-      }
-
-      const customEvent = event as CustomEvent;
-      const detail = customEvent?.detail;
+    const handlePracticeRecordUpdated = (event?: CustomEvent) => {
+      const detail = event?.detail;
       logger.debug('📅 練習記録更新イベントを受信、データを再読み込みします', detail);
-      
-      // 更新処理中フラグを設定
-      isUpdatingRef.current = true;
       
       // verifiedフラグがtrueの場合は、データベースへの反映が確認済みなので即座に更新
       // falseの場合は、データベース反映を待つ必要がある
       const isVerified = detail?.verified === true;
-      const initialDelay = isVerified ? 300 : 500; // 遅延時間を短縮（重複実行を防ぐため）
+      const initialDelay = isVerified ? 200 : 1000;
       
-      // データベースの反映を待つため、適切な遅延を設けてから更新（1回のみ）
+      // データベースの反映を待つため、十分な遅延を設けてから更新
+      // 複数回試行して確実にデータを取得する
       setTimeout(async () => {
         try {
+          // まず1回目の更新を試行
           await loadAllData();
-          logger.debug('データ更新完了', { isVerified, source: detail?.source });
+          logger.debug('1回目のデータ更新完了', { isVerified });
         } catch (error) {
-          logger.error('データ更新エラー:', error);
-        } finally {
-          // 更新処理完了後、フラグをリセット
-          isUpdatingRef.current = false;
+          logger.error('1回目のデータ更新エラー:', error);
+        }
+        
+        // verifiedでない場合は、さらに待機してから2回目の更新を試行
+        if (!isVerified) {
+          setTimeout(async () => {
+            try {
+              await loadAllData();
+              logger.debug('2回目のデータ更新完了');
+            } catch (error) {
+              logger.error('2回目のデータ更新エラー:', error);
+            }
+          }, 1000);
         }
       }, initialDelay);
     };
 
-    window.addEventListener('practiceRecordUpdated', handlePracticeRecordUpdated as EventListener);
+    window.addEventListener('practiceRecordUpdated', handlePracticeRecordUpdated);
 
     return () => {
       window.removeEventListener('practiceRecordUpdated', handlePracticeRecordUpdated);
-      // クリーンアップ時にフラグをリセット
-      isUpdatingRef.current = false;
     };
   }, [loadAllData]);
 
@@ -660,9 +519,8 @@ export default function CalendarScreen() {
       return;
     }
 
-    const handleEventCreated = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      logger.debug('📅 イベント作成イベントを受信、イベントを再読み込みします', customEvent?.detail);
+    const handleEventCreated = (event?: CustomEvent) => {
+      logger.debug('📅 イベント作成イベントを受信、イベントを再読み込みします', event?.detail);
       
       // イベントを再読み込み
       setTimeout(async () => {
@@ -675,7 +533,7 @@ export default function CalendarScreen() {
       }, 500);
     };
 
-    window.addEventListener('eventCreated', handleEventCreated as EventListener);
+    window.addEventListener('eventCreated', handleEventCreated);
 
     return () => {
       window.removeEventListener('eventCreated', handleEventCreated);
@@ -686,7 +544,7 @@ export default function CalendarScreen() {
 
   // 古いデータロジック関数は削除済み - useCalendarDataフックを使用
 
-  const savePracticeRecord = async (minutes: number, content?: string, audioUrl?: string, date?: Date, videoUrl?: string, startTime?: string, endTime?: string) => {
+  const savePracticeRecord = async (minutes: number, content?: string, audioUrl?: string, date?: Date, videoUrl?: string) => {
     try {
       // 認証チェック
       if (!isAuthenticated) {
@@ -694,50 +552,29 @@ export default function CalendarScreen() {
         return;
       }
 
-      // ユーザーを取得（既存の認証状態を使用）
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        Alert.alert('認証エラー', 'ユーザー情報が取得できませんでした。再度ログインしてください。');
+        Alert.alert('認証エラー', 'ユーザー情報が取得できませんでした');
         return;
       }
 
       // 共通関数を使用して楽器IDを取得
-      const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
-
-      // Freeプランの場合、新しい楽器でデータを保存できるかチェック
-      const canSaveCheck = await canSaveDataForInstrument(user.id, currentInstrumentId, entitlement);
-      if (!canSaveCheck.canSave) {
-        Alert.alert(
-          'アップグレードが必要です',
-          canSaveCheck.reason || '新しい楽器でデータを追加するには、プレミアムへアップグレードしてください。',
-          [
-            { text: 'キャンセル', style: 'cancel' },
-            { text: 'プレミアムを見る', onPress: () => router.push('/(tabs)/pricing-plans') }
-          ]
-        );
-        return;
-      }
+      const currentInstrumentId = getInstrumentId(selectedInstrument);
 
       const practiceDate = date || new Date();
       const practiceRecord = {
         user_id: user.id,
         practice_date: formatLocalDate(practiceDate),
         duration_minutes: minutes,
-        content: content || undefined,
-        audio_url: audioUrl || undefined,
-        video_url: videoUrl || undefined,
-        input_method: 'manual' as const,
-        instrument_id: currentInstrumentId || undefined
+        content: content || null,
+        audio_url: audioUrl || null,
+        input_method: 'manual',
+        instrument_id: currentInstrumentId || null
       };
 
       // 録音や動画URLがある場合は録音ライブラリにも保存
       if (audioUrl || videoUrl) {
         try {
-          // Freeプランの場合、選択された日付が今月であることを確認
-          const { useSubscription } = await import('@/hooks/useSubscription');
-          const { isCurrentMonth } = await import('@/lib/subscriptionLimits');
-          // 注意: フックはコンポーネント内でのみ使用可能なため、ここでは直接チェック
-          // 実際のチェックはAudioRecorderコンポーネントで行われるため、ここでは保存のみ実行
           await saveRecording({
             user_id: user.id,
             instrument_id: currentInstrumentId || null, // 現在の楽器IDを追加
@@ -761,19 +598,6 @@ export default function CalendarScreen() {
       if (isOnline()) {
         try {
           // savePracticeSessionWithIntegrationを使用して保存
-          logger.debug(`[savePracticeRecord] 練習記録保存開始`, {
-            userId: user.id,
-            minutes,
-            currentInstrumentId,
-            practiceDate: practiceRecord.practice_date,
-            options: {
-              instrumentId: currentInstrumentId || null,
-              content: content || undefined,
-              inputMethod: 'manual',
-              practiceDate: practiceRecord.practice_date
-            }
-          });
-          
           const result = await savePracticeSessionWithIntegration(
             user.id,
             minutes,
@@ -782,21 +606,8 @@ export default function CalendarScreen() {
               content: content || undefined,
               inputMethod: 'manual',
               practiceDate: practiceRecord.practice_date, // 選択された日付を指定
-              replaceMinutes: true, // 既存の時間を置き換える（加算しない）
-              audioUrl: audioUrl || null,
-              videoUrl: videoUrl || null,
-              startTime: startTime || null,
-              endTime: endTime || null,
             }
           );
-          
-          logger.debug(`[savePracticeRecord] 練習記録保存結果`, {
-            success: result.success,
-            error: result.error ? {
-              code: result.error.code,
-              message: result.error.message
-            } : null
-          });
           
           // 保存結果を確認
           if (!result.success) {
@@ -836,78 +647,25 @@ export default function CalendarScreen() {
             }
           }
           
-          logger.debug(`[savePracticeRecord] ========== 練習記録保存成功 ==========`, {
+          logger.debug('練習記録を保存しました', {
             minutes,
             practiceDate: practiceRecord.practice_date,
             instrumentId: currentInstrumentId,
             practiceRecord
           });
           
-          // キャッシュをクリアしてからデータを更新（確実に最新データを取得）
-          // 楽器切り替え後のデータ表示を考慮して、すべての楽器のキャッシュをクリア
-          logger.debug(`[savePracticeRecord] Step 1: キャッシュクリア開始`);
-          try {
-            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-            const currentYear = new Date().getFullYear();
-            const currentMonth = new Date().getMonth();
-            
-            // 現在の楽器IDのキャッシュをクリア
-            const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
-            const currentCacheKey = `practice_data_cache_${user.id}_${currentInstrumentId || 'all'}_${currentYear}_${currentMonth}`;
-            
-            logger.debug(`[savePracticeRecord] キャッシュキー確認:`, {
-              currentInstrumentId,
-              currentCacheKey,
-              practiceDate: practiceRecord.practice_date
-            });
-            
-            // すべてのキャッシュキーを検索して削除（より確実に）
-            const cacheKeyPattern = `practice_data_cache_${user.id}_`;
-            const allKeys = await AsyncStorage.getAllKeys();
-            const practiceCacheKeys = allKeys.filter((key: string) => key.startsWith(cacheKeyPattern));
-            logger.debug(`[savePracticeRecord] 検出されたキャッシュキー:`, {
-              allKeysCount: allKeys.length,
-              practiceCacheKeysCount: practiceCacheKeys.length,
-              practiceCacheKeys
-            });
-            
-            if (practiceCacheKeys.length > 0) {
-              await AsyncStorage.multiRemove(practiceCacheKeys);
-              logger.debug(`[savePracticeRecord] ✅ 練習データのキャッシュをクリアしました（すべての楽器）`, {
-                currentInstrumentId,
-                clearedKeys: practiceCacheKeys.length,
-                clearedKeysList: practiceCacheKeys
-              });
-            } else {
-              logger.debug(`[savePracticeRecord] クリアするキャッシュキーが見つかりませんでした`);
-            }
-          } catch (cacheError) {
-            // キャッシュクリアのエラーは無視
-            logger.error(`[savePracticeRecord] ❌ キャッシュクリアエラー:`, cacheError);
-          }
-          
           // 保存完了後に直接データを更新（データベースの反映を待つため少し遅延）
-          logger.debug(`[savePracticeRecord] Step 2: データベース反映待機中（500ms）`);
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000));
           
-          // データ更新を確実に実行
-          // 注意: イベントハンドラー（loadAllData）が既に実行されるため、
-          // ここではrefreshPracticeDataを呼ばず、イベントの発火のみに任せる
-          // ただし、イベントが発火されない場合に備えて、短い遅延後にrefreshPracticeDataを呼ぶ
-          logger.debug(`[savePracticeRecord] Step 3: イベントによるデータ更新を待機中（イベントが発火されるため、refreshPracticeDataは呼び出さない）`);
-          
-          // イベントが発火されない場合に備えて、フォールバックとしてrefreshPracticeDataを呼ぶ
-          setTimeout(async () => {
-            try {
-              logger.debug(`[savePracticeRecord] フォールバック: refreshPracticeDataを呼び出し`);
-              await refreshPracticeData(false);
-              logger.debug(`[savePracticeRecord] ✅ フォールバックデータ更新完了`);
-            } catch (refreshError) {
-              logger.error(`[savePracticeRecord] ❌ フォールバックデータ更新エラー:`, refreshError);
-            }
-          }, 1500); // イベントハンドラーが実行された後に実行されるように長めの遅延
-          
-          logger.debug(`[savePracticeRecord] ========== 処理完了 ==========`);
+          // データ更新を確実に実行（refreshPracticeDataのみで十分）
+          try {
+            logger.debug('データ更新を開始...');
+            await refreshPracticeData(false);
+            logger.debug('データ更新完了');
+          } catch (refreshError) {
+            console.error('データ更新エラー:', refreshError);
+            // エラーが発生しても続行
+          }
           
           return;
         } catch (error) {
@@ -972,15 +730,13 @@ export default function CalendarScreen() {
   }, [setSelectedDate, setShowPracticeRecord]);
 
   // 選択された日付のイベントを取得
-  const getEventsForDate = useCallback((date: Date | null): Array<{id: string, title: string, description?: string, location?: string | null, color?: string | null, date?: string}> => {
+  const getEventsForDate = useCallback((date: Date | null): Array<{id: string, title: string, description?: string}> => {
     if (!date) return [];
     const dateStr = formatLocalDate(date);
-    const dateEvents = events[dateStr] || [];
-    // 各イベントに日付を追加
-    return dateEvents.map(event => ({ ...event, date: dateStr }));
+    return events[dateStr] || [];
   }, [events]);
 
-  const handleEventSelection = useCallback((event: {id: string, title: string, description?: string, color?: string | null, date?: string}) => {
+  const handleEventSelection = useCallback((event: {id: string, title: string, description?: string}) => {
     setSelectedEvent(event);
     setShowEventModal(true);
   }, [setSelectedEvent, setShowEventModal]);
@@ -1041,9 +797,7 @@ export default function CalendarScreen() {
         const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const dayData = practiceData[dateStr];
         const dayRecordings = recordingsData[dateStr]; // 日付文字列をキーとして使用
-        const dateEvents = events[dateStr] || [];
-        // 各イベントに日付を追加
-        const dayEvents: Array<{id: string, title: string, description?: string, location?: string | null, color?: string | null, date?: string}> = dateEvents.map(event => ({ ...event, date: dateStr }));
+        const dayEvents: Array<{id: string, title: string, description?: string}> = events[dateStr] || []; // 日付文字列をキーとして使用
         const hasPracticeRecord = dayData?.hasRecord || false; // 練習時間が記録されたか（タイマー、クイック、手動入力など）
         const hasBasicPractice = dayData?.hasBasicPractice || false; // 基礎練（input_method: 'preset'）があるか
         const hasRecording = dayRecordings?.hasRecording || false;
@@ -1131,11 +885,8 @@ export default function CalendarScreen() {
           {/* Month Navigation */}
           <View style={styles.monthHeader}>
             <TouchableOpacity 
-              style={[styles.navButton, { backgroundColor: currentTheme.background }]}
+              style={[styles.navButton, { backgroundColor: currentTheme.secondary }]}
               onPress={() => navigateMonth('prev')}
-              accessibilityRole="button"
-              accessibilityLabel="前の月"
-              accessibilityHint="前の月のカレンダーを表示します"
             >
               <ChevronLeft size={24} color={currentTheme.primary} />
             </TouchableOpacity>
@@ -1148,23 +899,17 @@ export default function CalendarScreen() {
                 <TouchableOpacity 
                   style={[styles.todayButton, { position: 'absolute', right: 0, backgroundColor: currentTheme.primary }]}
                   onPress={goToToday}
-                  accessibilityRole="button"
-                  accessibilityLabel="今の日付に戻る"
-                  accessibilityHint="カレンダーを今の日付に移動します"
                 >
                   <Text style={[styles.todayButtonText, { color: currentTheme.surface, writingDirection: 'ltr' }]}>
-                    今
+                    今日
                   </Text>
                 </TouchableOpacity>
               )}
             </View>
             
             <TouchableOpacity 
-              style={[styles.navButton, { backgroundColor: currentTheme.background }]}
+              style={[styles.navButton, { backgroundColor: currentTheme.secondary }]}
               onPress={() => navigateMonth('next')}
-              accessibilityRole="button"
-              accessibilityLabel="次の月"
-              accessibilityHint="次の月のカレンダーを表示します"
             >
               <ChevronRight size={24} color={currentTheme.primary} />
             </TouchableOpacity>
@@ -1196,6 +941,13 @@ export default function CalendarScreen() {
             </Text>
           </View>
 
+          {/* Total Practice Time - Simplified */}
+          <View style={[styles.totalSummaryContainer, { backgroundColor: currentTheme.surface }]}>
+            <Text style={[styles.summaryText, { color: currentTheme.text }]}>
+              総合計練習時間: <Text style={[styles.highlightText, { color: currentTheme.primary }]}>{formatMinutesToHours(totalPracticeTime)}</Text>
+            </Text>
+          </View>
+
                   {/* Success Message */}
         {uiState.successMessage ? (
           <View style={styles.successMessageContainer}>
@@ -1215,28 +967,16 @@ export default function CalendarScreen() {
         {/* イベント管理セクション */}
         <EventManagementSection
           currentTheme={currentTheme}
-          events={allEvents}
+          events={events}
           onAddEvent={() => setShowEventModal(true)}
           onEditEvent={(event) => {
             setSelectedEvent(event);
             setShowEventModal(true);
           }}
           onEventDeleted={async () => {
-            try {
-              // イベントデータを再読み込み
-              await loadEvents();
-              // 全イベントも再読み込み
-              if (loadAllEvents) {
-                const allEventsData = await loadAllEvents();
-                setAllEvents(allEventsData || {});
-              }
-              // 練習データも再読み込み（カレンダー表示を更新）
-              await refreshPracticeData();
-              setSuccessMessage('イベントを削除しました！');
-              setTimeout(() => setSuccessMessage(''), 3000);
-            } catch (error) {
-              logger.error('イベント削除後のデータ再読み込みエラー:', error);
-            }
+            await loadEvents();
+            setSuccessMessage('イベントを削除しました！');
+            setTimeout(() => setSuccessMessage(''), 3000);
           }}
         />
       </ScrollView>
@@ -1245,9 +985,6 @@ export default function CalendarScreen() {
       <TouchableOpacity
         style={[styles.fab, { backgroundColor: currentTheme.primary }]}
         onPress={() => setShowQuickRecord(true)}
-        accessibilityRole="button"
-        accessibilityLabel="クイック記録"
-        accessibilityHint="音声を録音して練習記録を保存します"
       >
         <Text style={[styles.fabLabel, { color: currentTheme.surface }]}>クイック{'\n'}記録</Text>
       </TouchableOpacity>
@@ -1256,15 +993,14 @@ export default function CalendarScreen() {
       <QuickRecordModal
         visible={uiState.showQuickRecord}
         onClose={() => setShowQuickRecord(false)}
-        targetDate={uiState.selectedDate || new Date()}
         onRecord={async (minutes) => {
-          // QuickRecordModal内で既に保存処理とpracticeRecordUpdatedイベントの発火が完了しているため、
-          // データ更新はイベントリスナー（handlePracticeRecordUpdated）に任せる
-          // 直接refreshPracticeDataを呼ぶ必要はない（重複実行を防ぐため）
-          logger.info('クイック記録を保存: ' + minutes + '分', { 
-            practiceDate: formatLocalDate(uiState.selectedDate || new Date()),
-            instrumentId: getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id)
-          });
+          // QuickRecordModal内で既に保存処理が完了しているため、
+          // データ更新のみを実行（保存処理はスキップ）
+          logger.info('クイック記録のデータ更新を開始...', { minutes });
+          
+          // データベースへの反映を確実にするため、少し待機してから更新
+          await new Promise(resolve => setTimeout(resolve, 300));
+          await refreshPracticeData(false);
           
           // PracticeRecordModalが開いている場合は、そのモーダル内のデータも再読み込み
           if (uiState.showPracticeRecord) {
@@ -1272,6 +1008,7 @@ export default function CalendarScreen() {
             setPracticeRecordRefreshKey(prev => prev + 1);
           }
           
+          logger.info('クイック記録のデータ更新が完了しました', { minutes });
           setShowQuickRecord(false);
         }}
       />
@@ -1301,60 +1038,6 @@ export default function CalendarScreen() {
           setSelectedEvent(event);
           setShowEventModal(true);
         }}
-        onEventDelete={async (event) => {
-          // イベント削除
-          try {
-            logger.debug('カレンダー画面: イベント削除開始', { eventId: event.id, eventTitle: event.title });
-            const { error } = await supabase
-              .from('events')
-              .delete()
-              .eq('id', event.id);
-
-            if (error) {
-              logger.error('カレンダー画面: イベント削除エラー:', error);
-              throw error;
-            }
-            
-            logger.info('カレンダー画面: イベントを削除しました', event.id);
-            
-            // イベントデータを再読み込み
-            logger.debug('カレンダー画面: イベントデータを再読み込みします');
-            await loadEvents();
-            if (loadAllEvents) {
-              const allEventsData = await loadAllEvents();
-              setAllEvents(allEventsData || {});
-              logger.debug('カレンダー画面: 全イベントデータを再読み込みしました', Object.keys(allEventsData || {}).length);
-            }
-            
-            // 練習データも再読み込み（カレンダー表示を更新）
-            logger.debug('カレンダー画面: 練習データを再読み込みします');
-            await refreshPracticeData();
-            
-            // 練習記録画面のデータも更新
-            logger.debug('カレンダー画面: 練習記録画面のデータを更新します');
-            setPracticeRecordRefreshKey(prev => prev + 1);
-            
-            setSuccessMessage('イベントを削除しました！');
-            // 既存のタイマーをクリア（メモリリーク防止）
-            if (successMessageTimerRef.current) {
-              clearTimeout(successMessageTimerRef.current);
-            }
-            successMessageTimerRef.current = setTimeout(() => setSuccessMessage(''), 3000);
-            
-            // 削除成功のアラートを表示
-            Alert.alert('削除完了', 'イベントを削除しました');
-          } catch (error) {
-            logger.error('カレンダー画面: イベントの削除エラー:', error);
-            ErrorHandler.handle(error, 'イベントの削除', true);
-            Alert.alert('エラー', 'イベントの削除に失敗しました');
-          }
-        }}
-        onEventCreate={(date) => {
-          // イベント作成モーダルを開く（PracticeRecordModalは開いたまま）
-          setSelectedDate(date);
-          setSelectedEvent(null);
-          setShowEventModal(true);
-        }}
       />
 
       <EventModal
@@ -1363,13 +1046,12 @@ export default function CalendarScreen() {
           setShowEventModal(false);
           setSelectedEvent(null);
         }}
-        selectedDate={uiState.selectedDate || undefined}
+        selectedDate={undefined}
         event={uiState.selectedEvent ? {
           id: uiState.selectedEvent!.id,
           title: uiState.selectedEvent!.title,
-          date: uiState.selectedEvent!.date || formatLocalDate(uiState.selectedDate || new Date()),
+          date: '', // カレンダーから開く場合は日付は不要
           description: uiState.selectedEvent!.description,
-          color: uiState.selectedEvent!.color || undefined,
           is_completed: false
         } : undefined}
         onEventSaved={async () => {
@@ -1377,36 +1059,30 @@ export default function CalendarScreen() {
           setSelectedEvent(null);
           
           // データベースへの反映を待つため、少し遅延を設けてから更新
-          // 1回の読み込みで十分（2回読み込みを削除して効率化）
-          // 既存のタイマーをクリア（メモリリーク防止）
-          eventUpdateTimerRefs.current.forEach(timer => clearTimeout(timer));
-          eventUpdateTimerRefs.current = [];
-          
-          const timer1 = setTimeout(async () => {
+          // 複数回試行して確実にデータを取得する
+          setTimeout(async () => {
             try {
               await loadEvents();
-              logger.debug('loadEvents完了');
-              // 全イベントも再読み込み（1回のみ）
-              if (loadAllEvents) {
-                const allEventsData = await loadAllEvents();
-                setAllEvents(allEventsData || {});
-              }
-              setSuccessMessage('イベントを保存しました！');
-              // 既存のタイマーをクリア（メモリリーク防止）
-              if (successMessageTimerRef.current) {
-                clearTimeout(successMessageTimerRef.current);
-              }
-              successMessageTimerRef.current = setTimeout(() => setSuccessMessage(''), 3000);
+              logger.debug('loadEvents完了（1回目）');
             } catch (error) {
-              logger.error('イベント読み込みエラー:', error);
+              logger.error('イベント読み込みエラー（1回目）:', error);
             }
+            
+            // さらに待機してから2回目の更新を試行（データベース反映の遅延に対応）
+            setTimeout(async () => {
+              try {
+                await loadEvents();
+                logger.debug('loadEvents完了（2回目）');
+          setSuccessMessage('イベントを保存しました！');
+          setTimeout(() => setSuccessMessage(''), 3000);
+              } catch (error) {
+                logger.error('イベント読み込みエラー（2回目）:', error);
+              }
+            }, 500);
           }, 300);
-          eventUpdateTimerRefs.current.push(timer1);
         }}
       />
 
-      {/* タブバー上に広告バナー（フリープランのみ） */}
-      <BottomBannerAd />
 
     </SafeAreaView>
   );
@@ -1419,13 +1095,12 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     paddingHorizontal: 12, // パディングを少し増やす
-    paddingBottom: 125, // タブバーの高さ + 広告バナー分
   },
   calendarContainer: {
     borderRadius: 12,
     paddingVertical: getScaledSpacing(12),
     paddingHorizontal: getScaledSpacing(12),
-    paddingBottom: getScaledSpacing(10), // 下の余白を減らす（今月の合計練習時間の下が空きすぎるため）
+    paddingBottom: getScaledSpacing(20), // 下部のパディングを増やしてサマリーとの間隔を確保
     marginTop: getScaledSpacing(8),
     marginBottom: getScaledSpacing(5),
     elevation: 4,
@@ -1479,14 +1154,13 @@ const styles = StyleSheet.create({
     color: '#333333',
   },
   todayButton: {
-    // 「今」ボタンを少し大きく
-    paddingHorizontal: 10,
+    paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
-    minWidth: 36,
+    minWidth: 50,
   },
   todayButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
   },
   dayHeaders: {
@@ -1516,29 +1190,23 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     maxHeight: 350, // カレンダーの最大高さを増加
     paddingVertical: getScaledSpacing(4),
-    // 横方向にセル間の余白を作る（縦は既にmarginVerticalがある）
     justifyContent: 'space-between',
-    paddingHorizontal: getScaledSpacing(0.5), // dayHeadersと同じパディングを適用
-    marginBottom: 0, // カレンダーとサマリーの間隔を最小限に
+    paddingHorizontal: getScaledSpacing(4),
+    marginBottom: getScaledSpacing(6), // カレンダーとサマリーの間隔をさらに短く
     minHeight: 0, // 最小高さをリセット
   },
   emptyDay: {
-    // CalendarDayCellと同じ幅に揃えて、space-betweenで横余白を作る
-    width: '13.6%',
+    width: '13.5%',
     height: 28, // 固定値で短く
-    marginHorizontal: 0,
-    marginVertical: getScaledSpacing(0.25),
-    paddingHorizontal: 0, // calendarGridのpaddingHorizontalで調整するため0に
+    margin: getScaledSpacing(1),
   },
   dayCell: {
-    width: '14.28%',
+    width: '13.5%',
     height: 28, // 固定値で短く
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: getScaledSize(4),
-    marginHorizontal: 0,
-    marginVertical: getScaledSpacing(0.25),
-    paddingHorizontal: 0, // calendarGridのpaddingHorizontalで調整するため0に
+    borderRadius: getScaledSize(8),
+    margin: getScaledSpacing(1),
     backgroundColor: '#E8E8E8',
     position: 'relative',
     paddingVertical: 2, // 固定値で短く
@@ -1625,11 +1293,12 @@ const styles = StyleSheet.create({
     lineHeight: 9,
   },
   summaryContainer: {
-    marginTop: 0, // カレンダーとの間隔をさらに短く
+    marginTop: getScaledSpacing(4), // カレンダーとの間隔をさらに短く
     padding: getScaledSpacing(12),
     paddingLeft: getScaledSpacing(16), // 左側の余白を追加
     paddingBottom: getScaledSpacing(6), // 下部のパディングを減らす
     borderRadius: 12,
+    marginBottom: getScaledSpacing(-4), // 負のマージンで総合計に近づける
     marginHorizontal: getScaledSpacing(4), // 左右のマージンも追加
   },
   summaryText: {
@@ -1664,7 +1333,7 @@ const styles = StyleSheet.create({
 
   fab: {
     position: 'absolute',
-    bottom: getScaledSpacing(180), // さらに上に移動（130 → 180）
+    bottom: getScaledSpacing(100), // 少し上に移動（60 → 100）
     right: getScaledSpacing(20),
     width: getScaledSize(96),
     height: getScaledSize(96),
@@ -1676,6 +1345,21 @@ const styles = StyleSheet.create({
     
     
     elevation: 6,
+  },
+  totalSummaryContainer: {
+    marginTop: getScaledSpacing(-4), // 負のマージンで今月の合計に近づける
+    padding: getScaledSpacing(12),
+    paddingLeft: getScaledSpacing(16), // 左側の余白を追加
+    paddingTop: getScaledSpacing(6), // 上部のパディングを減らす
+    paddingBottom: getScaledSpacing(6), // 下部のパディングを減らす
+    borderRadius: 12,
+    marginBottom: getScaledSpacing(4), // 下部のマージンを減らす
+    marginHorizontal: getScaledSpacing(4), // 左右のマージンも追加
+  },
+  totalSummaryText: {
+    fontSize: 13,
+    textAlign: 'center',
+    color: '#666666',
   },
 
   fabLabel: {

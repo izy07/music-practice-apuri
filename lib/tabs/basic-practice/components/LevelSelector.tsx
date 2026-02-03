@@ -13,6 +13,8 @@ export interface LevelSelectorProps {
   levels: LevelData[];
   selectedLevel: 'beginner' | 'intermediate' | 'advanced';
   userLevel: string | null;
+  /** レベル読み込み中は true。読み込み中は「選択してください」を出さず selectedLevel を1つ表示 */
+  isLevelChecking?: boolean;
   onLevelChange: (level: 'beginner' | 'intermediate' | 'advanced') => void;
   onOpenModal: () => void;
 }
@@ -21,15 +23,17 @@ export function LevelSelector({
   levels,
   selectedLevel,
   userLevel,
+  isLevelChecking = false,
   onLevelChange,
   onOpenModal,
 }: LevelSelectorProps) {
   const { currentTheme } = useInstrumentTheme();
+  const showSingleButton = userLevel != null || isLevelChecking;
 
   return (
     <>
       <View style={styles.levelTabs}>
-        {userLevel ? (
+        {showSingleButton ? (
           <TouchableOpacity 
             style={[styles.levelTab, { backgroundColor: currentTheme.primary, alignSelf: 'center', width: '92%' }]}
             onPress={onOpenModal}
@@ -61,7 +65,7 @@ export function LevelSelector({
         )}
       </View>
 
-      {userLevel && (
+      {showSingleButton && (
         <Text style={[styles.levelFixedNotice, { color: currentTheme.text }]}>
           レベルは上のボタンを押すと変更できます
         </Text>

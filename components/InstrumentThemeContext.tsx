@@ -626,7 +626,13 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
               logger.warn('サーバー同期失敗（ローカル保存は成功）:', lastError);
               setLastSyncError(lastError);
               setSyncStatus('error');
+            } else if (!lastError && retryCount >= maxRetries) {
+              // エラーがない場合でも、リトライ回数に達した場合は'idle'に戻す
+              setSyncStatus('idle');
             }
+          } else {
+            // キャンセルされた場合は'idle'に戻す
+            setSyncStatus('idle');
           }
         })();
 
@@ -649,6 +655,8 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
             if (isCancelled || errorMessage.includes('タイムアウト')) {
               // タイムアウト時は既に'idle'に設定されている
               logger.debug('サーバー同期タイムアウト処理完了');
+              // 念のため、確実に'idle'に戻す
+              setSyncStatus('idle');
             } else {
               logger.warn('サーバー同期エラー（ローカル保存は成功）:', syncError);
               setSyncStatus('error');
@@ -659,8 +667,9 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
             if (timeoutId) {
               clearTimeout(timeoutId);
             }
-            // 念のため、syncStatusが'syncing'のままの場合、'idle'に戻す（セーフティネット）
-            setTimeout(() => {
+            // 確実にsyncStatusを'idle'に戻す（セーフティネット）
+            // タイムアウトやエラーが発生した場合でも、必ず'idle'に戻す
+            const ensureIdleTimeout = setTimeout(() => {
               setSyncStatus((prev) => {
                 if (prev === 'syncing') {
                   logger.warn('syncStatusがsyncingのまま残っていたため、idleに戻します');
@@ -668,7 +677,12 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
                 }
                 return prev;
               });
-            }, timeoutMs + 2000); // タイムアウト時間 + 2秒後に確認
+            }, 1000); // 1秒後に確認（タイムアウト時間より短く）
+            
+            // クリーンアップ関数でタイマーをクリア
+            return () => {
+              clearTimeout(ensureIdleTimeout);
+            };
           }
       } else {
         setSyncStatus('idle');

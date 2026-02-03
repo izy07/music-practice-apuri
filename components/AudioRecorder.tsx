@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
-import { Mic, MicOff, Play, Pause, Square, Star, Save } from 'lucide-react-native';
+import { Mic, MicOff, Play, Pause, Square, Star, Save, Minus, Plus } from 'lucide-react-native';
 import { useInstrumentTheme } from './InstrumentThemeContext';
 import { supabase } from '@/lib/supabase';
 import { uploadRecordingBlob, saveRecording } from '@/lib/database';
@@ -70,6 +70,16 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const [recordingLimitStatus, setRecordingLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
   const [dailyLimitStatus, setDailyLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
   const [showRewardedAd, setShowRewardedAd] = useState(false);
+
+  // 簡易メトロノーム用の状態（録音開始前から開始可能）
+  const [isMetronomePlaying, setIsMetronomePlaying] = useState(false);
+  const [metronomeBpm, setMetronomeBpm] = useState(120);
+  const [metronomeBeats, setMetronomeBeats] = useState(4); // 拍子（2, 3, 4, 5, 6 など）
+  const metronomeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const metronomeAudioContextRef = useRef<AudioContext | null>(null);
+  const metronomeBeatRef = useRef(0);
+  const metronomeBeatsRef = useRef(4);
+  useEffect(() => { metronomeBeatsRef.current = metronomeBeats; }, [metronomeBeats]);
   
   // Web Audio API用の参照
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -115,6 +125,16 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       if (recordingIntervalRef.current) {
         clearInterval(recordingIntervalRef.current);
         recordingIntervalRef.current = null;
+      }
+
+      // メトロノームのクリーンアップ
+      if (metronomeIntervalRef.current) {
+        clearInterval(metronomeIntervalRef.current);
+        metronomeIntervalRef.current = null;
+      }
+      if (metronomeAudioContextRef.current && metronomeAudioContextRef.current.state !== 'closed') {
+        metronomeAudioContextRef.current.close().catch(() => {});
+        metronomeAudioContextRef.current = null;
       }
       
       // オーディオ要素のクリア
@@ -1153,6 +1173,86 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
     }
   };
 
+  // 簡易メトロノーム: クリック音を再生
+  const playMetronomeClick = useCallback(() => {
+    if (typeof window === 'undefined' || !(window.AudioContext || (window as any).webkitAudioContext)) return;
+    try {
+      let ctx = metronomeAudioContextRef.current;
+      if (!ctx || ctx.state === 'closed') {
+        ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        metronomeAudioContextRef.current = ctx;
+      }
+      if (ctx.state === 'suspended') {
+        ctx.resume().then(() => playMetronomeClickInternal(ctx!)).catch(() => {});
+      } else {
+        playMetronomeClickInternal(ctx);
+      }
+    } catch {
+      // オーディオ再生が利用できない環境では静かに失敗
+    }
+  }, []);
+
+  const playMetronomeClickInternal = (ctx: AudioContext) => {
+    const isStrongBeat = metronomeBeatRef.current === 0;
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    oscillator.frequency.setValueAtTime(isStrongBeat ? 1000 : 600, ctx.currentTime);
+    oscillator.type = 'square';
+    gainNode.gain.setValueAtTime(0, ctx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(isStrongBeat ? 0.25 : 0.15, ctx.currentTime + 0.003);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05);
+    oscillator.start(ctx.currentTime);
+    oscillator.stop(ctx.currentTime + 0.05);
+    metronomeBeatRef.current = (metronomeBeatRef.current + 1) % Math.max(2, metronomeBeatsRef.current);
+  };
+
+  // 簡易メトロノーム: 開始
+  const startMetronome = useCallback(() => {
+    if (metronomeIntervalRef.current) return;
+    metronomeBeatRef.current = 0;
+    metronomeBeatsRef.current = metronomeBeats;
+    const intervalMs = 60000 / metronomeBpm;
+    playMetronomeClick();
+    metronomeIntervalRef.current = setInterval(() => {
+      playMetronomeClick();
+    }, intervalMs);
+    setIsMetronomePlaying(true);
+  }, [metronomeBpm, metronomeBeats, playMetronomeClick]);
+
+  // 簡易メトロノーム: 停止
+  const stopMetronome = useCallback(() => {
+    if (metronomeIntervalRef.current) {
+      clearInterval(metronomeIntervalRef.current);
+      metronomeIntervalRef.current = null;
+    }
+    setIsMetronomePlaying(false);
+  }, []);
+
+  // 録音停止時にメトロノームも停止
+  useEffect(() => {
+    if (!isRecording && isMetronomePlaying) {
+      stopMetronome();
+    }
+  }, [isRecording, isMetronomePlaying, stopMetronome]);
+
+  // 録音完了時にメトロノームを停止しない（録音開始前からメトロノームを開始可能にするため）
+  // ユーザーが手動で停止するか、録音停止時に停止する
+
+  // BPM変更時にメトロノームを再起動
+  useEffect(() => {
+    if (isMetronomePlaying && metronomeIntervalRef.current) {
+      clearInterval(metronomeIntervalRef.current);
+      metronomeIntervalRef.current = null;
+      playMetronomeClick();
+      const intervalMs = 60000 / metronomeBpm;
+      metronomeIntervalRef.current = setInterval(() => {
+        playMetronomeClick();
+      }, intervalMs);
+    }
+  }, [metronomeBpm, isMetronomePlaying, playMetronomeClick]);
+
   // 時間フォーマット
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -1252,6 +1352,64 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
                 </Text>
               </View>
               )}
+
+            {/* 簡易メトロノーム（録音開始前から開始可能） */}
+            <View style={[styles.metronomeSection, { backgroundColor: currentTheme.surface }]}>
+              <Text style={[styles.metronomeLabel, { color: currentTheme.text }]}>メトロノーム</Text>
+              <View style={styles.metronomeControls}>
+                <TouchableOpacity
+                  style={[styles.metronomeBpmButton, { backgroundColor: currentTheme.secondary }]}
+                  onPress={() => setMetronomeBpm((b) => Math.max(40, b - 5))}
+                >
+                  <Minus size={20} color={currentTheme.text} />
+                </TouchableOpacity>
+                <Text style={[styles.metronomeBpmText, { color: currentTheme.text }]}>{metronomeBpm} BPM</Text>
+                <TouchableOpacity
+                  style={[styles.metronomeBpmButton, { backgroundColor: currentTheme.secondary }]}
+                  onPress={() => setMetronomeBpm((b) => Math.min(240, b + 5))}
+                >
+                  <Plus size={20} color={currentTheme.text} />
+                </TouchableOpacity>
+              </View>
+              {/* 拍子選択 */}
+              <View style={styles.metronomeTimeSignatureRow}>
+                <Text style={[styles.metronomeLabel, { color: currentTheme.textSecondary, fontSize: 12, marginRight: 8 }]}>拍子</Text>
+                {([2, 3, 4, 5, 6] as const).map((beats) => (
+                  <TouchableOpacity
+                    key={beats}
+                    style={[
+                      styles.metronomeTimeSignatureButton,
+                      {
+                        backgroundColor: metronomeBeats === beats ? currentTheme.primary : 'rgba(128,128,128,0.2)',
+                        borderWidth: 1.5,
+                        borderColor: metronomeBeats === beats ? currentTheme.primary : currentTheme.textSecondary,
+                      }
+                    ]}
+                    onPress={() => setMetronomeBeats(beats)}
+                  >
+                    <Text style={[styles.metronomeTimeSignatureText, { color: metronomeBeats === beats ? '#FFFFFF' : currentTheme.text }]}>
+                      {beats}/4
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.metronomePlayButton,
+                  { backgroundColor: isMetronomePlaying ? '#FF9800' : currentTheme.primary }
+                ]}
+                onPress={isMetronomePlaying ? stopMetronome : startMetronome}
+              >
+                {isMetronomePlaying ? (
+                  <Square size={20} color="#FFFFFF" />
+                ) : (
+                  <Play size={20} color="#FFFFFF" />
+                )}
+                <Text style={styles.metronomePlayButtonText}>
+                  {isMetronomePlaying ? '停止' : '開始'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -1306,16 +1464,16 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
                   style={[
                     styles.recordingTypeButton,
                     {
-                      backgroundColor: recordingType === 'performance' 
-                        ? currentTheme.primary 
-                        : currentTheme.secondary,
+                      backgroundColor: recordingType === 'performance' ? currentTheme.primary : 'rgba(128,128,128,0.22)',
+                      borderWidth: 1.5,
+                      borderColor: recordingType === 'performance' ? currentTheme.primary : currentTheme.textSecondary,
                     }
                   ]}
                   onPress={() => setRecordingType('performance')}
                 >
                   <Text style={[
                     styles.recordingTypeButtonText,
-                    { color: recordingType === 'performance' ? currentTheme.surface : currentTheme.text }
+                    { color: recordingType === 'performance' ? '#FFFFFF' : currentTheme.text }
                   ]}>
                     演奏録音
                   </Text>
@@ -1324,16 +1482,16 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
                   style={[
                     styles.recordingTypeButton,
                     {
-                      backgroundColor: recordingType === 'lesson' 
-                        ? currentTheme.primary 
-                        : currentTheme.secondary,
+                      backgroundColor: recordingType === 'lesson' ? currentTheme.primary : 'rgba(128,128,128,0.22)',
+                      borderWidth: 1.5,
+                      borderColor: recordingType === 'lesson' ? currentTheme.primary : currentTheme.textSecondary,
                     }
                   ]}
                   onPress={() => setRecordingType('lesson')}
                 >
                   <Text style={[
                     styles.recordingTypeButtonText,
-                    { color: recordingType === 'lesson' ? currentTheme.surface : currentTheme.text }
+                    { color: recordingType === 'lesson' ? '#FFFFFF' : currentTheme.text }
                   ]}>
                     レッスン録音
                   </Text>
@@ -1531,6 +1689,67 @@ const styles = StyleSheet.create({
   },
   maxTimeText: {
     fontSize: 14,
+  },
+  metronomeSection: {
+    marginTop: 20,
+    padding: 16,
+    borderRadius: 12,
+    gap: 12,
+  },
+  metronomeLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  metronomeControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+    marginBottom: 12,
+  },
+  metronomeBpmButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metronomeBpmText: {
+    fontSize: 18,
+    fontWeight: '600',
+    minWidth: 80,
+    textAlign: 'center',
+  },
+  metronomeTimeSignatureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 12,
+    gap: 8,
+  },
+  metronomeTimeSignatureButton: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  metronomeTimeSignatureText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  metronomePlayButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    gap: 8,
+  },
+  metronomePlayButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '600',
   },
   audioSection: {
     marginBottom: 24,

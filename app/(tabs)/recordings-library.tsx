@@ -12,7 +12,7 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Play, Pause, Trash2, Star, StarOff, Calendar, Clock, Music, ArrowLeft, Video, Search, X } from 'lucide-react-native';
+import { Play, Pause, Star, StarOff, Calendar, Clock, Music, ArrowLeft, Video, Search, X } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
@@ -62,6 +62,7 @@ export default function RecordingsLibraryScreen() {
   const [recordingTypeFilter, setRecordingTypeFilter] = useState<'all' | 'performance' | 'lesson'>('all'); // 録音種類フィルター
   const scrollViewRef = useRef<ScrollView>(null);
   const progressSliderRefs = useRef<{ [key: string]: HTMLInputElement | null }>({}); // プログレスバーのinput要素の参照
+  const progressBarWidths = useRef<{ [key: string]: number }>({}); // プログレスバーの幅を保持
 
   // 録音種類フィルターはクライアント側でフィルタリングするため、再読み込み不要
   // 初回読み込みと楽器変更時のみデータを読み込む
@@ -947,7 +948,9 @@ export default function RecordingsLibraryScreen() {
               style={[
                 styles.timeFilterButton,
                 {
-                  backgroundColor: recordingTypeFilter === 'all' ? currentTheme.primary : currentTheme.secondary,
+                  backgroundColor: recordingTypeFilter === 'all' ? currentTheme.primary : 'rgba(128,128,128,0.22)',
+                  borderWidth: 1.5,
+                  borderColor: recordingTypeFilter === 'all' ? currentTheme.primary : currentTheme.textSecondary,
                 }
               ]}
               onPress={() => {
@@ -963,7 +966,7 @@ export default function RecordingsLibraryScreen() {
             >
               <Text style={[
                 styles.timeFilterButtonText,
-                { color: recordingTypeFilter === 'all' ? currentTheme.surface : currentTheme.text }
+                { color: recordingTypeFilter === 'all' ? '#FFFFFF' : currentTheme.text }
               ]}>
                 全て
               </Text>
@@ -972,7 +975,9 @@ export default function RecordingsLibraryScreen() {
               style={[
                 styles.timeFilterButton,
                 {
-                  backgroundColor: recordingTypeFilter === 'performance' ? currentTheme.primary : currentTheme.secondary,
+                  backgroundColor: recordingTypeFilter === 'performance' ? currentTheme.primary : 'rgba(128,128,128,0.22)',
+                  borderWidth: 1.5,
+                  borderColor: recordingTypeFilter === 'performance' ? currentTheme.primary : currentTheme.textSecondary,
                 }
               ]}
               onPress={() => {
@@ -988,7 +993,7 @@ export default function RecordingsLibraryScreen() {
             >
               <Text style={[
                 styles.timeFilterButtonText,
-                { color: recordingTypeFilter === 'performance' ? currentTheme.surface : currentTheme.text }
+                { color: recordingTypeFilter === 'performance' ? '#FFFFFF' : currentTheme.text }
               ]}>
                 演奏録音
               </Text>
@@ -997,7 +1002,9 @@ export default function RecordingsLibraryScreen() {
               style={[
                 styles.timeFilterButton,
                 {
-                  backgroundColor: recordingTypeFilter === 'lesson' ? currentTheme.primary : currentTheme.secondary,
+                  backgroundColor: recordingTypeFilter === 'lesson' ? currentTheme.primary : 'rgba(128,128,128,0.22)',
+                  borderWidth: 1.5,
+                  borderColor: recordingTypeFilter === 'lesson' ? currentTheme.primary : currentTheme.textSecondary,
                 }
               ]}
               onPress={() => {
@@ -1013,7 +1020,7 @@ export default function RecordingsLibraryScreen() {
             >
               <Text style={[
                 styles.timeFilterButtonText,
-                { color: recordingTypeFilter === 'lesson' ? currentTheme.surface : currentTheme.text }
+                { color: recordingTypeFilter === 'lesson' ? '#FFFFFF' : currentTheme.text }
               ]}>
                 レッスン録音
               </Text>
@@ -1035,14 +1042,16 @@ export default function RecordingsLibraryScreen() {
               style={[
                 styles.timeFilterButton,
                 {
-                  backgroundColor: timeFilter === 'all' ? currentTheme.primary : currentTheme.secondary,
+                  backgroundColor: timeFilter === 'all' ? currentTheme.primary : 'rgba(128,128,128,0.22)',
+                  borderWidth: 1.5,
+                  borderColor: timeFilter === 'all' ? currentTheme.primary : currentTheme.textSecondary,
                 }
               ]}
               onPress={() => setTimeFilter('all')}
             >
               <Text style={[
                 styles.timeFilterButtonText,
-                { color: timeFilter === 'all' ? currentTheme.surface : currentTheme.text }
+                { color: timeFilter === 'all' ? '#FFFFFF' : currentTheme.text }
               ]}>
                 全て
               </Text>
@@ -1051,14 +1060,16 @@ export default function RecordingsLibraryScreen() {
               style={[
                 styles.timeFilterButton,
                 {
-                  backgroundColor: timeFilter === '1week' ? currentTheme.primary : currentTheme.secondary,
+                  backgroundColor: timeFilter === '1week' ? currentTheme.primary : 'rgba(128,128,128,0.22)',
+                  borderWidth: 1.5,
+                  borderColor: timeFilter === '1week' ? currentTheme.primary : currentTheme.textSecondary,
                 }
               ]}
               onPress={() => handleTimeFilter('1week')}
             >
               <Text style={[
                 styles.timeFilterButtonText,
-                { color: timeFilter === '1week' ? currentTheme.surface : currentTheme.text }
+                { color: timeFilter === '1week' ? '#FFFFFF' : currentTheme.text }
               ]}>
                 1週間前
               </Text>
@@ -1067,14 +1078,16 @@ export default function RecordingsLibraryScreen() {
               style={[
                 styles.timeFilterButton,
                 {
-                  backgroundColor: timeFilter === '1month' ? currentTheme.primary : currentTheme.secondary,
+                  backgroundColor: timeFilter === '1month' ? currentTheme.primary : 'rgba(128,128,128,0.22)',
+                  borderWidth: 1.5,
+                  borderColor: timeFilter === '1month' ? currentTheme.primary : currentTheme.textSecondary,
                 }
               ]}
               onPress={() => handleTimeFilter('1month')}
             >
               <Text style={[
                 styles.timeFilterButtonText,
-                { color: timeFilter === '1month' ? currentTheme.surface : currentTheme.text }
+                { color: timeFilter === '1month' ? '#FFFFFF' : currentTheme.text }
               ]}>
                 1ヶ月前
               </Text>
@@ -1083,14 +1096,16 @@ export default function RecordingsLibraryScreen() {
               style={[
                 styles.timeFilterButton,
                 {
-                  backgroundColor: timeFilter === '3months' ? currentTheme.primary : currentTheme.secondary,
+                  backgroundColor: timeFilter === '3months' ? currentTheme.primary : 'rgba(128,128,128,0.22)',
+                  borderWidth: 1.5,
+                  borderColor: timeFilter === '3months' ? currentTheme.primary : currentTheme.textSecondary,
                 }
               ]}
               onPress={() => handleTimeFilter('3months')}
             >
               <Text style={[
                 styles.timeFilterButtonText,
-                { color: timeFilter === '3months' ? currentTheme.surface : currentTheme.text }
+                { color: timeFilter === '3months' ? '#FFFFFF' : currentTheme.text }
               ]}>
                 3ヶ月前
               </Text>
@@ -1099,7 +1114,9 @@ export default function RecordingsLibraryScreen() {
               style={[
                 styles.timeFilterButton,
                 {
-                  backgroundColor: timeFilter === '6months' ? currentTheme.primary : currentTheme.secondary,
+                  backgroundColor: timeFilter === '6months' ? currentTheme.primary : 'rgba(128,128,128,0.22)',
+                  borderWidth: 1.5,
+                  borderColor: timeFilter === '6months' ? currentTheme.primary : currentTheme.textSecondary,
                 }
               ]}
               onPress={() => handleTimeFilter('6months')}
@@ -1115,14 +1132,16 @@ export default function RecordingsLibraryScreen() {
               style={[
                 styles.timeFilterButton,
                 {
-                  backgroundColor: timeFilter === '1year' ? currentTheme.primary : currentTheme.secondary,
+                  backgroundColor: timeFilter === '1year' ? currentTheme.primary : 'rgba(128,128,128,0.22)',
+                  borderWidth: 1.5,
+                  borderColor: timeFilter === '1year' ? currentTheme.primary : currentTheme.textSecondary,
                 }
               ]}
               onPress={() => handleTimeFilter('1year')}
             >
               <Text style={[
                 styles.timeFilterButtonText,
-                { color: timeFilter === '1year' ? currentTheme.surface : currentTheme.text }
+                { color: timeFilter === '1year' ? '#FFFFFF' : currentTheme.text }
               ]}>
                 1年前
               </Text>
@@ -1205,17 +1224,6 @@ export default function RecordingsLibraryScreen() {
                         )}
                       </TouchableOpacity>
                       
-                      <TouchableOpacity
-                        style={[styles.actionButton, { backgroundColor: 'rgba(255, 68, 68, 0.1)' }]}
-                        onPress={() => {
-                          logger.debug('削除ボタンタッチイベント発生:', recording.id);
-                          deleteRecordingItem(recording.id);
-                        }}
-                        activeOpacity={0.7}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        <Trash2 size={20} color="#FF4444" />
-                      </TouchableOpacity>
                     </View>
                   </View>
                   
@@ -1249,16 +1257,52 @@ export default function RecordingsLibraryScreen() {
                         <>
                           <TouchableOpacity
                             style={[styles.progressBarWrapper, { backgroundColor: currentTheme.secondary }]}
+                            {...(Platform.OS === 'web' ? { 'data-progress-wrapper': 'true' as any } : {})}
+                            onLayout={(e) => {
+                              // プログレスバーの幅を取得して保持
+                              const layoutWidth = e.nativeEvent.layout.width;
+                              if (layoutWidth > 0) {
+                                progressBarWidths.current[recording.id] = layoutWidth;
+                              }
+                            }}
                             onPress={(e) => {
                               if (audioElement && playingRecording === recording.id) {
                                 const totalDuration = duration || recording.duration_seconds || 0;
-                                if (totalDuration > 0 && e.nativeEvent) {
-                                  const { locationX } = e.nativeEvent;
-                                  const containerWidth = (e.target as any)?.offsetWidth || (e.currentTarget as any)?.offsetWidth || width - 32;
-                                  const newTime = (locationX / containerWidth) * totalDuration;
+                                if (totalDuration > 0) {
+                                  const nativeEvent = e.nativeEvent as any;
+                                  let containerWidth: number;
+                                  let tapX: number;
+
+                                  if (Platform.OS === 'web' && typeof document !== 'undefined' && nativeEvent?.target) {
+                                    // Web: タップされた要素が子（青いバー）の場合は親のprogressBarWrapperのrectを使い、常に正しいtapXを計算
+                                    const target = nativeEvent.target as HTMLElement;
+                                    const wrapper = target.closest ? target.closest('[data-progress-wrapper="true"]') : target.parentElement;
+                                    const el = (wrapper || target) as HTMLElement;
+                                    const rect = el.getBoundingClientRect();
+                                    containerWidth = rect.width;
+                                    tapX = (nativeEvent.pageX ?? nativeEvent.clientX ?? 0) - rect.left;
+                                  } else {
+                                    containerWidth = progressBarWidths.current[recording.id] || width - 32;
+                                    tapX = nativeEvent?.locationX ?? 0;
+                                  }
+
+                                  // 再生位置を計算（0〜1にクランプ）
+                                  const percentage = containerWidth > 0 ? Math.max(0, Math.min(1, tapX / containerWidth)) : 0;
+                                  const newTime = percentage * totalDuration;
                                   const clampedTime = Math.max(0, Math.min(totalDuration, newTime));
-                                  audioElement.currentTime = clampedTime;
+
+                                  setIsSeeking(true);
                                   setCurrentTime(clampedTime);
+                                  audioElement.currentTime = clampedTime;
+                                  setTimeout(() => setIsSeeking(false), 350);
+                                  logger.debug('プログレスバータップ: 再生位置を変更', {
+                                    recordingId: recording.id,
+                                    tapX,
+                                    containerWidth,
+                                    percentage: (percentage * 100).toFixed(1) + '%',
+                                    newTime: clampedTime.toFixed(2) + 's',
+                                    totalDuration: totalDuration.toFixed(2) + 's'
+                                  });
                                 }
                               }
                             }}
@@ -1415,6 +1459,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     minWidth: 60,
     alignItems: 'center',
+    borderWidth: 1.5,
     justifyContent: 'center',
   },
   timeFilterButtonText: {
@@ -1463,15 +1508,15 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   metaText: {
+    fontSize: 14,
+    fontWeight: '400',
+  },
   deleteWarningText: {
     fontSize: 11,
     marginTop: 4,
     lineHeight: 14,
     opacity: 0.75,
     fontStyle: 'italic',
-  },
-    fontSize: 14,
-    fontWeight: '400',
   },
   recordingActions: {
     flexDirection: 'row',

@@ -73,6 +73,7 @@ export const createEvent = async (
       title: event.title,
       date: event.date,
       description: event.description || null,
+      location: event.location ?? null,
       color: event.color || null,
       created_at: new Date().toISOString(),
     };
@@ -100,7 +101,7 @@ export const createEvent = async (
     
     // カラムが存在しないエラーの場合、該当カラムを除外して再試行
     if (error && isColumnNotFoundError(error)) {
-      const optionalColumns = ['instrument_id', 'event_date', 'practice_schedule_id'];
+      const optionalColumns = ['instrument_id', 'event_date', 'practice_schedule_id', 'location'];
       const handled = handleColumnError(error, payload, optionalColumns);
       
       if (handled) {
@@ -218,6 +219,7 @@ export const updateEvent = async (
       payload.event_date = updates.date; // event_dateも同じ値に設定
     }
     if (updates.description !== undefined) payload.description = updates.description;
+    if (updates.location !== undefined) payload.location = updates.location;
     if (updates.color !== undefined) payload.color = updates.color;
     if (updates.practice_schedule_id !== undefined) {
       // practice_schedule_idがnullでない場合のみ追加
@@ -240,7 +242,7 @@ export const updateEvent = async (
     
     // カラムが存在しないエラーの場合、該当カラムを除外して再試行
     if (error && isColumnNotFoundError(error)) {
-      const optionalColumns = ['instrument_id', 'event_date', 'practice_schedule_id', 'color'];
+      const optionalColumns = ['instrument_id', 'event_date', 'practice_schedule_id', 'color', 'location'];
       const handled = handleColumnError(error, payload, optionalColumns);
       
       if (handled) {

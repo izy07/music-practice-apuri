@@ -43,6 +43,7 @@ export default function BasicPracticeScreen() {
   const {
     selectedLevel,
     userLevel,
+    isLevelChecking,
     showLevelModal,
     setShowLevelModal,
     handleLevelChange,
@@ -92,6 +93,7 @@ export default function BasicPracticeScreen() {
         levels={levels}
         selectedLevel={selectedLevel}
         userLevel={userLevel}
+        isLevelChecking={isLevelChecking}
         onLevelChange={handleLevelChange}
         onOpenModal={() => setShowLevelModal(true)}
       />

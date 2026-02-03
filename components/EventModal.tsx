@@ -139,6 +139,10 @@ export default function EventModal({
 
     setLoading(true);
     try {
+      // 保存前に location カラムの存在を確保（登録した場所が保存されない問題の対策）
+      const { ensureLocationColumn } = await import('@/repositories/common/ensureLocationColumn');
+      await ensureLocationColumn();
+
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setLoading(false);
@@ -178,7 +182,7 @@ export default function EventModal({
 
         // カラムが存在しないエラーの場合、該当カラムを除外して再試行
         if (error && isColumnNotFoundError(error)) {
-          const optionalColumns = ['instrument_id', 'event_date'];
+          const optionalColumns = ['instrument_id', 'event_date', 'location'];
           const handled = handleColumnError(error, updateData, optionalColumns);
           
           if (handled) {
@@ -254,7 +258,7 @@ export default function EventModal({
 
         // カラムが存在しないエラーの場合、該当カラムを除外して再試行
         if (error && isColumnNotFoundError(error)) {
-          const optionalColumns = ['instrument_id', 'event_date'];
+          const optionalColumns = ['instrument_id', 'event_date', 'location'];
           const handled = handleColumnError(error, insertData, optionalColumns);
           
           if (handled) {

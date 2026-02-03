@@ -515,7 +515,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'ヴァイオリンの音を聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -810,7 +810,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'ギターの弦の響きを見る目が変わるかもしれません♪'],
        
       },
       { 
@@ -1144,7 +1144,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'フルートの音色を聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -1454,7 +1454,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'ドラムのリズムを聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -1804,7 +1804,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'トランペットの音を聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -2174,7 +2174,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'サックスの音色を聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -2508,7 +2508,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'ホルンの響きを聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -2843,7 +2843,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'クラリネットの音色を聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -3224,7 +3224,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'チューバの響きを聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -3619,7 +3619,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'チェロの音を聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -3990,7 +3990,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'コントラバスの低音を聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -4363,7 +4363,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'ファゴットの音色を聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -4737,7 +4737,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'トロンボーンの音を聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -5111,7 +5111,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'オーボエの音色を聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -5482,7 +5482,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'ハープの響きを聴く耳が変わるかもしれません♪'],
        
       },
       { 
@@ -5756,7 +5756,7 @@ export const instrumentSpecificMenus: { [key: string]: PracticeItem[] } = {
         duration: "一つの動画約3〜4分",
         tips: [
           '一度に全部見なくてもOK!練習前の『3分読み物』感覚で1つずつ進めましょう', 
-          'ピアノの鍵盤を見る目が変わるかもしれません♪'],
+          'あなたの楽器の音を聴く耳が変わるかもしれません♪'],
        
       },
       { 

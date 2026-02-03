@@ -20,6 +20,8 @@ interface UsePracticeLevelReturn {
   userLevel: string | null;
   isFirstTime: boolean;
   hasSelectedLevel: boolean;
+  /** レベル読み込み中は true。読み込み中は「選択してください」を出さず現在の selectedLevel を表示するために使用 */
+  isLevelChecking: boolean;
   showLevelModal: boolean;
   setSelectedLevel: (level: PracticeLevel) => void;
   setShowLevelModal: (show: boolean) => void;
@@ -53,6 +55,8 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
   const [isFirstTime, setIsFirstTime] = useState(true);
   const [userLevel, setUserLevel] = useState<string | null>(null);
   const [hasSelectedLevel, setHasSelectedLevel] = useState(false);
+  /** レベル読み込み中は true。読み込み完了まで「選択してください」の代わりに selectedLevel を表示 */
+  const [isLevelChecking, setIsLevelChecking] = useState(true);
   const segments = useSegments(); // 現在のルートを取得
   const hasInitializedRef = useRef(false); // 初期化済みフラグ
 
@@ -424,6 +428,7 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
         logger.debug('楽器選択画面にいるため、レベル確認をスキップします');
         if (isMounted && !cancelled) {
           setShowLevelModal(false);
+          setIsLevelChecking(false);
         }
         return;
       }
@@ -491,6 +496,7 @@ export const usePracticeLevel = (selectedInstrument?: string | null): UsePractic
     userLevel,
     isFirstTime,
     hasSelectedLevel,
+    isLevelChecking,
     showLevelModal,
     setSelectedLevel,
     setShowLevelModal,

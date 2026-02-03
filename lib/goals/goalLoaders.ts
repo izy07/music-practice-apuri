@@ -7,6 +7,7 @@ import { goalRepository } from '@/repositories/goalRepository';
 import { OfflineStorage } from '@/lib/offlineStorage';
 import { getGoalsFromCache } from '@/lib/goals/goalCache';
 import { isOnline } from '@/lib/offlineStorage';
+import { FREE_PLAN_LIMITS } from '@/lib/subscriptionLimits';
 import logger from '@/lib/logger';
 
 /**
@@ -30,14 +31,15 @@ export async function loadGoalsFromCache(
         instrument_id: g.instrument_id ?? null,
       }));
 
-      // フリープランの場合、最新の2個だけを表示
+      // フリープランの場合、最新の4個だけを表示
       if (!entitlement?.isEntitled) {
+        const limit = FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT;
         const sortedGoals = [...goalsWithShowOnCalendar].sort((a, b) => {
           const dateA = new Date(a.created_at || 0).getTime();
           const dateB = new Date(b.created_at || 0).getTime();
           return dateB - dateA; // 降順（新しい順）
         });
-        goalsWithShowOnCalendar = sortedGoals.slice(0, 2);
+        goalsWithShowOnCalendar = sortedGoals.slice(0, limit);
       }
 
       logger.debug('目標データをキャッシュから読み込みました（オフライン）');
@@ -164,7 +166,7 @@ export async function addOfflineGoals(
 }
 
 /**
- * フリープランの場合、最新の2個だけを表示
+ * フリープランの場合、最新の4個だけを表示
  */
 export function applyFreePlanLimit(
   goals: Goal[],
@@ -174,10 +176,11 @@ export function applyFreePlanLimit(
     return goals;
   }
 
+  const limit = FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT;
   const sortedGoals = [...goals].sort((a, b) => {
     const dateA = new Date(a.created_at || 0).getTime();
     const dateB = new Date(b.created_at || 0).getTime();
     return dateB - dateA; // 降順（新しい順）
   });
-  return sortedGoals.slice(0, 2);
+  return sortedGoals.slice(0, limit);
 }
