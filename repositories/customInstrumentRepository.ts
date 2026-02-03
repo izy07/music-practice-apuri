@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
-import { safeExecute, RepositoryResult } from '@/lib/repositoryHelpers';
+import { safeExecute, RepositoryResult } from '@/lib/database/baseRepository';
 
 const REPOSITORY_CONTEXT = 'customInstrumentRepository';
 
@@ -39,6 +39,21 @@ export const getCustomInstruments = async (userId: string): Promise<RepositoryRe
 };
 
 /**
+ * UUIDを生成する関数（プラットフォーム非依存）
+ */
+const generateUUID = (): string => {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // フォールバック: 簡易的なUUID生成
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+};
+
+/**
  * カスタム楽器を作成
  */
 export const createCustomInstrument = async (
@@ -49,7 +64,7 @@ export const createCustomInstrument = async (
     async () => {
       logger.debug(`[${REPOSITORY_CONTEXT}] createCustomInstrument:start`, { userId, instrumentName });
       
-      const instrumentId = crypto.randomUUID();
+      const instrumentId = generateUUID();
       
       const { data, error } = await supabase
         .from('user_custom_instruments')

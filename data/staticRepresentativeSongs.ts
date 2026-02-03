@@ -1212,6 +1212,24 @@ export const staticRepresentativeSongs: Record<string, StaticRepresentativeSong[
       "famous_performer": "Windstars Ensemble",
       "famous_video_url": "https://youtu.be/qeqlhl9xQ2I?si=d9uFYCg6ECye_Wk1",
       "famous_note": null
+    },
+    {
+      "id": "e1000058-0001-4001-8001-000000000058",
+      "instrument_id": "550e8400-e29b-41d4-a716-446655440005",
+      "title": "Imperial March (from \"Star Wars\")",
+      "composer": "ジョン・ウィリアムズ",
+      "era": "現代",
+      "genre": "映画音楽",
+      "difficulty_level": 4,
+      "youtube_url": "https://youtu.be/vsMWVW4xtwI?si=gMHst-hOisKCb1KN",
+      "spotify_url": null,
+      "description_ja": "スター・ウォーズより「帝国のマーチ」。ウィーン・フィルハーモニー管弦楽団による演奏。トランペットが印象的な名曲。",
+      "description_en": null,
+      "is_popular": true,
+      "display_order": 14,
+      "famous_performer": "John Williams & Vienna Philharmonic",
+      "famous_video_url": "https://youtu.be/vsMWVW4xtwI?si=gMHst-hOisKCb1KN",
+      "famous_note": null
     }
   ],
   "550e8400-e29b-41d4-a716-446655440006": [
@@ -1671,6 +1689,42 @@ export const staticRepresentativeSongs: Record<string, StaticRepresentativeSong[
       "display_order": 3,
       "famous_performer": "Windstars Ensemble",
       "famous_video_url": "https://youtu.be/qeqlhl9xQ2I?si=d9uFYCg6ECye_Wk1",
+      "famous_note": null
+    },
+    {
+      "id": "e10000b2-0001-4001-8001-0000000000b2",
+      "instrument_id": "550e8400-e29b-41d4-a716-446655440010",
+      "title": "76本のトロンボーン（J.ボコック編）/Seventy Six Trombones（吹奏楽ポップス）",
+      "composer": "メレディス・ウィルソン（編曲：J.ボコック）",
+      "era": "現代",
+      "genre": "吹奏楽ポップス",
+      "difficulty_level": 4,
+      "youtube_url": "https://www.youtube.com/watch?v=example",
+      "spotify_url": null,
+      "description_ja": "ミュージカル「ミュージックマン」より。76本のトロンボーンが響く迫力満点の名曲。",
+      "description_en": null,
+      "is_popular": true,
+      "display_order": 4,
+      "famous_performer": null,
+      "famous_video_url": null,
+      "famous_note": null
+    },
+    {
+      "id": "e10000b3-0001-4001-8001-0000000000b3",
+      "instrument_id": "550e8400-e29b-41d4-a716-446655440010",
+      "title": "アルセナール",
+      "composer": "ヤン・ヴァン・デル・ロースト",
+      "era": "現代",
+      "genre": "吹奏楽",
+      "difficulty_level": 4,
+      "youtube_url": "https://youtu.be/kEmsoRxKk7w?si=O5zyIXqEK84wSBkz",
+      "spotify_url": null,
+      "description_ja": "ヤン・ヴァン・デル・ロースト作曲。近畿大学吹奏楽部による演奏。トロンボーンとホルンが活躍する名曲。",
+      "description_en": null,
+      "is_popular": true,
+      "display_order": 5,
+      "famous_performer": "近畿大学吹奏楽部",
+      "famous_video_url": "https://youtu.be/kEmsoRxKk7w?si=O5zyIXqEK84wSBkz",
       "famous_note": null
     }
   ],

@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, ChevronDown, ChevronUp, BookOpen, Calendar, Target, BarChart3, Music, Timer, Mic, Settings } from 'lucide-react-native';
+import { ArrowLeft, ChevronDown, ChevronUp, BookOpen, Calendar, Target, BarChart3, Music, Timer, Mic, Settings, Library } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { safeGoBack } from '@/lib/navigationUtils';
 import { createShadowStyle } from '@/lib/shadowStyles';
@@ -30,17 +30,6 @@ export default function AppGuideScreen() {
 
   const guideSections = [
     {
-      id: 'overview',
-      icon: BookOpen,
-      title: 'アプリの概要',
-      description: '楽器練習アプリの基本的な使い方をご紹介します。',
-      content: [
-        'このアプリは、楽器練習を継続的にサポートするためのツールです。',
-        '練習記録、基礎練、統計分析、録音機能など、様々な機能を提供しています。',
-        '各機能を活用して、効率的に楽器の上達を目指しましょう。'
-      ]
-    },
-    {
       id: 'practice-record',
       icon: Calendar,
       title: '練習記録の付け方',
@@ -48,9 +37,8 @@ export default function AppGuideScreen() {
       content: [
         '📅 カレンダー画面で日付をタップすると、練習記録を入力できます。',
         '⏱️ クイック記録ボタンで、その日の練習時間をワンタップで記録できます。',
-        '📝 練習内容を自由に記録できます（基礎練のメニュー名など）。',
-        '🎤 録音機能を使って、演奏を毎日録音して保存することもできます。録音はその他の録音ライブラリから一覧で確認することができます。',
-        '🎨 カレンダー上のマークについて：練習時間のみの記録は濃いカスタムカラー、録音のみの記録は赤、両方記録で薄いカスタムカラーのマークがつきます。'
+        '🎤 録音機能を使って、毎日演奏を録音して保存することもできます。録音はその他の録音ライブラリから一覧で確認することができます。',
+        '🎨 カレンダー上のマークについて：練習時間のみの記録は各楽器のカスタムカラー、録音のみの記録は赤、両方記録で濃い赤色のマークがつきます。'
       ]
     },
     {
@@ -59,9 +47,9 @@ export default function AppGuideScreen() {
       title: '基礎練の使い方',
       description: '基礎練メニューで効率的に練習しましょう。',
       content: [
-        '🎯 基礎練画面では、レベル別（初級・中級・マスター）の練習メニューを提供しています。',
+        '🎯 基礎練画面では、楽器ごと、レベル別（初級・中級・マスター）の練習メニューを提供しています。',
         '📋 各メニューには、練習の仕方、推奨テンポ、練習ポイントが記載されています。',
-        '▶️ メニューをタップして詳細を確認し、「練習した！」ボタンを押すと記録されます。'
+        '▶️ メニューをタップして詳細を確認し、「練習した！」ボタンを押すとカレンダーにチェックマーク、練習内容が記録されます。'
       ]
     },
     {
@@ -82,8 +70,8 @@ export default function AppGuideScreen() {
       description: 'タイマーを使って、集中して練習しましょう。',
       content: [
         '⏱️ タイマー画面で、練習時間を設定できます。',
-        '🔔 タイマー終了時に通知が表示されます。',
-        '💾 タイマーで計測した時間は、自動的に練習記録に保存されます。'
+        '🔔 残り時間を視覚的に判断できます。通常は青色、40%以下で黄色、20%以下で赤色になります。',
+        '💾 タイマーで計測した時間は、自動的に練習記録に保存することができます。'
       ]
     },
     {
@@ -93,9 +81,9 @@ export default function AppGuideScreen() {
       description: '演奏を録音して、上達の過程を記録しましょう。',
       content: [
         '🎤 カレンダー画面や練習記録モーダルから録音機能を起動できます。',
-        '⏺️ 録音ボタンを押すと、演奏を録音できます。',
+        '⏺️ 録音ボタンを押すと、演奏を録音できます。演奏録音は自分の演奏、レッスン録音は先生のレッスン録音やアドバイスを録音で録音種類を分けることができます。',
         '📚 録音ライブラリで、過去の録音を確認・再生できます。',
-        '⭐ お気に入りの録音にマークを付けることができます。'
+        '⭐ フィルター機能で特定の録音だけを一覧表示することができます。'
       ]
     },
     {
@@ -109,15 +97,25 @@ export default function AppGuideScreen() {
       ]
     },
     {
+      id: 'overview',
+      icon: Library,
+      title: '楽曲管理',
+      description: '過去に弾いた曲/弾きたい曲をスマート管理できます。',
+      content: [
+        '練習中/演奏済みなどステータスを変更したいときは曲カードのステータスを押すと簡単に変更できます。',
+        'アーティスト名やジャンル、難易度など詳細に記録できます。メモも残せます',
+      ]
+    },
+    {
       id: 'settings',
       icon: Settings,
-      title: '設定・カスタマイズ',
+      title: '設定・その他',
       description: 'アプリを自分好みにカスタマイズしましょう。',
       content: [
-        '👤 プロフィール設定で、個人情報を登録でき自分の経歴を一目で確認することができます。',
-        '📚 マイライブラリで、過去に弾いた曲や弾きたい曲を管理することができます。',
-        '🌐 録音ライブラリで演奏録音を一覧で確認することができ、上達を実感しやすくなります。',
-        '🎨 画面の背景は楽器変更画面にある外観設定からお好みの色にすることができます。'
+        '👤 プロフィール設定で、個人情報、楽器情報を登録できます。',
+        '📚 カレンダー画面のイベント管理機能でメンテナンス日や演奏日を簡単に管理することができます',
+        '🌐 左上の楽器名から演奏を聞くを押すと各楽器の名演奏一覧を聴くことができます。自分のお気に入り曲も登録可能です。',
+        '🎨 画面の背景はその他の主要機能設定にある外観設定からお好みの色にすることができます。'
       ]
     }
   ];

@@ -15,7 +15,7 @@
     "test:coverage": "jest --coverage",
     "test:ci": "jest --ci --coverage --maxWorkers=2 --bail",
     "test:critical": "jest --testPathPattern='(dateUtils|authSecurity|offlineStorage|database)'",
-    "build:web": "npx expo export --platform web --clear",
+    "build:web": "npx expo export --platform web --output-dir dist --clear",
     "build:web:github": "npm run build:web && node scripts/copy-web-build-to-dist.js && node scripts/fix-github-pages-paths.js && node scripts/create-robust-404.js",
     "android": "expo run:android",
     "ios": "expo run:ios"

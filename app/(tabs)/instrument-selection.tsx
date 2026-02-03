@@ -16,6 +16,7 @@ import { supabase } from '@/lib/supabase';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
 import { getCustomInstruments, createCustomInstrument, CustomInstrument } from '@/repositories/customInstrumentRepository';
+import { saveInstrumentSpecificProfileData } from '@/repositories/userRepository';
 
 const OTHER_INSTRUMENT_ID = '550e8400-e29b-41d4-a716-446655440016';
 
@@ -85,21 +86,26 @@ export default function InstrumentSelectionScreen() {
       { id: '550e8400-e29b-41d4-a716-446655440010', name: 'トロンボーン', nameEn: 'Trombone', emoji: '🎺' },
       { id: '550e8400-e29b-41d4-a716-446655440015', name: 'コントラバス', nameEn: 'Contrabass', emoji: '🎻' },
       { id: '550e8400-e29b-41d4-a716-446655440012', name: 'ファゴット', nameEn: 'Bassoon', emoji: '🎵' },
-      // 注意: 将来的に追加予定の楽器（ハープ、シンセサイザー、太鼓、琴）は実装時に追加
-      {
-        id: OTHER_INSTRUMENT_ID,
-        // 「その他」で名前登録済みなら、その名前を“楽器名”として表示（その他とは別に見えるように）
-        name: customInstrumentName.trim() ? customInstrumentName.trim() : 'その他',
-        nameEn: customInstrumentName.trim() ? 'Custom' : 'Other',
-        emoji: customInstrumentName.trim() ? '🎵' : '❓',
-      },
     ];
 
-    // 以前の並び（定義順）を維持し、「その他」だけ最後に固定
-    const otherInstrument = allInstruments.find(i => i.id === OTHER_INSTRUMENT_ID);
-    const regularInstruments = allInstruments.filter(i => i.id !== OTHER_INSTRUMENT_ID);
-    return otherInstrument ? [...regularInstruments, otherInstrument] : regularInstruments;
-  }, [customInstrumentName]);
+    // カスタム楽器を追加（その他とは別に表示）
+    const customInstrumentsList: Instrument[] = customInstruments.map(custom => ({
+      id: custom.instrument_id,
+      name: custom.instrument_name,
+      nameEn: 'Custom',
+      emoji: '🎵',
+    }));
+
+    // 「その他」を最後に追加
+    const otherInstrument: Instrument = {
+      id: OTHER_INSTRUMENT_ID,
+      name: 'その他',
+      nameEn: 'Other',
+      emoji: '❓',
+    };
+
+    return [...allInstruments, ...customInstrumentsList, otherInstrument];
+  }, [customInstruments]);
 
   // すべての楽器を表示（非表示にしていた楽器も表示）
   const visibleInstruments = instruments;
@@ -152,6 +158,13 @@ export default function InstrumentSelectionScreen() {
       setCustomInstrumentName('');
     }
 
+    // カスタム楽器を選択した場合は、そのまま保存可能
+    const isCustomInstrument = customInstruments.some(custom => custom.instrument_id === instrumentId);
+    if (isCustomInstrument) {
+      setCanSaveNewInstrument({ canSave: true });
+      return;
+    }
+
     // 新しい楽器を選択した場合、保存可能かチェック
     if (user && instrumentId !== currentInstrumentId) {
       const canSaveCheck = await canSaveDataForInstrument(user.id, instrumentId, entitlement);
@@ -169,9 +182,17 @@ export default function InstrumentSelectionScreen() {
     }
 
     // その他楽器選択時の楽器名検証
-    if (selectedInstrumentId === OTHER_INSTRUMENT_ID && !customInstrumentName.trim()) {
-      Alert.alert('エラー', '楽器名を入力してください');
-      return;
+    if (selectedInstrumentId === OTHER_INSTRUMENT_ID) {
+      if (!customInstrumentName.trim()) {
+        Alert.alert('エラー', '楽器名を入力してください');
+        return;
+      }
+      // 既に同じ名前のカスタム楽器が存在するかチェック
+      const existingCustom = customInstruments.find(custom => custom.instrument_name === customInstrumentName.trim());
+      if (existingCustom) {
+        Alert.alert('エラー', '同じ名前のカスタム楽器が既に登録されています');
+        return;
+      }
     }
 
     // 現在の楽器と同じ場合は、カレンダー画面に遷移するだけ
@@ -198,63 +219,71 @@ export default function InstrumentSelectionScreen() {
     }
 
     try {
-      // カスタム楽器名を取得（その他楽器の場合のみ）
-      const customName = selectedInstrumentId === OTHER_INSTRUMENT_ID 
-        ? customInstrumentName.trim() 
-        : null;
+      let actualInstrumentId = selectedInstrumentId;
+      let customInstrumentId: string | null = null;
 
-      // ローカルにも保存（必ず user.id のキーで保存して、ヘッダー側と一致させる）
-      if (user?.id) {
-        try {
-          const key = `custom_instrument_name_${user.id}`;
-          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-            if (customName) window.localStorage.setItem(key, customName);
-            else window.localStorage.removeItem(key);
-          } else {
-            if (customName) await AsyncStorage.setItem(key, customName);
-            else await AsyncStorage.removeItem(key);
+      // カスタム楽器を選択した場合の処理
+      const isCustomInstrument = customInstruments.some(custom => custom.instrument_id === selectedInstrumentId);
+      if (isCustomInstrument) {
+        // カスタム楽器の場合は、「その他」のIDを使用
+        actualInstrumentId = OTHER_INSTRUMENT_ID;
+        customInstrumentId = selectedInstrumentId;
+      } else if (selectedInstrumentId === OTHER_INSTRUMENT_ID) {
+        // その他楽器を選択した場合、カスタム楽器を作成
+        const customName = customInstrumentName.trim();
+        if (!customName) {
+          Alert.alert('エラー', '楽器名を入力してください');
+          return;
+        }
+
+        // カスタム楽器を作成
+        if (user?.id) {
+          const result = await createCustomInstrument(user.id, customName);
+          if (result.error) {
+            logger.error('カスタム楽器作成エラー:', result.error);
+            Alert.alert('エラー', 'カスタム楽器の作成に失敗しました');
+            return;
           }
-        } catch {
-          // ローカル保存失敗は無視（DBが成功していれば問題ない）
+
+          // 作成されたカスタム楽器のinstrument_idを保存
+          if (result.data) {
+            customInstrumentId = result.data.instrument_id;
+            // カスタム楽器一覧を再読み込み
+            const customInstrumentsResult = await getCustomInstruments(user.id);
+            if (customInstrumentsResult.data) {
+              setCustomInstruments(customInstrumentsResult.data);
+            }
+          }
         }
       }
       
-      // データベースに楽器IDを保存
+      // データベースに楽器IDを保存（「その他」のIDを使用）
       if (user) {
-        const result = await updateSelectedInstrument(user.id, selectedInstrumentId);
+        const result = await updateSelectedInstrument(user.id, actualInstrumentId);
         if (result.error) {
           logger.error('楽器保存エラー（updateSelectedInstrument）:', result.error);
           Alert.alert('エラー', '楽器の保存に失敗しました');
           return;
         }
-        
-        // カスタム楽器名を保存（その他楽器の場合のみ）
-        if (customName) {
-          const { error: customNameError } = await supabase
-            .from('user_profiles')
-            .update({ custom_instrument_name: customName })
-            .eq('user_id', user.id);
-          
-          if (customNameError) {
-            logger.error('カスタム楽器名保存エラー:', customNameError);
-            // カスタム楽器名の保存エラーは警告のみ（楽器IDは既に保存されている）
-          }
-        } else if (selectedInstrumentId !== OTHER_INSTRUMENT_ID) {
-          // その他楽器以外を選択した場合は、カスタム楽器名をクリア
-          const { error: clearError } = await supabase
-            .from('user_profiles')
-            .update({ custom_instrument_name: null })
-            .eq('user_id', user.id);
-          
-          if (clearError) {
-            logger.warn('カスタム楽器名クリアエラー:', clearError);
-            // エラーは無視（楽器IDは既に保存されている）
+
+        // カスタム楽器のIDをinstrument_specific_dataに保存
+        if (customInstrumentId && actualInstrumentId === OTHER_INSTRUMENT_ID) {
+          const saveResult = await saveInstrumentSpecificProfileData(
+            user.id,
+            actualInstrumentId,
+            { custom_instrument_id: customInstrumentId }
+          );
+          if (saveResult.error) {
+            logger.warn('カスタム楽器IDの保存エラー（続行）:', saveResult.error);
+            // エラーは警告として扱う（メインの楽器IDは保存済み）
           }
         }
       }
       
       // ContextのsetSelectedInstrumentを使用（唯一のエントリーポイント）
-      await setSelectedInstrument(selectedInstrumentId);
+      // カスタム楽器の場合は、カスタム楽器のIDを使用（表示用）
+      const contextInstrumentId = customInstrumentId || actualInstrumentId;
+      await setSelectedInstrument(contextInstrumentId);
       
       // 楽器の更新が完了するまで少し待つ（Contextの更新を待つ）
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -270,8 +299,9 @@ export default function InstrumentSelectionScreen() {
       }
       
       // 成功メッセージを表示せず、直接カレンダー画面に遷移
-      const instrumentName = customName || instruments.find(i => i.id === selectedInstrumentId)?.name || '楽器';
-      logger.debug('楽器変更完了:', { instrumentName, selectedInstrumentId, customName });
+      const displayInstrumentId = customInstrumentId || selectedInstrumentId;
+      const instrumentName = instruments.find(i => i.id === displayInstrumentId)?.name || '楽器';
+      logger.debug('楽器変更完了:', { instrumentName, selectedInstrumentId: actualInstrumentId, customInstrumentId });
       
       // カレンダー画面に遷移（一元化された関数を使用）
       navigateToCalendarScreen(router, `楽器「${instrumentName}」を選択してカレンダー画面に遷移`);

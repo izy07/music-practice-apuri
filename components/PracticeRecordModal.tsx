@@ -793,6 +793,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           recording_type: r.recording_type || 'performance'
         }));
         
+        // 録音が見つかった場合は、確実に更新する
         setExistingRecordings(recordingsList);
         setAudioUrl('');
         logger.debug('録音記録を読み込みました:', {
@@ -805,6 +806,14 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           // 保存直後でもなく、savedRecordingIdも指定されていない場合はクリア
           setExistingRecordings([]);
           setAudioUrl('');
+        } else {
+          // savedRecordingIdが指定されている場合、または保存直後の場合はexistingRecordingsを保持
+          // （データベース反映が遅れている可能性があるため）
+          // 既存の録音リストを保持し、クリアしない
+          logger.debug('録音が見つかりませんでしたが、existingRecordingsを保持します（保存直後の可能性）:', {
+            savedRecordingId,
+            currentIsRecordingJustSaved
+          });
         }
       }
     } catch (error) {
@@ -827,9 +836,15 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   }, [loadPracticeSessions, loadRecording]);
 
   // 選択された日付の練習記録を取得
+  // 注意: 録音保存直後（showAudioRecorderがtrue→falseに変わる）の場合はリセットしない
+  // → handleAudioSaveで既にexistingRecordingsを更新済み。リセットすると録音ずみUIが消える
+  const prevShowAudioRecorderRef = useRef(showAudioRecorder);
   useEffect(() => {
     if (visible && selectedDate && !showAudioRecorder) {
-      // 録音画面から戻ってきた場合
+      const wasShowAudioRecorder = prevShowAudioRecorderRef.current;
+      prevShowAudioRecorderRef.current = showAudioRecorder;
+
+      // 録音画面から戻ってきた場合（キャンセル時）
       if (formStateBeforeRecording) {
         // フォーム状態を復元
         setMinutes(formStateBeforeRecording.minutes);
@@ -840,10 +855,9 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         setFormStateBeforeRecording(null);
         // 録音状態を保持してデータを再読み込み
         loadExistingRecord();
-      } else if (!isRecordingJustSaved) {
-        // 通常のモーダルオープン時はリセット
-        // ただし録音保存直後（isRecordingJustSaved）の場合はスキップ
-        // → handleAudioSaveで既にexistingRecordingsを更新済みのため、リセットすると録音ずみUIが消える
+      } else if (!wasShowAudioRecorder) {
+        // 録音画面を開いていなかった場合のみリセット（モーダル初回表示 or 日付変更時）
+        // wasShowAudioRecorderがfalse＝直前まで録音画面は表示されていなかった
         setExistingRecord(null);
         setExistingRecordings([]);
         setMinutes('');
@@ -851,14 +865,17 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         setAudioUrl('');
         setVideoUrl('');
         setTimerMinutes(0);
-        // データを再読み込み（モーダルが開かれたときに必ず最新データを取得）
+        setIsRecordingJustSaved(false);
         loadExistingRecord();
       } else {
-        // 録音保存直後: リセットせず、loadExistingRecordのみ実行（DBと同期）
+        // 録音画面を閉じた直後（保存 or 戻るでformStateBeforeRecordingなし）:
+        // リセットせずloadExistingRecordのみ実行（DBと同期）。録音ずみUIを保持
         loadExistingRecord();
       }
+    } else {
+      prevShowAudioRecorderRef.current = showAudioRecorder;
     }
-  }, [visible, selectedDate, showAudioRecorder, loadExistingRecord, formStateBeforeRecording, isRecordingJustSaved]);
+  }, [visible, selectedDate, showAudioRecorder, loadExistingRecord, formStateBeforeRecording]);
 
   // 外部からのリフレッシュ要求を処理（クイック記録保存後など）
   useEffect(() => {
@@ -930,6 +947,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             recording_type: audioRecordingType
           };
           // 既存の録音リストに追加（最大2個まで）
+          // 録音保存直後フラグを先に設定してから、existingRecordingsを更新
+          // これにより、UIが一瞬消えるのを防ぐ
+          setIsRecordingJustSaved(true); // 録音保存直後フラグを設定
+          
           setExistingRecordings(prev => {
             const updated = [...prev];
             // 同じIDの録音が既にある場合は更新、なければ追加
@@ -941,7 +962,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             }
             return updated;
           });
-          setIsRecordingJustSaved(true); // 録音保存直後フラグを設定
           
           // 録音済み情報を表示するため、一時的な録音データはクリア
           setAudioUrl(''); // 録音済みとして表示するため、一時的なURLをクリア
@@ -995,8 +1015,12 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             if (savedContent) setContent(savedContent);
           }
           
-          // 読み込み完了後にフラグをリセット
-          setIsRecordingJustSaved(false);
+          // 読み込み完了後、existingRecordingsが正しく更新されていることを確認してからフラグをリセット
+          // これにより、録音済みUIが消えるのを防ぐ
+          // 録音が存在する場合は、フラグをリセットしてもUIは表示され続ける
+          setTimeout(() => {
+            setIsRecordingJustSaved(false);
+          }, 200);
         }, 500);
       } else {
         setIsRecordingJustSaved(false);
@@ -1034,6 +1058,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       };
       
       // 既存の録音リストに追加（最大2個まで）
+      // 録音保存直後フラグを先に設定してから、existingRecordingsを更新
+      // これにより、UIが一瞬消えるのを防ぐ
+      setIsRecordingJustSaved(true); // 録音保存直後フラグを設定
+      
       setExistingRecordings(prev => {
         const updated = [...prev];
         // 同じIDの録音が既にある場合は更新、なければ追加
@@ -1045,8 +1073,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         }
         return updated;
       });
-      
-      setIsRecordingJustSaved(true); // 録音保存直後フラグを設定
       // 録音済み情報を表示するため、一時的な録音データはクリア
       setAudioUrl(''); // 録音済みとして表示するため、一時的なURLをクリア
       setVideoUrl(''); // 動画URLもクリア
@@ -1103,8 +1129,13 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             if (savedContent) setContent(savedContent);
           }
           
-          // 読み込み完了後にフラグをリセット
-          setIsRecordingJustSaved(false);
+          // 読み込み完了後、existingRecordingsが正しく更新されていることを確認してからフラグをリセット
+          // これにより、録音済みUIが消えるのを防ぐ
+          // existingRecordingsが空でないことを確認してからフラグをリセット
+          // 録音が存在する場合は、フラグをリセットしてもUIは表示され続ける
+          setTimeout(() => {
+            setIsRecordingJustSaved(false);
+          }, 200);
         }, 500);
       } else {
         setIsRecordingJustSaved(false);
@@ -1857,7 +1888,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   <Text style={styles.audioTitle}>{audioTitle}</Text>
                   {isAudioFavorite && <Text style={styles.favoriteStar}>⭐</Text>}
                 </View>
-                {audioMemo && <Text style={styles.audioMemo}>{audioMemo}</Text>}
+                {audioMemo ? <Text style={styles.audioMemo}>{audioMemo}</Text> : null}
                 <Text style={styles.audioDuration}>録音時間: {Math.floor(audioDuration / 60)}分{audioDuration % 60}秒</Text>
                 {/* 録音種類表示 */}
                 <Text style={styles.audioRecordingTypeText}>
@@ -1927,6 +1958,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                           });
                           setSelectedRecordingSlot(slotIndex);
                           setShowAudioRecorder(true);
+                          // 既存の録音がある場合は再録音フラグを設定（後でAudioRecorderに渡す）
                         }}
                       >
                         <Mic size={24} color="#8B4513" />
@@ -2042,6 +2074,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           onRecordingSaved={onRecordingSaved}
           selectedDate={selectedDate}
           initialRecordingType={initialAudioRecorderType}
+          isRerecording={selectedRecordingSlot !== null && existingRecordings[selectedRecordingSlot] !== undefined}
+          existingRecordingId={selectedRecordingSlot !== null && existingRecordings[selectedRecordingSlot] ? existingRecordings[selectedRecordingSlot].id : undefined}
         />
       </Modal>
 

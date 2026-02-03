@@ -865,8 +865,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   appealText: {
-    fontSize: 16,
-    lineHeight: 28,
+    fontSize: 18,
+    lineHeight: 30,
     paddingHorizontal: 20,
     paddingBottom: 20,
     paddingTop: 0,

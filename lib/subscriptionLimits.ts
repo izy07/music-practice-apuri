@@ -361,13 +361,17 @@ export const checkDailyRecordingLimit = async (
   entitlement: Entitlement | null | undefined,
   selectedDate?: Date | string | null
 ): Promise<{ canRecord: boolean; currentCount: number; limit: number; reason?: string }> => {
+  // Premiumユーザーは無制限（try-catchの外でチェックしてエラーを防ぐ）
+  const isPremium = isPremiumUser(entitlement);
+  if (isPremium) {
+    logger.debug("プレミアムユーザーのため、1日録音制限チェックをスキップします", {
+      userId,
+      isEntitled: entitlement?.isEntitled
+    });
+    return { canRecord: true, currentCount: 0, limit: Infinity };
+  }
+
   try {
-    // Premiumユーザーは無制限
-    const isPremium = isPremiumUser(entitlement);
-    if (isPremium) {
-      logger.debug("プレミアムユーザーのため、1日録音制限チェックをスキップします");
-      return { canRecord: true, currentCount: 0, limit: Infinity };
-    }
 
     // Freeプランの場合のみ制限チェックを実行
     const maxDaily = getMaxDailyRecordings(entitlement);
@@ -759,7 +763,8 @@ export const getActiveInstrumentIds = async (userId: string): Promise<string[]> 
     }
 
     // すべての楽器IDを取得（重複を排除）
-    const [recordingsResult, goalsResult, mySongsResult, practiceSessionsResult, eventsResult, customInstrumentsResult] = await Promise.all([
+    // Promise.allSettledを使用してエラーを個別に処理
+    const results = await Promise.allSettled([
       supabase
         .from('recordings')
         .select('instrument_id')
@@ -789,9 +794,24 @@ export const getActiveInstrumentIds = async (userId: string): Promise<string[]> 
       supabase
         .from('user_custom_instruments')
         .select('instrument_id')
-        .eq('user_id', userId)
-        .catch(() => ({ data: null, error: null })), // テーブルが存在しない場合はエラーを無視
+        .eq('user_id', userId),
     ]);
+
+    // 結果を処理（エラーが発生した場合はnullを返す）
+    const recordingsResult = results[0].status === 'fulfilled' ? results[0].value : { data: null, error: results[0].status === 'rejected' ? results[0].reason : null };
+    const goalsResult = results[1].status === 'fulfilled' ? results[1].value : { data: null, error: results[1].status === 'rejected' ? results[1].reason : null };
+    const mySongsResult = results[2].status === 'fulfilled' ? results[2].value : { data: null, error: results[2].status === 'rejected' ? results[2].reason : null };
+    const practiceSessionsResult = results[3].status === 'fulfilled' ? results[3].value : { data: null, error: results[3].status === 'rejected' ? results[3].reason : null };
+    const eventsResult = results[4].status === 'fulfilled' ? results[4].value : { data: null, error: results[4].status === 'rejected' ? results[4].reason : null };
+    const customInstrumentsResult = results[5].status === 'fulfilled' ? results[5].value : { data: null, error: results[5].status === 'rejected' ? results[5].reason : null };
+
+    // カスタム楽器の取得エラーをログに記録（テーブルが存在しない場合など）
+    if (customInstrumentsResult.error) {
+      logger.debug('カスタム楽器の取得でエラーが発生しました（無視して続行）:', {
+        error: customInstrumentsResult.error,
+        userId
+      });
+    }
 
     // すべての楽器IDを収集（重複を排除 - Setを使用）
     // 型安全性のため明示的に型を指定（any型を回避）
@@ -810,7 +830,7 @@ export const getActiveInstrumentIds = async (userId: string): Promise<string[]> 
       customInstrumentsResult.data, // カスタム楽器のinstrument_idも含める
     ];
     
-    allResults.forEach(data => {
+    allResults.forEach((data, index) => {
       if (data && Array.isArray(data)) {
         data.forEach((item: RecordWithInstrumentId) => {
           // instrument_idが存在し、nullでない場合のみ追加
@@ -818,6 +838,8 @@ export const getActiveInstrumentIds = async (userId: string): Promise<string[]> 
             instrumentIds.add(item.instrument_id);
           }
         });
+      } else if (data === null && index === 5) {
+        // カスタム楽器の取得エラーは既にログに記録済み（無視して続行）
       }
     });
 

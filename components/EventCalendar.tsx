@@ -200,7 +200,7 @@ const styles = StyleSheet.create({
     marginTop: 0,
     marginBottom: 20,
     backgroundColor: '#fff',
-    borderRadius: 0,
+    borderRadius: 16,
     elevation: 4,
     ...createShadowStyle({
       shadowColor: '#000',

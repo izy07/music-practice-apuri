@@ -231,8 +231,8 @@ export default function RecordingsLibraryScreen() {
       slider.addEventListener('input', handleInput);
       slider.addEventListener('mousedown', handleMouseDown);
       slider.addEventListener('mouseup', handleMouseUp);
-      slider.addEventListener('touchstart', handleTouchStart);
-      slider.addEventListener('touchend', handleTouchEnd);
+      slider.addEventListener('touchstart', handleTouchStart, { passive: true });
+      slider.addEventListener('touchend', handleTouchEnd, { passive: true });
 
       // クリーンアップ関数を保存
       (slider as any)._cleanup = () => {
@@ -243,6 +243,8 @@ export default function RecordingsLibraryScreen() {
         slider.removeEventListener('touchend', handleTouchEnd);
       };
     }
+
+    if (!slider) return;
 
     // 値とスタイルを更新（シーク中でない場合のみ）
     if (!isSeeking) {
@@ -559,20 +561,33 @@ export default function RecordingsLibraryScreen() {
             
             // Audio要素を作成（Blob URLを使用してCSPエラーを回避）
             const audio = new Audio();
+            // Blob URLが有効であることを確認してから設定
+            if (!blobUrl || typeof blobUrl !== 'string' || blobUrl.trim() === '') {
+              throw new Error('Blob URLが無効です');
+            }
+            
             // Blob URLを設定（CSPエラーを回避するため、src属性を直接設定）
-            // blobUrlが有効であることを確認してから設定
-            if (blobUrl && typeof blobUrl === 'string' && blobUrl.trim() !== '') {
+            audio.src = blobUrl;
+            audio.preload = 'auto';
+            // crossOriginを設定（念のため）
+            audio.crossOrigin = 'anonymous';
+            
+            // src属性が正しく設定されたことを確認（少し待機してから確認）
+            await new Promise(resolve => setTimeout(resolve, 50));
+            if (!audio.src || audio.src === '' || audio.src === 'null' || audio.src === 'undefined' || audio.src === window.location.href) {
+              // srcが正しく設定されていない場合、再設定を試みる
+              logger.warn('audio.srcが正しく設定されていないため、再設定を試みます', { 
+                currentSrc: audio.src, 
+                blobUrl,
+                windowLocation: window.location.href
+              });
               audio.src = blobUrl;
-              audio.preload = 'auto';
-              // crossOriginを設定（念のため）
-              audio.crossOrigin = 'anonymous';
-              
-              // src属性が正しく設定されたことを確認
-              if (!audio.src || audio.src === '' || audio.src === 'null' || audio.src === 'undefined') {
+              audio.load();
+              // 再設定後も確認
+              await new Promise(resolve => setTimeout(resolve, 50));
+              if (!audio.src || audio.src === '' || audio.src === 'null' || audio.src === 'undefined' || audio.src === window.location.href) {
                 throw new Error(`Audio要素のsrc属性の設定に失敗しました: ${audio.src}`);
               }
-            } else {
-              throw new Error('Blob URLが無効です');
             }
             
             // エラーハンドリングを設定（Blob URL解放を含む）
@@ -747,16 +762,16 @@ export default function RecordingsLibraryScreen() {
           filterDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
           break;
         case '1month':
-          filterDate = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+          filterDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
           break;
         case '3months':
-          filterDate = new Date(now.getFullYear(), now.getMonth() - 3, now.getDate());
+          filterDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
           break;
         case '6months':
-          filterDate = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+          filterDate = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
           break;
         case '1year':
-          filterDate = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+          filterDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
           break;
         default:
           filterDate = new Date(0);
@@ -920,7 +935,7 @@ export default function RecordingsLibraryScreen() {
             nativeID="recordings-search-input"
             accessibilityLabel="録音検索"
           />
-          {searchQuery.trim() && (
+          {searchQuery.trim() ? (
             <TouchableOpacity
               onPress={() => setSearchQuery('')}
               style={styles.clearButton}
@@ -931,7 +946,7 @@ export default function RecordingsLibraryScreen() {
                 <X size={18} color={currentTheme.textSecondary} />
               )}
             </TouchableOpacity>
-          )}
+          ) : null}
         </View>
 
         {/* 録音種類フィルター */}
@@ -1276,10 +1291,24 @@ export default function RecordingsLibraryScreen() {
                                   if (Platform.OS === 'web' && typeof document !== 'undefined' && nativeEvent?.target) {
                                     // Web: タップされた要素が子（青いバー）の場合は親のprogressBarWrapperのrectを使い、常に正しいtapXを計算
                                     const target = nativeEvent.target as HTMLElement;
-                                    const wrapper = target.closest ? target.closest('[data-progress-wrapper="true"]') : target.parentElement;
+                                    // 青いバー（progressBar）をタップした場合でも、親のwrapperを取得
+                                    let wrapper: HTMLElement | null = null;
+                                    if (target.closest) {
+                                      wrapper = target.closest('[data-progress-wrapper="true"]') as HTMLElement;
+                                    }
+                                    // closestが使えない場合や見つからない場合は、親要素を再帰的に探す
+                                    if (!wrapper) {
+                                      let parent = target.parentElement;
+                                      while (parent && !parent.hasAttribute('data-progress-wrapper')) {
+                                        parent = parent.parentElement;
+                                      }
+                                      wrapper = parent as HTMLElement;
+                                    }
+                                    // それでも見つからない場合は、target自体を使用
                                     const el = (wrapper || target) as HTMLElement;
                                     const rect = el.getBoundingClientRect();
                                     containerWidth = rect.width;
+                                    // タップ位置を計算（常にwrapperのrect基準で計算）
                                     tapX = (nativeEvent.pageX ?? nativeEvent.clientX ?? 0) - rect.left;
                                   } else {
                                     containerWidth = progressBarWidths.current[recording.id] || width - 32;

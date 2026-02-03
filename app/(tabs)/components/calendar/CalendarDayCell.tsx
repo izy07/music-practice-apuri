@@ -130,14 +130,15 @@ CalendarDayCell.displayName = 'CalendarDayCell';
 const styles = StyleSheet.create({
   dayCell: {
     width: '13.5%',
-    height: 50,
-    justifyContent: 'center',
+    height: 60,
+    justifyContent: 'flex-start',
     alignItems: 'center',
     borderRadius: 8,
     margin: 1,
     backgroundColor: '#E8E8E8',
     position: 'relative',
-    paddingVertical: 6,
+    paddingTop: 6,
+    paddingBottom: 6,
   },
   todayCell: {
     backgroundColor: '#E3F2FD',
@@ -183,7 +184,7 @@ const styles = StyleSheet.create({
   },
   eventIndicator: {
     position: 'absolute',
-    bottom: 2,
+    bottom: 20,
     left: 2,
     right: 2,
     backgroundColor: '#E3F2FD',

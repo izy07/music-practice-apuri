@@ -33,6 +33,7 @@ interface AudioRecorderProps {
   visible: boolean;
   onSave: (audioData: {
     title: string;
+    memo?: string; // メモ（オプション）
     isFavorite: boolean;
     duration: number;
     audioUrl: string;
@@ -197,20 +198,31 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       }
 
       try {
-        // 1日の録音数制限をチェック（全プランでチェック）
+        // プレミアムユーザーの場合は制限チェックをスキップ
+        if (isPremiumUser(entitlement)) {
+          setDailyLimitStatus({ canRecord: true, currentCount: 0, limit: Infinity });
+          setRecordingLimitStatus(null); // プレミアムユーザーは月間制限不要
+          return;
+        }
+
+        // 1日の録音数制限をチェック（フリープランのみ）
         const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, selectedDate || undefined);
         setDailyLimitStatus(dailyLimitCheck);
         
         // 月間録音数制限をチェック（フリープランのみ、楽器ごと）
-        if (!entitlement?.isEntitled) {
-          const instrumentId = getInstrumentId(selectedInstrument);
-          const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined, instrumentId);
-          setRecordingLimitStatus(limitCheck);
-        } else {
-          setRecordingLimitStatus(null); // プレミアムユーザーは月間制限不要
-        }
+        const instrumentId = getInstrumentId(selectedInstrument);
+        const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined, instrumentId);
+        setRecordingLimitStatus(limitCheck);
       } catch (error) {
         logger.error('録音制限チェックエラー:', error);
+        // エラー時はプレミアムユーザーの場合は許可、それ以外は制限をクリア
+        if (isPremiumUser(entitlement)) {
+          setDailyLimitStatus({ canRecord: true, currentCount: 0, limit: Infinity });
+          setRecordingLimitStatus(null);
+        } else {
+          setDailyLimitStatus(null);
+          setRecordingLimitStatus(null);
+        }
       }
     };
 
@@ -246,8 +258,8 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
     try {
       logger.debug('録音開始ボタンが押されました');
       
-      // 1日の録音数制限をチェック（全プランでチェック）
-      if (user?.id) {
+      // 1日の録音数制限をチェック（フリープランのみ）
+      if (user?.id && !isPremiumUser(entitlement)) {
         const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, selectedDate || undefined);
         if (!dailyLimitCheck.canRecord) {
           Alert.alert(
@@ -255,11 +267,9 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
             dailyLimitCheck.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
             [
               { text: 'キャンセル', style: 'cancel' },
-              { text: entitlement?.isEntitled ? '了解' : 'プレミアムを見る', onPress: () => {
-                if (!entitlement?.isEntitled) {
-                  onClose();
-                  router.push('/(tabs)/pricing-plans');
-                }
+              { text: 'プレミアムを見る', onPress: () => {
+                onClose();
+                router.push('/(tabs)/pricing-plans');
               }}
             ]
           );
@@ -679,7 +689,8 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
           Alert.alert('エラー', `録音を開始できませんでした。\n\nエラー: ${error.message || '不明なエラー'}`);
         }
       } else {
-        Alert.alert('エラー', `録音を開始できませんでした。\n\nエラー: ${error?.message || '不明なエラー'}`);
+        const errorMessage = (error && typeof error === 'object' && 'message' in error) ? String(error.message) : '不明なエラー';
+        Alert.alert('エラー', `録音を開始できませんでした。\n\nエラー: ${errorMessage}`);
       }
     }
   };
@@ -951,38 +962,40 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       
       const recordedAt = selectedDate ? new Date(selectedDate) : new Date();
       
-      // 1日の録音数制限をチェック（全プランでチェック、念のため）
-      const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, recordedAt);
-      if (!dailyLimitCheck.canRecord) {
-        const normalizedResult = normalizeLimitResult(dailyLimitCheck, 'record_daily');
-        const alertConfig = getDefaultAlertConfig('record_daily');
-        
-        showFeatureLimitAlert({
-          result: {
-            ...normalizedResult,
-            title: alertConfig.defaultTitle,
-            reason: normalizedResult.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
-          },
-          defaultTitle: alertConfig.defaultTitle,
-          defaultMessage: normalizedResult.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
-          upgradeButtonText: alertConfig.upgradeButtonText,
-          router,
-          isPremium: entitlement?.isEntitled,
-          premiumButtonText: '了解',
-          onCancel: () => {
-            setIsSaving(false);
-            isSavingRef.current = false;
-          },
-          onUpgrade: () => {
-            setIsSaving(false);
-            isSavingRef.current = false;
-            if (!entitlement?.isEntitled) {
-              onClose();
-              router.push('/(tabs)/pricing-plans');
-            }
-          },
-        });
-        return;
+      // 1日の録音数制限をチェック（フリープランのみ、再録音の場合はスキップ）
+      if (!isPremiumUser(entitlement) && !isRerecording) {
+        const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, recordedAt);
+        if (!dailyLimitCheck.canRecord) {
+          const normalizedResult = normalizeLimitResult(dailyLimitCheck, 'record_daily');
+          const alertConfig = getDefaultAlertConfig('record_daily');
+          
+          showFeatureLimitAlert({
+            result: {
+              ...normalizedResult,
+              title: alertConfig.defaultTitle,
+              reason: normalizedResult.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
+            },
+            defaultTitle: alertConfig.defaultTitle,
+            defaultMessage: normalizedResult.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
+            upgradeButtonText: alertConfig.upgradeButtonText,
+            router,
+            isPremium: entitlement?.isEntitled,
+            premiumButtonText: '了解',
+            onCancel: () => {
+              setIsSaving(false);
+              isSavingRef.current = false;
+            },
+            onUpgrade: () => {
+              setIsSaving(false);
+              isSavingRef.current = false;
+              if (!entitlement?.isEntitled) {
+                onClose();
+                router.push('/(tabs)/pricing-plans');
+              }
+            },
+          });
+          return;
+        }
       }
       
       // Freeプランの場合、選択された日付が今月であることを確認
@@ -1017,7 +1030,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       // 再録音の場合は月間録音制限のチェックをスキップ
       // 楽器IDを取得（selectedInstrumentから取得、プロファイルの値とは異なる可能性がある）
       const currentInstrumentId = getInstrumentId(selectedInstrument);
-      let limitCheck = { canRecord: true, currentCount: 0, limit: 0 };
+      let limitCheck: Awaited<ReturnType<typeof checkMonthlyRecordingLimit>> = { canRecord: true, currentCount: 0, limit: 0 };
       if (!isRerecording) {
         limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, recordedAt, currentInstrumentId);
       } else {
@@ -1230,14 +1243,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
     setIsMetronomePlaying(false);
   }, []);
 
-  // 録音停止時にメトロノームも停止
-  useEffect(() => {
-    if (!isRecording && isMetronomePlaying) {
-      stopMetronome();
-    }
-  }, [isRecording, isMetronomePlaying, stopMetronome]);
-
-  // 録音完了時にメトロノームを停止しない（録音開始前からメトロノームを開始可能にするため）
+  // 録音停止時にメトロノームも停止しない（録音開始前からメトロノームを開始可能にするため）
   // ユーザーが手動で停止するか、録音停止時に停止する
 
   // BPM変更時にメトロノームを再起動
@@ -1875,14 +1881,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   recordingTypeButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
   recordingTypeDescription: {
     fontSize: 12,
     marginTop: 8,
     lineHeight: 16,
     opacity: 0.8,
-  },
-    fontSize: 16,
-    fontWeight: '600',
   },
   limitInfoContainer: {
     padding: 12,
