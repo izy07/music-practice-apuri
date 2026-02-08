@@ -235,9 +235,8 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
             await savePracticeRecordWithIntegration(parsed);
             // 親コンポーネントに通知してデータ更新をトリガー
             onRecord(parsed);
-            Alert.alert('保存しました', `音声認識で${parsed}分の練習記録を保存しました！`, [
-              { text: 'OK', onPress: onClose }
-            ]);
+            // モーダルを閉じる
+            onClose();
           } catch (saveError) {
             logger.error('練習記録保存エラー:', saveError);
             Alert.alert(
@@ -351,9 +350,6 @@ const QuickRecordModal = React.memo(function QuickRecordModal({ visible, onClose
       
       // 保存完了後はすぐにモーダルを閉じる
       onClose();
-      
-      // フィードバックのため、短い通知を表示（オプション）
-      Alert.alert('記録しました', '練習記録を記録しました。');
     } catch (error) {
       ErrorHandler.handle(error, '練習記録の保存', true);
       const errorMessage = error instanceof Error ? error.message : '練習記録の保存に失敗しました';

@@ -81,10 +81,11 @@ const UserFeedback = memo(function UserFeedback({
   
   return (
     <View style={[
-      styles.container, 
+      styles.container,
       { 
         backgroundColor,
-        borderColor
+        borderColor,
+        borderTopWidth: 0,
       }
     ]}>
       <View style={styles.content}>

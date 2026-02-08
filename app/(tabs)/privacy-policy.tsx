@@ -85,7 +85,30 @@ export default function PrivacyPolicyScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            4. データ処理の法的根拠（GDPR Article 6）
+            4. アプリの権限と使用目的
+          </Text>
+          <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
+            <Text style={{ fontWeight: '600' }}>【マイク権限】</Text>{'\n'}
+            • 使用目的: ユーザー自身の演奏を録音するために使用します{'\n'}
+            • 使用タイミング: 録音機能を起動した時のみ、マイクへのアクセスを要求します{'\n'}
+            • データの取り扱い: 録音された音声データは、ユーザー本人のアカウントにのみ保存され、他のユーザーや第三者と共有されることはありません{'\n\n'}
+            <Text style={{ fontWeight: '600' }}>【カメラ権限】</Text>{'\n'}
+            • 使用目的: ユーザー自身の演奏を録画するため、および楽器の演奏姿勢を確認するために使用します{'\n'}
+            • 使用タイミング: 録画機能または姿勢確認機能を起動した時のみ、カメラへのアクセスを要求します{'\n'}
+            • データの取り扱い: 録画された動画データは、ユーザー本人のアカウントにのみ保存され、他のユーザーや第三者と共有されることはありません{'\n\n'}
+            <Text style={{ fontWeight: '600' }}>【ストレージ権限】</Text>{'\n'}
+            • 使用目的: プロフィール画像の設定や、既存の録音・録画ファイルを選択するために使用します{'\n'}
+            • 使用タイミング: プロフィール画像を変更する時、または既存のファイルを選択する時のみ、ストレージへのアクセスを要求します{'\n\n'}
+            <Text style={{ fontWeight: '600' }}>【通知権限】</Text>{'\n'}
+            • 使用目的: 練習リマインダーやアプリからのお知らせを送信するために使用します{'\n'}
+            • 使用タイミング: ユーザーが通知設定を有効にした時のみ、通知権限を要求します{'\n\n'}
+            すべての権限は、ユーザーが明示的に許可した場合にのみ使用され、許可されなかった場合でも、該当機能以外のアプリの基本機能は利用できます。
+          </Text>
+        </View>
+
+        <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
+          <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
+            5. データ処理の法的根拠（GDPR Article 6）
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             本アプリは、以下の法的根拠に基づいて個人データを処理いたします。{'\n\n'}
@@ -106,7 +129,7 @@ export default function PrivacyPolicyScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            5. データ主体の権利（GDPR）
+            6. データ主体の権利（GDPR）
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             お客様は、GDPRに基づいて以下の権利を有します。{'\n\n'}
@@ -132,7 +155,7 @@ export default function PrivacyPolicyScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            6. 個人情報の管理・保護
+            7. 個人情報の管理・保護
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             本アプリは、お客様の個人情報を適切に管理し、以下の措置により保護いたします。{'\n\n'}
@@ -161,7 +184,7 @@ export default function PrivacyPolicyScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            5. 個人情報の第三者提供
+            8. 個人情報の第三者提供
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             本アプリは、以下の場合を除き、お客様の個人情報を第三者に提供いたしません。{'\n\n'}
@@ -175,7 +198,7 @@ export default function PrivacyPolicyScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            6. 個人情報の委託・外部サービスの利用
+            9. 個人情報の委託・外部サービスの利用
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             本アプリは、運営に必要な範囲内で、個人情報の取り扱いを委託することがあります。{'\n\n'}
@@ -190,7 +213,7 @@ export default function PrivacyPolicyScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            7. 個人情報の開示・訂正・利用停止
+            10. 個人情報の開示・訂正・利用停止
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             お客様は、本アプリが保有するお客様の個人情報について、以下の請求を行うことができます。{'\n\n'}
@@ -204,7 +227,7 @@ export default function PrivacyPolicyScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            8. クッキー・トラッキング技術の使用
+            11. クッキー・トラッキング技術の使用
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             本アプリは、利用状況の分析、サービスの改善、セキュリティの向上を目的として、クッキーやその他のトラッキング技術を使用することがあります。これらの技術により収集される情報は、個人を特定できない形で統計的に処理され、サービスの向上に活用されます。
@@ -213,7 +236,7 @@ export default function PrivacyPolicyScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            9. 未成年者の個人情報
+            12. 未成年者の個人情報
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             本アプリは、未成年者の個人情報の取り扱いについて、特に慎重に対応いたします。未成年者の個人情報を収集する際は、保護者の同意を得ることを原則とし、必要に応じて年齢確認を行います。
@@ -222,7 +245,7 @@ export default function PrivacyPolicyScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            10. プライバシーポリシーの変更
+            13. プライバシーポリシーの変更
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             本アプリは、必要に応じて本プライバシーポリシーを変更することがあります。重要な変更がある場合は、アプリ内での通知またはメールによりお客様にお知らせいたします。変更後のプライバシーポリシーは、本アプリ上で公開されます。
@@ -231,7 +254,7 @@ export default function PrivacyPolicyScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            11. データ保護責任者（DPO）
+            14. データ保護責任者（DPO）
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             本アプリは、GDPRに基づいてデータ保護責任者（Data Protection Officer, DPO）を任命しています。{'\n\n'}
@@ -250,7 +273,7 @@ export default function PrivacyPolicyScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            12. お問い合わせ先
+            15. お問い合わせ先
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             個人情報の取り扱いに関するお問い合わせは、以下までお願いいたします。{'\n\n'}

@@ -82,17 +82,17 @@ describe('subscriptionLimits', () => {
 
       expect(result.canCreate).toBe(true);
       expect(result.currentCount).toBe(1);
-      expect(result.limit).toBe(4);
+      expect(result.limit).toBe(2);
     });
 
     it('Freeプランで目標数が制限に達している場合は作成不可', async () => {
-      (goalRepository.getExistingGoalsCount as jest.Mock).mockResolvedValue(4);
+      (goalRepository.getExistingGoalsCount as jest.Mock).mockResolvedValue(2);
 
       const result = await checkGoalLimit(mockUserId, mockInstrumentId, mockEntitlement);
 
       expect(result.canCreate).toBe(false);
-      expect(result.currentCount).toBe(4);
-      expect(result.limit).toBe(4);
+      expect(result.currentCount).toBe(2);
+      expect(result.limit).toBe(2);
     });
 
     it('楽器IDがnullの場合でも動作する', async () => {
@@ -110,7 +110,7 @@ describe('subscriptionLimits', () => {
       const result = await checkGoalLimit(mockUserId, mockInstrumentId, mockEntitlement);
 
       expect(result.canCreate).toBe(true);
-      expect(result.limit).toBe(4);
+      expect(result.limit).toBe(2);
     });
   });
 

@@ -1,11 +1,14 @@
 import React, { Component, ReactNode } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { redirectToLogin } from '@/lib/navigationUtils';
+import type { useRouter } from 'expo-router';
 
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  router?: ReturnType<typeof useRouter>;
 }
 
 interface State {
@@ -28,11 +31,16 @@ export class GlobalErrorBoundary extends Component<Props, State> {
     ErrorHandler.handle(error, 'GlobalErrorBoundary', false);
     logger.error('Global Error Boundary caught an error:', { error, errorInfo });
     this.setState({ errorInfo });
+    
+    // エラー発生時にログイン画面に遷移
+    if (this.props.router) {
+      try {
+        redirectToLogin(this.props.router, 'GlobalErrorBoundary: エラー発生によりログイン画面にリダイレクト');
+      } catch (redirectError) {
+        logger.error('GlobalErrorBoundary: ログイン画面への遷移に失敗しました:', redirectError);
+      }
+    }
   }
-
-  handleRetry = () => {
-    this.setState({ hasError: false, error: undefined, errorInfo: undefined });
-  };
 
   render() {
     if (this.state.hasError) {
@@ -40,28 +48,9 @@ export class GlobalErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
-      return (
-        <View style={styles.container}>
-          <View style={styles.errorContainer}>
-            <Text style={styles.errorIcon}>⚠️</Text>
-            <Text style={styles.title}>エラーが発生しました</Text>
-            <Text style={styles.message}>
-              申し訳ございません。予期しないエラーが発生しました。
-              {'\n'}アプリを再起動するか、しばらく時間をおいてから再度お試しください。
-            </Text>
-            <TouchableOpacity 
-              style={styles.retryButton} 
-              onPress={this.handleRetry}
-              accessibilityRole="button"
-              accessibilityLabel="エラーをリセットして再試行"
-              accessibilityHint="エラー状態をリセットしてアプリを再試行します"
-            >
-              <Text style={styles.retryButtonIcon}>🔄</Text>
-              <Text style={styles.retryButtonText}>再試行</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      );
+      // エラー画面は表示せず、ログイン画面に遷移するため何も表示しない
+      // 遷移が完了するまでの間、空のViewを表示
+      return <View style={styles.container} />;
     }
 
     return this.props.children;

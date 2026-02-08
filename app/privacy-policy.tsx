@@ -47,348 +47,511 @@ export default function PrivacyPolicyScreen() {
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.section}>
-          <Text style={styles.title}>音楽練習アプリ プライバシーポリシー</Text>
-          <Text style={styles.effectiveDate}>制定日: 2024年1月1日</Text>
-          <Text style={styles.text}>最終更新日: 2026年2月3日</Text>
+          <Text style={styles.title}>音楽練習支援アプリケーション「Music Practice」</Text>
+          <Text style={styles.effectiveDate}>最終更新日: 2026年1月8日</Text>
         </View>
 
         <View style={styles.section}>
+          <Text style={styles.sectionTitle}>1. 基本方針</Text>
           <Text style={styles.text}>
-            音楽練習アプリ（以下「本アプリ」）は、個人開発のアプリケーションとして、
-            ユーザーの個人情報保護の重要性を認識し、個人情報の保護に関する法律（個人情報保護法）を遵守するとともに、
-            以下に定めるプライバシーポリシー（以下「本ポリシー」）に従って、適切に取り扱うものとします。
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>第1条（個人情報の定義）</Text>
-          <Text style={styles.text}>
-            「個人情報」とは、個人情報保護法にいう「個人情報」を指すものとし、
-            生存する個人に関する情報であって、当該情報に含まれる氏名、生年月日、住所、電話番号、
-            連絡先その他の記述等により特定の個人を識別できる情報及び容貌、指紋、声紋にかかるデータ、
-            及び健康保険証の保険者番号などの当該情報単体から特定の個人を識別できる情報（個人識別情報）を指します。
+            本アプリは、お客様の個人情報の保護を最重要事項と考え、個人情報保護法および関連法令を遵守し、適切な個人情報の取得、利用、管理を行います。本プライバシーポリシーは、音楽練習支援アプリケーション「Music Practice」（以下「本アプリ」といいます）における個人情報の取り扱いについて定めるものです。
           </Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>第2条（収集する個人情報）</Text>
+          <Text style={styles.sectionTitle}>2. 収集する個人情報の範囲</Text>
           <Text style={styles.text}>
-            本アプリは、以下の個人情報を収集します。
+            本アプリは、サービスの提供に必要な範囲内で、以下の個人情報を収集いたします。
           </Text>
           <Text style={styles.text}>
-            （1）認証情報
+            アカウント情報: メールアドレス、パスワード（暗号化保存）
           </Text>
           <Text style={styles.text}>
-            ・メールアドレス（アカウント作成時にSupabase認証システムを通じて収集）
+            プロフィール情報: お名前、楽器の種類、練習設定、練習レベル
           </Text>
           <Text style={styles.text}>
-            （2）プロフィール情報（任意入力）
+            練習記録: 練習時間、練習内容、目標設定、達成状況
           </Text>
           <Text style={styles.text}>
-            ・表示名（ニックネーム）
+            演奏データ: 録音・録画ファイル、楽曲情報
           </Text>
           <Text style={styles.text}>
-            ・生年月日
+            カレンダー情報: 練習日程、イベント記録
           </Text>
           <Text style={styles.text}>
-            ・現在の年齢
+            デバイス情報: 端末の種類、OSバージョン、アプリバージョン
           </Text>
           <Text style={styles.text}>
-            ・所属団体名
-          </Text>
-          <Text style={styles.text}>
-            ・自己紹介文
-          </Text>
-          <Text style={styles.text}>
-            ・音楽開始年齢
-          </Text>
-          <Text style={styles.text}>
-            ・演奏歴年数
-          </Text>
-          <Text style={styles.text}>
-            （3）アプリ利用データ
-          </Text>
-          <Text style={styles.text}>
-            ・練習記録（練習日付、練習時間、練習内容、入力方法）
-          </Text>
-          <Text style={styles.text}>
-            ・録音データ（演奏録音・レッスン録音の音声ファイル）
-          </Text>
-          <Text style={styles.text}>
-            ・目標情報（タイトル、説明、目標日付、進捗状況）
-          </Text>
-          <Text style={styles.text}>
-            ・イベント情報（タイトル、説明、イベント日付）
-          </Text>
-          <Text style={styles.text}>
-            ・楽曲情報（タイトル、アーティスト、ジャンル、難易度、ステータス）
-          </Text>
-          <Text style={styles.text}>
-            ・アプリ設定情報（言語設定、テーマ設定、通知設定、メトロノーム設定、チューナー設定）
-          </Text>
-          <Text style={styles.text}>
-            （4）技術的情報
-          </Text>
-          <Text style={styles.text}>
-            ・デバイス情報、OS情報、アプリバージョン情報（エラー解析・品質改善のため）
+            ログ情報: アクセスログ、エラーログ、使用統計
           </Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>第3条（個人情報の利用目的）</Text>
+          <Text style={styles.sectionTitle}>3. 個人情報の利用目的</Text>
           <Text style={styles.text}>
-            本アプリは、以下の利用目的で個人情報を取得・利用します。
+            収集した個人情報は、以下の目的で利用いたします。
           </Text>
           <Text style={styles.text}>
-            （1）アカウント管理（本人認証、不正防止）
+            本アプリの提供・運営
           </Text>
           <Text style={styles.text}>
-            （2）サービス提供（練習記録の保存・表示、録音の保存・再生、目標管理、カレンダー表示、通知配信）
+            ユーザー認証・セキュリティの確保
           </Text>
           <Text style={styles.text}>
-            （3）品質改善（障害解析、利用統計、アプリの機能改善）
+            練習記録の管理・分析
           </Text>
           <Text style={styles.text}>
-            （4）お問合せ対応
+            カスタマイズされた練習メニューの提供
           </Text>
           <Text style={styles.text}>
-            （5）法令等に基づく対応
+            お客様サポート・お問い合わせへの対応
+          </Text>
+          <Text style={styles.text}>
+            サービスの改善・新機能の開発
+          </Text>
+          <Text style={styles.text}>
+            広告配信の最適化
+          </Text>
+          <Text style={styles.text}>
+            法令に基づく対応
           </Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>第4条（録音データの使用方法）</Text>
-          <Text style={[styles.text, { fontWeight: 'bold', color: '#2E7D32' }]}>
-            本アプリは、音楽練習・学習アプリとして、録音機能を提供しています。
+          <Text style={styles.sectionTitle}>4. アプリの権限と使用目的</Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600' }]}>4.1 マイク権限</Text>
+          <Text style={styles.text}>
+            使用目的: ユーザー自身の演奏を録音するために使用します。
           </Text>
           <Text style={styles.text}>
-            （1）録音データ（演奏録音・レッスン録音）は、ユーザー自身の音楽練習記録を保存・再生するための教育的な目的のみで使用されます。
+            使用タイミング: 録音機能を起動した時のみ、マイクへのアクセスを要求します。
           </Text>
           <Text style={styles.text}>
-            （2）録音データは、ユーザー自身のアカウントにのみ保存され、他のユーザーと共有されることはありません。
+            データの取り扱い: 録音された音声データは、ユーザー本人のアカウントにのみ保存され、他のユーザーや第三者と共有されることはありません。
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>4.2 カメラ権限</Text>
+          <Text style={styles.text}>
+            使用目的: 以下の目的で使用します。
           </Text>
           <Text style={styles.text}>
-            （3）録音データは、アプリの機能（練習記録の保存・再生）のみに使用され、マーケティングや広告目的では使用されません。
+            • ユーザー自身の演奏を録画するため（録画機能）
           </Text>
           <Text style={styles.text}>
-            （4）録音データは、セキュアなクラウドストレージ（Supabase）に保存されますが、データは暗号化され、ユーザー本人のみがアクセス可能です。
+            • 楽器の演奏姿勢を確認するため（姿勢確認機能）
           </Text>
           <Text style={styles.text}>
-            （5）録音データは、アカウント削除時に自動的に削除されます。
+            使用タイミング: 録画機能または姿勢確認機能を起動した時のみ、カメラへのアクセスを要求します。
           </Text>
           <Text style={styles.text}>
-            （6）レッスン録音は、音楽レッスンの記録としてユーザー自身が学習・復習するための教育的な目的のみで使用されます。
+            データの取り扱い: 録画された動画データは、ユーザー本人のアカウントにのみ保存され、他のユーザーや第三者と共有されることはありません。姿勢確認機能で撮影した画像は、端末に一時的に保存される場合がありますが、クラウドには保存されません。
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>4.3 ストレージ権限（画像・動画の選択）</Text>
+          <Text style={styles.text}>
+            使用目的: プロフィール画像の設定や、既存の録音・録画ファイルを選択するために使用します。
+          </Text>
+          <Text style={styles.text}>
+            使用タイミング: プロフィール画像を変更する時、または既存のファイルを選択する時のみ、ストレージへのアクセスを要求します。
+          </Text>
+          <Text style={styles.text}>
+            データの取り扱い: 選択した画像・動画ファイルは、ユーザー本人のアカウントにのみ保存され、他のユーザーや第三者と共有されることはありません。
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>4.4 通知権限</Text>
+          <Text style={styles.text}>
+            使用目的: 練習リマインダーやアプリからのお知らせを送信するために使用します。
+          </Text>
+          <Text style={styles.text}>
+            使用タイミング: ユーザーが通知設定を有効にした時のみ、通知権限を要求します。
+          </Text>
+          <Text style={styles.text}>
+            データの取り扱い: 通知機能は、ユーザーが設定した練習スケジュールに基づいてのみ使用され、個人情報を含む通知は送信されません。
           </Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>第5条（個人情報の第三者提供）</Text>
-          <Text style={[styles.text, { fontWeight: 'bold', color: '#2E7D32' }]}>
-            本アプリは、ユーザーの個人情報を第三者に提供することはありません。
+          <Text style={styles.sectionTitle}>5. 録音・録画データの取扱い</Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600' }]}>5.1 データの保存場所と方法</Text>
+          <Text style={styles.text}>
+            保存場所: クラウドストレージ（Supabase Storage）に保存されます。端末には保存されません。
           </Text>
           <Text style={styles.text}>
-            ただし、以下の場合を除きます。
+            アクセス権限: ユーザー本人のみがアクセス可能です。
           </Text>
           <Text style={styles.text}>
-            （1）法令に基づく場合
+            共有機能: 他のユーザーとの共有機能、SNSへのシェア機能は提供しておりません。すべてのデータは完全にプライベートです。
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>5.2 ファイルサイズ制限</Text>
+          <Text style={styles.text}>
+            音声ファイル: 10MB以下を推奨
           </Text>
           <Text style={styles.text}>
-            （2）人の生命、身体又は財産の保護のために必要がある場合
+            動画ファイル: 50MB以下を推奨
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>5.3 保存期間</Text>
+          <Text style={styles.text}>
+            演奏録音: アカウント削除時まで保存
           </Text>
           <Text style={styles.text}>
-            （3）公衆衛生の向上又は児童の健全な育成の推進のために特に必要がある場合
+            レッスン録音: 30日後に自動削除（お気に入り登録したものを除く）
           </Text>
           <Text style={styles.text}>
-            （4）国の機関もしくは地方公共団体又はその委託を受けた者が法令の定める事務を遂行することに対して協力する必要がある場合
+            録画データ: アカウント削除時まで保存
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>5.4 未成年者の録音・録画データに関する注意事項</Text>
+          <Text style={styles.text}>
+            本アプリは13歳以上の方を対象としていますが、18歳未満の未成年者が録音・録画機能を利用する場合、以下の点にご注意ください。
           </Text>
           <Text style={styles.text}>
-            （5）ユーザーの同意がある場合
+            録音・録画データには、お子様の声や顔が含まれる可能性があります
+          </Text>
+          <Text style={styles.text}>
+            保護者の方は、お子様が録音・録画機能を利用することについて、事前に説明し、同意を得てください
+          </Text>
+          <Text style={styles.text}>
+            データはクラウドストレージに保存されますが、第三者と共有されることはありません
+          </Text>
+          <Text style={styles.text}>
+            不要になったデータは、お子様と相談の上、適宜削除してください
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>5.5 録音・録画データへのアクセス</Text>
+          <Text style={styles.text}>
+            当社は、以下の目的に限り、録音・録画データにアクセスすることがあります。
+          </Text>
+          <Text style={styles.text}>
+            サービスの改善・品質向上
+          </Text>
+          <Text style={styles.text}>
+            不正利用の検知・防止
+          </Text>
+          <Text style={styles.text}>
+            法令遵守（裁判所命令、捜査機関からの要請等）
+          </Text>
+          <Text style={styles.text}>
+            通常の運用において、当社がお客様の録音・録画データの内容を確認することはありません。
           </Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>第6条（学術研究目的でのデータ利用）</Text>
+          <Text style={styles.sectionTitle}>6. 広告配信サービスの利用</Text>
           <Text style={styles.text}>
-            本アプリの開発者は、大学での学術研究目的で、匿名化された統計データを分析する場合があります。
+            本アプリでは、広告配信のために以下の第三者サービスを利用しています。
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600' }]}>5.1 Google AdMob</Text>
+          <Text style={styles.text}>
+            提供元: Google LLC
           </Text>
           <Text style={styles.text}>
-            （1）研究で使用されるデータは、個人を特定できないよう匿名化処理を行います。
+            広告の種類:
           </Text>
           <Text style={styles.text}>
-            （2）研究で使用されるデータには、録音データの音声ファイルは含まれません（統計情報のみ）。
+            バナー広告（画面上部または下部に表示）
           </Text>
           <Text style={styles.text}>
-            （3）研究で使用されるデータには、メールアドレス、生年月日、所属団体名などの個人を特定できる情報は含まれません。
+            リワード広告（動画視聴で報酬を得る）
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>5.2 収集される情報</Text>
+          <Text style={styles.text}>
+            AdMobは、広告配信のために以下の情報を収集する場合があります。
           </Text>
           <Text style={styles.text}>
-            （4）研究で使用されるデータは、練習時間、練習内容の種類、楽器の種類、目標達成状況などの統計情報のみです。
+            広告識別子（iOS: IDFA / Android: AAID）
           </Text>
           <Text style={styles.text}>
-            （5）研究結果は、学術論文や学会発表などで公開される可能性がありますが、個人を特定できる情報は一切含まれません。
+            IPアドレス
           </Text>
           <Text style={styles.text}>
-            （6）研究で使用されるデータは、ユーザーの同意なく使用されることはありません。
+            デバイス情報（機種、OS、画面サイズ等）
           </Text>
           <Text style={styles.text}>
-            研究目的でのデータ利用を希望しない場合は、お問い合わせ窓口（app.gakki@gmail.com）までご連絡ください。
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>第7条（13歳未満のユーザーのプライバシー保護）</Text>
-          <Text style={styles.text}>
-            本アプリは、全世代向けの音楽練習アプリですが、特に13歳未満のユーザー（子供）のプライバシーを保護するため、以下の取り組みを行っています。
+            アプリ使用状況
           </Text>
           <Text style={styles.text}>
-            （1）13歳未満のユーザーがアカウントを作成する際は、保護者の同意を取得します。
+            広告のインタラクションデータ（表示回数、クリック等）
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>5.3 非パーソナライズド広告について</Text>
+          <Text style={styles.text}>
+            本アプリでは、非パーソナライズド広告のみを配信しています。
           </Text>
           <Text style={styles.text}>
-            （2）録音データを含むすべてのデータは、ユーザー自身のアカウントにのみ保存され、他のユーザーや第三者と共有されることはありません。
+            非パーソナライズド広告とは: ユーザーの興味関心や過去の行動履歴に基づかない広告です。
           </Text>
           <Text style={styles.text}>
-            （3）録音データは、教育的な目的（音楽練習記録の保存・再生）のみに使用され、マーケティングや広告目的では使用されません。
+            広告は、アプリのコンテンツ、現在表示されている画面、一般的な位置情報（都市レベル）に基づいて配信されます。
           </Text>
           <Text style={styles.text}>
-            （4）保護者は、お子様のアカウント情報や録音データの閲覧・削除をいつでもリクエストできます。
+            個人の興味関心に基づいた広告（パーソナライズド広告）は配信されません。
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>5.4 広告識別子について</Text>
+          <Text style={styles.text}>
+            広告識別子は、広告配信の測定やフリークエンシーキャップ（同じ広告の表示回数制限）のために使用されます。
           </Text>
           <Text style={styles.text}>
-            （5）米国のCOPPA（Children's Online Privacy Protection Act）にも準拠しています。
+            広告識別子のリセット方法:
           </Text>
           <Text style={styles.text}>
-            保護者の方からのお問い合わせは、個人情報保護管理者（app.gakki@gmail.com）までご連絡ください。
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>第8条（個人情報保護管理者）</Text>
-          <Text style={styles.text}>
-            本アプリの個人情報保護管理者は以下の通りです。
+            iOS: 設定 &gt; プライバシー &gt; 広告 &gt; 「広告識別子をリセット」
           </Text>
           <Text style={styles.text}>
-            ・連絡先: app.gakki@gmail.com
+            Android: 設定 &gt; Google &gt; 広告 &gt; 「広告IDをリセット」
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>5.5 リワード広告について</Text>
+          <Text style={styles.text}>
+            ユーザーは、リワード広告（動画広告）を視聴することで、演奏録音を1回追加で記録できる報酬を得ることができます。リワード広告の視聴は完全に任意であり、視聴しない場合でも本アプリの基本機能は利用できます。
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>5.6 広告の非表示</Text>
+          <Text style={styles.text}>
+            プレミアムプランに加入することで、すべての広告を非表示にすることができます。
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>5.7 Google AdMobのプライバシーポリシー</Text>
+          <Text style={styles.text}>
+            AdMobのデータ取り扱いに関する詳細は、Googleのプライバシーポリシーをご確認ください。
           </Text>
           <Text style={styles.text}>
-            ・責任: 個人情報の適切な取り扱いの監督・管理
-          </Text>
-          <Text style={styles.text}>
-            ・苦情・相談窓口: 個人情報に関する苦情・相談は上記連絡先までお寄せください。
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>第9条（安全管理措置）</Text>
-          <Text style={styles.text}>
-            本アプリは、個人情報の漏洩、滅失、毀損の防止等のために、以下の安全管理措置を講じています。
-          </Text>
-          <Text style={styles.text}>
-            ・技術的安全管理措置: アクセス制御、暗号化、ログ管理、セキュアなクラウドストレージ（Supabase）の利用
-          </Text>
-          <Text style={styles.text}>
-            ・物理的安全管理措置: クラウドサービスのセキュリティ対策に依存
-          </Text>
-          <Text style={styles.text}>
-            ・組織的安全管理措置: 個人情報保護管理者による適切な管理
+            Google プライバシーポリシー: https://policies.google.com/privacy
           </Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>第10条（個人情報の開示・訂正・削除等）</Text>
+          <Text style={styles.sectionTitle}>7. 個人情報の管理・保護</Text>
           <Text style={styles.text}>
-            ユーザーは、個人情報保護法に基づき、以下の権利を行使できます。
+            本アプリは、お客様の個人情報を適切に管理し、以下の措置により保護いたします。
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600' }]}>データ保存・管理</Text>
+          <Text style={styles.text}>
+            当アプリで取得した情報は、厳重に管理されたサーバー（Supabase）に保存されます
           </Text>
           <Text style={styles.text}>
-            ・開示請求: 保有する個人情報の開示を請求
+            データベースとして Supabase を利用し、ユーザーの練習ログを安全に保存・管理します
           </Text>
           <Text style={styles.text}>
-            ・訂正・追加・削除請求: 個人情報の訂正・追加・削除を請求
+            不正アクセスや紛失を防ぐための多層防御システムを採用
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>通信セキュリティ</Text>
+          <Text style={styles.text}>
+            通信時にはデータの暗号化（SSL/TLS）を実施し、第三者による傍受を防止
           </Text>
           <Text style={styles.text}>
-            ・利用停止・消去請求: 個人情報の利用停止・消去を請求
+            すべてのAPIリクエストはHTTPSプロトコルで暗号化されます
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>アクセス制御</Text>
+          <Text style={styles.text}>
+            個人情報への不正アクセス、紛失、漏洩、改ざん、破壊の防止
           </Text>
           <Text style={styles.text}>
-            ・苦情申立て: 個人情報の取り扱いに関する苦情を申立て
+            Row Level Security (RLS) による厳格なアクセス制御
           </Text>
           <Text style={styles.text}>
-            上記請求は、個人情報保護管理者（app.gakki@gmail.com）までご連絡ください。
+            認証されたユーザーのみが自分のデータにアクセス可能
           </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>第11条（プライバシーポリシーの変更）</Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>運用体制</Text>
           <Text style={styles.text}>
-            本ポリシーの内容は、法令その他本ポリシーに別段の定めのある事項を除いて、
-            ユーザーに通知することなく、変更することができるものとします。
+            個人情報を取り扱う従業員への教育・監督
           </Text>
           <Text style={styles.text}>
-            本アプリが別途定める場合を除いて、変更後のプライバシーポリシーは、
-            本アプリ内に掲載したときから効力を生じるものとします。
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>第12条（お問い合わせ窓口）</Text>
-          <Text style={styles.text}>
-            本ポリシーに関するお問い合わせは、下記の窓口までお願いいたします。
+            個人情報の取り扱いに関する内部規程の策定・運用
           </Text>
           <Text style={styles.text}>
-            音楽練習アプリ運営事務局
+            定期的なセキュリティ監査の実施
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>データ保持期間</Text>
+          <Text style={styles.text}>
+            本アプリは、サービス提供に必要な期間、お客様の個人情報を保持いたします
           </Text>
           <Text style={styles.text}>
-            メールアドレス: app.gakki@gmail.com
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>カリフォルニア州消費者プライバシー法（CCPA）対応</Text>
-          <Text style={styles.text}>
-            本アプリは、カリフォルニア州消費者プライバシー法（California Consumer Privacy Act, CCPA）に基づき、
-            カリフォルニア州居住者の消費者権利を保護します。
-          </Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>CCPA 消費者権利</Text>
-          <Text style={styles.text}>
-            カリフォルニア州居住者は以下の権利を有します：
+            アカウント削除時またはお客様からの削除請求時には、合理的な期間内（通常30日以内）にデータを削除いたします
           </Text>
           <Text style={styles.text}>
-            ・知る権利: 収集された個人情報の種類と使用目的を知る権利
+            ただし、法令に基づく保存義務がある場合は、その期間に従ってデータを保持することがあります
           </Text>
           <Text style={styles.text}>
-            ・削除権: 個人情報の削除を請求する権利
-          </Text>
-          <Text style={styles.text}>
-            ・オプトアウト権: 個人情報の販売への同意を撤回する権利
-          </Text>
-          <Text style={styles.text}>
-            ・差別禁止: 権利行使による差別的扱いを受けない権利
-          </Text>
-          <Text style={styles.text}>
-            ・データ可搬性: 個人情報の移動可能性
+            バックアップデータは、システムの復旧に必要な期間（通常最大90日間）保持される場合があります
           </Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>個人情報の販売について</Text>
-          <Text style={[styles.text, { fontWeight: 'bold', color: '#2E7D32' }]}>
-            本アプリは、ユーザーの個人情報を第三者に販売することはありません。
+          <Text style={styles.sectionTitle}>8. 個人情報の第三者提供</Text>
+          <Text style={styles.text}>
+            本アプリは、以下の場合を除き、お客様の個人情報を第三者に提供いたしません。
           </Text>
           <Text style={styles.text}>
-            収集した個人情報は、本アプリのサービス提供の目的のみに使用され、
-            広告配信や第三者への販売には一切使用されません。
+            お客様の事前の同意がある場合
+          </Text>
+          <Text style={styles.text}>
+            法令に基づく場合
+          </Text>
+          <Text style={styles.text}>
+            人の生命、身体または財産の保護のために必要な場合
+          </Text>
+          <Text style={styles.text}>
+            公衆衛生の向上または児童の健全な育成の推進のために特に必要な場合
+          </Text>
+          <Text style={styles.text}>
+            国の機関または地方公共団体が法令の定める事務を遂行することに対して協力する必要がある場合
           </Text>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>CCPA 連絡先</Text>
+          <Text style={styles.sectionTitle}>9. 個人情報の委託・外部サービスの利用</Text>
           <Text style={styles.text}>
-            CCPAに関するお問い合わせは以下の連絡先まで：
+            本アプリは、運営に必要な範囲内で、個人情報の取り扱いを委託することがあります。
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600' }]}>利用する外部サービス</Text>
+          <Text style={styles.text}>
+            Supabase（データベース・認証サービス・ストレージ）
           </Text>
           <Text style={styles.text}>
-            ・メール: app.gakki@gmail.com
+            練習記録、ユーザー情報、録音・録画データなどを保存
           </Text>
           <Text style={styles.text}>
-            ・オンライン: アプリ内「設定 &gt; プライバシー設定」から
+            ISO 27001認証取得済みの高セキュリティ環境
+          </Text>
+          <Text style={styles.text}>
+            データセンター: AWS（Amazon Web Services）
+          </Text>
+          <Text style={styles.text}>
+            Google AdMob（広告配信サービス）
+          </Text>
+          <Text style={styles.text}>
+            非パーソナライズド広告の配信
+          </Text>
+          <Text style={styles.text}>
+            詳細は第5項を参照
+          </Text>
+          <Text style={styles.text}>
+            委託先との間で適切な契約を締結し、委託先における個人情報の適切な管理を監督いたします。
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>10. 個人情報の開示・訂正・利用停止</Text>
+          <Text style={styles.text}>
+            お客様は、本アプリが保有するお客様の個人情報について、以下の請求を行うことができます。
+          </Text>
+          <Text style={styles.text}>
+            個人情報の開示
+          </Text>
+          <Text style={styles.text}>
+            個人情報の訂正・追加・削除
+          </Text>
+          <Text style={styles.text}>
+            個人情報の利用停止・消去
+          </Text>
+          <Text style={styles.text}>
+            個人情報の第三者提供の停止
+          </Text>
+          <Text style={styles.text}>
+            これらの請求については、お客様ご本人であることを確認の上、合理的な範囲内で対応いたします。請求方法の詳細については、お問い合わせ先までご連絡ください。
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>11. データのエクスポート</Text>
+          <Text style={styles.text}>
+            現在、本アプリではデータエクスポート機能を提供しておりません。
+          </Text>
+          <Text style={styles.text}>
+            アカウント削除前に必要なデータ（練習記録、録音・録画ファイル等）は、ユーザー自身で別途保存していただく必要があります。
+          </Text>
+          <Text style={styles.text}>
+            将来的にデータエクスポート機能を追加する場合は、本プライバシーポリシーを更新し、アプリ内でお知らせいたします。
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>12. クッキー・トラッキング技術の使用</Text>
+          <Text style={styles.text}>
+            本アプリは、利用状況の分析、サービスの改善、セキュリティの向上を目的として、クッキーやその他のトラッキング技術を使用することがあります。これらの技術により収集される情報は、個人を特定できない形で統計的に処理され、サービスの向上に活用されます。
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>13. 未成年者の個人情報</Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600' }]}>12.1 年齢制限</Text>
+          <Text style={styles.text}>
+            本アプリは13歳以上の方を対象としています。13歳未満の方は本アプリを利用できません。
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>12.2 未成年者（13歳以上18歳未満）の利用について</Text>
+          <Text style={styles.text}>
+            18歳未満の未成年者が本アプリを利用する場合は、保護者の同意を得た上で利用してください
+          </Text>
+          <Text style={styles.text}>
+            保護者の方は、お子様の本アプリ利用について、適切に監督してください
+          </Text>
+          <Text style={styles.text}>
+            未成年者の個人情報は、保護者の同意の下でのみ収集・利用いたします
+          </Text>
+          <Text style={[styles.subsectionTitle, { fontWeight: '600', marginTop: 12 }]}>12.3 保護者の方へ</Text>
+          <Text style={styles.text}>
+            お子様が本アプリを利用する際は、本プライバシーポリシーおよび利用規約の内容を事前にご確認ください
+          </Text>
+          <Text style={styles.text}>
+            お子様の個人情報の取り扱いについて、ご不明な点がございましたらお問い合わせください
+          </Text>
+          <Text style={styles.text}>
+            録音・録画機能の利用については、特にご注意ください（第4.4項参照）
+          </Text>
+          <Text style={styles.text}>
+            広告表示について、お子様と話し合い、適切にご指導ください
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>14. データ侵害時の対応</Text>
+          <Text style={styles.text}>
+            万が一、お客様の個人情報が漏洩、滅失、毀損等（以下「データ侵害」といいます）した場合、当社は以下の対応を行います。
+          </Text>
+          <Text style={styles.text}>
+            事実関係の調査: 速やかにデータ侵害の事実関係、原因、影響範囲を調査いたします
+          </Text>
+          <Text style={styles.text}>
+            お客様への通知: 影響を受けるお客様に対して、速やかにメールまたはアプリ内通知にて連絡いたします
+          </Text>
+          <Text style={styles.text}>
+            個人情報保護委員会への報告: 法令に基づき、必要に応じて個人情報保護委員会に報告いたします
+          </Text>
+          <Text style={styles.text}>
+            再発防止策の実施: データ侵害の原因を分析し、再発防止のための技術的・組織的措置を講じます
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>15. プライバシーポリシーの変更</Text>
+          <Text style={styles.text}>
+            本アプリは、必要に応じて本プライバシーポリシーを変更することがあります。
+          </Text>
+          <Text style={styles.text}>
+            重要な変更がある場合は、アプリ内での通知またはメールによりお客様にお知らせいたします。
+          </Text>
+          <Text style={styles.text}>
+            変更後のプライバシーポリシーは、本アプリ上で公開されます。
+          </Text>
+          <Text style={styles.text}>
+            変更後も本アプリの利用を継続された場合、変更後のプライバシーポリシーに同意したものとみなします。
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>16. お問い合わせ先</Text>
+          <Text style={styles.text}>
+            個人情報の取り扱いに関するお問い合わせは、以下までお願いいたします。
+          </Text>
+          <Text style={styles.text}>
+            連絡先
+          </Text>
+          <Text style={styles.text}>
+            📧 Gmail: app.gakki@gmail.com
+          </Text>
+          <Text style={styles.text}>
+            🕒 受付時間: 24時間受付（返信は1営業日以内）
+          </Text>
+          <Text style={styles.text}>
+            お客様の個人情報の取り扱いについて、迅速かつ適切に対応いたします。
+          </Text>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>プライバシーポリシーについて</Text>
+          <Text style={styles.text}>
+            本プライバシーポリシーは、お客様の個人情報保護の重要性を認識し、適切な取り扱いを実現するためのものです。ご不明な点がございましたら、お気軽にお問い合わせください。
           </Text>
         </View>
 
@@ -450,6 +613,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     marginBottom: 8,
+  },
+  subsectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.text,
+    marginTop: 8,
+    marginBottom: 4,
   },
   text: {
     fontSize: 14,

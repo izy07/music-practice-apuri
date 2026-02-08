@@ -1,7 +1,7 @@
 import React, { useMemo, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Palette, Globe, Bell, Shield, ChevronRight, ArrowLeft } from 'lucide-react-native';
+import { Palette, Bell, Shield, ChevronRight, ArrowLeft } from 'lucide-react-native';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { useRouter } from 'expo-router';
 import { useLanguage } from '@/components/LanguageContext';
@@ -35,14 +35,6 @@ export default function MajorSettingsScreen() {
         icon: Palette,
         color: '#9C27B0',
         onPress: () => router.push(asSafeRoutePath('/(tabs)/appearance-settings')),
-      },
-      {
-        id: 'language',
-        title: t('languageSettings'),
-        subtitle: t('languageSettingsSubtitle'),
-        icon: Globe,
-        color: '#2196F3',
-        onPress: () => router.push(asSafeRoutePath('/(tabs)/language-settings')),
       },
       {
         id: 'notification',

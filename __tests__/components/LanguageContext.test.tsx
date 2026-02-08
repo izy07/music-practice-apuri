@@ -1,14 +1,14 @@
 /**
  * LanguageContext.tsx のテスト
- * 言語コンテキストの正確性を保証
+ * 日本語のみ対応の言語コンテキスト
  */
 
 import React from 'react';
-import { renderHook, act } from '@testing-library/react-native';
+import { renderHook } from '@testing-library/react-native';
 import { LanguageProvider, useLanguage } from '@/components/LanguageContext';
 
 describe('LanguageContext', () => {
-  it('デフォルト言語が日本語である', () => {
+  it('言語は常に日本語である', () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <LanguageProvider>{children}</LanguageProvider>
     );
@@ -18,21 +18,7 @@ describe('LanguageContext', () => {
     expect(result.current.language).toBe('ja');
   });
 
-  it('言語を変更できる', () => {
-    const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <LanguageProvider>{children}</LanguageProvider>
-    );
-
-    const { result } = renderHook(() => useLanguage(), { wrapper });
-
-    act(() => {
-      result.current.setLanguage('en');
-    });
-
-    expect(result.current.language).toBe('en');
-  });
-
-  it('翻訳関数が正しく動作する', () => {
+  it('翻訳関数が日本語を返す', () => {
     const wrapper = ({ children }: { children: React.ReactNode }) => (
       <LanguageProvider>{children}</LanguageProvider>
     );
@@ -42,27 +28,4 @@ describe('LanguageContext', () => {
     expect(result.current.t('calendar')).toBe('カレンダー');
     expect(result.current.t('timer')).toBe('タイマー');
   });
-
-  it('英語に切り替えた場合、翻訳が英語になる', () => {
-    const wrapper = ({ children }: { children: React.ReactNode }) => (
-      <LanguageProvider>{children}</LanguageProvider>
-    );
-
-    const { result } = renderHook(() => useLanguage(), { wrapper });
-
-    act(() => {
-      result.current.setLanguage('en');
-    });
-
-    expect(result.current.t('calendar')).toBe('Calendar');
-    expect(result.current.t('timer')).toBe('Timer');
-  });
 });
-
-
-
-
-
-
-
-

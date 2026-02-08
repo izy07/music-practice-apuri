@@ -1,5 +1,21 @@
 import React, { memo, useCallback } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { getEventColorCode, EventColor } from '@/lib/eventColors';
+
+const { width } = Dimensions.get('window');
+
+// 画面サイズに応じたフォントサイズの計算
+const getEventFontSize = () => {
+  // 画面幅に基づいてフォントサイズを調整
+  // 小さい画面（iPhone SEなど）ではより小さく
+  if (width < 375) {
+    return 6; // 非常に小さい画面
+  } else if (width < 414) {
+    return 7; // 中程度の画面
+  } else {
+    return 8; // 大きい画面
+  }
+};
 
 // テーマの型定義
 interface InstrumentTheme {
@@ -18,13 +34,13 @@ interface CalendarDayCellProps {
   hasPracticeRecord: boolean; // 練習時間が記録されたか（タイマー、クイック、手動入力など）
   hasBasicPractice: boolean; // 基礎練（input_method: 'preset'）があるか
   hasRecording: boolean;
-  dayEvents: Array<{id: string, title: string, description?: string}>;
+  dayEvents: Array<{id: string, title: string, description?: string, location?: string | null, color?: EventColor | string | null, date?: string}>;
   isToday: boolean;
   isSunday: boolean;
   isSaturday: boolean;
   currentTheme: InstrumentTheme;
   onDatePress: (date: Date) => void;
-  onEventPress: (event: {id: string, title: string, description?: string}) => void;
+  onEventPress: (event: {id: string, title: string, description?: string, location?: string | null, color?: EventColor | string | null, date?: string}) => void;
 }
 
 const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement => {
@@ -44,19 +60,10 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
   } = props;
   
   const handlePress = useCallback(() => {
-    // イベントがある場合は、日付セルをタップしても編集モーダルを開かない
-    if (dayEvents && dayEvents.length > 0) {
-      return;
-    }
+    // 日付セルをタップすると練習記録画面を開く（イベントがあっても開く）
     const selectedDate = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
     onDatePress(selectedDate);
-  }, [currentDate, day, onDatePress, dayEvents]);
-
-  const handleEventPress = useCallback(() => {
-    if (dayEvents && dayEvents.length > 0) {
-      onEventPress(dayEvents[0]);
-    }
-  }, [dayEvents, onEventPress]);
+  }, [currentDate, day, onDatePress]);
 
   return (
     <TouchableOpacity
@@ -65,7 +72,13 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
         isToday && styles.todayCell,
       ]}
       onPress={handlePress}
+      activeOpacity={0.7}
+      delayPressIn={50} // 子要素のイベントが先に処理されるように少し遅延
+      accessibilityRole="button"
+      accessibilityLabel={`${currentDate.getFullYear()}年${currentDate.getMonth() + 1}月${day}日${isToday ? '、今日' : ''}${hasPracticeRecord ? '、練習記録あり' : ''}${hasRecording ? '、録音あり' : ''}${hasBasicPractice ? '、基礎練あり' : ''}${dayEvents && dayEvents.length > 0 ? `、イベント: ${dayEvents[0].title}` : ''}`}
+      accessibilityHint="日付をタップして練習記録を追加します"
     >
+      {/* 日付を上部に配置 */}
       <Text style={[
         styles.dayText,
         isSunday && styles.sundayText,
@@ -74,9 +87,41 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
         {day}
       </Text>
       
+      {/* イベントを中央に配置 */}
+      {dayEvents && dayEvents.length > 0 && (() => {
+        const event = dayEvents[0];
+        const eventColor = getEventColorCode(event.color);
+        return (
+        <View
+            style={[
+              styles.eventIndicator,
+              {
+                backgroundColor: '#FFFFFF',
+                borderColor: eventColor,
+              },
+            ]}
+        >
+            <Text 
+              style={[
+                styles.eventIndicatorText,
+                { 
+                  color: eventColor,
+                  fontSize: getEventFontSize(),
+                },
+              ]} 
+              numberOfLines={1}
+              adjustsFontSizeToFit={true}
+              minimumFontScale={0.5}
+            >
+              {event.title}
+          </Text>
+        </View>
+        );
+      })()}
+      
       <View style={styles.indicatorsContainer}>
         {hasPracticeRecord && hasRecording ? (
-          <View style={[styles.bothIndicator, { backgroundColor: currentTheme.accent }]} />
+          <View style={[styles.bothIndicator, { backgroundColor: '#CC0000' }]} />
         ) : (
           <>
             {/* 練習時間が記録された場合、色マークを表示 */}
@@ -89,18 +134,6 @@ const CalendarDayCell = memo((props: CalendarDayCellProps): React.ReactElement =
           </>
         )}
       </View>
-      
-      {dayEvents && dayEvents.length > 0 && (
-        <TouchableOpacity
-          style={styles.eventIndicator}
-          onPress={handleEventPress}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.eventIndicatorText} numberOfLines={1}>
-            {dayEvents[0].title}
-          </Text>
-        </TouchableOpacity>
-      )}
       
       {/* 基礎練メニューで「練習した！」ボタンが押された場合、✅マークを表示 */}
       {hasBasicPractice && (
@@ -129,16 +162,19 @@ CalendarDayCell.displayName = 'CalendarDayCell';
 
 const styles = StyleSheet.create({
   dayCell: {
-    width: '13.5%',
-    height: 60,
+    // 親グリッドでjustifyContent:'space-between'を使って横余白を作るため、
+    // 幅を7等分より少し小さくして余白分を確保する
+    width: '13.6%',
+    height: 55,
     justifyContent: 'flex-start',
     alignItems: 'center',
-    borderRadius: 8,
-    margin: 1,
+    borderRadius: 4,
+    marginHorizontal: 0,
+    marginVertical: 0.5,
     backgroundColor: '#E8E8E8',
     position: 'relative',
-    paddingTop: 6,
-    paddingBottom: 6,
+    paddingVertical: 0,
+    paddingTop: 2,
   },
   todayCell: {
     backgroundColor: '#E3F2FD',
@@ -146,10 +182,15 @@ const styles = StyleSheet.create({
     borderColor: '#2196F3',
   },
   dayText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '500',
     color: '#333333',
     textAlign: 'center',
+    position: 'absolute',
+    top: 2,
+    left: 0,
+    right: 0,
+    lineHeight: 16,
   },
   sundayText: {
     color: '#FF6B6B',
@@ -184,25 +225,27 @@ const styles = StyleSheet.create({
   },
   eventIndicator: {
     position: 'absolute',
-    bottom: 20,
-    left: 2,
-    right: 2,
-    backgroundColor: '#E3F2FD',
-    paddingHorizontal: 2,
-    paddingVertical: 1,
-    borderRadius: 0,
+    top: 16,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    borderRadius: 2,
     borderWidth: 1,
-    borderColor: '#2196F3',
-    maxHeight: 18,
+    height: 12,
     justifyContent: 'center',
     alignItems: 'center',
+    overflow: 'hidden',
   },
   eventIndicatorText: {
-    fontSize: 7,
-    color: '#1976D2',
-    fontWeight: '500',
+    fontSize: 8, // デフォルト値（インラインスタイルで上書きされる）
+    fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 9,
+    lineHeight: 10,
+    flexShrink: 0,
+    paddingHorizontal: 0,
+    includeFontPadding: false,
   },
   checkmarkContainer: {
     position: 'absolute',
@@ -214,6 +257,17 @@ const styles = StyleSheet.create({
   checkmark: {
     fontSize: 12,
     lineHeight: 12,
+  },
+  eventCreateButton: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
   },
 });
 

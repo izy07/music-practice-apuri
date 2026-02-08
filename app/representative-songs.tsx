@@ -95,14 +95,15 @@ export default function RepresentativeSongsScreen() {
   // 画面がフォーカスされた時にデータを再読み込み（お気に入り曲が追加された場合に反映されるように）
   useFocusEffect(
     React.useCallback(() => {
-      if (instrumentId) {
+      if (instrumentId && !showModal) {
+        // モーダルが開いている時は再読み込みしない（不要な再読み込みを防ぐ）
         // お気に入り曲を再読み込み（代表曲は静的データのため、お気に入り曲のみ再読み込み）
         if (isAuthenticated && user) {
           logger.debug('[代表曲画面] 画面フォーカス - お気に入り曲を再読み込み');
           loadFavoriteSongs();
         }
       }
-    }, [instrumentId, isAuthenticated, user])
+    }, [instrumentId, isAuthenticated, user, showModal])
   );
 
   const loadSongs = async () => {
@@ -636,8 +637,12 @@ export default function RepresentativeSongsScreen() {
       const supported = await Linking.canOpenURL(url);
       if (supported) {
         await Linking.openURL(url);
+        // モーダルを閉じる際は、selectedSongをnullにする前にモーダルを閉じる
         setShowModal(false);
-        setSelectedSong(null);
+        // モーダルのアニメーションが完了してからselectedSongをクリア（不要な再レンダリングを防ぐ）
+        setTimeout(() => {
+          setSelectedSong(null);
+        }, 300);
       } else {
         Alert.alert('エラー', 'このURLを開くことができません');
       }
@@ -796,64 +801,74 @@ export default function RepresentativeSongsScreen() {
         transparent={true}
         animationType="fade"
         onRequestClose={() => {
+          // モーダルを閉じる際は、selectedSongをnullにする前にモーダルを閉じる
           setShowModal(false);
-          setSelectedSong(null);
+          // モーダルのアニメーションが完了してからselectedSongをクリア（不要な再レンダリングを防ぐ）
+          setTimeout(() => {
+            setSelectedSong(null);
+          }, 300);
         }}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
-                {selectedSong?.title}
-              </Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowModal(false);
-                  setSelectedSong(null);
-                }}
-                style={styles.modalCloseButton}
-              >
-                <Text style={[styles.modalCloseText, { color: currentTheme.textSecondary }]}>×</Text>
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={styles.modalBody}>
-              {selectedSong?.description_ja ? (
-                <Text style={[styles.modalDescription, { color: currentTheme.text }]}>
-                  {selectedSong.description_ja}
-                </Text>
-              ) : (
-                <Text style={[styles.modalDescription, { color: currentTheme.textSecondary }]}>
-                  説明が登録されていません
-                </Text>
-              )}
-              
-              {selectedSong?.composer && (
-                <Text style={[styles.modalComposer, { color: currentTheme.textSecondary }]}>
-                  作曲者: {selectedSong.composer}
-                  {selectedSong.era && ` | 時代: ${selectedSong.era}`}
-                </Text>
-              )}
-            </ScrollView>
-            
-            {/* YouTubeボタン（youtube_urlがある場合） */}
-            {selectedSong?.youtube_url && (
-              <View style={styles.modalFooter}>
-                <Text style={[styles.youtubeLinkText, { color: currentTheme.textSecondary }]}>
-                  ここにYOUTUBEリンクへ飛びますか？
+        {selectedSong && (
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: currentTheme.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
+                  {selectedSong.title}
                 </Text>
                 <TouchableOpacity
-                  style={[styles.youtubeButton, { backgroundColor: '#FF0000' }]}
-                  onPress={handleOpenYouTube}
-                  activeOpacity={0.8}
+                  onPress={() => {
+                    // モーダルを閉じる際は、selectedSongをnullにする前にモーダルを閉じる
+                    setShowModal(false);
+                    // モーダルのアニメーションが完了してからselectedSongをクリア（不要な再レンダリングを防ぐ）
+                    setTimeout(() => {
+                      setSelectedSong(null);
+                    }, 300);
+                  }}
+                  style={styles.modalCloseButton}
                 >
-                  <Youtube size={20} color="#FFFFFF" />
-                  <Text style={styles.youtubeButtonText}>YouTubeで見る</Text>
+                  <Text style={[styles.modalCloseText, { color: currentTheme.textSecondary }]}>×</Text>
                 </TouchableOpacity>
               </View>
-            )}
+              
+              <ScrollView style={styles.modalBody}>
+                {selectedSong.description_ja ? (
+                  <Text style={[styles.modalDescription, { color: currentTheme.text }]}>
+                    {selectedSong.description_ja}
+                  </Text>
+                ) : (
+                  <Text style={[styles.modalDescription, { color: currentTheme.textSecondary }]}>
+                    説明が登録されていません
+                  </Text>
+                )}
+                
+                {selectedSong.composer && (
+                  <Text style={[styles.modalComposer, { color: currentTheme.textSecondary }]}>
+                    作曲者: {selectedSong.composer}
+                    {selectedSong.era && ` | 時代: ${selectedSong.era}`}
+                  </Text>
+                )}
+              </ScrollView>
+              
+              {/* YouTubeボタン（youtube_urlがある場合） */}
+              {selectedSong.youtube_url && (
+                <View style={styles.modalFooter}>
+                  <Text style={[styles.youtubeLinkText, { color: currentTheme.textSecondary }]}>
+                    ここにYOUTUBEリンクへ飛びますか？
+                  </Text>
+                  <TouchableOpacity
+                    style={[styles.youtubeButton, { backgroundColor: '#FF0000' }]}
+                    onPress={handleOpenYouTube}
+                    activeOpacity={0.8}
+                  >
+                    <Youtube size={20} color="#FFFFFF" />
+                    <Text style={styles.youtubeButtonText}>YouTubeで見る</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
           </View>
-        </View>
+        )}
       </Modal>
 
       {/* お気に入り曲編集モーダル */}

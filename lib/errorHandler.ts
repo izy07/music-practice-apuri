@@ -117,13 +117,8 @@ export class ErrorHandler {
     
     if (showToUser && this.errorCount <= this.MAX_ERRORS) {
       showUserFriendlyError(error, context);
-    } else if (this.errorCount > this.MAX_ERRORS) {
-      Alert.alert(
-        'エラーが多発しています',
-        'エラーが続いているため、アプリを再起動することをお勧めします。',
-        [{ text: '了解' }]
-      );
     }
+    // エラーが多発している場合のポップアップは削除
   }
   
   /**

@@ -7,6 +7,7 @@ import { instrumentRepository, InstrumentFromDB } from '@/repositories/instrumen
 import { safeServiceExecute, ServiceResult } from './baseService';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { getAllStaticInstruments, getStaticInstrumentById } from '@/data/staticInstruments';
 
 const SERVICE_CONTEXT = 'instrumentService';
 
@@ -346,7 +347,7 @@ export const getAllInstruments = async (): Promise<ServiceResult<Instrument[]>> 
       logger.debug(`[${SERVICE_CONTEXT}] getAllInstruments:start (静的データから取得)`);
       
       // 静的データから取得（データベースリクエスト不要）
-      const { getAllStaticInstruments } = await import('@/data/staticInstruments');
+      // 動的インポートを静的インポートに変更（GitHub Pagesでの404エラーを防ぐため）
       const staticInstruments = getAllStaticInstruments();
       
       if (staticInstruments.length === 0) {
@@ -373,7 +374,7 @@ export const getInstrumentById = async (
       logger.debug(`[${SERVICE_CONTEXT}] getInstrumentById:start (静的データから取得)`, { instrumentId });
       
       // 静的データから取得（データベースリクエスト不要）
-      const { getStaticInstrumentById } = await import('@/data/staticInstruments');
+      // 動的インポートを静的インポートに変更（GitHub Pagesでの404エラーを防ぐため）
       const instrument = getStaticInstrumentById(instrumentId);
       
       if (!instrument) {

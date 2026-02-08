@@ -22,7 +22,6 @@ import { getInstrumentId } from '@/lib/instrumentUtils';
 import { useSubscription } from '@/hooks/useSubscription';
 import { canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 import Stopwatch from '@/components/timer/Stopwatch';
-import TimerService from '@/components/TimerService';
 import { styles } from '@/lib/tabs/timer/styles';
 import { setCurrentRoute } from '@/lib/navigationHistory';
 import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
@@ -320,7 +319,7 @@ export default function TimerScreen() {
   useFocusEffect(
     useCallback(() => {
       // タイマーサービスから最新の状態を取得
-      const timerService = TimerService.getInstance();
+      const timerService = require('@/components/TimerService').default.getInstance();
       const currentTimerSeconds = timerService.getTimerSeconds();
       const currentIsTimerRunning = timerService.isTimerRunning();
       
@@ -780,27 +779,19 @@ export default function TimerScreen() {
         if (savedPresetSeconds !== null) {
           const seconds = parseInt(savedPresetSeconds, 10);
           if (!isNaN(seconds) && seconds > 0) {
-            // タイマー/ストップウォッチ稼働中はプリセットを適用しない（他画面から戻った時にリセットされないようにする）
-            const timerService = TimerService.getInstance();
-            const timerRunning = timerService.isTimerRunning();
-            const stopwatchRunning = timerService.isStopwatchRunning();
-            if (timerRunning || stopwatchRunning) {
-              logger.debug('タイマー/ストップウォッチ稼働中のため保存プリセットを適用しません', {
-                timerRunning,
-                stopwatchRunning,
-                timerSeconds: timerService.getTimerSeconds(),
-                stopwatchSeconds: timerService.getStopwatchSeconds(),
-              });
-            } else {
-              logger.debug('保存されたタイマー設定時間を読み込み:', seconds);
-              timerPresetRef.current = seconds;
-              // 時間・分・秒に分解してcustomTimeに設定
-              const hours = Math.floor(seconds / 3600);
-              const minutes = Math.floor((seconds % 3600) / 60);
-              const secs = seconds % 60;
-              dispatchCustomTime({ type: 'SET_HOURS', payload: hours });
-              dispatchCustomTime({ type: 'SET_MINUTES', payload: minutes });
-              dispatchCustomTime({ type: 'SET_SECONDS', payload: secs });
+            logger.debug('保存されたタイマー設定時間を読み込み:', seconds);
+            timerPresetRef.current = seconds;
+            
+            // 時間・分・秒に分解してcustomTimeに設定
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = seconds % 60;
+            dispatchCustomTime({ type: 'SET_HOURS', payload: hours });
+            dispatchCustomTime({ type: 'SET_MINUTES', payload: minutes });
+            dispatchCustomTime({ type: 'SET_SECONDS', payload: secs });
+            
+            // タイマーが実行中でない場合のみタイマーに設定
+            if (!isTimerRunning) {
               originalSetTimerPreset(seconds);
             }
           }

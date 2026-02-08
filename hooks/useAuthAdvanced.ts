@@ -417,7 +417,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             });
             // handleAuthenticatedUserが初期化されたら、再度呼び出す
             // これはuseEffectで処理される
-            }
+          }
         } else {
           // セッションがない場合は未認証状態として処理
           updateAuthState({
@@ -640,7 +640,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       }
     };
   }, [router, isRouterReady]);
-  
+
   // handleAuthenticatedUserの参照を保持（onAuthStateChangeのuseEffectで使用）
   const handleAuthenticatedUserRef = useRef<((user: { id: string; email?: string; user_metadata?: Record<string, unknown> }) => Promise<AuthUser | null>) | null>(null);
   
@@ -687,12 +687,12 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       let profileError: ProfileError = null;
       
       // profilePromiseをtryブロックの外で定義（タイムアウト後のバックグラウンド処理で使用するため）
-        const profilePromise = supabase
-          .from('user_profiles')
-          .select('id, user_id, display_name, selected_instrument_id')
-          .eq('user_id', userId)
-          .maybeSingle();
-        
+      const profilePromise = supabase
+        .from('user_profiles')
+        .select('id, user_id, display_name, selected_instrument_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      
       try {
         // Promise.raceを使用してタイムアウトを実装
         // 注意: SupabaseクエリはAbortControllerを直接サポートしていないため、
@@ -1721,7 +1721,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       let loginCompleted = false;
       
       // タイムアウト警告（ログイン処理は継続）
-        timeoutId = setTimeout(() => {
+      timeoutId = setTimeout(() => {
         if (!loginCompleted) {
           logger.warn('ログイン処理が時間がかかっています（タイムアウト時間:', timeoutMs, 'ms）。処理は継続します。');
         }
@@ -1733,8 +1733,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       try {
         logger.debug('supabase.auth.signInWithPassword呼び出し開始');
         const result = await supabase.auth.signInWithPassword({
-        email: formData.email.trim().toLowerCase(),
-        password: formData.password,
+          email: formData.email.trim().toLowerCase(),
+          password: formData.password,
         });
         
         loginCompleted = true;
@@ -1805,7 +1805,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       if (data.user) {
         // ログイン成功時は、必ずtrueを返す（エラーが発生してもログイン自体は成功している）
         try {
-        logger.debug('ログイン成功:', { email: data.user.email, userId: data.user.id });
+          logger.debug('ログイン成功:', { email: data.user.email, userId: data.user.id });
         } catch (logError) {
           // ログ出力でエラーが発生しても無視
         }
@@ -1818,7 +1818,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         // onAuthStateChangeのSIGNED_INイベントで自動的にhandleAuthenticatedUserが呼ばれるため、
         // ここではisLoadingのみ更新して、onAuthStateChangeで認証状態が更新されるまで待つ
         try {
-        updateAuthState({ isLoading: false, error: null });
+          updateAuthState({ isLoading: false, error: null });
         } catch (updateError) {
           // エラーを無視（ログインは成功している）
         }
@@ -1840,7 +1840,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         
         // ログイン処理完了のログ（エラーが発生しても無視）
         try {
-        logger.debug('ログイン処理完了 - onAuthStateChangeで認証状態が更新されます');
+          logger.debug('ログイン処理完了 - onAuthStateChangeで認証状態が更新されます');
         } catch (logError) {
           // ログ出力でエラーが発生しても無視
         }
@@ -2251,7 +2251,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       });
     }
   }, [authState.isInitialized]);
-
+  
   // チュートリアル必要状態のチェック（データベースの状態を最優先）
   // フラグベースの判定を削除し、データベースの状態（tutorial_completed、selected_instrument_id）と
   // ユーザーの作成・ログイン履歴のみに依存することで、タイムアウト時でも確実に動作する

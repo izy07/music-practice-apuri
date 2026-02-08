@@ -26,9 +26,16 @@ const config: ExpoConfig = {
     },
     package: 'com.musicpractice.app',
     label: '楽器練習アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
+    versionCode: 1, // Google Play Consoleで必要なビルド番号（初回リリース）
+    versionName: '1.0.0', // ユーザーに表示されるバージョン番号
     // 年齢制限: 4+（教育的な目的の音楽練習アプリのため）
     // 録音機能はユーザー自身の練習記録を保存・再生するための教育的な目的のみで使用
     // 実際の設定はGoogle Play Consoleで行う必要がありますが、ここでも明示
+    // プライバシーポリシーURL（Google Play Consoleで必要）
+    // 注意: GitHub Pagesで公開されている場合は、実際のURLに置き換えてください
+    // 例: https://izy07.github.io/music-practice/privacy-policy
+    // 現在はアプリ内に表示されているため、一時的にアプリ内URLを設定
+    // Google Play Consoleでは、アプリ内に表示されている場合でも公開URLが必要な場合があります
   },
   web: {
     bundler: 'metro', // WebプラットフォームでもMetroを使用（Webpackとの競合を避ける）

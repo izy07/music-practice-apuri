@@ -59,25 +59,25 @@ export default function MyLibraryScreen() {
 
   // 画面表示時に楽曲数の制限を事前チェック（useCallbackでメモ化）
   const checkLimitOnMount = useCallback(async () => {
-      if (!entitlement || entitlement.isEntitled) {
-        setLibraryLimitStatus(null); // プレミアムユーザーはチェック不要
+    if (!entitlement || entitlement.isEntitled) {
+      setLibraryLimitStatus(null); // プレミアムユーザーはチェック不要
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
         return;
       }
 
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) {
-          return;
-        }
-
-        const { getInstrumentId } = await import('@/lib/instrumentUtils');
-        const instrumentId = getInstrumentId(selectedInstrument);
-        
-        const limitCheck = await checkMyLibraryLimit(user.id, entitlement, instrumentId);
-        setLibraryLimitStatus(limitCheck);
-      } catch (error) {
-        logger.error('楽曲制限チェックエラー:', error);
-      }
+      const { getInstrumentId } = await import('@/lib/instrumentUtils');
+      const instrumentId = getInstrumentId(selectedInstrument);
+      
+      const limitCheck = await checkMyLibraryLimit(user.id, entitlement, instrumentId);
+      setLibraryLimitStatus(limitCheck);
+    } catch (error) {
+      logger.error('楽曲制限チェックエラー:', error);
+    }
   }, [entitlement, selectedInstrument]);
 
   // 初期ロード + 権限変化時・楽器変更時に再評価

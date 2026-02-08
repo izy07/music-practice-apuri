@@ -358,8 +358,8 @@ export default function LoginScreen() {
   // パスワード再設定（未実装・テスト中）
   const handleResetPassword = () => {
     Alert.alert(
-      'お知らせ',
-      'テスト中のため使用できません。',
+      '未実装です',
+      'パスワード再設定はテスト中です。現在は動きません。',
       [{ text: 'OK' }]
     );
   };
@@ -566,8 +566,8 @@ export default function LoginScreen() {
                 style={styles.googleButton}
                 onPress={() => {
                   Alert.alert(
-                    'お知らせ',
-                    'テスト中のため使用できません。',
+                    'テスト中です',
+                    'Googleでログインは未実装です。現在は動きません。',
                     [{ text: 'OK' }]
                   );
                 }}

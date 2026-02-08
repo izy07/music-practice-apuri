@@ -18,12 +18,16 @@ import { formatLocalDate, formatMinutesToHours } from '@/lib/dateUtils';
 import { uploadRecordingBlob, saveRecording, deletePracticeSession, deleteRecording, getRecordingsByDate } from '@/lib/database';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import { useSubscription } from '@/hooks/useSubscription';
 import { getPracticeSessionsByDate } from '@/repositories/practiceSessionRepository';
 import { cleanContentFromTimeDetails } from '@/lib/utils/contentCleaner';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
-import { disableBackgroundFocus, enableBackgroundFocus } from '@/lib/modalFocusManager';
+import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 import { getInstrumentId } from '@/lib/instrumentUtils';
+import { checkMonthlyRecordingLimit, checkDailyRecordingLimit, getMaxRecordingDuration, getMaxDailyRecordings } from '@/lib/subscriptionLimits';
+import { isSupabaseError } from '@/lib/errorHandlingHelpers';
+import { computeEntitlement, getSubscription } from '@/lib/subscriptionService';
 
 // ドラムロール風のボタンベースピッカー（Web環境対応）
 function WheelPicker({ value, onChange, max, highlightColor }: { value: number; onChange: (v: number) => void; max: number; highlightColor: string }) {
@@ -136,11 +140,13 @@ interface PracticeRecordModalProps {
   visible: boolean;
   onClose: () => void;
   selectedDate: Date | null;
-  events?: Array<{id: string, title: string, description?: string}>; // 選択された日付のイベント
-  onSave?: (minutes: number, content?: string, audioUrl?: string, videoUrl?: string) => void | Promise<void>;
+  events?: Array<{id: string, title: string, description?: string, location?: string | null}>; // 選択された日付のイベント
+  onSave?: (minutes: number, content?: string, audioUrl?: string, videoUrl?: string, startTime?: string, endTime?: string) => void | Promise<void>; // videoUrlは後方互換性のため残す（未使用）
   onRecordingSaved?: () => void; // 録音保存後のコールバック
   onRefresh?: number; // データ再読み込みのトリガー（数値が変更されると再読み込み）
-  onEventEdit?: (event: {id: string, title: string, description?: string}) => void; // イベント編集のコールバック
+  onEventEdit?: (event: {id: string, title: string, description?: string, location?: string | null}) => void; // イベント編集のコールバック
+  onEventDelete?: (event: {id: string, title: string, description?: string, location?: string | null}) => void; // イベント削除のコールバック
+  onEventCreate?: (date: Date) => void; // イベント作成のコールバック
 }
 
 const PracticeRecordModal = memo(function PracticeRecordModal({ 
@@ -151,18 +157,21 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   onSave,
   onRecordingSaved,
   onRefresh,
-  onEventEdit
+  onEventEdit,
+  onEventDelete,
+  onEventCreate
 }: PracticeRecordModalProps) {
   const router = useRouter();
   const { selectedInstrument, currentTheme } = useInstrumentTheme();
   const { user } = useAuthAdvanced();
+  const { entitlement } = useSubscription();
   const [minutes, setMinutes] = useState('');
   const [content, setContent] = useState('');
   const [audioUrl, setAudioUrl] = useState('');
-  const [videoUrl, setVideoUrl] = useState('');
   const [showAudioRecorder, setShowAudioRecorder] = useState(false);
+  const [recordingLimitStatus, setRecordingLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
+  const [dailyLimitStatus, setDailyLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number; reason?: string } | null>(null);
   const [audioTitle, setAudioTitle] = useState('');
-  const [audioMemo, setAudioMemo] = useState('');
   const [isAudioFavorite, setIsAudioFavorite] = useState(false);
   const [audioDuration, setAudioDuration] = useState(0);
   const [audioRecordingType, setAudioRecordingType] = useState<'performance' | 'lesson'>('performance'); // 録音種類
@@ -180,6 +189,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
     recording_type?: 'performance' | 'lesson'; // 録音種類
   }>>([]); // 1日に最大2個の録音を管理
   const [selectedRecordingSlot, setSelectedRecordingSlot] = useState<number | null>(null); // 選択中の録音スロット
+  const [rerecordingRecordingId, setRerecordingRecordingId] = useState<string | null>(null); // 再録音する録音ID
   const [playingRecordingId, setPlayingRecordingId] = useState<string | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
   // モバイル環境での録音再生用のAudioPlayer（expo-audioが利用可能な場合のみ）
@@ -187,6 +197,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   const mobileAudioPlayer = useAudioPlayer && Platform.OS !== 'web' ? useAudioPlayer() : null;
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [practiceBreakdown, setPracticeBreakdown] = useState<Array<{ method: string; minutes: number }>>([]);
+  const [basicPracticeRecords, setBasicPracticeRecords] = useState<Array<{ id: string; content: string | null }>>([]);
   const [isRecordingJustSaved, setIsRecordingJustSaved] = useState(false); // 録音保存直後フラグ
   const [formStateBeforeRecording, setFormStateBeforeRecording] = useState<{
     minutes: string;
@@ -281,6 +292,73 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   useEffect(() => {
     isRecordingJustSavedRef.current = isRecordingJustSaved;
   }, [isRecordingJustSaved]);
+
+  // Webプラットフォームでのフォーカス管理（aria-hidden警告を防ぐため）
+  useEffect(() => {
+    if (Platform.OS === 'web') {
+      if (visible) {
+        disableBackgroundFocus();
+      } else {
+        enableBackgroundFocus();
+      }
+    }
+    
+    return () => {
+      if (Platform.OS === 'web' && !visible) {
+        enableBackgroundFocus();
+      }
+    };
+  }, [visible]);
+
+  // 画面表示時に録音数の制限を事前チェック
+  useEffect(() => {
+    const checkLimitOnMount = async () => {
+      if (!user?.id || !visible) {
+        setRecordingLimitStatus(null);
+        setDailyLimitStatus(null);
+        return;
+      }
+
+      try {
+        // entitlementが古い値の場合、最新のentitlementを再取得
+        let currentEntitlement = entitlement;
+        if (!currentEntitlement || !currentEntitlement.isEntitled) {
+          try {
+            const subscription = await getSubscription(user.id);
+            currentEntitlement = await computeEntitlement(subscription);
+            logger.debug("録音制限チェック: entitlementを再取得しました:", { 
+              previousEntitlement: entitlement, 
+              currentEntitlement, 
+              userId: user.id 
+            });
+          } catch (error) {
+            logger.warn("録音制限チェック: entitlementの再取得に失敗しました。既存のentitlementを使用します:", { error, userId: user.id, entitlement });
+            // エラー時は既存のentitlementを使用
+            if (!currentEntitlement) {
+              currentEntitlement = { isEntitled: false, isTrial: false, isPremiumActive: false, daysLeftOnTrial: 0 };
+            }
+          }
+        }
+        
+        // 1日の録音数制限をチェック（全プランでチェック）
+        const dailyLimitCheck = await checkDailyRecordingLimit(user.id, currentEntitlement, selectedDate || undefined);
+        setDailyLimitStatus(dailyLimitCheck);
+        
+        // 月間録音数制限をチェック（フリープランのみ、楽器ごと）
+        if (!currentEntitlement?.isEntitled) {
+          const instrumentId = getInstrumentId(selectedInstrument);
+          const limitCheck = await checkMonthlyRecordingLimit(user.id, currentEntitlement, selectedDate || undefined, instrumentId);
+          setRecordingLimitStatus(limitCheck);
+        } else {
+          setRecordingLimitStatus(null); // プレミアムユーザーは月間制限不要
+        }
+      } catch (error) {
+        logger.error('録音制限チェックエラー:', error);
+      }
+    };
+
+    checkLimitOnMount();
+  }, [user?.id, entitlement, selectedDate, visible]);
 
   // Audio要素のクリーンアップ（メモリリーク防止）
   useEffect(() => {
@@ -423,10 +501,40 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             blobUrl = URL.createObjectURL(blob);
             logger.debug('Blob URLを作成しました:', blobUrl);
             
+            // blobUrlの検証
+            if (!blobUrl || blobUrl.trim() === '') {
+              throw new Error('Blob URLの作成に失敗しました');
+            }
+            
             // Audio要素を作成
-            const audio = new Audio(blobUrl);
+            const audio = new Audio();
+            
+            // blobUrlが確実に設定されていることを確認してからsrcに設定
+            if (!blobUrl || blobUrl.trim() === '') {
+              throw new Error('Blob URLが空です');
+            }
+            
+            // src属性を設定
             audio.src = blobUrl;
             audio.preload = 'auto';
+            
+            // src属性が正しく設定されたことを確認（複数回チェック）
+            if (!audio.src || audio.src === '' || audio.src === 'about:blank') {
+              // 再度設定を試みる
+              audio.src = blobUrl;
+              if (!audio.src || audio.src === '' || audio.src === 'about:blank') {
+                throw new Error(`Audio要素のsrc属性の設定に失敗しました。blobUrl: ${blobUrl}`);
+              }
+            }
+            
+            logger.debug('Audio要素のsrc属性を設定しました:', {
+              audioSrc: audio.src,
+              blobUrl: blobUrl,
+              srcMatches: audio.src === blobUrl
+            });
+            
+            // 明示的にload()を呼び出して、メディアの読み込みを開始
+            audio.load();
             
             // エラーハンドリングを設定（Blob URL解放を含む）
             const cleanup = () => {
@@ -444,20 +552,54 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             };
             
             audio.onerror = (e) => {
+              // エラー発生時の詳細情報を収集
+              const currentSrc = audio.src;
               const errorMessage = audio.error 
                 ? `エラーコード: ${audio.error.code}, メッセージ: ${audio.error.message || '不明なエラー'}`
                 : '不明なエラー';
+              
               logger.error('録音再生エラー:', {
                 error: errorMessage,
                 filePath,
                 publicUrl,
                 blobUrl,
+                currentAudioSrc: currentSrc,
                 errorCode: audio.error?.code,
                 errorMessage: audio.error?.message,
                 networkState: audio.networkState,
                 readyState: audio.readyState,
-                isGitHubPages
+                isGitHubPages,
+                srcIsEmpty: !currentSrc || currentSrc === '' || currentSrc === 'about:blank'
               });
+              
+              // srcが空の場合、再設定を試みる
+              if ((!currentSrc || currentSrc === '' || currentSrc === 'about:blank') && blobUrl) {
+                logger.debug('srcが空のため、再設定を試みます', { blobUrl });
+                try {
+                  audio.src = blobUrl;
+                  audio.load();
+                  // 再設定後、少し待ってから再生を試みる
+                  setTimeout(() => {
+                    if (audio.src && audio.src !== '' && audio.src !== 'about:blank') {
+                      audio.play().catch(err => {
+                        logger.error('再設定後の再生エラー:', err);
+                        cleanup();
+                        Alert.alert('再生エラー', '録音の再生に失敗しました。');
+                        setPlayingRecordingId(null);
+                        setAudioElement(null);
+                      });
+                    } else {
+                      cleanup();
+                      Alert.alert('再生エラー', '録音ファイルの読み込みに失敗しました。');
+                      setPlayingRecordingId(null);
+                      setAudioElement(null);
+                    }
+                  }, 100);
+                  return; // 再設定を試みたので、ここで終了
+                } catch (retryError) {
+                  logger.error('src再設定エラー:', retryError);
+                }
+              }
               
               cleanup();
               
@@ -467,6 +609,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 alertMessage += '\n\nCORSエラーが発生しました。Supabase StorageのCORS設定を確認してください。';
               } else if (audio.networkState === 3) {
                 alertMessage += '\n\nネットワークエラーが発生しました。インターネット接続を確認してください。';
+              } else if (!currentSrc || currentSrc === '' || currentSrc === 'about:blank') {
+                alertMessage += '\n\n音声ファイルの読み込みに失敗しました。';
               } else {
                 alertMessage += '\n\nファイルが見つからない可能性があります。';
               }
@@ -488,6 +632,17 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             audio.oncanplay = () => {
               logger.debug('録音データの再生準備完了');
             };
+            
+            // 再生前にsrcが正しく設定されているか再度確認
+            if (!audio.src || audio.src === '' || audio.src === 'about:blank') {
+              logger.warn('再生前にsrcが空です。再設定を試みます。', { blobUrl });
+              if (blobUrl) {
+                audio.src = blobUrl;
+                audio.load();
+              } else {
+                throw new Error('Blob URLが利用できません');
+              }
+            }
             
             // 再生を開始
             await audio.play();
@@ -611,19 +766,28 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
 
       logger.debug('loadPracticeSessions: 取得結果', {
         sessionsCount: sessions?.length || 0,
-        sessions: sessions,
+        sessions: sessions?.map(s => ({
+          id: s.id,
+          duration_minutes: s.duration_minutes,
+          input_method: s.input_method,
+          content: s.content?.substring(0, 50),
+          instrument_id: s.instrument_id
+        })),
         error: error ? {
           message: error.message,
           code: (error as any)?.code,
           details: (error as any)?.details
-        } : null
+        } : null,
+        userId: user.id,
+        practiceDate,
+        instrumentId
       });
 
       if (error) {
         // エラーログを出力（既存記録の読み込み失敗は致命的ではないが、ログは残す）
         logger.warn('loadPracticeSessions: 練習記録の取得に失敗', {
           error: error.message,
-          code: (error as any)?.code,
+          code: isSupabaseError(error) ? error.code : undefined,
           userId: user.id,
           practiceDate,
           instrumentId
@@ -634,12 +798,40 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         setMinutes('');
         setContent('');
         setPracticeBreakdown([]);
+        // エラー時はデフォルト値を設定
+        setStartTime({ hours: 13, minutes: 0 });
+        setEndTime({ hours: 18, minutes: 0 });
         return;
       }
 
       if (sessions && sessions.length > 0) {
-        // 基礎練（preset）を除外して、時間記録（manual, voice, timer）のみを取得
+        logger.debug('loadPracticeSessions: セッションが見つかりました', {
+          totalSessions: sessions.length,
+          sessions: sessions.map(s => ({
+            id: s.id,
+            input_method: s.input_method,
+            duration_minutes: s.duration_minutes,
+            instrument_id: s.instrument_id
+          }))
+        });
+        
+        // 基礎練（preset）と時間記録（manual, voice, timer）を分離
+        const basicPracticeRecordsData = sessions.filter(s => s.input_method === 'preset').map(s => ({
+          id: s.id!,
+          content: s.content ?? null
+        }));
+        setBasicPracticeRecords(basicPracticeRecordsData);
+        const basicPracticeRecordsLocal = sessions.filter(s => s.input_method === 'preset');
         const timeRecords = sessions.filter(s => s.input_method !== 'preset');
+        logger.debug('loadPracticeSessions: 時間記録（preset除外後）', {
+          timeRecordsCount: timeRecords.length,
+          basicPracticeCount: basicPracticeRecordsLocal.length,
+          timeRecords: timeRecords.map(s => ({
+            id: s.id,
+            input_method: s.input_method,
+            duration_minutes: s.duration_minutes
+          }))
+        });
         
         // タイマー記録とその他の記録を分離
         const timerSessions = timeRecords.filter(s => s.input_method === 'timer');
@@ -666,6 +858,39 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         logger.debug('練習時間の内訳:', breakdownArray);
         setPracticeBreakdown(breakdownArray);
         
+        // 基礎練のcontentを取得
+        const basicPracticeContent = basicPracticeRecordsLocal.length > 0
+          ? basicPracticeRecordsLocal
+              .map(s => s.content ? cleanContentFromTimeDetails(s.content) : null)
+              .filter((c): c is string => Boolean(c && typeof c === 'string' && c.trim() !== ''))
+              .join(', ')
+          : null;
+        
+        // 手動入力（manual）のcontentを取得
+        const manualSessions = timeRecords.filter(s => s.input_method === 'manual');
+        const manualContent = manualSessions.length > 0 
+          ? manualSessions.map(s => cleanContentFromTimeDetails(s.content)).filter(c => c && c.trim() !== '').join(', ')
+          : null;
+        
+        // 基礎練のcontentが手動入力のcontentに既に含まれている場合は除外
+        let filteredBasicPracticeContent = basicPracticeContent;
+        if (basicPracticeContent && manualContent) {
+          // 基礎練の各項目が手動入力のcontentに含まれているかチェック
+          const basicPracticeItems = basicPracticeContent.split(',').map(item => item.trim()).filter(Boolean);
+          const manualContentLower = manualContent.toLowerCase();
+          const notIncludedItems = basicPracticeItems.filter(item => {
+            const itemLower = item.toLowerCase();
+            // 完全一致または部分一致をチェック（ただし、短すぎる文字列は除外）
+            return item.length > 3 && !manualContentLower.includes(itemLower);
+          });
+          filteredBasicPracticeContent = notIncludedItems.length > 0 ? notIncludedItems.join(', ') : null;
+        }
+        
+        // 基礎練と手動入力のcontentを結合（重複を除外）
+        const combinedContent = [filteredBasicPracticeContent, manualContent]
+          .filter((c): c is string => Boolean(c && c.trim() !== ''))
+          .join(', ');
+        
         if (timeRecords.length > 0) {
           // 時間記録がある場合（タイマー、クイック、手動入力）
           // すべての時間記録の合計を計算
@@ -673,43 +898,112 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           
           // 既存の記録を設定（合計時間を使用）
           // otherSessionsがある場合は最初のセッションのIDとcontentを使用
-          const primarySession = otherSessions.length > 0 ? otherSessions[0] : timerSessions[0];
+          // 手動入力（manual）のセッションを優先的に使用（開始時間と終了時間が保存されているため）
+          let primarySession = manualSessions.length > 0 ? manualSessions[0] : (otherSessions.length > 0 ? otherSessions[0] : timerSessions[0]);
           
-          // クイック記録、タイマー記録のcontentは表示しない
-          // 手動入力（manual）のcontentのみを表示
-          const manualSessions = timeRecords.filter(s => s.input_method === 'manual');
-          const manualContent = manualSessions.length > 0 
-            ? manualSessions.map(s => cleanContentFromTimeDetails(s.content)).filter(c => c && c.trim() !== '').join(', ')
-            : null;
+          // primarySessionが無効な場合は、timeRecordsの最初の有効なセッションを使用
+          if (!primarySession || !primarySession.id) {
+            logger.warn('loadPracticeSessions: primarySessionが無効です。timeRecordsの最初のセッションを使用します', {
+              otherSessionsCount: otherSessions.length,
+              timerSessionsCount: timerSessions.length,
+              primarySession,
+              timeRecordsCount: timeRecords.length
+            });
+            // timeRecordsの最初の有効なセッションを使用
+            primarySession = timeRecords.find(s => s.id) || timeRecords[0];
+          }
           
-          setExistingRecord({
+          // それでもprimarySessionが無効な場合は、既存の記録を表示しない（エラー）
+          if (!primarySession || !primarySession.id) {
+            logger.error('loadPracticeSessions: timeRecordsに有効なセッションがありません', {
+              timeRecordsCount: timeRecords.length,
+              timeRecords: timeRecords.map(s => ({ id: s.id, input_method: s.input_method }))
+            });
+            setExistingRecord(null);
+            setMinutes('');
+            setContent('');
+            return;
+          }
+          
+          const existingRecordData = {
             id: primarySession.id!,
             minutes: totalMinutes, // すべての時間記録の合計
-            content: manualContent || null // 手動入力のcontentのみ
+            content: combinedContent || null // 基礎練と手動入力のcontentを結合
+          };
+          
+          logger.debug('loadPracticeSessions: 既存の記録を設定します', {
+            existingRecord: existingRecordData,
+            totalMinutes,
+            basicPracticeContent,
+            manualContent,
+            combinedContent,
+            primarySessionId: primarySession.id
           });
+          
+          setExistingRecord(existingRecordData);
           
           // 既存の記録をフォームに設定（合計時間を表示）
           setMinutes(totalMinutes.toString());
-          // 手動入力のcontentのみを表示（クイック記録、タイマー記録のcontentは表示しない）
-          setContent(manualContent || '');
+          // 基礎練と手動入力のcontentを表示（クイック記録、タイマー記録のcontentは表示しない）
+          setContent(combinedContent || '');
+          
+          // 日付ごとの開始時間と終了時間を読み込む
+          if (primarySession.start_time) {
+            const [hours, minutes] = primarySession.start_time.split(':').map(Number);
+            setStartTime({ hours: hours || 13, minutes: minutes || 0 });
+          } else {
+            setStartTime({ hours: 13, minutes: 0 }); // デフォルト値
+          }
+          if (primarySession.end_time) {
+            const [hours, minutes] = primarySession.end_time.split(':').map(Number);
+            setEndTime({ hours: hours || 18, minutes: minutes || 0 });
+          } else {
+            setEndTime({ hours: 18, minutes: 0 }); // デフォルト値
+          }
         } else {
           // 時間記録がない場合（基礎練のみ、または記録なし）
-          setExistingRecord(null);
-          setMinutes('');
-          setContent('');
+          if (basicPracticeRecordsLocal.length > 0) {
+            // 基礎練のみがある場合
+            logger.debug('loadPracticeSessions: 基礎練のみがあります');
+            const primaryBasicPractice = basicPracticeRecordsLocal[0];
+            
+            const existingRecordData = {
+              id: primaryBasicPractice.id!,
+              minutes: 0, // 基礎練は時間を追加しない
+              content: basicPracticeContent || null
+            };
+            
+            setExistingRecord(existingRecordData);
+            setMinutes('0');
+            setContent(basicPracticeContent || '');
+          } else {
+            // 記録がない場合
+            logger.debug('loadPracticeSessions: 時間記録がありません（基礎練のみ）');
+            setExistingRecord(null);
+            setMinutes('');
+            setContent('');
+            // 記録がない場合はデフォルト値を設定
+            setStartTime({ hours: 13, minutes: 0 });
+            setEndTime({ hours: 18, minutes: 0 });
+          }
         }
       } else {
         logger.debug('loadPracticeSessions: セッションが見つかりませんでした', {
           practiceDate: formatLocalDate(selectedDate),
-          instrumentId: getInstrumentId(selectedInstrument)
+          instrumentId: getInstrumentId(selectedInstrument),
+          userId: user.id
         });
         setExistingRecord(null);
         setTimerMinutes(0);
+        setBasicPracticeRecords([]);
         // フォームをリセット
         setMinutes('');
         setContent('');
         // セッションがない場合でも、内訳は空にする
         setPracticeBreakdown([]);
+        // セッションがない場合はデフォルト値を設定
+        setStartTime({ hours: 13, minutes: 0 });
+        setEndTime({ hours: 18, minutes: 0 });
       }
     } catch (error) {
       // エラーログを出力（練習記録の読み込み失敗は致命的ではないが、ログは残す）
@@ -722,6 +1016,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       // エラー時も既存の記録をクリア
       setExistingRecord(null);
       setTimerMinutes(0);
+      setBasicPracticeRecords([]);
       setMinutes('');
       setContent('');
       setPracticeBreakdown([]);
@@ -793,7 +1088,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           recording_type: r.recording_type || 'performance'
         }));
         
-        // 録音が見つかった場合は、確実に更新する
         setExistingRecordings(recordingsList);
         setAudioUrl('');
         logger.debug('録音記録を読み込みました:', {
@@ -806,14 +1100,15 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           // 保存直後でもなく、savedRecordingIdも指定されていない場合はクリア
           setExistingRecordings([]);
           setAudioUrl('');
-        } else {
-          // savedRecordingIdが指定されている場合、または保存直後の場合はexistingRecordingsを保持
-          // （データベース反映が遅れている可能性があるため）
-          // 既存の録音リストを保持し、クリアしない
-          logger.debug('録音が見つかりませんでしたが、existingRecordingsを保持します（保存直後の可能性）:', {
+        } else if (savedRecordingId || currentIsRecordingJustSaved) {
+          // 保存直後の場合は、既存の録音情報を保持（データベース反映を待つため）
+          // 録音済みUIが消えないようにする
+          logger.debug('録音保存直後のため、既存の録音情報を保持します', {
             savedRecordingId,
-            currentIsRecordingJustSaved
+            currentIsRecordingJustSaved,
+            currentRecordingsCount: currentExistingRecordings?.length || 0
           });
+          // 既存の録音情報を保持（setExistingRecordingsを呼び出さない）
         }
       }
     } catch (error) {
@@ -836,15 +1131,9 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   }, [loadPracticeSessions, loadRecording]);
 
   // 選択された日付の練習記録を取得
-  // 注意: 録音保存直後（showAudioRecorderがtrue→falseに変わる）の場合はリセットしない
-  // → handleAudioSaveで既にexistingRecordingsを更新済み。リセットすると録音ずみUIが消える
-  const prevShowAudioRecorderRef = useRef(showAudioRecorder);
   useEffect(() => {
     if (visible && selectedDate && !showAudioRecorder) {
-      const wasShowAudioRecorder = prevShowAudioRecorderRef.current;
-      prevShowAudioRecorderRef.current = showAudioRecorder;
-
-      // 録音画面から戻ってきた場合（キャンセル時）
+      // 録音画面から戻ってきた場合
       if (formStateBeforeRecording) {
         // フォーム状態を復元
         setMinutes(formStateBeforeRecording.minutes);
@@ -855,27 +1144,37 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         setFormStateBeforeRecording(null);
         // 録音状態を保持してデータを再読み込み
         loadExistingRecord();
-      } else if (!wasShowAudioRecorder) {
-        // 録音画面を開いていなかった場合のみリセット（モーダル初回表示 or 日付変更時）
-        // wasShowAudioRecorderがfalse＝直前まで録音画面は表示されていなかった
-        setExistingRecord(null);
-        setExistingRecordings([]);
-        setMinutes('');
-        setContent('');
-        setAudioUrl('');
-        setVideoUrl('');
-        setTimerMinutes(0);
-        setIsRecordingJustSaved(false);
-        loadExistingRecord();
       } else {
-        // 録音画面を閉じた直後（保存 or 戻るでformStateBeforeRecordingなし）:
-        // リセットせずloadExistingRecordのみ実行（DBと同期）。録音ずみUIを保持
+        // 通常のモーダルオープン時は、まずデータを読み込んでから表示
+        // ただし、録音保存直後の場合は、録音情報を保持してからデータを再読み込み
+        const currentIsRecordingJustSaved = isRecordingJustSavedRef.current;
+        
+        // 録音保存直後の場合は、録音情報をクリアしない（録音済みUIを表示するため）
+        if (!currentIsRecordingJustSaved) {
+          setExistingRecordings([]);
+        }
+        setAudioUrl('');
+        setIsRecordingJustSaved(false); // フラグをリセット
+        
+        // データを先に読み込む（既存の記録をクリアする前に読み込む）
+        // loadExistingRecordはloadPracticeSessionsとloadRecordingを呼び出す
+        // loadPracticeSessions内で既存の記録があればsetExistingRecordが呼ばれる
         loadExistingRecord();
       }
-    } else {
-      prevShowAudioRecorderRef.current = showAudioRecorder;
     }
-  }, [visible, selectedDate, showAudioRecorder, loadExistingRecord, formStateBeforeRecording]);
+  }, [visible, selectedDate, showAudioRecorder, selectedInstrument, loadExistingRecord, formStateBeforeRecording]);
+  
+  // 楽器変更時に録音データを再読み込み（モーダルが開いている場合のみ）
+  useEffect(() => {
+    if (visible && selectedDate && !showAudioRecorder && existingRecordings.length > 0) {
+      // 楽器変更時に録音データを再読み込み
+      logger.debug('楽器変更を検出、録音データを再読み込みします', {
+        instrumentId: getInstrumentId(selectedInstrument),
+        existingRecordingsCount: existingRecordings.length
+      });
+      loadExistingRecord();
+    }
+  }, [selectedInstrument]);
 
   // 外部からのリフレッシュ要求を処理（クイック記録保存後など）
   useEffect(() => {
@@ -926,7 +1225,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           user_id: user.id,
           instrument_id: getInstrumentId(selectedInstrument) || null, // 現在の楽器IDを追加
           title: audioTitle || '録音',
-          memo: audioMemo || null,
           file_path: path,
           duration_seconds: audioDuration || null,
           is_favorite: isAudioFavorite,
@@ -947,10 +1245,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             recording_type: audioRecordingType
           };
           // 既存の録音リストに追加（最大2個まで）
-          // 録音保存直後フラグを先に設定してから、existingRecordingsを更新
-          // これにより、UIが一瞬消えるのを防ぐ
-          setIsRecordingJustSaved(true); // 録音保存直後フラグを設定
-          
           setExistingRecordings(prev => {
             const updated = [...prev];
             // 同じIDの録音が既にある場合は更新、なければ追加
@@ -962,19 +1256,17 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             }
             return updated;
           });
+          setIsRecordingJustSaved(true); // 録音保存直後フラグを設定
           
           // 録音済み情報を表示するため、一時的な録音データはクリア
           setAudioUrl(''); // 録音済みとして表示するため、一時的なURLをクリア
-          setVideoUrl(''); // 動画URLもクリア
           
           logger.debug('録音情報を即座に状態に設定しました（録音済み状態を表示）:', {
             recordingState,
             audioUrl: '',
-            videoUrl: '',
             willShow: true
           });
           setAudioTitle('');
-          setAudioMemo('');
           setIsAudioFavorite(false);
           setAudioDuration(0);
           setAudioRecordingType('performance'); // デフォルトにリセット
@@ -1015,12 +1307,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             if (savedContent) setContent(savedContent);
           }
           
-          // 読み込み完了後、existingRecordingsが正しく更新されていることを確認してからフラグをリセット
-          // これにより、録音済みUIが消えるのを防ぐ
-          // 録音が存在する場合は、フラグをリセットしてもUIは表示され続ける
-          setTimeout(() => {
-            setIsRecordingJustSaved(false);
-          }, 200);
+          // 読み込み完了後にフラグをリセット
+          setIsRecordingJustSaved(false);
         }, 500);
       } else {
         setIsRecordingJustSaved(false);
@@ -1030,7 +1318,12 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           logger.warn('録音保存は成功しましたが、savedRecordingがnullです');
         }
         
-        Alert.alert('保存完了', '録音を保存しました');
+        // プランに応じたメッセージを表示
+        const isPremium = entitlement?.isEntitled;
+        const message = isPremium 
+          ? '録音を保存しました。60分まで録音可能です。'
+          : '録音を保存しました。フリープランは3分まで。プレミアムなら60分まで録音可能です。';
+        Alert.alert('保存完了', message);
       }
     } catch (e) {
       Alert.alert('エラー', '録音の保存に失敗しました');
@@ -1040,7 +1333,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
 
   const handleAudioSave = async (audioData: {
     title: string;
-    memo: string;
     isFavorite: boolean;
     duration: number;
     audioUrl: string;
@@ -1058,10 +1350,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       };
       
       // 既存の録音リストに追加（最大2個まで）
-      // 録音保存直後フラグを先に設定してから、existingRecordingsを更新
-      // これにより、UIが一瞬消えるのを防ぐ
-      setIsRecordingJustSaved(true); // 録音保存直後フラグを設定
-      
       setExistingRecordings(prev => {
         const updated = [...prev];
         // 同じIDの録音が既にある場合は更新、なければ追加
@@ -1073,9 +1361,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         }
         return updated;
       });
+      
+      setIsRecordingJustSaved(true); // 録音保存直後フラグを設定
       // 録音済み情報を表示するため、一時的な録音データはクリア
       setAudioUrl(''); // 録音済みとして表示するため、一時的なURLをクリア
-      setVideoUrl(''); // 動画URLもクリア
       
       // 録音保存後、フォーム状態を復元（録音前に入力していた情報を保持）
       if (formStateBeforeRecording) {
@@ -1090,10 +1379,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       }
       
       setAudioTitle('');
-      setAudioMemo('');
       setIsAudioFavorite(false);
       setAudioDuration(0);
       setSelectedRecordingSlot(null); // 録音スロットをクリア
+      setRerecordingRecordingId(null); // 再録音IDをクリア
       // recordingTypeも保存（次回の録音保存時に使用）
       if (audioData.recordingType) {
         setAudioRecordingType(audioData.recordingType);
@@ -1105,19 +1394,33 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         duration: audioData.duration,
         recordingType: audioData.recordingType,
         audioUrl: '',
-        videoUrl: '',
         willShow: true
       });
       
       // 録音保存後、データを再取得（データベース反映を待つため少し遅延）
       if (visible && selectedDate) {
         // データベース反映を待つため、少し遅延してから読み込む
+        // 録音済みUIが消えないように、既存の録音情報を保持したまま読み込む
         setTimeout(async () => {
           // フォーム状態を一時保存（loadExistingRecordで上書きされる可能性があるため）
           const savedMinutes = formStateBeforeRecording?.minutes || minutes;
           const savedContent = formStateBeforeRecording?.content || content;
           
+          // 既存の録音情報を一時保存（loadExistingRecordで上書きされる可能性があるため）
+          const savedRecordings = existingRecordingsRef.current;
+          
           await loadExistingRecord(audioData.recordingId);
+          
+          // 読み込み後に録音情報を確認し、録音が見つからない場合は既存の録音情報を復元
+          // これにより、録音済みUIが消えるのを防ぐ
+          const currentRecordings = existingRecordingsRef.current;
+          if (currentRecordings.length === 0 && savedRecordings.length > 0) {
+            logger.debug('録音が見つからないため、既存の録音情報を復元します', {
+              savedRecordingsCount: savedRecordings.length,
+              recordingId: audioData.recordingId
+            });
+            setExistingRecordings(savedRecordings);
+          }
           
           // 読み込み後にフォーム状態を復元（既存記録で上書きされた場合でも、ユーザーが入力した情報を優先）
           if (savedMinutes || savedContent) {
@@ -1129,13 +1432,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             if (savedContent) setContent(savedContent);
           }
           
-          // 読み込み完了後、existingRecordingsが正しく更新されていることを確認してからフラグをリセット
-          // これにより、録音済みUIが消えるのを防ぐ
-          // existingRecordingsが空でないことを確認してからフラグをリセット
-          // 録音が存在する場合は、フラグをリセットしてもUIは表示され続ける
-          setTimeout(() => {
-            setIsRecordingJustSaved(false);
-          }, 200);
+          // 読み込み完了後にフラグをリセット
+          setIsRecordingJustSaved(false);
         }, 500);
       } else {
         setIsRecordingJustSaved(false);
@@ -1143,7 +1441,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
     } else {
       // 録音IDがない場合（保存前の状態）は、録音情報を表示
       setAudioTitle(audioData.title);
-      setAudioMemo(audioData.memo);
       setIsAudioFavorite(audioData.isFavorite);
       setAudioDuration(audioData.duration);
       setAudioUrl(audioData.audioUrl);
@@ -1153,24 +1450,12 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       }
     }
     
-    setVideoUrl(''); // 録音されたら動画URLをクリア
     setShowAudioRecorder(false);
     
     // コールバックを呼び出してデータを更新
     onRecordingSaved?.();
   };
 
-  const handleVideoUrlChange = (url: string) => {
-    setVideoUrl(url);
-    if (url.trim()) {
-      setAudioUrl(''); // 動画URLが入力されたら録音をクリア
-      setAudioTitle('');
-      setAudioMemo('');
-      setIsAudioFavorite(false);
-      setAudioDuration(0);
-      setAudioRecordingType('performance'); // デフォルトにリセット
-    }
-  };
 
   const extractYouTubeId = (url: string) => {
     try {
@@ -1193,40 +1478,69 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       Alert.alert('エラー', '日付が選択されていません');
       return;
     }
-    if (Number.isNaN(minutesNumber) || minutesNumber <= 0) {
-      Alert.alert('エラー', '練習時間（分）を正しく入力してください');
+    
+    // 録音があるかチェック
+    const hasMedia = !!audioUrl;
+    
+    // 時間が0以下で、かつ録音もない場合は保存をスキップ
+    if ((Number.isNaN(minutesNumber) || minutesNumber <= 0) && !hasMedia) {
+      Alert.alert('エラー', '練習時間（分）を入力するか、録音を追加してください');
       return;
     }
     
+    // 時間が0以下の場合でも、録音がある場合は保存を許可（時間は0として保存）
+    const finalMinutes = (Number.isNaN(minutesNumber) || minutesNumber <= 0) ? 0 : minutesNumber;
+    
     try {
-      // タイマー時間を加算した合計時間を計算
-      const totalMinutes = minutesNumber + timerMinutes;
+      // 重要: 手動入力は「手動入力そのもの」として保存する（合計扱いにして差し引かない）
+      // これにより、クイック記録/タイマーは“追加分”として合計にそのまま加算される
+      const newManualMinutes = finalMinutes;
       
-      // 録音や動画があるかチェック
-      const hasMedia = !!(audioUrl || videoUrl);
+      logger.debug('handleSaveRecord: 時間計算', {
+        finalMinutes,
+        newManualMinutes,
+        practiceBreakdown,
+        existingRecordMinutes: existingRecord?.minutes || 0
+      });
       
       // 保存処理を実行（完了を待つ）
-      await onSave?.(minutesNumber, content?.trim() || undefined, audioUrl || undefined, videoUrl || undefined);
+      // replaceMinutes: trueが指定されているため、既存の手動入力の時間を置き換える
+      // 保存前に開始時間と終了時間を保存
+      const savedStartTime = startTime;
+      const savedEndTime = endTime;
+      // 開始時間と終了時間を文字列形式（HH:MM:SS）に変換
+      const startTimeStr = startTime ? `${String(startTime.hours).padStart(2, '0')}:${String(startTime.minutes).padStart(2, '0')}:00` : undefined;
+      const endTimeStr = endTime ? `${String(endTime.hours).padStart(2, '0')}:${String(endTime.minutes).padStart(2, '0')}:00` : undefined;
+      await onSave?.(newManualMinutes, content?.trim() || undefined, audioUrl || undefined, undefined, startTimeStr, endTimeStr);
       
       // 保存完了後にカレンダーと統計を更新するイベントを発火
       if (typeof window !== 'undefined') {
         const event = new CustomEvent('practiceRecordUpdated', {
           detail: { 
             action: 'practice_saved',
-            minutes: minutesNumber,
+            minutes: newManualMinutes,
             content: content?.trim(),
             date: selectedDate ? formatLocalDate(selectedDate) : new Date().toISOString().split('T')[0],
             verified: true
           }
         });
         window.dispatchEvent(event);
-        logger.debug('練習記録保存の即時反映イベントを発火:', { minutes: minutesNumber });
+        logger.debug('練習記録保存の即時反映イベントを発火:', { minutes: newManualMinutes });
       }
       
       // 録音や動画がある場合のみコールバックを呼び出す
       if (hasMedia) {
         onRecordingSaved?.();
       }
+      
+      // 保存後にデータを再読み込み（既存の記録と詳細を表示するため）
+      // データベース反映を待つため少し遅延してから再読み込み
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await loadPracticeSessions();
+      
+      // 保存後に開始時間と終了時間を復元（後から見返したときに不自然にならないように）
+      if (savedStartTime) setStartTime(savedStartTime);
+      if (savedEndTime) setEndTime(savedEndTime);
       
       // 保存が完了したらモーダルを閉じる
       onClose();
@@ -1274,10 +1588,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
 
       const practiceDate = formatLocalDate(selectedDate!);
       
-      // その日のすべての練習セッションを取得
+      // その日のすべての練習セッションを取得（contentも含める）
       let query = supabase
         .from('practice_sessions')
-        .select('id')
+        .select('id, content, duration_minutes, input_method')
         .eq('user_id', user.id)
         .eq('practice_date', practiceDate);
       
@@ -1300,34 +1614,48 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         return;
       }
       
-      // すべてのセッションIDを削除（時間詳細も含めてすべて削除）
-      const sessionIds = sessions.map((s: any) => s.id);
-      const { error } = await supabase
-        .from('practice_sessions')
-        .delete()
-        .in('id', sessionIds);
+      // 練習時間（duration_minutes）を0に更新し、練習内容（content）は保持
+      // 基礎練（preset）は削除せず、時間記録（manual, voice, timer）のみ時間を0にする
+      const timeRecordSessions = sessions.filter((s: any) => s.input_method !== 'preset');
       
-      if (error) {
-        Alert.alert('エラー', '練習記録の削除に失敗しました');
-        return;
+      if (timeRecordSessions.length > 0) {
+        const sessionIds = timeRecordSessions.map((s: any) => s.id);
+        const { error } = await supabase
+          .from('practice_sessions')
+          .update({ duration_minutes: 0 })
+          .in('id', sessionIds);
+        
+        if (error) {
+          Alert.alert('エラー', '練習時間の削除に失敗しました');
+          return;
+        }
       }
 
-      // ローカル状態をリセット
-      setExistingRecord(null);
-      setMinutes('');
-      setContent('');
+      // ローカル状態を更新（練習時間を0に、練習内容は保持）
+      if (existingRecord) {
+        // 練習内容を保持したまま、練習時間のみ0にする
+        const preservedContent = existingRecord.content || '';
+        setExistingRecord({
+          ...existingRecord,
+          minutes: 0
+        });
+        setMinutes('0');
+        setContent(preservedContent); // 練習内容は保持
+      } else {
+        setMinutes('0');
+      }
       setTimerMinutes(0);
       setPracticeBreakdown([]);
 
       // コールバックを呼び出してデータを更新
       onRecordingSaved?.();
       
-      Alert.alert('削除完了', '練習記録を削除しました', [
+      Alert.alert('削除完了', '練習時間を削除しました（練習内容は保持されています）', [
         { text: 'OK', onPress: () => onClose() }
       ]);
     } catch (error) {
-      console.error('Error deleting practice record:', error);
-      Alert.alert('エラー', '練習記録の削除に失敗しました');
+      console.error('Error deleting practice time:', error);
+      Alert.alert('エラー', '練習時間の削除に失敗しました');
     }
   };
 
@@ -1361,12 +1689,16 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   setExistingRecordings(prev => prev.filter((_, idx) => idx !== recordingIndex));
                   setAudioUrl('');
                   setAudioTitle('');
-                  setAudioMemo('');
                   setIsAudioFavorite(false);
                   setAudioDuration(0);
 
                   // コールバックを呼び出してデータを更新（カレンダーも更新される）
                   onRecordingSaved?.();
+
+                  // 録音データを再読み込み
+                  setTimeout(async () => {
+                    await loadRecording();
+                  }, 500);
 
                   Alert.alert('削除完了', '録音データを削除しました', [
                     { text: 'OK', onPress: () => {
@@ -1413,7 +1745,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 setAudioUrl('');
                 setExistingRecordings([]);
                 setAudioTitle('');
-                setAudioMemo('');
                 setIsAudioFavorite(false);
                 setAudioDuration(0);
 
@@ -1438,6 +1769,84 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       );
     } catch (error) {
       logger.error('Error in deleteRecordingOnly:', error);
+      Alert.alert('エラー', '削除処理に失敗しました');
+    }
+  };
+
+  const deleteBasicPracticeMark = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        Alert.alert('エラー', 'ログインが必要です');
+        return;
+      }
+
+      if (basicPracticeRecords.length === 0) {
+        Alert.alert('情報', '削除できる基礎練マークがありません');
+        return;
+      }
+
+      Alert.alert(
+        '基礎練マークの削除',
+        '基礎練習済みマークを削除しますか？',
+        [
+          { text: 'キャンセル', style: 'cancel' },
+          { 
+            text: '削除', 
+            style: 'destructive', 
+            onPress: async () => {
+              try {
+                // 基礎練マーク（preset）の練習記録を削除
+                const sessionIds = basicPracticeRecords.map(r => r.id);
+                const { error } = await supabase
+                  .from('practice_sessions')
+                  .delete()
+                  .in('id', sessionIds);
+
+                if (error) {
+                  Alert.alert('エラー', '基礎練マークの削除に失敗しました');
+                  return;
+                }
+
+                // ローカル状態を更新
+                setBasicPracticeRecords([]);
+                
+                // 練習記録を再読み込み
+                await loadPracticeSessions();
+
+                // カレンダーのデータを更新するためにイベントを発火
+                if (typeof window !== 'undefined') {
+                  const event = new CustomEvent('practiceRecordUpdated', {
+                    detail: {
+                      date: formatLocalDate(selectedDate!),
+                      action: 'delete',
+                      type: 'basicPractice'
+                    }
+                  });
+                  window.dispatchEvent(event);
+                }
+
+                // コールバックを呼び出してデータを更新
+                onRecordingSaved?.();
+
+                Alert.alert('削除完了', '基礎練マークを削除しました', [
+                  { text: 'OK', onPress: () => {
+                    // 他の記録がない場合はモーダルを閉じる
+                    if (!existingRecord && existingRecordings.length === 0) {
+                      onClose();
+                    }
+                  }}
+                ]);
+              } catch (error) {
+                logger.error('Error deleting basic practice mark:', error);
+                Alert.alert('エラー', '基礎練マークの削除に失敗しました');
+              }
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      logger.error('Error in deleteBasicPracticeMark:', error);
       Alert.alert('エラー', '削除処理に失敗しました');
     }
   };
@@ -1558,7 +1967,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             setExistingRecord(null);
             setMinutes('');
             setContent('');
-            setVideoUrl('');
             setTimerMinutes(0);
             setPracticeBreakdown([]);
 
@@ -1588,7 +1996,14 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
+        if (Platform.OS === 'web') {
+          blurActiveElement();
+          enableBackgroundFocus();
+        }
+        onClose();
+      }}
     >
       <View 
         style={styles.container}
@@ -1640,22 +2055,117 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                     <View style={styles.eventItemContent}>
                       <View style={styles.eventItemText}>
                         <Text style={[styles.eventTitle, { color: currentTheme.text }]}>{event.title}</Text>
+                        {event.location && event.location.trim() && (
+                          <Text style={[styles.eventLocation, { color: currentTheme.textSecondary }]}>
+                            {event.location}
+                          </Text>
+                        )}
                         {event.description && (
                           <Text style={[styles.eventDescription, { color: currentTheme.textSecondary }]}>
                             {event.description}
                           </Text>
                         )}
                       </View>
-                      {onEventEdit && (
+                      <View style={styles.eventActionButtons}>
+                        {onEventEdit && (
+                          <TouchableOpacity
+                            style={[styles.eventEditButton, { backgroundColor: currentTheme.primary + '20' }]}
+                            onPress={() => onEventEdit(event)}
+                            activeOpacity={0.7}
+                          >
+                            <Edit size={14} color={currentTheme.primary} />
+                            <Text style={[styles.eventEditButtonText, { color: currentTheme.primary }]}>編集</Text>
+                          </TouchableOpacity>
+                        )}
                         <TouchableOpacity
-                          style={[styles.eventEditButton, { backgroundColor: currentTheme.primary + '20' }]}
-                          onPress={() => onEventEdit(event)}
+                          style={[styles.eventDeleteButton, { backgroundColor: '#FF4444' + '20' }]}
+                          onPress={async () => {
+                            logger.debug('練習記録画面: イベント削除ボタンがクリックされました', event);
+                            
+                            // Web環境ではwindow.confirmを使用
+                            let confirmed = false;
+                            if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                              confirmed = window.confirm(`「${event.title}」を削除しますか？`);
+                            } else {
+                              // React Native環境ではAlert.alertを使用
+                              await new Promise<void>((resolve) => {
+                                Alert.alert(
+                                  '削除の確認',
+                                  `「${event.title}」を削除しますか？`,
+                                  [
+                                    { 
+                                      text: 'キャンセル', 
+                                      style: 'cancel',
+                                      onPress: () => {
+                                        logger.debug('練習記録画面: イベント削除がキャンセルされました');
+                                        resolve();
+                                      }
+                                    },
+                                    {
+                                      text: '削除',
+                                      style: 'destructive',
+                                      onPress: () => {
+                                        confirmed = true;
+                                        resolve();
+                                      }
+                                    }
+                                  ],
+                                  { cancelable: true, onDismiss: () => resolve() }
+                                );
+                              });
+                            }
+                            
+                            if (!confirmed) {
+                              logger.debug('練習記録画面: イベント削除がキャンセルされました');
+                              return;
+                            }
+                            
+                            logger.debug('練習記録画面: イベント削除を実行します', event.id);
+                            try {
+                              if (onEventDelete) {
+                                logger.debug('練習記録画面: onEventDeleteコールバックを呼び出します');
+                                await onEventDelete(event);
+                                logger.debug('練習記録画面: onEventDeleteコールバックが完了しました');
+                              } else {
+                                // onEventDeleteが渡されていない場合でも削除できるようにする
+                                logger.debug('練習記録画面: onEventDeleteが未定義のため、直接削除します');
+                                const { data: { user } } = await supabase.auth.getUser();
+                                if (!user) {
+                                  Alert.alert('エラー', 'ログインが必要です');
+                                  return;
+                                }
+                                
+                                const { error } = await supabase
+                                  .from('events')
+                                  .delete()
+                                  .eq('id', event.id);
+                                
+                                if (error) {
+                                  logger.error('練習記録画面: イベント削除エラー:', error);
+                                  Alert.alert('エラー', 'イベントの削除に失敗しました');
+                                  return;
+                                }
+                                
+                                logger.info('練習記録画面: イベントを削除しました', event.id);
+                                Alert.alert('削除完了', 'イベントを削除しました');
+                                
+                                // データを再読み込みするために親コンポーネントに通知
+                                if (onRecordingSaved) {
+                                  logger.debug('練習記録画面: onRecordingSavedを呼び出します');
+                                  await onRecordingSaved();
+                                }
+                              }
+                            } catch (error) {
+                              logger.error('練習記録画面: イベント削除例外:', error);
+                              Alert.alert('エラー', 'イベントの削除に失敗しました');
+                            }
+                          }}
                           activeOpacity={0.7}
                         >
-                          <Edit size={14} color={currentTheme.primary} />
-                          <Text style={[styles.eventEditButtonText, { color: currentTheme.primary }]}>編集</Text>
+                          <Trash2 size={14} color="#FF4444" />
+                          <Text style={[styles.eventDeleteButtonText, { color: '#FF4444' }]}>削除</Text>
                         </TouchableOpacity>
-                      )}
+                      </View>
                     </View>
                   </View>
                 ))}
@@ -1676,19 +2186,27 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           )}
 
           <View style={[styles.inputGroup, { marginTop: existingRecord ? -16 : (events && events.length > 0 ? 0 : 0) }]}>
-            <Text style={styles.label}>
-              練習時間
-              {existingRecord && (
-                <Text style={[styles.timerIndicator, { color: '#1976D2' }]}>
-                  {' '}(既存: {formatMinutesToHours(existingRecord.minutes)} +)
-                </Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.label}>
+                練習時間
+                {timerMinutes > 0 && (
+                  <Text style={[styles.timerIndicator, { color: '#4CAF50' }]}>
+                    {' '}(タイマー: {formatMinutesToHours(timerMinutes)})
+                  </Text>
+                )}
+              </Text>
+              {onEventCreate && selectedDate && (
+                <TouchableOpacity
+                  style={[styles.eventCreateButton, { backgroundColor: currentTheme.primary }]}
+                  onPress={() => onEventCreate(selectedDate)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityLabel="イベントを登録"
+                >
+                  <Calendar size={16} color="#FFFFFF" />
+                </TouchableOpacity>
               )}
-              {timerMinutes > 0 && (
-                <Text style={[styles.timerIndicator, { color: '#4CAF50' }]}>
-                  {' '}(タイマー: {formatMinutesToHours(timerMinutes)})
-                </Text>
-              )}
-            </Text>
+            </View>
             
             {/* 練習時間入力（開始時刻・終了時刻） */}
             <View style={styles.customTimeInputContainer}>
@@ -1706,7 +2224,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.timeButtonLabel, { color: currentTheme.textSecondary }]}>
-                    開始日時
+                    開始時間
                   </Text>
                   <Text style={[styles.timeButtonValue, { color: currentTheme.text }]}>
                     {formatTime(startTime)}
@@ -1725,7 +2243,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   activeOpacity={0.7}
                 >
                   <Text style={[styles.timeButtonLabel, { color: currentTheme.textSecondary }]}>
-                    終了日時
+                    終了時間
                   </Text>
                   <Text style={[styles.timeButtonValue, { color: currentTheme.text }]}>
                     {formatTime(endTime)}
@@ -1746,17 +2264,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 return null;
               })()}
             </View>
-            
-            <Text style={styles.hintText}>
-              {existingRecord 
-                ? '開始時刻と終了時刻を選択してください（+は既存の記録に追加されます）'
-                : '開始時刻と終了時刻を選択してください'
-              }
-            </Text>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>練習内容</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
               value={content}
@@ -1776,10 +2283,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             </Text>
             
             {/* 録音済み情報がある場合：複数の録音を表示 */}
-            {existingRecordings.length > 0 && !audioUrl && !videoUrl ? (
+            {existingRecordings.length > 0 && !audioUrl ? (
               <View style={styles.existingRecordingsContainer}>
-                {/* 録音1と録音2を常に2つ表示 */}
-                {[0, 1].map((slotIndex) => {
+                {/* 録音枠: プレミアムは2つ、フリープランは1つ */}
+                {(entitlement?.isEntitled ? [0, 1] : [0]).map((slotIndex) => {
                   const recording = existingRecordings[slotIndex];
                   if (recording) {
                     // 録音済みの場合
@@ -1838,6 +2345,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                                 existingRecordings: existingRecordings
                               });
                               setSelectedRecordingSlot(slotIndex);
+                              setRerecordingRecordingId(recording.id); // 再録音する録音IDを設定
                               setShowAudioRecorder(true);
                             }}
                           >
@@ -1873,7 +2381,11 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                           }}
                         >
                           <Mic size={20} color="#8B4513" />
-                          <Text style={styles.recordButtonText}>録音で記録{slotIndex + 1}</Text>
+                          <Text style={styles.recordButtonText}>
+                            {entitlement?.isEntitled 
+                              ? `録音${slotIndex + 1}で記録（60分まで）`
+                              : `録音${slotIndex + 1}で記録（3分まで）`}
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     );
@@ -1888,7 +2400,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   <Text style={styles.audioTitle}>{audioTitle}</Text>
                   {isAudioFavorite && <Text style={styles.favoriteStar}>⭐</Text>}
                 </View>
-                {audioMemo ? <Text style={styles.audioMemo}>{audioMemo}</Text> : null}
                 <Text style={styles.audioDuration}>録音時間: {Math.floor(audioDuration / 60)}分{audioDuration % 60}秒</Text>
                 {/* 録音種類表示 */}
                 <Text style={styles.audioRecordingTypeText}>
@@ -1919,37 +2430,72 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                   </TouchableOpacity>
                 </View>
               </View>
-            ) : videoUrl ? (
-              // 動画URLが入力されている場合
-              <View style={styles.videoInfo}>
-                <View style={styles.videoHeader}>
-                  <Video size={20} color="#8B4513" />
-                  <Text style={styles.videoUrlText} numberOfLines={2}>
-                    {videoUrl}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.changeVideoButton}
-                  onPress={() => setVideoUrl('')}
-                >
-                  <Text style={styles.changeVideoButtonText}>URLを変更</Text>
-                </TouchableOpacity>
-              </View>
             ) : (
               // 録音済み情報がない場合：2つの録音ボタンと動画URL入力
               <View style={styles.mediaSelectionContainer}>
-                {/* 2つの録音ボタン */}
+                {/* 録音数制限の表示（フリープランの場合） */}
+                {!entitlement?.isEntitled && recordingLimitStatus && (
+                  <View style={[styles.limitInfoContainer, { backgroundColor: currentTheme.surface, borderColor: recordingLimitStatus.canRecord ? currentTheme.primary : '#FF4444', marginBottom: 12 }]}>
+                    <Text style={[styles.limitInfoText, { color: currentTheme.text }]}>
+                      {recordingLimitStatus.currentCount}/{recordingLimitStatus.limit}（月3回まで）
+                    </Text>
+                  </View>
+                )}
+
+                {/* 録音ボタン: プレミアムは2つ、フリープランは1つ */}
                 <View style={styles.recordingButtonsContainer}>
-                  {[0, 1].map((slotIndex) => {
+                  {(entitlement?.isEntitled ? [0, 1] : [0]).map((slotIndex) => {
                     const existingRec = existingRecordings[slotIndex];
+                    // 1日の録音数制限と月間録音数制限の両方をチェック
+                    const maxDailyRecordings = getMaxDailyRecordings(entitlement);
+                    const isDisabledByDailyLimit = dailyLimitStatus !== null && !dailyLimitStatus.canRecord && slotIndex >= dailyLimitStatus.currentCount;
+                    const isDisabledByMonthlyLimit = !entitlement?.isEntitled && recordingLimitStatus !== null && !recordingLimitStatus.canRecord;
+                    const isDisabled = (isDisabledByDailyLimit || isDisabledByMonthlyLimit) && !existingRec;
+                    
                     return (
                       <TouchableOpacity
                         key={slotIndex}
                         style={[
                           styles.mediaOptionButton,
-                          existingRec && styles.mediaOptionButtonFilled
+                          existingRec && styles.mediaOptionButtonFilled,
+                          isDisabled && { opacity: 0.6 }
                         ]}
                         onPress={() => {
+                          if (isDisabled) {
+                            // 1日の録音数制限に達している場合
+                            if (isDisabledByDailyLimit) {
+                              Alert.alert(
+                                '1日の録音数制限に達しました',
+                                (dailyLimitStatus as any)?.reason || `本日は既に${maxDailyRecordings}個の録音があります。`,
+                                [
+                                  { text: 'キャンセル', style: 'cancel' },
+                                  { text: entitlement?.isEntitled ? '了解' : 'プレミアムを見る', onPress: () => {
+                                    if (!entitlement?.isEntitled) {
+                                      onClose();
+                                      router.push('/(tabs)/pricing-plans');
+                                    }
+                                  }}
+                                ]
+                              );
+                              return;
+                            }
+                            // 月間録音数制限に達している場合
+                            if (isDisabledByMonthlyLimit) {
+                              Alert.alert(
+                                '録音上限に達しました',
+                                `Freeプランでは各楽器ごとに月に3回まで録音できます（合計${recordingLimitStatus?.limit}回）。\n現在の録音数: ${recordingLimitStatus?.currentCount}/${recordingLimitStatus?.limit}\n\nプレミアムで無制限に録音できます。`,
+                                [
+                                  { text: 'キャンセル', style: 'cancel' },
+                                  { text: 'プレミアムを見る', onPress: () => {
+                                    onClose();
+                                    router.push('/(tabs)/pricing-plans');
+                                  }}
+                                ]
+                              );
+                              return;
+                            }
+                            return;
+                          }
                           // 録音画面に移動する前に、現在のフォーム状態と録音状態を保存
                           setFormStateBeforeRecording({
                             minutes: minutes,
@@ -1958,11 +2504,11 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                           });
                           setSelectedRecordingSlot(slotIndex);
                           setShowAudioRecorder(true);
-                          // 既存の録音がある場合は再録音フラグを設定（後でAudioRecorderに渡す）
                         }}
+                        disabled={isDisabled}
                       >
-                        <Mic size={24} color="#8B4513" />
-                        <Text style={styles.mediaOptionText}>
+                        <Mic size={24} color={isDisabled ? currentTheme.textSecondary : "#8B4513"} />
+                        <Text style={[styles.mediaOptionText, isDisabled && { color: currentTheme.textSecondary }]}>
                           録音{slotIndex + 1}で記録
                         </Text>
                         {existingRec ? (
@@ -1971,14 +2517,15 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                           </Text>
                         ) : (
                           <Text style={styles.mediaOptionSubtext}>
-                            音声を録音して保存
+                            {entitlement?.isEntitled 
+                              ? '60分まで録音可能'
+                              : 'フリープランは3分まで。プレミアムなら60分まで録音可能'}
                           </Text>
                         )}
                       </TouchableOpacity>
                     );
                   })}
                 </View>
-                
               </View>
             )}
             
@@ -2009,15 +2556,53 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         </ScrollView>
         {/* 下部の保存ボタンと削除ボタン */}
         <View style={styles.footer}>
-          <TouchableOpacity
-            style={[styles.primarySaveButton, (!minutes || Number(minutes) <= 0) && { opacity: 0.6 }]}
-            onPress={handleSaveRecord}
-            disabled={!minutes || Number(minutes) <= 0}
-            activeOpacity={0.8}
-          >
-            <Save size={18} color="#FFFFFF" />
-            <Text style={styles.primarySaveButtonText}>保存</Text>
-          </TouchableOpacity>
+          {(() => {
+            // 新しい記録があるかどうかを判定
+            const minutesNumber = Number(minutes) || 0;
+            const hasMedia = !!audioUrl;
+            
+            let hasNewRecord: boolean;
+            
+            // 既存の記録がない場合：時間が0より大きいか、録音や動画がある場合は有効
+            if (!existingRecord) {
+              hasNewRecord = minutesNumber > 0 || hasMedia;
+            } else {
+              // 既存の記録がある場合：変更があるかどうかを判定
+              const existingMinutes = existingRecord.minutes || 0;
+              const existingContent = existingRecord.content || '';
+              const currentContent = content?.trim() || '';
+              
+              // 時間が変更されているか、録音や動画が追加されているか、コンテンツが変更されているか
+              const timeChanged = minutesNumber !== existingMinutes;
+              const contentChanged = currentContent !== existingContent;
+              hasNewRecord = timeChanged || hasMedia || contentChanged;
+            }
+            
+            logger.debug('保存ボタン無効化条件チェック:', {
+              minutesNumber,
+              existingMinutes: existingRecord?.minutes || 0,
+              timeChanged: existingRecord ? minutesNumber !== (existingRecord.minutes || 0) : undefined,
+              hasMedia,
+              contentChanged: existingRecord ? (content?.trim() || '') !== (existingRecord.content || '') : undefined,
+              hasNewRecord,
+              isDisabled: !hasNewRecord
+            });
+            
+            return (
+              <TouchableOpacity
+                style={[
+                  styles.primarySaveButton,
+                  !hasNewRecord && { opacity: 0.6 }
+                ]}
+                onPress={handleSaveRecord}
+                disabled={!hasNewRecord}
+                activeOpacity={0.8}
+              >
+                <Save size={18} color="#FFFFFF" />
+                <Text style={styles.primarySaveButtonText}>保存</Text>
+              </TouchableOpacity>
+            );
+          })()}
           
           {/* 削除ボタン（既存の記録または録音がある場合のみ表示） */}
           {useMemo(() => {
@@ -2053,6 +2638,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           onSave={handleAudioSave}
           onClose={() => {
             setShowAudioRecorder(false);
+            setRerecordingRecordingId(null); // 再録音IDをクリア
             // 録音画面を閉じたときに、保存されたフォーム状態と録音状態を復元
             if (formStateBeforeRecording) {
               setMinutes(formStateBeforeRecording.minutes);
@@ -2063,6 +2649,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           }}
           onBack={() => {
             setShowAudioRecorder(false);
+            setRerecordingRecordingId(null); // 再録音IDをクリア
             // 録音画面から戻ったときに、保存されたフォーム状態と録音状態を復元
             if (formStateBeforeRecording) {
               setMinutes(formStateBeforeRecording.minutes);
@@ -2074,8 +2661,8 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
           onRecordingSaved={onRecordingSaved}
           selectedDate={selectedDate}
           initialRecordingType={initialAudioRecorderType}
-          isRerecording={selectedRecordingSlot !== null && existingRecordings[selectedRecordingSlot] !== undefined}
-          existingRecordingId={selectedRecordingSlot !== null && existingRecordings[selectedRecordingSlot] ? existingRecordings[selectedRecordingSlot].id : undefined}
+          isRerecording={!!rerecordingRecordingId}
+          existingRecordingId={rerecordingRecordingId || undefined}
         />
       </Modal>
 
@@ -2163,6 +2750,18 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             <Text style={styles.deleteModalMessage}>削除したい項目を選択してください。</Text>
             
             <View style={styles.deleteModalButtons}>
+              {basicPracticeRecords.length > 0 && (
+                <TouchableOpacity
+                  style={[styles.deleteModalButton, styles.deleteModalButtonDestructive]}
+                  onPress={() => {
+                    setShowDeleteModal(false);
+                    deleteBasicPracticeMark();
+                  }}
+                >
+                  <Text style={styles.deleteModalButtonText}>基礎練マークを削除</Text>
+                </TouchableOpacity>
+              )}
+              
               {existingRecord && (
                 <TouchableOpacity
                   style={[styles.deleteModalButton, styles.deleteModalButtonDestructive]}
@@ -2269,6 +2868,9 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     padding: 8,
+    width: 40, // アイコンサイズ(24) + padding(8*2) = 40
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontSize: 18,
@@ -2283,7 +2885,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   headerSpacer: {
-    width: 8,
+    width: 40, // closeButtonと同じ幅で中央揃えを保証
   },
   deleteButton: {
     padding: 8,
@@ -2346,6 +2948,19 @@ const styles = StyleSheet.create({
     fontWeight: '400',
     color: '#555555',
     marginBottom: 4,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  eventCreateButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   input: {
     borderWidth: 0.5,
@@ -2411,17 +3026,18 @@ const styles = StyleSheet.create({
   hintText: {
     fontSize: 12,
     color: '#888888',
-    marginTop: 4,
+    marginTop: 0,
+    marginBottom: 4,
     textAlign: 'center',
   },
   customTimeInputContainer: {
-    marginTop: 12,
-    marginBottom: 8,
+    marginTop: 4,
+    marginBottom: 0,
     padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    borderWidth: 0,
+    borderColor: 'transparent',
   },
   customTimeLabel: {
     fontSize: 14,
@@ -2461,7 +3077,7 @@ const styles = StyleSheet.create({
   customTimeDisplay: {
     fontSize: 14,
     fontWeight: '600',
-    marginTop: 8,
+    marginTop: 0,
     textAlign: 'center',
   },
   mediaSelectionContainer: {
@@ -2537,12 +3153,6 @@ const styles = StyleSheet.create({
   favoriteStar: {
     fontSize: 16,
   },
-  audioMemo: {
-    fontSize: 14,
-    color: '#777777',
-    marginBottom: 6,
-    fontStyle: 'italic',
-  },
   audioDuration: {
     fontSize: 14,
     color: '#666666',
@@ -2563,49 +3173,6 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   rerecordButtonText: {
-    color: '#666666',
-    fontSize: 14,
-    fontWeight: '400',
-  },
-  videoInputContainer: {
-    marginTop: 6,
-  },
-  videoInput: {
-    borderWidth: 0.5,
-    borderColor: '#D0D0D0',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 16,
-    backgroundColor: '#FFFFFF',
-    minHeight: 40,
-  },
-  videoInfo: {
-    backgroundColor: '#F8F8F8',
-    borderRadius: 8,
-    padding: 12,
-    borderWidth: 0.5,
-    borderColor: '#D0D0D0',
-  },
-  videoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  videoUrlText: {
-    fontSize: 14,
-    color: '#777777',
-    flex: 1,
-    marginLeft: 8,
-  },
-  changeVideoButton: {
-    backgroundColor: '#F0F0F0',
-    borderRadius: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    alignSelf: 'flex-start',
-  },
-  changeVideoButtonText: {
     color: '#666666',
     fontSize: 14,
     fontWeight: '400',
@@ -2883,11 +3450,11 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   timeRangeContainer: {
-    marginTop: 12,
+    marginTop: 0,
     borderRadius: 8,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+    borderWidth: 0,
+    borderColor: 'transparent',
     backgroundColor: '#FFFFFF',
   },
   timePickerModalOverlay: {
@@ -2961,15 +3528,14 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 8,
     borderWidth: 1,
-    ...(Platform.OS === 'web' ? {
-      boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
-    } : {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.04,
-      shadowRadius: 2,
-      elevation: 1,
-    }),
+    // Web用のスタイル（モバイルでは無視される）
+    boxShadow: '0 1px 2px rgba(0, 0, 0, 0.04)',
+    // モバイル用のスタイル（Webでは無視される）
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 2,
+    elevation: 1,
   },
   eventsHeader: {
     flexDirection: 'row',
@@ -3018,11 +3584,23 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     letterSpacing: 0,
   },
+  eventLocation: {
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: 1,
+    marginBottom: 2,
+    opacity: 0.75,
+  },
   eventDescription: {
     fontSize: 11,
     lineHeight: 14,
     marginTop: 1,
     opacity: 0.75,
+  },
+  eventActionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
   },
   eventEditButton: {
     flexDirection: 'row',
@@ -3035,6 +3613,34 @@ const styles = StyleSheet.create({
   eventEditButtonText: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  eventDeleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  eventDeleteButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  limitInfoContainer: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  limitInfoText: {
+    fontSize: 14,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  limitInfoSubText: {
+    fontSize: 12,
+    textAlign: 'center',
+    marginTop: 4,
   },
 });
 

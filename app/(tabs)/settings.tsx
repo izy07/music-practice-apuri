@@ -18,7 +18,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { isAuthenticated, isLoading, isInitialized, signOut } = useAuthAdvanced();
   const [currentUser, setCurrentUser] = useState<string | null>(null);
-  const { language, setLanguage, t } = useLanguage();
+  const { t } = useLanguage();
   const { currentTheme } = useInstrumentTheme();
   const { entitlement } = useSubscription();
   const scrollRef = useRef<ScrollView>(null);
@@ -134,7 +134,7 @@ export default function SettingsScreen() {
       {
         id: 'major-settings',
         title: '主要機能設定',
-        subtitle: '外観・言語・通知・\nプライバシー',
+        subtitle: '外観・通知・\nプライバシー',
         icon: Palette,
         color: '#9C27B0',
         onPress: () => router.push(asSafeRoutePath('/(tabs)/major-settings')),
@@ -213,7 +213,7 @@ export default function SettingsScreen() {
           <Text style={[styles.settingTitle, { color: currentTheme?.text || '#2D3748' }]}>{item.title}</Text>
           {item.id === 'major-settings' ? (
             <View>
-              <Text style={[styles.settingSubtitle, { color: currentTheme?.textSecondary || '#718096' }]}>外観・言語・通知・</Text>
+              <Text style={[styles.settingSubtitle, { color: currentTheme?.textSecondary || '#718096' }]}>外観・通知・</Text>
               <Text style={[styles.settingSubtitle, { color: currentTheme?.textSecondary || '#718096' }]}>プライバシー</Text>
             </View>
           ) : (

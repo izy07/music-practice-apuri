@@ -30,7 +30,6 @@ import logger from '@/lib/logger';
 import { getActiveInstrumentIds } from '@/lib/subscriptionLimits';
 import { instrumentService } from '@/services/instrumentService';
 import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
-import { getCustomInstruments, deleteCustomInstrument, getCustomInstrumentId, CustomInstrument } from '@/repositories/customInstrumentRepository';
 
 export default function PrivacySettingsScreen() {
   const router = useRouter();
@@ -39,7 +38,6 @@ export default function PrivacySettingsScreen() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [activeInstrumentIds, setActiveInstrumentIds] = useState<string[]>([]);
   const [isDeletingInstrument, setIsDeletingInstrument] = useState<string | null>(null);
-  const [customInstruments, setCustomInstruments] = useState<CustomInstrument[]>([]);
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTopOnFocus(scrollRef);
 
@@ -76,25 +74,7 @@ export default function PrivacySettingsScreen() {
     loadActiveInstruments();
   }, [user?.id]);
 
-  // カスタム楽器一覧を取得
-  React.useEffect(() => {
-    const loadCustomInstruments = async () => {
-      if (!user?.id) {
-        return;
-      }
-      try {
-        const result = await getCustomInstruments(user.id);
-        if (result.data) {
-          setCustomInstruments(result.data);
-        }
-      } catch (error) {
-        logger.error('カスタム楽器一覧の取得に失敗しました:', error);
-      }
-    };
-    loadCustomInstruments();
-  }, [user?.id]);
-
-  const handleDeleteInstrumentData = useCallback(async (instrumentId: string) => {
+  const handleDeleteInstrumentData = useCallback((instrumentId: string) => {
     console.log('[PrivacySettings] handleDeleteInstrumentData called:', instrumentId, user?.id);
     logger.info('[PrivacySettings] 楽器データ削除ボタンが押されました:', { instrumentId, userId: user?.id });
     
@@ -103,18 +83,10 @@ export default function PrivacySettingsScreen() {
       return;
     }
     
-    // 楽器名を取得（デフォルト楽器リストまたはカスタム楽器から）
+    // 楽器名を取得（デフォルト楽器リストから）
     const defaultInstruments = instrumentService.getDefaultInstruments();
     const instrument = defaultInstruments.find(i => i.id === instrumentId);
-    let instrumentName = instrument?.name || '楽器';
-    
-    // カスタム楽器の場合、カスタム楽器名を取得
-    if (!instrument) {
-      const customInstrument = customInstruments.find(custom => custom.instrument_id === instrumentId);
-      if (customInstrument) {
-        instrumentName = customInstrument.instrument_name;
-      }
-    }
+    const instrumentName = instrument?.name || '楽器';
     
     console.log('[PrivacySettings] Instrument name:', instrumentName);
 
@@ -172,22 +144,6 @@ export default function PrivacySettingsScreen() {
 
     try {
       logger.info('[PrivacySettings] 楽器データ削除処理を開始:', { instrumentId, userId: user.id });
-
-      // カスタム楽器の場合は、カスタム楽器テーブルからも削除
-      const customInstrument = customInstruments.find(custom => custom.instrument_id === instrumentId);
-      if (customInstrument) {
-        const deleteResult = await deleteCustomInstrument(user.id, customInstrument.id);
-        if (deleteResult.error) {
-          logger.error('カスタム楽器削除エラー:', deleteResult.error);
-          // エラーでもデータ削除は続行
-        } else {
-          // カスタム楽器一覧を更新
-          const customInstrumentsResult = await getCustomInstruments(user.id);
-          if (customInstrumentsResult.data) {
-            setCustomInstruments(customInstrumentsResult.data);
-          }
-        }
-      }
 
       /**
        * 重要（根本対応）:
@@ -728,11 +684,7 @@ export default function PrivacySettingsScreen() {
               {activeInstrumentIds.map((instrumentId) => {
                 const defaultInstruments = instrumentService.getDefaultInstruments();
                 const instrument = defaultInstruments.find(i => i.id === instrumentId);
-                // カスタム楽器の場合、カスタム楽器名を取得
-                const customInstrument = customInstruments.find(custom => custom.instrument_id === instrumentId);
-                const instrumentName = customInstrument 
-                  ? customInstrument.instrument_name 
-                  : (instrument?.name || `楽器 (${instrumentId.slice(0, 8)}...)`);
+                const instrumentName = instrument?.name || `楽器 (${instrumentId.slice(0, 8)}...)`;
                 const instrumentEmoji = instrument?.emoji || '🎵';
                 const isDeletingThis = isDeletingInstrument === instrumentId;
                 const isDisabled = isDeletingThis || isDeleting;

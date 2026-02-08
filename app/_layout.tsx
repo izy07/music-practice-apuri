@@ -3,9 +3,8 @@
 export const unstable_serverRendering = false;
 
 import React, { useRef, useEffect } from 'react';
-import { View, LogBox, AppState } from 'react-native';
+import { View, LogBox, AppState, Alert, Platform } from 'react-native';
 import { Stack } from 'expo-router'; // 画面遷移のスタックナビゲーター
-import { Platform } from 'react-native';
 import { useRouter, useSegments, useRootNavigationState } from 'expo-router'; // ルーティング関連のフック
 import { useFrameworkReady } from '@/hooks/useFrameworkReady'; // フレームワーク準備状態の管理
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced'; // 認証フック（統一版）
@@ -95,6 +94,23 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
       
       originalConsoleWarn.apply(console, args);
     };
+  }
+
+  // Webでは React Native の Alert.alert が動作しないため、window.alert に差し替える
+  try {
+    const originalAlert = Alert.alert.bind(Alert);
+    (Alert as any).alert = (title: string, message?: string, buttons?: Array<{ text: string; onPress?: () => void; style?: 'cancel' | 'default' | 'destructive' }>) => {
+      const text = [title, message].filter(Boolean).join('\n\n');
+      if (typeof window !== 'undefined' && window.alert) {
+        window.alert(text);
+        const defaultBtn = buttons?.find((b: any) => b.style !== 'cancel' && b.style !== 'destructive');
+        if (defaultBtn?.onPress) setTimeout(defaultBtn.onPress, 0);
+      } else {
+        originalAlert(title, message, buttons as any);
+      }
+    };
+  } catch (_e) {
+    // 差し替えに失敗した場合はそのまま
   }
 }
 
@@ -806,9 +822,11 @@ function RootLayoutContent() {
 
 // アプリのルートレイアウト - 全体的なプロバイダーとコンテキストを設定
 export default function RootLayout() {
+  const router = useRouter();
+  
   return (
     // グローバルエラーバウンダリー（アプリ全体のエラーをキャッチ）
-    <GlobalErrorBoundary>
+    <GlobalErrorBoundary router={router}>
       {/* 多言語対応を管理するプロバイダー */}
       <LanguageProvider>
         {/* 楽器別テーマを管理するプロバイダー */}

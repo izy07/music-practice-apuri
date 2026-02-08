@@ -211,7 +211,37 @@ export default function TermsOfServiceScreen() {
           <View style={styles.sectionHeader}>
             <Shield size={20} color={currentTheme.primary} />
             <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-              第6条（個人情報の取扱い）
+              第6条（アプリの権限と使用目的）
+            </Text>
+          </View>
+          <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
+            1. 本アプリは、以下の権限を使用します。各権限の使用目的は以下の通りです。
+          </Text>
+          <View style={styles.bulletList}>
+            <Text style={[styles.bulletItem, { color: currentTheme.textSecondary }]}>
+              • マイク権限: ユーザー自身の演奏を録音するために使用します。録音機能を起動した時のみ、マイクへのアクセスを要求します。
+            </Text>
+            <Text style={[styles.bulletItem, { color: currentTheme.textSecondary }]}>
+              • カメラ権限: ユーザー自身の演奏を録画するため、および楽器の演奏姿勢を確認するために使用します。録画機能または姿勢確認機能を起動した時のみ、カメラへのアクセスを要求します。
+            </Text>
+            <Text style={[styles.bulletItem, { color: currentTheme.textSecondary }]}>
+              • ストレージ権限: プロフィール画像の設定や、既存の録音・録画ファイルを選択するために使用します。プロフィール画像を変更する時、または既存のファイルを選択する時のみ、ストレージへのアクセスを要求します。
+            </Text>
+            <Text style={[styles.bulletItem, { color: currentTheme.textSecondary }]}>
+              • 通知権限: 練習リマインダーやアプリからのお知らせを送信するために使用します。ユーザーが通知設定を有効にした時のみ、通知権限を要求します。
+            </Text>
+          </View>
+          <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
+            2. すべての権限は、ユーザーが明示的に許可した場合にのみ使用され、許可されなかった場合でも、該当機能以外のアプリの基本機能は利用できます。
+          </Text>
+        </View>
+
+        {/* 第7条 - 新規追加 */}
+        <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
+          <View style={styles.sectionHeader}>
+            <Shield size={20} color={currentTheme.primary} />
+            <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
+              第7条（個人情報の取扱い）
             </Text>
           </View>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
@@ -225,12 +255,12 @@ export default function TermsOfServiceScreen() {
           </Text>
         </View>
 
-        {/* 第7条 - 新規追加 */}
+        {/* 第8条 - 新規追加 */}
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <View style={styles.sectionHeader}>
             <FileText size={20} color={currentTheme.primary} />
             <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-              第7条（楽譜・コンテンツの取扱い）
+              第8条（楽譜・コンテンツの取扱い）
             </Text>
           </View>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
@@ -247,12 +277,12 @@ export default function TermsOfServiceScreen() {
           </Text>
         </View>
 
-        {/* 第8条 */}
+        {/* 第9条 */}
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <View style={styles.sectionHeader}>
             <Users size={20} color={currentTheme.primary} />
             <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-              第8条（利用制限および登録抹消）
+              第9条（利用制限および登録抹消）
             </Text>
           </View>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
@@ -279,7 +309,7 @@ export default function TermsOfServiceScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            第7条（免責事項）
+            第10条（免責事項）
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             1. 当社は、本アプリに関して、ユーザーと他のユーザーまたは第三者との間において生じた取引、連絡または紛争等について一切責任を負いません。{'\n\n'}
@@ -289,7 +319,7 @@ export default function TermsOfServiceScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            第8条（サービス内容の変更等）
+            第11条（サービス内容の変更等）
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             当社は、ユーザーに通知することなく、本アプリの内容を変更しまたは本アプリの提供を中止することができるものとし、これによってユーザーに生じた損害について一切の責任を負いません。
@@ -298,7 +328,7 @@ export default function TermsOfServiceScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            第9条（利用規約の変更）
+            第12条（利用規約の変更）
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             当社は、必要と判断した場合には、ユーザーに通知することなくいつでも本規約を変更することができるものとします。なお、本規約の変更後、本アプリの利用を継続した場合には、変更後の規約に同意したものとみなします。
@@ -307,7 +337,7 @@ export default function TermsOfServiceScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            第10条（通知または連絡）
+            第13条（通知または連絡）
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             ユーザーと当社との間の通知または連絡は、当社の定める方法によって行うものとします。当社は、ユーザーから、当社が別途定める方法に従った変更の届出がない限り、現在登録されている連絡先が有効なものとみなして当該連絡先へ通知または連絡を行い、これらは、発信時にユーザーへ到達したものとみなします。
@@ -316,7 +346,7 @@ export default function TermsOfServiceScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            第11条（権利義務の譲渡の禁止）
+            第14条（権利義務の譲渡の禁止）
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             ユーザーは、当社の書面による事前の承諾なく、利用契約上の地位または本規約に基づく権利もしくは義務を第三者に譲渡し、または担保に供することはできません。
@@ -325,7 +355,7 @@ export default function TermsOfServiceScreen() {
 
         <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
           <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
-            第12条（準拠法・裁判管轄）
+            第15条（準拠法・裁判管轄）
           </Text>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>
             1. 本規約の解釈にあたっては、日本法を準拠法とします。{'\n\n'}

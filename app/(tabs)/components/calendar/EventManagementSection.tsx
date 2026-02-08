@@ -22,6 +22,7 @@ interface Event {
   id: string;
   title: string;
   description?: string;
+  location?: string | null;
   date?: string;
   color?: EventColor | string | null;
 }
@@ -383,6 +384,11 @@ const EventManagementSection = memo(function EventManagementSection({
                 </TouchableOpacity>
               </View>
             </View>
+            {event.location && event.location.trim() && (
+              <Text style={[styles.eventLocation, { color: theme.textSecondary }]}>
+                📍 {event.location}
+              </Text>
+            )}
             {event.description && (
               <Text style={[styles.eventDescription, { color: theme.textSecondary }]}>
                 {event.description}
@@ -485,6 +491,13 @@ const styles = StyleSheet.create({
     minHeight: 28,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  eventLocation: {
+    fontSize: 9,
+    lineHeight: 12,
+    marginTop: 2,
+    marginBottom: 2,
+    opacity: 0.8,
   },
   eventDescription: {
     fontSize: 9,

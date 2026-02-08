@@ -782,11 +782,10 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
                       {
                         backgroundColor: selectedTimeSignature.id === timeSignature.id
                           ? currentTheme.primary
-                          : 'rgba(128,128,128,0.22)',
-                        borderWidth: 1.5,
+                          : currentTheme.secondary,
                         borderColor: selectedTimeSignature.id === timeSignature.id
                           ? currentTheme.primary
-                          : currentTheme.textSecondary,
+                          : currentTheme.textSecondary + '60',
                       }
                     ]}
                     onPress={() => handleTimeSignatureChange(timeSignature)}
@@ -796,7 +795,7 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
                         styles.timeSignatureModalButtonText,
                         {
                           color: selectedTimeSignature.id === timeSignature.id
-                            ? '#FFFFFF'
+                            ? currentTheme.surface
                             : currentTheme.text,
                         }
                       ]}
@@ -829,11 +828,7 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
                   {
                     backgroundColor: metronomeSoundType === sound.id
                       ? currentTheme.primary
-                      : 'rgba(128,128,128,0.22)',
-                    borderWidth: 1.5,
-                    borderColor: metronomeSoundType === sound.id
-                      ? currentTheme.primary
-                      : currentTheme.textSecondary,
+                      : currentTheme.secondary,
                   }
                 ]}
                 onPress={() => setMetronomeSoundType(sound.id as 'click' | 'tone' | 'wood' | 'bell')}
@@ -843,7 +838,7 @@ export default function Metronome({ audioContextRef, ownerName = 'Metronome' }: 
                     styles.metronomeSoundSettingButtonText,
                     {
                       color: metronomeSoundType === sound.id
-                        ? '#FFFFFF'
+                        ? currentTheme.surface
                         : currentTheme.text,
                     }
                   ]}

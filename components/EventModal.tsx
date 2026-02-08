@@ -23,6 +23,7 @@ import { ErrorHandler } from '@/lib/errorHandler';
 import { disableBackgroundFocus, enableBackgroundFocus, focusFirstElement, blurActiveElement } from '@/lib/modalFocusManager';
 import { isColumnNotFoundError, handleColumnError } from '@/lib/columnErrorHandler';
 import { EVENT_COLORS, DEFAULT_EVENT_COLOR, EventColor, getEventColorOption } from '@/lib/eventColors';
+import { ensureLocationColumn } from '@/repositories/common/ensureLocationColumn';
 
 interface Event {
   id: string;
@@ -139,16 +140,15 @@ export default function EventModal({
 
     setLoading(true);
     try {
-      // 保存前に location カラムの存在を確保（登録した場所が保存されない問題の対策）
-      const { ensureLocationColumn } = await import('@/repositories/common/ensureLocationColumn');
-      await ensureLocationColumn();
-
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setLoading(false);
         Alert.alert('エラー', 'ユーザーが認証されていません');
         return;
       }
+
+      // 場所を保存するために location カラムが存在することを確保
+      await ensureLocationColumn();
 
       if (event) {
         // 既存イベントの更新
@@ -177,12 +177,13 @@ export default function EventModal({
           .from('events')
           .update(updateData)
           .eq('id', event.id)
-          .select()
+          .select('id, title, date, description, location, color, instrument_id, is_completed, created_at, updated_at')
           .single();
 
         // カラムが存在しないエラーの場合、該当カラムを除外して再試行
+        // locationはensureLocationColumn()で確実に作成されるため、除外しない
         if (error && isColumnNotFoundError(error)) {
-          const optionalColumns = ['instrument_id', 'event_date', 'location'];
+          const optionalColumns = ['instrument_id', 'event_date'];
           const handled = handleColumnError(error, updateData, optionalColumns);
           
           if (handled) {
@@ -196,7 +197,7 @@ export default function EventModal({
               .from('events')
               .update(handled.payload)
               .eq('id', event.id)
-              .select()
+              .select('id, title, date, description, location, color, instrument_id, is_completed, created_at, updated_at')
               .single();
             
             // 再試行後もエラーが発生した場合、さらに他のカラムを除外して再試行
@@ -207,7 +208,7 @@ export default function EventModal({
                   .from('events')
                   .update(secondHandled.payload)
                   .eq('id', event.id)
-                  .select()
+                  .select('id, title, date, description, location, color, instrument_id, is_completed, created_at, updated_at')
                   .single();
               }
             }
@@ -253,12 +254,13 @@ export default function EventModal({
         let { data: newEvent, error } = await supabase
           .from('events')
           .insert(insertData)
-          .select()
+          .select('id, title, date, description, location, color, instrument_id, is_completed, created_at, updated_at')
           .single();
 
         // カラムが存在しないエラーの場合、該当カラムを除外して再試行
+        // locationはensureLocationColumn()で確実に作成されるため、除外しない
         if (error && isColumnNotFoundError(error)) {
-          const optionalColumns = ['instrument_id', 'event_date', 'location'];
+          const optionalColumns = ['instrument_id', 'event_date'];
           const handled = handleColumnError(error, insertData, optionalColumns);
           
           if (handled) {
@@ -271,7 +273,7 @@ export default function EventModal({
             let retryResult = await supabase
               .from('events')
               .insert(handled.payload)
-              .select()
+              .select('id, title, date, description, location, color, instrument_id, is_completed, created_at, updated_at')
               .single();
             
             // 再試行後もエラーが発生した場合、さらに他のカラムを除外して再試行
@@ -281,7 +283,7 @@ export default function EventModal({
                 retryResult = await supabase
                   .from('events')
                   .insert(secondHandled.payload)
-                  .select()
+                  .select('id, title, date, description, location, color, instrument_id, is_completed, created_at, updated_at')
                   .single();
               }
             }
@@ -452,6 +454,7 @@ ${errorMessage}`
   const resetForm = () => {
     setTitle('');
     setDate('');
+    setLocation('');
     setEventColor(DEFAULT_EVENT_COLOR);
   };
 

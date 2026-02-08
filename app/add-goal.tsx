@@ -73,7 +73,7 @@ export default function AddGoalScreen() {
           
           Alert.alert(
             '上限に達しています',
-            `Freeプランでは各楽器ごとに目標を4つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に設定できます。`,
+            `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
             [
               { 
                 text: '戻る', 
@@ -168,10 +168,10 @@ export default function AddGoalScreen() {
             result: {
               ...normalizedResult,
               title: alertConfig.defaultTitle,
-              reason: `Freeプランでは各楽器ごとに目標を4つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に設定できます。`,
+              reason: `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
             },
             defaultTitle: alertConfig.defaultTitle,
-            defaultMessage: normalizedResult.reason || `Freeプランでは各楽器ごとに目標を4つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に設定できます。`,
+            defaultMessage: normalizedResult.reason || `Freeプランでは各楽器ごとに目標を2つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/2\n\nプレミアムで無制限に設定できます。`,
             upgradeButtonText: alertConfig.upgradeButtonText,
             router,
             onCancel: () => {

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   ScrollView,
   Modal,
 } from 'react-native';
-import { Mic, MicOff, Play, Pause, Square, Star, Save, Minus, Plus } from 'lucide-react-native';
+import { Mic, MicOff, Play, Pause, Square, Star, Save } from 'lucide-react-native';
 import { useInstrumentTheme } from './InstrumentThemeContext';
 import { supabase } from '@/lib/supabase';
 import { uploadRecordingBlob, saveRecording } from '@/lib/database';
@@ -20,6 +20,7 @@ import { ErrorHandler } from '@/lib/errorHandler';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { checkMonthlyRecordingLimit, checkDailyRecordingLimit, isCurrentMonth, canSaveDataForInstrument, getMaxRecordingDuration, recordRewardedAdRecording, isPremiumUser } from '@/lib/subscriptionLimits';
+import { computeEntitlement, getSubscription } from '@/lib/subscriptionService';
 import { RewardedAdModal } from './ads/RewardedAdModal';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import logger from '@/lib/logger';
@@ -33,7 +34,6 @@ interface AudioRecorderProps {
   visible: boolean;
   onSave: (audioData: {
     title: string;
-    memo?: string; // メモ（オプション）
     isFavorite: boolean;
     duration: number;
     audioUrl: string;
@@ -71,16 +71,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const [recordingLimitStatus, setRecordingLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
   const [dailyLimitStatus, setDailyLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
   const [showRewardedAd, setShowRewardedAd] = useState(false);
-
-  // 簡易メトロノーム用の状態（録音開始前から開始可能）
-  const [isMetronomePlaying, setIsMetronomePlaying] = useState(false);
-  const [metronomeBpm, setMetronomeBpm] = useState(120);
-  const [metronomeBeats, setMetronomeBeats] = useState(4); // 拍子（2, 3, 4, 5, 6 など）
-  const metronomeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const metronomeAudioContextRef = useRef<AudioContext | null>(null);
-  const metronomeBeatRef = useRef(0);
-  const metronomeBeatsRef = useRef(4);
-  useEffect(() => { metronomeBeatsRef.current = metronomeBeats; }, [metronomeBeats]);
   
   // Web Audio API用の参照
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -126,16 +116,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       if (recordingIntervalRef.current) {
         clearInterval(recordingIntervalRef.current);
         recordingIntervalRef.current = null;
-      }
-
-      // メトロノームのクリーンアップ
-      if (metronomeIntervalRef.current) {
-        clearInterval(metronomeIntervalRef.current);
-        metronomeIntervalRef.current = null;
-      }
-      if (metronomeAudioContextRef.current && metronomeAudioContextRef.current.state !== 'closed') {
-        metronomeAudioContextRef.current.close().catch(() => {});
-        metronomeAudioContextRef.current = null;
       }
       
       // オーディオ要素のクリア
@@ -198,38 +178,47 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       }
 
       try {
-        // プレミアムユーザーの場合は制限チェックをスキップ
-        if (isPremiumUser(entitlement)) {
-          setDailyLimitStatus({ canRecord: true, currentCount: 0, limit: Infinity });
-          setRecordingLimitStatus(null); // プレミアムユーザーは月間制限不要
-          return;
+        // entitlementが古い値の場合、最新のentitlementを再取得
+        let currentEntitlement = entitlement;
+        if (!currentEntitlement || !currentEntitlement.isEntitled) {
+          try {
+            const subscription = await getSubscription(user.id);
+            currentEntitlement = await computeEntitlement(subscription);
+            logger.debug("録音制限チェック: entitlementを再取得しました:", { 
+              previousEntitlement: entitlement, 
+              currentEntitlement, 
+              userId: user.id 
+            });
+          } catch (error) {
+            logger.warn("録音制限チェック: entitlementの再取得に失敗しました。既存のentitlementを使用します:", { error, userId: user.id, entitlement });
+            // エラー時は既存のentitlementを使用
+            if (!currentEntitlement) {
+              currentEntitlement = { isEntitled: false };
+            }
+          }
         }
-
-        // 1日の録音数制限をチェック（フリープランのみ）
-        const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, selectedDate || undefined);
+        
+        // 1日の録音数制限をチェック（全プランでチェック）
+        const dailyLimitCheck = await checkDailyRecordingLimit(user.id, currentEntitlement, selectedDate || undefined);
         setDailyLimitStatus(dailyLimitCheck);
         
         // 月間録音数制限をチェック（フリープランのみ、楽器ごと）
-        const instrumentId = getInstrumentId(selectedInstrument);
-        const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined, instrumentId);
-        setRecordingLimitStatus(limitCheck);
+        if (!currentEntitlement?.isEntitled) {
+          const instrumentId = getInstrumentId(selectedInstrument);
+          const limitCheck = await checkMonthlyRecordingLimit(user.id, currentEntitlement, selectedDate || undefined, instrumentId);
+          setRecordingLimitStatus(limitCheck);
+        } else {
+          setRecordingLimitStatus(null); // プレミアムユーザーは月間制限不要
+        }
       } catch (error) {
         logger.error('録音制限チェックエラー:', error);
-        // エラー時はプレミアムユーザーの場合は許可、それ以外は制限をクリア
-        if (isPremiumUser(entitlement)) {
-          setDailyLimitStatus({ canRecord: true, currentCount: 0, limit: Infinity });
-          setRecordingLimitStatus(null);
-        } else {
-          setDailyLimitStatus(null);
-          setRecordingLimitStatus(null);
-        }
       }
     };
 
     if (visible) {
       checkLimitOnMount();
     }
-  }, [user?.id, entitlement, selectedDate, visible]);
+  }, [user?.id, entitlement, selectedDate, visible, selectedInstrument]);
 
   // 楽曲リストを読み込む
   const loadSongs = async () => {
@@ -258,18 +247,43 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
     try {
       logger.debug('録音開始ボタンが押されました');
       
-      // 1日の録音数制限をチェック（フリープランのみ）
-      if (user?.id && !isPremiumUser(entitlement)) {
-        const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, selectedDate || undefined);
+      // entitlementが古い値の場合、最新のentitlementを再取得
+      // これは、entitlementが非同期で更新されるため、古い値が渡される可能性があるため
+      let currentEntitlement = entitlement;
+      if (!currentEntitlement || !currentEntitlement.isEntitled) {
+        try {
+          if (user?.id) {
+            const subscription = await getSubscription(user.id);
+            currentEntitlement = await computeEntitlement(subscription);
+            logger.debug("録音開始: entitlementを再取得しました:", { 
+              previousEntitlement: entitlement, 
+              currentEntitlement, 
+              userId: user.id 
+            });
+          }
+        } catch (error) {
+          logger.warn("録音開始: entitlementの再取得に失敗しました。既存のentitlementを使用します:", { error, userId: user?.id, entitlement });
+          // エラー時は既存のentitlementを使用
+          if (!currentEntitlement) {
+            currentEntitlement = { isEntitled: false, isTrial: false, isPremiumActive: false, daysLeftOnTrial: 0 };
+          }
+        }
+      }
+      
+      // 1日の録音数制限をチェック（全プランでチェック）
+      if (user?.id) {
+        const dailyLimitCheck = await checkDailyRecordingLimit(user.id, currentEntitlement, selectedDate || undefined);
         if (!dailyLimitCheck.canRecord) {
           Alert.alert(
             '1日の録音数制限に達しました',
             dailyLimitCheck.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
             [
               { text: 'キャンセル', style: 'cancel' },
-              { text: 'プレミアムを見る', onPress: () => {
-                onClose();
-                router.push('/(tabs)/pricing-plans');
+              { text: currentEntitlement?.isEntitled ? '了解' : 'プレミアムを見る', onPress: () => {
+                if (!currentEntitlement?.isEntitled) {
+                  onClose();
+                  router.push('/(tabs)/pricing-plans');
+                }
               }}
             ]
           );
@@ -278,10 +292,10 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       }
       
       // Freeプランの場合、月間録音数の制限をチェック（楽器ごと）
-      if (!isPremiumUser(entitlement) && user?.id) {
-        logger.debug("録音制限チェック開始:", { isPremium: isPremiumUser(entitlement), entitlement, isEntitled: entitlement?.isEntitled });
+      if (!isPremiumUser(currentEntitlement) && user?.id) {
+        logger.debug("録音制限チェック開始:", { isPremium: isPremiumUser(currentEntitlement), entitlement: currentEntitlement, isEntitled: currentEntitlement?.isEntitled });
         const instrumentId = getInstrumentId(selectedInstrument);
-        const limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, selectedDate || undefined, instrumentId);
+        const limitCheck = await checkMonthlyRecordingLimit(user.id, currentEntitlement, selectedDate || undefined, instrumentId);
         setRecordingLimitStatus(limitCheck);
         
         if (!limitCheck.canRecord) {
@@ -320,7 +334,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       }
       
       // Freeプランの場合、選択された日付が今月であることを確認
-      if (!isPremiumUser(entitlement) && selectedDate && !isCurrentMonth(selectedDate)) {
+      if (!isPremiumUser(currentEntitlement) && selectedDate && !isCurrentMonth(selectedDate)) {
         Alert.alert(
           '録音できません',
           'Freeプランでは当月のみ録音できます。\n\n過去の月や未来の月に録音するには、プレミアムへアップグレードしてください。',
@@ -689,8 +703,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
           Alert.alert('エラー', `録音を開始できませんでした。\n\nエラー: ${error.message || '不明なエラー'}`);
         }
       } else {
-        const errorMessage = (error && typeof error === 'object' && 'message' in error) ? String(error.message) : '不明なエラー';
-        Alert.alert('エラー', `録音を開始できませんでした。\n\nエラー: ${errorMessage}`);
+        Alert.alert('エラー', `録音を開始できませんでした。\n\nエラー: ${error?.message || '不明なエラー'}`);
       }
     }
   };
@@ -962,40 +975,38 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       
       const recordedAt = selectedDate ? new Date(selectedDate) : new Date();
       
-      // 1日の録音数制限をチェック（フリープランのみ、再録音の場合はスキップ）
-      if (!isPremiumUser(entitlement) && !isRerecording) {
-        const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, recordedAt);
-        if (!dailyLimitCheck.canRecord) {
-          const normalizedResult = normalizeLimitResult(dailyLimitCheck, 'record_daily');
-          const alertConfig = getDefaultAlertConfig('record_daily');
-          
-          showFeatureLimitAlert({
-            result: {
-              ...normalizedResult,
-              title: alertConfig.defaultTitle,
-              reason: normalizedResult.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
-            },
-            defaultTitle: alertConfig.defaultTitle,
-            defaultMessage: normalizedResult.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
-            upgradeButtonText: alertConfig.upgradeButtonText,
-            router,
-            isPremium: entitlement?.isEntitled,
-            premiumButtonText: '了解',
-            onCancel: () => {
-              setIsSaving(false);
-              isSavingRef.current = false;
-            },
-            onUpgrade: () => {
-              setIsSaving(false);
-              isSavingRef.current = false;
-              if (!entitlement?.isEntitled) {
-                onClose();
-                router.push('/(tabs)/pricing-plans');
-              }
-            },
-          });
-          return;
-        }
+      // 1日の録音数制限をチェック（全プランでチェック、念のため）
+      const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, recordedAt);
+      if (!dailyLimitCheck.canRecord) {
+        const normalizedResult = normalizeLimitResult(dailyLimitCheck, 'record_daily');
+        const alertConfig = getDefaultAlertConfig('record_daily');
+        
+        showFeatureLimitAlert({
+          result: {
+            ...normalizedResult,
+            title: alertConfig.defaultTitle,
+            reason: normalizedResult.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
+          },
+          defaultTitle: alertConfig.defaultTitle,
+          defaultMessage: normalizedResult.reason || `本日は既に${dailyLimitCheck.limit}個の録音があります。`,
+          upgradeButtonText: alertConfig.upgradeButtonText,
+          router,
+          isPremium: entitlement?.isEntitled,
+          premiumButtonText: '了解',
+          onCancel: () => {
+            setIsSaving(false);
+            isSavingRef.current = false;
+          },
+          onUpgrade: () => {
+            setIsSaving(false);
+            isSavingRef.current = false;
+            if (!entitlement?.isEntitled) {
+              onClose();
+              router.push('/(tabs)/pricing-plans');
+            }
+          },
+        });
+        return;
       }
       
       // Freeプランの場合、選択された日付が今月であることを確認
@@ -1030,7 +1041,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       // 再録音の場合は月間録音制限のチェックをスキップ
       // 楽器IDを取得（selectedInstrumentから取得、プロファイルの値とは異なる可能性がある）
       const currentInstrumentId = getInstrumentId(selectedInstrument);
-      let limitCheck: Awaited<ReturnType<typeof checkMonthlyRecordingLimit>> = { canRecord: true, currentCount: 0, limit: 0 };
+      let limitCheck = { canRecord: true, currentCount: 0, limit: 0 };
       if (!isRerecording) {
         limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, recordedAt, currentInstrumentId);
       } else {
@@ -1186,79 +1197,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
     }
   };
 
-  // 簡易メトロノーム: クリック音を再生
-  const playMetronomeClick = useCallback(() => {
-    if (typeof window === 'undefined' || !(window.AudioContext || (window as any).webkitAudioContext)) return;
-    try {
-      let ctx = metronomeAudioContextRef.current;
-      if (!ctx || ctx.state === 'closed') {
-        ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        metronomeAudioContextRef.current = ctx;
-      }
-      if (ctx.state === 'suspended') {
-        ctx.resume().then(() => playMetronomeClickInternal(ctx!)).catch(() => {});
-      } else {
-        playMetronomeClickInternal(ctx);
-      }
-    } catch {
-      // オーディオ再生が利用できない環境では静かに失敗
-    }
-  }, []);
-
-  const playMetronomeClickInternal = (ctx: AudioContext) => {
-    const isStrongBeat = metronomeBeatRef.current === 0;
-    const oscillator = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-    oscillator.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    oscillator.frequency.setValueAtTime(isStrongBeat ? 1000 : 600, ctx.currentTime);
-    oscillator.type = 'square';
-    gainNode.gain.setValueAtTime(0, ctx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(isStrongBeat ? 0.25 : 0.15, ctx.currentTime + 0.003);
-    gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.05);
-    oscillator.start(ctx.currentTime);
-    oscillator.stop(ctx.currentTime + 0.05);
-    metronomeBeatRef.current = (metronomeBeatRef.current + 1) % Math.max(2, metronomeBeatsRef.current);
-  };
-
-  // 簡易メトロノーム: 開始
-  const startMetronome = useCallback(() => {
-    if (metronomeIntervalRef.current) return;
-    metronomeBeatRef.current = 0;
-    metronomeBeatsRef.current = metronomeBeats;
-    const intervalMs = 60000 / metronomeBpm;
-    playMetronomeClick();
-    metronomeIntervalRef.current = setInterval(() => {
-      playMetronomeClick();
-    }, intervalMs);
-    setIsMetronomePlaying(true);
-  }, [metronomeBpm, metronomeBeats, playMetronomeClick]);
-
-  // 簡易メトロノーム: 停止
-  const stopMetronome = useCallback(() => {
-    if (metronomeIntervalRef.current) {
-      clearInterval(metronomeIntervalRef.current);
-      metronomeIntervalRef.current = null;
-    }
-    setIsMetronomePlaying(false);
-  }, []);
-
-  // 録音停止時にメトロノームも停止しない（録音開始前からメトロノームを開始可能にするため）
-  // ユーザーが手動で停止するか、録音停止時に停止する
-
-  // BPM変更時にメトロノームを再起動
-  useEffect(() => {
-    if (isMetronomePlaying && metronomeIntervalRef.current) {
-      clearInterval(metronomeIntervalRef.current);
-      metronomeIntervalRef.current = null;
-      playMetronomeClick();
-      const intervalMs = 60000 / metronomeBpm;
-      metronomeIntervalRef.current = setInterval(() => {
-        playMetronomeClick();
-      }, intervalMs);
-    }
-  }, [metronomeBpm, isMetronomePlaying, playMetronomeClick]);
-
   // 時間フォーマット
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -1358,64 +1296,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
                 </Text>
               </View>
               )}
-
-            {/* 簡易メトロノーム（録音開始前から開始可能） */}
-            <View style={[styles.metronomeSection, { backgroundColor: currentTheme.surface }]}>
-              <Text style={[styles.metronomeLabel, { color: currentTheme.text }]}>メトロノーム</Text>
-              <View style={styles.metronomeControls}>
-                <TouchableOpacity
-                  style={[styles.metronomeBpmButton, { backgroundColor: currentTheme.secondary }]}
-                  onPress={() => setMetronomeBpm((b) => Math.max(40, b - 5))}
-                >
-                  <Minus size={20} color={currentTheme.text} />
-                </TouchableOpacity>
-                <Text style={[styles.metronomeBpmText, { color: currentTheme.text }]}>{metronomeBpm} BPM</Text>
-                <TouchableOpacity
-                  style={[styles.metronomeBpmButton, { backgroundColor: currentTheme.secondary }]}
-                  onPress={() => setMetronomeBpm((b) => Math.min(240, b + 5))}
-                >
-                  <Plus size={20} color={currentTheme.text} />
-                </TouchableOpacity>
-              </View>
-              {/* 拍子選択 */}
-              <View style={styles.metronomeTimeSignatureRow}>
-                <Text style={[styles.metronomeLabel, { color: currentTheme.textSecondary, fontSize: 12, marginRight: 8 }]}>拍子</Text>
-                {([2, 3, 4, 5, 6] as const).map((beats) => (
-                  <TouchableOpacity
-                    key={beats}
-                    style={[
-                      styles.metronomeTimeSignatureButton,
-                      {
-                        backgroundColor: metronomeBeats === beats ? currentTheme.primary : 'rgba(128,128,128,0.2)',
-                        borderWidth: 1.5,
-                        borderColor: metronomeBeats === beats ? currentTheme.primary : currentTheme.textSecondary,
-                      }
-                    ]}
-                    onPress={() => setMetronomeBeats(beats)}
-                  >
-                    <Text style={[styles.metronomeTimeSignatureText, { color: metronomeBeats === beats ? '#FFFFFF' : currentTheme.text }]}>
-                      {beats}/4
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <TouchableOpacity
-                style={[
-                  styles.metronomePlayButton,
-                  { backgroundColor: isMetronomePlaying ? '#FF9800' : currentTheme.primary }
-                ]}
-                onPress={isMetronomePlaying ? stopMetronome : startMetronome}
-              >
-                {isMetronomePlaying ? (
-                  <Square size={20} color="#FFFFFF" />
-                ) : (
-                  <Play size={20} color="#FFFFFF" />
-                )}
-                <Text style={styles.metronomePlayButtonText}>
-                  {isMetronomePlaying ? '停止' : '開始'}
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
         )}
 
@@ -1470,16 +1350,16 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
                   style={[
                     styles.recordingTypeButton,
                     {
-                      backgroundColor: recordingType === 'performance' ? currentTheme.primary : 'rgba(128,128,128,0.22)',
-                      borderWidth: 1.5,
-                      borderColor: recordingType === 'performance' ? currentTheme.primary : currentTheme.textSecondary,
+                      backgroundColor: recordingType === 'performance' 
+                        ? currentTheme.primary 
+                        : currentTheme.secondary,
                     }
                   ]}
                   onPress={() => setRecordingType('performance')}
                 >
                   <Text style={[
                     styles.recordingTypeButtonText,
-                    { color: recordingType === 'performance' ? '#FFFFFF' : currentTheme.text }
+                    { color: recordingType === 'performance' ? currentTheme.surface : currentTheme.text }
                   ]}>
                     演奏録音
                   </Text>
@@ -1488,16 +1368,16 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
                   style={[
                     styles.recordingTypeButton,
                     {
-                      backgroundColor: recordingType === 'lesson' ? currentTheme.primary : 'rgba(128,128,128,0.22)',
-                      borderWidth: 1.5,
-                      borderColor: recordingType === 'lesson' ? currentTheme.primary : currentTheme.textSecondary,
+                      backgroundColor: recordingType === 'lesson' 
+                        ? currentTheme.primary 
+                        : currentTheme.secondary,
                     }
                   ]}
                   onPress={() => setRecordingType('lesson')}
                 >
                   <Text style={[
                     styles.recordingTypeButtonText,
-                    { color: recordingType === 'lesson' ? '#FFFFFF' : currentTheme.text }
+                    { color: recordingType === 'lesson' ? currentTheme.surface : currentTheme.text }
                   ]}>
                     レッスン録音
                   </Text>
@@ -1696,67 +1576,6 @@ const styles = StyleSheet.create({
   maxTimeText: {
     fontSize: 14,
   },
-  metronomeSection: {
-    marginTop: 20,
-    padding: 16,
-    borderRadius: 12,
-    gap: 12,
-  },
-  metronomeLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  metronomeControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-    marginBottom: 12,
-  },
-  metronomeBpmButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  metronomeBpmText: {
-    fontSize: 18,
-    fontWeight: '600',
-    minWidth: 80,
-    textAlign: 'center',
-  },
-  metronomeTimeSignatureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    marginBottom: 12,
-    gap: 8,
-  },
-  metronomeTimeSignatureButton: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-  },
-  metronomeTimeSignatureText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  metronomePlayButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    gap: 8,
-  },
-  metronomePlayButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
   audioSection: {
     marginBottom: 24,
     padding: 16,
@@ -1881,14 +1700,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   recordingTypeButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
   recordingTypeDescription: {
     fontSize: 12,
     marginTop: 8,
     lineHeight: 16,
     opacity: 0.8,
+  },
+    fontSize: 16,
+    fontWeight: '600',
   },
   limitInfoContainer: {
     padding: 12,

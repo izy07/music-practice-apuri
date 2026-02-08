@@ -208,52 +208,31 @@ export function PracticeDetailModal({
     }
   };
 
-  const handleYouTubeOpen = async () => {
-    if (!selectedMenu?.videoUrl) return;
+  const handleYouTubeOpen = async (url: string) => {
     try {
-      const canOpen = await Linking.canOpenURL(selectedMenu.videoUrl);
-      if (canOpen) {
-        await Linking.openURL(selectedMenu.videoUrl);
-      } else {
-        Alert.alert('リンクを開けません', 'インターネット接続を確認してください。', [{ text: 'OK' }]);
-      }
-    } catch (error) {
-      logger.error('YouTubeリンクを開くエラー:', error);
-      Alert.alert('エラー', '動画を開けませんでした。', [{ text: 'OK' }]);
-    }
-  };
-
-  /** 練習の仕方の文字列からURL部分を抽出してテキストとリンクに分ける */
-  const parseStepWithUrls = (step: string): { type: 'text' | 'url'; value: string }[] => {
-    const urlPattern = /(https?:\/\/[^\s\)]+)/g;
-    const segments: { type: 'text' | 'url'; value: string }[] = [];
-    let lastIndex = 0;
-    let match;
-    while ((match = urlPattern.exec(step)) !== null) {
-      if (match.index > lastIndex) {
-        segments.push({ type: 'text', value: step.slice(lastIndex, match.index) });
-      }
-      segments.push({ type: 'url', value: match[1] });
-      lastIndex = urlPattern.lastIndex;
-    }
-    if (lastIndex < step.length) {
-      segments.push({ type: 'text', value: step.slice(lastIndex) });
-    }
-    return segments.length > 0 ? segments : [{ type: 'text', value: step }];
-  };
-
-  const openStepUrl = async (url: string) => {
-    try {
-      const canOpen = await Linking.canOpenURL(url);
-      if (canOpen) {
+      const supported = await Linking.canOpenURL(url);
+      if (supported) {
         await Linking.openURL(url);
       } else {
-        Alert.alert('リンクを開けません', 'インターネット接続を確認してください。', [{ text: 'OK' }]);
+        Alert.alert('エラー', 'このURLを開くことができません');
       }
     } catch (error) {
-      logger.error('URLを開くエラー:', error);
-      Alert.alert('エラー', 'リンクを開けませんでした。', [{ text: 'OK' }]);
+      logger.error('URLを開く際にエラーが発生しました:', error);
+      Alert.alert('エラー', 'URLを開くことができませんでした');
     }
+  };
+
+  // 練習の仕方のテキストからURLを抽出する関数
+  const extractUrl = (text: string): string | null => {
+    const urlRegex = /(https?:\/\/[^\s\)]+)/;
+    const match = text.match(urlRegex);
+    return match ? match[1] : null;
+  };
+
+  // 練習の仕方のテキストからURLを除いたテキストを取得する関数
+  const getTextWithoutUrl = (text: string): string => {
+    const urlRegex = /(https?:\/\/[^\s\)]+)/;
+    return text.replace(urlRegex, '').trim();
   };
 
   // Webプラットフォームでのフォーカス管理（aria-hidden警告を防ぐため）
@@ -327,27 +306,24 @@ export function PracticeDetailModal({
                 </View>
               )}
 
-              {/* 練習の仕方（URLはタップでYouTube等を開く） */}
+              {/* 練習の仕方 */}
               {selectedMenu.howToPractice && selectedMenu.howToPractice.length > 0 && (
                 <View style={styles.detailSection}>
                   <Text style={[styles.detailSectionTitle, { color: currentTheme.text }]}>練習の仕方</Text>
                   {selectedMenu.howToPractice.map((step: string, index: number) => {
-                    const segments = parseStepWithUrls(step);
+                    const url = extractUrl(step);
+                    const textWithoutUrl = getTextWithoutUrl(step);
                     return (
                       <View key={index} style={styles.stepItem}>
                         <Text style={[styles.stepText, { color: currentTheme.textSecondary }]}>
-                          {segments.map((seg, i) =>
-                            seg.type === 'url' ? (
-                              <Text
-                                key={i}
-                                onPress={() => openStepUrl(seg.value)}
-                                style={[styles.stepText, { color: currentTheme.primary, textDecorationLine: 'underline' }]}
-                              >
-                                {seg.value}
-                              </Text>
-                            ) : (
-                              <Text key={i}>{seg.value}</Text>
-                            )
+                          {textWithoutUrl}
+                          {url && (
+                            <Text 
+                              style={[styles.stepText, { color: currentTheme.primary, textDecorationLine: 'underline' }]}
+                              onPress={() => handleYouTubeOpen(url)}
+                            >
+                              {' '}{url}
+                            </Text>
                           )}
                         </Text>
                       </View>

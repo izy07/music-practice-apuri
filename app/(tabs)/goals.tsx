@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Linking, Platform, FlatList } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Linking, Platform, FlatList, Dimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Plus, Target, Calendar, CircleCheck as CheckCircle, Edit3, Trash2, CheckCircle2, CalendarDays, Square, CheckSquare2, List } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -73,23 +73,83 @@ interface UpgradeBannerProps {
     push: (path: string) => void;
   };
 }
+const getUpgradeBannerLayout = () => {
+  const { width } = Dimensions.get('window');
+  const horizontalMargin = width < 400 ? 8 : width < 600 ? 12 : 20;
+  return {
+    container: {
+      marginHorizontal: horizontalMargin,
+      marginTop: 12,
+      marginBottom: 8,
+      padding: width < 400 ? 12 : 14,
+      paddingHorizontal: width < 400 ? 20 : width < 600 ? 28 : 32,
+      borderRadius: 8,
+      borderWidth: 1,
+      flexDirection: 'row' as const,
+      alignItems: 'center' as const,
+      justifyContent: 'space-between' as const,
+      alignSelf: 'stretch' as const,
+      ...(Platform.OS === 'web'
+        ? { boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)' }
+        : {
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 8,
+            elevation: 3,
+          }
+      ),
+    },
+    textContainer: {
+      flex: 1,
+      marginRight: 20,
+      flexShrink: 0,
+      minWidth: 0,
+    },
+    title: {
+      fontSize: width < 400 ? 13 : 14,
+      fontWeight: '600' as const,
+      marginBottom: 2,
+    },
+    subtitle: {
+      fontSize: width < 400 ? 11 : 12,
+    },
+    button: {
+      paddingVertical: 8,
+      paddingHorizontal: width < 400 ? 10 : 14,
+      borderRadius: 6,
+      minWidth: 76,
+      flexShrink: 0,
+    },
+    buttonText: {
+      fontSize: 12,
+      fontWeight: '600' as const,
+      color: '#FFFFFF',
+    },
+  };
+};
+
 const UpgradeBanner: React.FC<UpgradeBannerProps> = React.memo(({ currentTheme, router }) => {
-  const bannerStyles = getUpgradeBannerStyles();
+  const [layout, setLayout] = React.useState(getUpgradeBannerLayout);
+  useEffect(() => {
+    const sub = Dimensions.addEventListener('change', () => setLayout(getUpgradeBannerLayout()));
+    return () => sub?.remove();
+  }, []);
   return (
-    <View style={[bannerStyles.container, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
-      <View style={bannerStyles.textContainer}>
-        <Text style={[bannerStyles.title, { color: currentTheme.text }]}>
+    <View style={[layout.container, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
+      <View style={layout.textContainer}>
+        <Text style={[layout.title, { color: currentTheme.text }]}>
           4個まで設定可能
         </Text>
-        <Text style={[bannerStyles.subtitle, { color: currentTheme.textSecondary }]}>
+        <Text style={[layout.subtitle, { color: currentTheme.textSecondary }]}>
           プレミアムで無制限に
         </Text>
       </View>
       <TouchableOpacity
-        style={[bannerStyles.button, { backgroundColor: currentTheme.primary }]}
+        style={[layout.button, { backgroundColor: currentTheme.primary }]}
         onPress={() => router.push('/(tabs)/pricing-plans')}
       >
-        <Text style={bannerStyles.buttonText}>プレミアムへ</Text>
+        <Text style={layout.buttonText}>プレミアムへ</Text>
       </TouchableOpacity>
     </View>
   );
@@ -97,61 +157,42 @@ const UpgradeBanner: React.FC<UpgradeBannerProps> = React.memo(({ currentTheme, 
 
 UpgradeBanner.displayName = 'UpgradeBanner';
 
-// レスポンシブ: 画面幅の約92%を使用（左右に余白を確保）
-const getUpgradeBannerStyles = () => {
-  const { width } = require('react-native').Dimensions.get('window');
-  const horizontalMargin = Math.max(12, Math.min(24, width * 0.04));
-  return {
+const upgradeBannerStyles = {
   container: {
-    width: width - horizontalMargin * 2,
-    alignSelf: 'center' as const,
     marginTop: 12,
     marginBottom: 8,
-    padding: 12,
-    paddingHorizontal: 18,
     borderRadius: 8,
     borderWidth: 1,
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
     justifyContent: 'space-between' as const,
-    ...(Platform.OS === 'web' 
-      ? { boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)' }
-      : {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.1,
-          shadowRadius: 8,
-          elevation: 3,
-        }
-    ),
   },
   textContainer: {
     flex: 1,
-    marginRight: 24,
+    marginRight: 20,
     flexShrink: 0,
     minWidth: 0,
   },
   title: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600' as const,
     marginBottom: 2,
   },
   subtitle: {
-    fontSize: 11,
+    fontSize: 12,
   },
   button: {
     paddingVertical: 8,
     paddingHorizontal: 14,
     borderRadius: 6,
-    minWidth: 70,
-    flexShrink: 1,
+    minWidth: 76,
+    flexShrink: 0,
   },
   buttonText: {
     fontSize: 12,
     fontWeight: '600' as const,
     color: '#FFFFFF',
   },
-  };
 };
 
 // 型定義は共通型定義からインポート（lib/tabs/goals/types.ts）
@@ -190,25 +231,6 @@ export default function GoalsScreen() {
   // 強制更新用の状態
   const [forceUpdate, setForceUpdate] = useState(0);
   
-  // カレンダー表示ボタンは楽器ごとに1つだけ表示（複数長期目標表示バグ対策）
-  const primaryCalendarGoalIdByInstrument = useMemo(() => {
-    const byInstrument: Record<string, string> = {};
-    for (const goal of goals) {
-      if (!goal.show_on_calendar) continue;
-      const inst = goal.instrument_id ?? 'null';
-      const existingId = byInstrument[inst];
-      if (!existingId) {
-        byInstrument[inst] = goal.id;
-      } else {
-        const existingGoal = goals.find(g => g.id === existingId);
-        const gCreated = new Date(goal.created_at || 0).getTime();
-        const eCreated = new Date(existingGoal?.created_at || 0).getTime();
-        if (gCreated > eCreated) byInstrument[inst] = goal.id;
-      }
-    }
-    return byInstrument;
-  }, [goals]);
-  
   // 削除処理用のloading state
   const [isDeleting, setIsDeleting] = useState(false);
   
@@ -241,7 +263,7 @@ export default function GoalsScreen() {
    * 5. オンライン時またはキャッシュがない場合はDBから取得（goalRepository経由）
    * 6. クライアント側でもフィルタリング（instrument_idカラムが存在しない場合でも対応）
    * 7. オフラインで保存された目標も追加（未同期のもののみ）
-   * 8. フリープランの場合、最新の4個だけを表示（サブスクリプション制限）
+   * 8. フリープランの場合、最新の2個だけを表示（サブスクリプション制限）
    * 9. キャッシュに保存（オフライン対応）
    * 
    * 注意: 認証ユーザー情報は既に取得済みのuserを使用（直接Supabase呼び出しを回避）
@@ -2217,49 +2239,57 @@ export default function GoalsScreen() {
                     </View>
                   )}
 
-                  {/* 個人目標（短期・長期）のカレンダー表示切り替え: 常に1つだけ表示 */}
-                  {/* 達成済みの場合は非表示。楽器ごとに「表示/非表示」は1目標のみ、それ以外は「カレンダーに表示」の1ボタンのみ */}
+                  {/* 個人目標（短期・長期）のカレンダー表示切り替えボタン */}
+                  {/* 達成済み（is_completed === true または progress_percentage === 100）の場合はカレンダー表示ボタンを非表示 */}
                   {(goal.goal_type === 'personal_short' || goal.goal_type === 'personal_long') && 
                    !goal.is_completed && 
                    goal.progress_percentage !== 100 && (
                     <View style={styles.calendarToggleActions}>
-                      {goal.show_on_calendar && primaryCalendarGoalIdByInstrument[goal.instrument_id ?? 'null'] === goal.id ? (
-                        <>
-                          <TouchableOpacity
-                            style={[
-                              styles.calendarToggleButton,
-                              { backgroundColor: currentTheme.primary, borderColor: currentTheme.primary, borderWidth: 1.5, flex: 1 }
-                            ]}
-                            onPress={() => setShowOnCalendar(goal.id, true)}
-                            activeOpacity={0.7}
-                          >
-                            <Calendar size={14} color="#FFFFFF" />
-                            <Text style={[styles.calendarToggleButtonText, { color: '#FFFFFF' }]}>表示</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={[
-                              styles.calendarToggleButton,
-                              { backgroundColor: currentTheme.background, borderColor: currentTheme.textSecondary, borderWidth: 1.5, flex: 1 }
-                            ]}
-                            onPress={() => setShowOnCalendar(goal.id, false)}
-                            activeOpacity={0.7}
-                          >
-                            <Text style={[styles.calendarToggleButtonText, { color: currentTheme.textSecondary }]}>非表示</Text>
-                          </TouchableOpacity>
-                        </>
-                      ) : (
-                        <TouchableOpacity
-                          style={[
-                            styles.calendarToggleButton,
-                            { backgroundColor: currentTheme.background, borderColor: currentTheme.textSecondary, borderWidth: 1.5, flex: 1 }
-                          ]}
-                          onPress={() => setShowOnCalendar(goal.id, true)}
-                          activeOpacity={0.7}
-                        >
-                          <Calendar size={14} color={currentTheme.text} />
-                          <Text style={[styles.calendarToggleButtonText, { color: currentTheme.text }]}>カレンダーに表示</Text>
-                        </TouchableOpacity>
-                      )}
+                      <TouchableOpacity
+                        style={[
+                          styles.calendarToggleButton,
+                          { 
+                            backgroundColor: goal.show_on_calendar ? currentTheme.primary : currentTheme.background,
+                            borderColor: goal.show_on_calendar ? currentTheme.primary : currentTheme.textSecondary,
+                            borderWidth: 1.5,
+                            flex: 1,
+                          }
+                        ]}
+                        onPress={() => {
+                          setShowOnCalendar(goal.id, true);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Calendar size={14} color={goal.show_on_calendar ? '#FFFFFF' : currentTheme.text} />
+                        <Text style={[
+                          styles.calendarToggleButtonText,
+                          { color: goal.show_on_calendar ? '#FFFFFF' : currentTheme.text }
+                        ]}>
+                          表示
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.calendarToggleButton,
+                          { 
+                            backgroundColor: !goal.show_on_calendar ? currentTheme.secondary : currentTheme.background,
+                            borderColor: !goal.show_on_calendar ? currentTheme.secondary : currentTheme.textSecondary,
+                            borderWidth: 1.5,
+                            flex: 1,
+                          }
+                        ]}
+                        onPress={() => {
+                          setShowOnCalendar(goal.id, false);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <Text style={[
+                          styles.calendarToggleButtonText,
+                          { color: !goal.show_on_calendar ? '#FFFFFF' : currentTheme.textSecondary }
+                        ]}>
+                          非表示
+                        </Text>
+                      </TouchableOpacity>
                     </View>
                   )}
 

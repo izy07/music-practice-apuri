@@ -30,7 +30,6 @@ interface EventData {
     description?: string;
     date: string;
     color?: string | null;
-    location?: string | null;
   }>;
 }
 
@@ -626,9 +625,8 @@ export function useCalendarData(currentDate: Date) {
         date: string;
         color?: string | null;
         instrument_id?: string | null;
-        location?: string | null;
       };
-      let eventsData: Array<{ id: string; title: string; description?: string; date: string; color?: string | null; location?: string | null }> | null = null;
+      let eventsData: Array<{ id: string; title: string; description?: string; date: string; color?: string | null }> | null = null;
       
       if (error) {
         // エラー処理は後続のコードで行う
@@ -640,14 +638,13 @@ export function useCalendarData(currentDate: Date) {
           true
         );
         
-        // instrument_id は以降使わないので落としておく（UI層で不要なデータを削除）。location は編集時に渡すため含める
+        // instrument_id は以降使わないので落としておく（UI層で不要なデータを削除）
         eventsData = filtered.map((row: EventWithInstrumentId) => ({
           id: row.id,
           title: row.title,
           description: row.description,
           date: row.date,
           color: row.color || null,
-          location: row.location ?? null,
         }));
         
         logger.debug('[useCalendarData.loadEvents] イベントデータ取得に成功しました（楽器ごとに絞り込み済み）', {
@@ -696,7 +693,7 @@ export function useCalendarData(currentDate: Date) {
       if (eventsData) {
         const newEvents: EventData = {};
         
-        eventsData.forEach((event: { id: string; title: string; description?: string; date: string; color?: string | null; location?: string | null }) => {
+        eventsData.forEach((event: { id: string; title: string; description?: string; date: string; color?: string | null }) => {
           // 日付文字列（YYYY-MM-DD）をキーとして使用
           const dateStr = event.date;
           if (!newEvents[dateStr]) {
@@ -708,7 +705,6 @@ export function useCalendarData(currentDate: Date) {
             description: event.description || undefined,
             date: event.date,
             color: event.color || null,
-            location: event.location ?? undefined,
           });
         });
         
@@ -1380,7 +1376,6 @@ export function useCalendarData(currentDate: Date) {
           description: row.description || undefined,
           date: row.date,
           color: row.color || null,
-          location: row.location ?? undefined,
         });
       });
       
