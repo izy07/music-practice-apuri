@@ -66,27 +66,16 @@ export function decideNavigationTarget(
       }
     }
 
-    // 楽器未選択の場合の処理
+    // 楽器未選択の場合の処理（必ずチュートリアルから開始）
     if (!hasInstrumentSelected()) {
       // チュートリアル画面または楽器選択画面にいる場合は許可
       if (currentTab === 'tutorial' || currentTab === 'instrument-selection') {
         return { shouldNavigate: false };
       }
-
-      // チュートリアルが必要な場合はチュートリアル画面に遷移
-      if (needsTutorial()) {
-        return {
-          shouldNavigate: true,
-          targetPath: '/(tabs)/tutorial',
-          reason: '新規登録直後のため、チュートリアル画面にリダイレクト',
-        };
-      }
-
-      // その他の場合は楽器選択画面に遷移
       return {
         shouldNavigate: true,
-        targetPath: '/(tabs)/instrument-selection',
-        reason: '楽器未選択のため、楽器選択画面にリダイレクト',
+        targetPath: '/(tabs)/tutorial',
+        reason: '楽器未選択のため、チュートリアル画面にリダイレクト',
       };
     }
 
@@ -118,7 +107,7 @@ export function decideNavigationTarget(
     if (isInAuthGroup) {
       const targetPath = hasInstrumentSelected()
         ? '/(tabs)/index'
-        : '/(tabs)/instrument-selection';
+        : '/(tabs)/tutorial';
       return {
         shouldNavigate: true,
         targetPath,

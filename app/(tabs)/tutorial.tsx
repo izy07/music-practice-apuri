@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 import { ArrowRight, ArrowLeft, ChevronRight } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
+import { ErrorHandler } from '@/lib/errorHandler';
 import { navigateWithBasePath } from '@/lib/navigationUtils';
 import NotificationService from '@/lib/notificationService';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
@@ -238,8 +239,7 @@ export default function TutorialScreen() {
         }
       }
     } catch (error) {
-      logger.error('通知設定の更新エラー:', error);
-      Alert.alert('エラー', '通知設定の更新に失敗しました');
+      ErrorHandler.handle(error, '通知設定更新', true);
     } finally {
       setIsRequestingPermission(false);
     }
@@ -265,12 +265,12 @@ export default function TutorialScreen() {
     try {
       router.replace('/(tabs)/instrument-selection');
     } catch (error) {
-      Alert.alert('エラー', '楽器選択画面への遷移に失敗しました');
+      ErrorHandler.handle(error, '楽器選択画面への遷移', true);
       if (typeof window !== 'undefined') {
         try {
           navigateWithBasePath('/instrument-selection');
         } catch (navError) {
-          Alert.alert('エラー', '画面遷移に失敗しました。ページをリロードしてください。');
+          ErrorHandler.handle(navError, '画面遷移', true);
         }
       }
     } finally {
@@ -347,8 +347,7 @@ export default function TutorialScreen() {
             router.replace('/(tabs)/index');
             logger.debug('カレンダー画面への遷移完了');
           } catch (navError) {
-            logger.error('カレンダー画面への遷移エラー:', navError);
-            Alert.alert('エラー', 'カレンダー画面への遷移に失敗しました');
+            ErrorHandler.handle(navError, 'カレンダー画面への遷移', true);
             if (typeof window !== 'undefined') {
               navigateWithBasePath('/index');
             }
@@ -361,8 +360,7 @@ export default function TutorialScreen() {
             router.replace('/(tabs)/instrument-selection');
             logger.debug('楽器選択画面への遷移完了');
           } catch (navError) {
-            logger.error('楽器選択画面への遷移エラー:', navError);
-            Alert.alert('エラー', '楽器選択画面への遷移に失敗しました');
+            ErrorHandler.handle(navError, '楽器選択画面への遷移', true);
             if (typeof window !== 'undefined') {
               navigateWithBasePath('/instrument-selection');
             }
@@ -370,14 +368,12 @@ export default function TutorialScreen() {
         }, 100);
       }
     } catch (error) {
-      logger.error('完了処理エラー:', error);
-      Alert.alert('エラー', 'チュートリアル完了処理に失敗しました');
+      ErrorHandler.handle(error, 'チュートリアル完了', true);
       setTimeout(() => {
         try {
           router.replace('/(tabs)/instrument-selection');
         } catch (fallbackError) {
-          logger.error('フォールバック遷移エラー:', fallbackError);
-          Alert.alert('エラー', '画面遷移に失敗しました。ページをリロードしてください。');
+          ErrorHandler.handle(fallbackError, '画面遷移', true);
           if (typeof window !== 'undefined') {
             navigateWithBasePath('/instrument-selection');
           }
@@ -478,7 +474,7 @@ export default function TutorialScreen() {
               <Text style={styles.calendarMarkTitle}>🎨 カレンダー上のマーク</Text>
               <View style={styles.markExamplesContainer}>
                 <View style={styles.markExample}>
-                  <View style={[styles.markDot, { backgroundColor: currentTheme.primary }]} />
+                  <View style={[styles.markDot, { backgroundColor: currentTheme.accent }]} />
                   <Text style={styles.markLabel}>練習時間のみ</Text>
                 </View>
                 <View style={styles.markExample}>
@@ -486,7 +482,7 @@ export default function TutorialScreen() {
                   <Text style={styles.markLabel}>録音のみ</Text>
                 </View>
                 <View style={styles.markExample}>
-                  <View style={[styles.markDot, { backgroundColor: currentTheme.accent }]} />
+                  <View style={[styles.markDot, { backgroundColor: currentTheme.primary }]} />
                   <Text style={styles.markLabel}>両方記録</Text>
                 </View>
               </View>

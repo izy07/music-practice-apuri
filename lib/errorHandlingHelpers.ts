@@ -138,3 +138,37 @@ export function isSupabaseError(error: unknown): error is SupabaseError {
     typeof error.message === 'string'
   );
 }
+
+/**
+ * データ取得の共通パターン: loading/error を更新しつつ実行し、エラー時は ErrorHandler に委譲する。
+ * 画面での「load → loading → error/再試行」を統一するために使用する。
+ *
+ * @param loadFn 実行する非同期処理（setState を閉じ込めないこと）
+ * @param setLoading loading の setState（省略時は何もしない）
+ * @param setError error の setState（省略時は ErrorHandler のみ）
+ * @param context ログ・ユーザー向けメッセージ用のコンテキスト名
+ * @param showToUser エラーをユーザーに表示するか（ErrorHandler.handle の showToUser）
+ * @returns 成功時は loadFn の戻り値、失敗時は null。呼び出し側で再試行時に同じ loadFn を再度渡せる
+ */
+export async function runWithLoadState<T>(
+  loadFn: () => Promise<T>,
+  setLoading: ((v: boolean) => void) | null,
+  setError: ((e: Error | null) => void) | null,
+  context: string,
+  showToUser: boolean = true
+): Promise<T | null> {
+  setLoading?.(true);
+  setError?.(null);
+  try {
+    const result = await loadFn();
+    setError?.(null);
+    return result;
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error(String(err));
+    setError?.(error);
+    ErrorHandler.handle(err, context, showToUser);
+    return null;
+  } finally {
+    setLoading?.(false);
+  }
+}

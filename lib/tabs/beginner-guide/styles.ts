@@ -117,6 +117,24 @@ export const styles = StyleSheet.create({
     lineHeight: 20,
     color: '#6C757D',
   },
+  subTermItem: {
+    marginTop: 8,
+    marginLeft: 12,
+    paddingLeft: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: '#DEE2E6',
+  },
+  subTermLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 2,
+    color: '#6C757D',
+  },
+  subTermText: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#6C757D',
+  },
   resourcesContainer: {
     gap: 6,
   },

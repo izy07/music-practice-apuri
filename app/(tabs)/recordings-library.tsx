@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -423,7 +423,6 @@ export default function RecordingsLibraryScreen() {
               // ローカル状態から削除
               setRecordings(prev => prev.filter(rec => rec.id !== recordingId));
               logger.debug('削除完了');
-              Alert.alert('成功', '録音を削除しました');
             } catch (error) {
               ErrorHandler.handle(error, '録音削除', true);
               Alert.alert('エラー', '録音の削除に失敗しました');
@@ -764,7 +763,7 @@ export default function RecordingsLibraryScreen() {
       });
     }
 
-    // 時間フィルター適用
+    // 時間フィルター適用（聴き比べ：「○以上前」の録音のみ = その時点より前の録音）
     if (filter !== 'all') {
       const now = new Date();
       let filterDate: Date;
@@ -789,9 +788,10 @@ export default function RecordingsLibraryScreen() {
           filterDate = new Date(0);
       }
 
+      // その日付以前の録音のみ表示（例: 半年前 → 現在から6ヶ月以上前の録音のみ）
       filtered = filtered.filter(recording => {
         const recordedDate = new Date(recording.recorded_at);
-        return recordedDate >= filterDate;
+        return recordedDate <= filterDate;
       });
     }
 
@@ -807,7 +807,7 @@ export default function RecordingsLibraryScreen() {
     return filtered;
   };
 
-  // 指定された期間の録音を表示（7日前から最新まで）
+  // 聴き比べ：選択期間「○以上前」の録音のみ表示。フィルター適用後、先頭にスクロール
   const handleTimeFilter = (filter: TimeFilter) => {
     setTimeFilter(filter);
     // フィルター適用後、先頭にスクロール
@@ -821,19 +821,23 @@ export default function RecordingsLibraryScreen() {
     }
   };
 
-  const sortedRecordings = [...getFilteredRecordings()].sort((a, b) => {
-    // 「全て」以外のフィルターの場合は、古い順（昇順）で表示（最新が下に来る）
-    // 「全て」の場合は、お気に入りを優先、次に録音日時で降順（新しいものが上）
-    if (timeFilter === 'all') {
-      // お気に入りを優先、次に録音日時で降順
-      if (a.is_favorite && !b.is_favorite) return -1;
-      if (!a.is_favorite && b.is_favorite) return 1;
-      return new Date(b.recorded_at).getTime() - new Date(a.recorded_at).getTime();
-    } else {
-      // 時間フィルター適用時は、録音日時で昇順（古いものが上、最新が下）
-      return new Date(a.recorded_at).getTime() - new Date(b.recorded_at).getTime();
-    }
-  });
+  // 聴き比べモード時は「古い順」、全ての時は「お気に入り優先・新しい順」。フィルターと並びを useMemo で明示的に依存
+  const sortedRecordings = useMemo(() => {
+    const filtered = getFilteredRecordings(timeFilter);
+    const safeTime = (r: Recording) => {
+      const t = new Date(r.recorded_at).getTime();
+      return Number.isFinite(t) ? t : 0;
+    };
+    return [...filtered].sort((a, b) => {
+      if (timeFilter === 'all') {
+        if (a.is_favorite && !b.is_favorite) return -1;
+        if (!a.is_favorite && b.is_favorite) return 1;
+        return safeTime(b) - safeTime(a); // 新しい順
+      }
+      // 聴き比べモード（1週間前〜1年前）：古い順（昇順）、最新が下
+      return safeTime(a) - safeTime(b);
+    });
+  }, [recordings, timeFilter, searchQuery, recordingTypeFilter]);
 
   // エンタイトルメントの読み込み中はローディング画面を表示
   if (entitlementLoading || loading) {
@@ -908,10 +912,11 @@ export default function RecordingsLibraryScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
+        <View style={styles.scrollContent}>
         <View style={styles.header}>
           <View style={styles.headerTop}>
             <TouchableOpacity 
-              style={styles.backButton}
+              style={[styles.backButton, { zIndex: 1 }]}
               onPress={() => safeGoBack(router, '/(tabs)/settings', true)} // 確実にsettings画面に戻る
               activeOpacity={0.7}
             >
@@ -919,13 +924,12 @@ export default function RecordingsLibraryScreen() {
               <Text style={[styles.backButtonText, { color: currentTheme.text }]}>戻る</Text>
             </TouchableOpacity>
             
-            <View style={styles.headerContent}>
+            <View style={styles.headerContent} pointerEvents="box-none">
               <Text style={[styles.title, { color: currentTheme.text }]}>
                 録音ライブラリ
               </Text>
               <Text style={[styles.subtitle, { color: currentTheme.textSecondary }]}>
-                {sortedRecordings.length}件の録音
-                {((timeFilter !== 'all' || searchQuery.trim() !== '') && recordings.length !== sortedRecordings.length) ? ` (全${recordings.length}件)` : null}
+                {`${sortedRecordings.length}件の録音${(timeFilter !== 'all' || searchQuery.trim() !== '') && recordings.length !== sortedRecordings.length ? ` (全${recordings.length}件)` : ''}`}
               </Text>
             </View>
           </View>
@@ -1308,6 +1312,7 @@ export default function RecordingsLibraryScreen() {
               ))
             )}
           </View>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -1322,6 +1327,9 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 8,
   },
+  scrollContent: {
+    flexGrow: 1,
+  },
   header: {
     paddingVertical: 14,
     alignItems: 'center',
@@ -1329,9 +1337,10 @@ const styles = StyleSheet.create({
   headerTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     width: '100%',
     paddingHorizontal: 10,
+    position: 'relative',
+    minHeight: 44,
   },
   backButton: {
     paddingVertical: 6,
@@ -1364,7 +1373,12 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   headerContent: {
-    flex: 1,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   title: {

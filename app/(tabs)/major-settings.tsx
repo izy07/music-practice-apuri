@@ -138,6 +138,7 @@ const styles = StyleSheet.create({
   },
   settingsContainer: {
     borderRadius: 20,
+    marginTop: 20,
     marginBottom: 40,
     elevation: 4,
   },

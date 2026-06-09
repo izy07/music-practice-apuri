@@ -2,8 +2,8 @@
 export const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 export const NOTE_NAMES_JA = ['ド', 'ド#', 'レ', 'レ#', 'ミ', 'ファ', 'ファ#', 'ソ', 'ソ#', 'ラ', 'ラ#', 'シ'];
 
-// 基準音A4の周波数（デフォルト440Hz）
-export const DEFAULT_A4_FREQUENCY = 440;
+// 基準音A4の周波数（デフォルト442Hz）
+export const DEFAULT_A4_FREQUENCY = 442;
 
 // 音名から周波数を計算する関数
 export function getFrequency(note: string, octave: number, a4Frequency: number = DEFAULT_A4_FREQUENCY): number {

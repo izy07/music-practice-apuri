@@ -16,6 +16,37 @@ import { ensureInstrumentExists as staticEnsureInstrumentExists } from '@/lib/in
 
 const REPOSITORY_CONTEXT = 'userRepository';
 
+/**
+ * user_profiles テーブルに実際に存在する書き込み可能カラム（スキーマと一致させる）。
+ * avatar_url, nickname, birthday, music_start_age, music_experience_years 等は
+ * スキーマにないため含めない（ニックネーム・生年月日等は instrument_specific_data に格納）。
+ */
+const USER_PROFILES_WRITABLE_COLUMNS = [
+  'display_name',
+  'selected_instrument_id',
+  'practice_level',
+  'level_selected_at',
+  'total_practice_minutes',
+  'tutorial_completed',
+  'tutorial_completed_at',
+  'onboarding_completed',
+  'onboarding_completed_at',
+  'instrument_specific_data',
+  'updated_at',
+] as const;
+
+function pickUserProfileColumns<T extends Record<string, unknown>>(
+  obj: T
+): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const key of USER_PROFILES_WRITABLE_COLUMNS) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      result[key] = (obj as Record<string, unknown>)[key];
+    }
+  }
+  return result;
+}
+
 export interface UserProfile {
   user_id: string;
   display_name?: string;
@@ -73,15 +104,15 @@ export const upsertUserProfile = async (
     async () => {
       logger.debug(`[${REPOSITORY_CONTEXT}] upsertUserProfile:start`, { profile });
       
+      // user_id は upsert の conflict キーかつ RLS で必須のため必ず含める
+      const payload = {
+        ...(profile.user_id != null && { user_id: profile.user_id }),
+        ...pickUserProfileColumns(profile as Record<string, unknown>),
+        updated_at: new Date().toISOString(),
+      };
       const { data, error } = await supabase
         .from('user_profiles')
-        .upsert(
-          {
-            ...profile,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' }
-        )
+        .upsert(payload, { onConflict: 'user_id' })
         .select('id, user_id, display_name, selected_instrument_id')
         .single();
 
@@ -153,29 +184,19 @@ export const updatePracticeLevel = async (
 /**
  * アバターURLを更新
  */
+/**
+ * アバターURLを user_profiles に保存しようとする。
+ * 注意: 現在の DB スキーマに avatar_url カラムは存在しないため、
+ * 実際の更新は行わず成功として返す。アバターは auth.users.user_metadata.avatar_url で参照すること。
+ */
 export const updateAvatarUrl = async (
   userId: string,
   url: string
 ): Promise<RepositoryResult<void>> => {
   return safeExecute(
     async () => {
-      logger.debug(`[${REPOSITORY_CONTEXT}] updateAvatarUrl:start`, { userId, url });
-      
-      const { error } = await supabase
-        .from('user_profiles')
-        .upsert(
-          {
-            user_id: userId,
-            avatar_url: url,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id' }
-        );
-
-      if (error) {
-        throw error;
-      }
-
+      logger.debug(`[${REPOSITORY_CONTEXT}] updateAvatarUrl:start (no-op: avatar_url not in schema)`, { userId, url });
+      // user_profiles に avatar_url カラムがないため DB 更新は行わない。アバターは user_metadata から利用する。
       logger.debug(`[${REPOSITORY_CONTEXT}] updateAvatarUrl:success`);
     },
     `${REPOSITORY_CONTEXT}.updateAvatarUrl`
@@ -453,6 +474,8 @@ export const updateUserProfile = async (
     }
   }
   
+  const safeUpdates = pickUserProfileColumns(updates as Record<string, unknown>);
+
   const result = await safeExecute(
     async () => {
       logger.debug(`[${REPOSITORY_CONTEXT}] updateUserProfile:start`, { userId, updates });
@@ -460,7 +483,7 @@ export const updateUserProfile = async (
       const { data, error } = await supabase
         .from('user_profiles')
         .update({
-          ...updates,
+          ...safeUpdates,
           updated_at: new Date().toISOString(),
         })
         .eq('user_id', userId)
@@ -492,7 +515,7 @@ export const updateUserProfile = async (
             const { data: retryData, error: retryError } = await supabase
               .from('user_profiles')
               .update({
-                ...updates,
+                ...safeUpdates,
                 updated_at: new Date().toISOString(),
               })
               .eq('user_id', userId)
@@ -544,10 +567,7 @@ export const updateUserProfile = async (
               
               const { data: updateData, error: updateError } = await supabase
                 .from('user_profiles')
-                .update({
-                  ...updates,
-                  updated_at: new Date().toISOString(),
-                })
+                .update({ ...safeUpdates, updated_at: new Date().toISOString() })
                 .eq('user_id', userId)
                 .select('id, user_id, display_name, selected_instrument_id');
               
@@ -622,15 +642,12 @@ export const updateUserProfile = async (
             });
             
             // selected_instrument_idを除外して再試行（楽器が存在しない場合はNULLに設定）
-            const { selected_instrument_id, ...updatesWithoutInstrument } = updates;
-            if (Object.keys(updatesWithoutInstrument).length > 0) {
+            const { selected_instrument_id, ...updatesWithoutInstrument } = updates as Record<string, unknown>;
+            const retryPayload = { ...pickUserProfileColumns(updatesWithoutInstrument), selected_instrument_id: null, updated_at: new Date().toISOString() };
+            if (Object.keys(retryPayload).length > 0) {
               const { error: retryError } = await supabase
                 .from('user_profiles')
-                .update({
-                  ...updatesWithoutInstrument,
-                  selected_instrument_id: null, // 無効な楽器IDをNULLに設定
-                  updated_at: new Date().toISOString(),
-                })
+                .update(retryPayload)
                 .eq('user_id', userId)
                 .select('id, user_id, display_name, selected_instrument_id');
               

@@ -24,6 +24,13 @@ import { supabase } from '@/lib/supabase';
 jest.mock('@/repositories/goalRepository');
 jest.mock('@/lib/database');
 jest.mock('@/lib/supabase');
+jest.mock('@/repositories/common/instrumentFilter', () => ({
+  filterByInstrumentIdInMemory: jest.fn(<T>(data: T[], _instrumentId?: string | null, _includeLegacyNull?: boolean): T[] => {
+    if (_instrumentId === undefined) return data;
+    if (_instrumentId === null) return (data as any[]).filter((row: any) => row.instrument_id == null) as T[];
+    return (data as any[]).filter((row: any) => row.instrument_id === _instrumentId) as T[];
+  }),
+}));
 jest.mock('@/lib/logger', () => ({
   default: {
     debug: jest.fn(),
@@ -49,7 +56,7 @@ describe('subscriptionLimits', () => {
   describe('FREE_PLAN_LIMITS', () => {
     it('制限値が正しく定義されている', () => {
       expect(FREE_PLAN_LIMITS.RECORDINGS_PER_MONTH_PER_INSTRUMENT).toBe(3);
-      expect(FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT).toBe(2);
+      expect(FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT).toBe(4);
       expect(FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT).toBe(10);
       expect(FREE_PLAN_LIMITS.MAX_INSTRUMENTS).toBe(2);
     });
@@ -346,16 +353,17 @@ describe('subscriptionLimits', () => {
     });
 
     it('Freeプランで曲数が制限以下の場合は追加可能', async () => {
-      (supabase.from as jest.Mock).mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({
-          data: [
-            { id: 'song-1', instrument_id: mockInstrumentId },
-            { id: 'song-2', instrument_id: mockInstrumentId },
-          ],
-          error: null,
+      const twoSongs = [
+        { id: 'song-1', instrument_id: mockInstrumentId },
+        { id: 'song-2', instrument_id: mockInstrumentId },
+      ];
+      (supabase.from as jest.Mock).mockImplementation(() => ({
+        select: () => ({
+          eq: () => ({
+            is: () => Promise.resolve({ data: twoSongs, error: null }),
+          }),
         }),
-      });
+      }));
 
       const result = await checkMyLibraryLimit(mockUserId, mockEntitlement, mockInstrumentId);
 
@@ -369,13 +377,13 @@ describe('subscriptionLimits', () => {
         id: `song-${i + 1}`,
         instrument_id: mockInstrumentId,
       }));
-      (supabase.from as jest.Mock).mockReturnValue({
-        select: jest.fn().mockReturnThis(),
-        eq: jest.fn().mockResolvedValue({
-          data: mockSongs,
-          error: null,
+      (supabase.from as jest.Mock).mockImplementation(() => ({
+        select: () => ({
+          eq: () => ({
+            is: () => Promise.resolve({ data: mockSongs, error: null }),
+          }),
         }),
-      });
+      }));
 
       const result = await checkMyLibraryLimit(mockUserId, mockEntitlement, mockInstrumentId);
 

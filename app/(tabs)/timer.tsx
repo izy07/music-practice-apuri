@@ -937,7 +937,6 @@ export default function TimerScreen() {
             // 自動記録を有効化
             setAutoSave(true);
             await AsyncStorage.setItem('timer_auto_save', '1');
-            Alert.alert('設定完了', 'タイマー完了時に自動で練習記録を保存します（1分以上で記録されます）');
           }
         },
         { 
@@ -1457,7 +1456,6 @@ export default function TimerScreen() {
     setTimerPreset(totalSeconds);
     timerPresetRef.current = totalSeconds; // 設定時間を保存
     // 即座にタイマーに反映
-      Alert.alert(t('settingsCompleted'), t('timerSetTo').replace('{time}', `${minutes}${t('minutes')}`));
   };
 
   const adjustCustomTime = (type: 'minutes' | 'seconds', delta: number) => {
@@ -1488,9 +1486,7 @@ export default function TimerScreen() {
           logger.debug('Timer seconds after apply:', timerSeconds);
         }, 100);
       }
-      const timeStr = `${customTime.hours > 0 ? customTime.hours + t('hours') : ''}${customTime.minutes}${t('minutes')}${customTime.seconds > 0 ? customTime.seconds + t('seconds') : ''}`;
-      Alert.alert(t('settingsCompleted'), t('timerSetTo').replace('{time}', timeStr));
-      } else {
+    } else {
       Alert.alert(t('error'), t('pleaseSetValidTime'));
     }
   };
@@ -1540,10 +1536,6 @@ export default function TimerScreen() {
         setTimerHours('');
         setTimerMinutes('');
         setTimerSeconds('');
-        
-        // 成功メッセージを表示
-        const timeStr = `${finalHours > 0 ? finalHours + (t('hours') || '時間') : ''}${finalMinutes > 0 ? finalMinutes + (t('minutes') || '分') : ''}${finalSeconds > 0 ? finalSeconds + (t('seconds') || '秒') : ''}`;
-        Alert.alert(t('settingsCompleted') || '設定完了', t('timerSetTo')?.replace('{time}', timeStr) || `タイマーを${timeStr}に設定しました`);
       }, 100);
       miscTimerRefs.current.push(timer);
     } else {

@@ -139,8 +139,8 @@ Google Play Consoleで各権限の使用目的を説明する必要がありま�
 ### 6. サブスクリプション（In-App Purchase）
 
 - [x] **サブスクリプション商品の登録**
-  - 月額プラン: `premium_monthly` (¥380)
-  - 年額プラン: `premium_yearly` (¥3,600)
+  - 月額プラン: `premium_monthly` (¥290)
+  - 年額プラン: `premium_yearly` (¥2,900)
   - Google Play Consoleで商品IDを登録
 
 - [x] **サブスクリプション情報の表示**

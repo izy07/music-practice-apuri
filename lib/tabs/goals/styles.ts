@@ -1,6 +1,28 @@
 import { StyleSheet, Platform } from 'react-native';
 import { createShadowStyle } from '@/lib/shadowStyles';
 
+/** 画面幅に応じたレイアウト値（目標画面のレスポンシブ用） */
+export function getResponsiveLayout(width: number) {
+  const isNarrow = width < 380;
+  const isWide = width >= 600;
+  const isTablet = width >= 768;
+  return {
+    paddingHorizontal: isNarrow ? 8 : isWide ? 20 : 12,
+    paddingTop: isNarrow ? 8 : 12,
+    sectionWidth: '96%' as const,
+    sectionMaxWidth: isTablet ? Math.min(width * 0.7, 640) : isWide ? 560 : 520,
+    goalCardMaxWidth: isTablet ? Math.min(width * 0.68, 600) : 500,
+    sectionPadding: isNarrow ? 8 : isWide ? 16 : 12,
+    headerMarginHorizontal: isNarrow ? 8 : isWide ? 20 : 12,
+    headerMarginVertical: isNarrow ? 8 : 12,
+    titleFontSize: isNarrow ? 20 : isWide ? 26 : 24,
+    addButtonPaddingVertical: isNarrow ? 10 : 12,
+    addButtonPaddingHorizontal: isNarrow ? 16 : isWide ? 24 : 20,
+    sectionTitleFontSize: isNarrow ? 18 : isWide ? 22 : 20,
+    calendarModalWidth: Math.min(width * 0.9, 400),
+  };
+}
+
 export const styles = StyleSheet.create({
   container: {
     flex: 1,

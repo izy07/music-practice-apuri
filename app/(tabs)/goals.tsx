@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
-import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Linking, Platform, FlatList, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, TextInput, Alert, Linking, Platform, FlatList, Dimensions, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Plus, Target, Calendar, CircleCheck as CheckCircle, Edit3, Trash2, CheckCircle2, CalendarDays, Square, CheckSquare2, List } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -9,7 +9,7 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { COMMON_STYLES } from '@/lib/styles';
 import logger from '@/lib/logger';
-import { styles } from '@/lib/tabs/goals/styles';
+import { styles, getResponsiveLayout } from '@/lib/tabs/goals/styles';
 import { CompletedGoalsSection } from './goals/components/_CompletedGoalsSection';
 import GoalsCalendar from './goals/components/GoalsCalendar';
 import { GoalCard } from '@/components/tabs/goals/components/_GoalCard';
@@ -198,6 +198,8 @@ const upgradeBannerStyles = {
 // 型定義は共通型定義からインポート（lib/tabs/goals/types.ts）
 
 export default function GoalsScreen() {
+  const { width } = useWindowDimensions();
+  const layout = useMemo(() => getResponsiveLayout(width), [width]);
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const router = useRouter();
   const { entitlement, loading: subscriptionLoading } = useSubscription();
@@ -251,6 +253,8 @@ export default function GoalsScreen() {
   
   // リクエスト重複防止用のref
   const loadingRef = useRef(false);
+  // 目標数制限アラートの二重表示防止
+  const limitAlertShownRef = useRef(false);
   
   /**
    * 目標一覧を読み込む
@@ -419,8 +423,7 @@ export default function GoalsScreen() {
       // キャッシュに保存（オフライン対応 - 次回のオフライン時に使用）
       await saveGoalsToCache(user.id, instrumentId, allGoals);
     } catch (error) {
-      // エラーの詳細を明示的にログに記録（型安全性のためunknown型を使用）
-      // 注意: any型を避け、unknown型を使用して型ガードで処理
+      ErrorHandler.handle(error, '目標一覧読み込み', true);
       let errorDetails: Record<string, unknown> = {};
       
       if (error instanceof Error) {
@@ -998,12 +1001,11 @@ export default function GoalsScreen() {
         );
 
         if (result.success) {
-          Alert.alert('成功', '目標を更新しました');
           resetGoalForm(setNewGoal, setEditingGoalId, setShowAddGoalForm);
           setIsSaving(false);
           return;
         } else {
-          Alert.alert('エラー', result.error || '目標の更新に失敗しました');
+          ErrorHandler.handle(new Error(result.error || '目標の更新に失敗しました'), '目標更新', true);
           setIsSaving(false);
           return;
         }
@@ -1044,18 +1046,20 @@ export default function GoalsScreen() {
           const effectiveInstrumentId = getEffectiveInstrumentId(selectedInstrument, user.selected_instrument_id);
           const { instrumentService } = require('@/services');
           const defaultInstruments = instrumentService.getDefaultInstruments();
-          // 型安全性のためany型を回避（Instrument型を推論させる）
           const instrument = defaultInstruments.find((i: { id: string; name: string }) => i.id === instrumentId || i.id === effectiveInstrumentId);
           const instrumentName = instrument?.name || 'この楽器';
-          
-          Alert.alert(
-            '上限に達しました',
-            `Freeプランでは各楽器ごとに目標を4つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/4\n\nプレミアムで無制限に設定できます。`,
-            [
-              { text: 'キャンセル', style: 'cancel' },
-              { text: 'アップグレードしましょう', onPress: () => router.push('/(tabs)/pricing-plans') }
-            ]
-          );
+          // 1回だけ表示（二重ポップアップ防止）
+          if (!limitAlertShownRef.current) {
+            limitAlertShownRef.current = true;
+            Alert.alert(
+              '上限に達しました',
+              `Freeプランでは各楽器ごとに目標を4つまで設定できます。\n${instrumentName}の現在の設定数: ${limitCheck.currentCount}/4\n\nプレミアムで無制限に設定できます。`,
+              [
+                { text: '了解', style: 'cancel', onPress: () => { limitAlertShownRef.current = false; } },
+                { text: 'プレミアムを見る', onPress: () => { limitAlertShownRef.current = false; router.push('/(tabs)/pricing-plans'); } }
+              ]
+            );
+          }
           setIsSaving(false);
           return;
         }
@@ -1080,7 +1084,6 @@ export default function GoalsScreen() {
           }
         }
         
-        Alert.alert('保存しました', 'オフラインで保存しました。オンライン時に自動的に同期されます。');
         resetGoalForm(setNewGoal, setEditingGoalId, setShowAddGoalForm);
         return;
       }
@@ -1094,10 +1097,9 @@ export default function GoalsScreen() {
       });
 
       if (result.success) {
-        Alert.alert('成功', '目標を保存しました');
         resetGoalForm(setNewGoal, setEditingGoalId, setShowAddGoalForm);
       } else {
-        Alert.alert('エラー', result.error || '目標の保存に失敗しました');
+        ErrorHandler.handle(new Error(result.error || '目標の保存に失敗しました'), '目標保存', true);
       }
     } catch (error) {
       logger.error('目標保存エラー:', error);
@@ -1109,16 +1111,14 @@ export default function GoalsScreen() {
           const localGoal = await saveGoalOffline(user.id, goalData, errorInstrumentId);
           setGoals([...goals, localGoal]);
           
-          Alert.alert('保存しました', 'オフラインで保存しました。オンライン時に自動的に同期されます。');
           resetGoalForm(setNewGoal, setEditingGoalId, setShowAddGoalForm);
           return;
         }
       } catch (offlineError) {
         logger.error('オフライン保存エラー:', offlineError);
       }
-      Alert.alert('エラー', '目標の保存に失敗しました');
+      ErrorHandler.handle(new Error('目標の保存に失敗しました'), '目標保存', true);
     } finally {
-      // 必ずローディング状態をリセット
       setIsSaving(false);
     }
   };
@@ -1260,7 +1260,7 @@ export default function GoalsScreen() {
           )
         );
       }
-      Alert.alert('エラー', '進捗の更新に失敗しました');
+      ErrorHandler.handle(error, '進捗更新', true);
     }
   };
 
@@ -1324,10 +1324,8 @@ export default function GoalsScreen() {
           logger.debug('達成後の次の目標の自動表示処理で例外が発生しました（無視）:', error);
         }
       }
-      
-      Alert.alert('おめでとうございます！', '目標を達成しました！');
     } catch (error) {
-      Alert.alert('エラー', '目標の達成処理に失敗しました');
+      ErrorHandler.handle(error, '目標達成', true);
     }
   };
 
@@ -1391,7 +1389,7 @@ export default function GoalsScreen() {
         loadGoals(),
         loadCompletedGoals()
       ]);
-      Alert.alert('エラー', '目標の未達成への戻しに失敗しました');
+      ErrorHandler.handle(error, '目標未達成に戻す', true);
     }
   };
 
@@ -1477,7 +1475,7 @@ export default function GoalsScreen() {
               goal.id === goalId ? { ...goal, show_on_calendar: currentValue } : goal
             )
           );
-          Alert.alert('エラー', `カレンダー表示設定の更新に失敗しました: ${result.error || '不明なエラー'}`);
+          ErrorHandler.handle(new Error(result.error || 'カレンダー表示設定の更新に失敗しました'), 'カレンダー表示設定', true);
           return;
         }
         
@@ -1507,10 +1505,10 @@ export default function GoalsScreen() {
           const err = error as Record<string, unknown>;
           errorMessage = (err.message as string) || '不明なエラー';
         }
-        Alert.alert('エラー', `カレンダー表示設定の更新に失敗しました: ${errorMessage}`);
+        ErrorHandler.handle(new Error(errorMessage), 'カレンダー表示設定', true);
       }
     } catch (error) {
-      Alert.alert('エラー', 'カレンダー表示設定の更新に失敗しました');
+      ErrorHandler.handle(error, 'カレンダー表示設定', true);
     }
   };
 
@@ -1645,24 +1643,11 @@ export default function GoalsScreen() {
       
       logger.debug('削除が完了しました');
       
-      // 成功メッセージを表示（Web環境ではwindow.alertを使用）
-      if (Platform.OS === 'web') {
-        window.alert('目標を削除しました');
-      } else {
-        Alert.alert('成功', '目標を削除しました');
-      }
       setIsDeleting(false);
       
     } catch (error) {
       logger.error('削除エラー', error);
-      const errorMessage = error instanceof Error ? error.message : '不明なエラー';
-      
-      // エラーメッセージを表示（Web環境ではwindow.alertを使用）
-      if (Platform.OS === 'web') {
-        window.alert(`目標の削除に失敗しました: ${errorMessage}`);
-      } else {
-        Alert.alert('エラー', `目標の削除に失敗しました: ${errorMessage}`);
-      }
+      ErrorHandler.handle(error, '目標削除', true);
       setIsDeleting(false);
     }
   };
@@ -1788,6 +1773,8 @@ export default function GoalsScreen() {
       onUncompleteGoal={uncompleteGoal}
       onUpdateProgress={updateProgress}
       onGoalUpdated={handleCompletedGoalUpdated}
+      sectionMaxWidth={layout.sectionMaxWidth}
+      sectionPadding={layout.sectionPadding}
     />
   );
 
@@ -1799,7 +1786,10 @@ export default function GoalsScreen() {
       
       <ScrollView 
         style={styles.content} 
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingHorizontal: layout.paddingHorizontal, paddingTop: layout.paddingTop }
+        ]}
         showsVerticalScrollIndicator={false}
       >
         {/* フリープラン用アップグレードバナー */}
@@ -1812,10 +1802,10 @@ export default function GoalsScreen() {
         )}
 
         {/* 1. 個人目標セクション */}
-        <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
+        <View style={[styles.section, { backgroundColor: currentTheme.surface, maxWidth: layout.sectionMaxWidth, padding: layout.sectionPadding }]}>
           <View style={styles.sectionHeader}>
             <Target size={26} color={currentTheme.primary} />
-            <Text style={[styles.sectionTitle, { color: currentTheme.text }]}>
+            <Text style={[styles.sectionTitle, { color: currentTheme.text, fontSize: layout.sectionTitleFontSize }]}>
               {(() => {
                 // 優先順位: userProfile.nickname > user.name > '個人目標'
                 const nickname = userProfile?.nickname && userProfile.nickname.trim().length > 0
@@ -1829,7 +1819,7 @@ export default function GoalsScreen() {
           </View>
           
           <TouchableOpacity
-            style={[styles.addGoalButton, { backgroundColor: currentTheme.primary }]}
+            style={[styles.addGoalButton, { backgroundColor: currentTheme.primary, paddingVertical: layout.addButtonPaddingVertical, paddingHorizontal: layout.addButtonPaddingHorizontal }]}
             onPress={() => router.push('/add-goal')}
           >
             <Plus size={22} color="#FFFFFF" />
@@ -1838,11 +1828,11 @@ export default function GoalsScreen() {
         </View>
 
         {/* 設定した目標セクション */}
-        <View style={[styles.section, { backgroundColor: 'transparent', marginTop: 0 }]}>
+        <View style={[styles.section, { backgroundColor: 'transparent', marginTop: 0, maxWidth: layout.sectionMaxWidth, padding: layout.sectionPadding }]}>
           {goals.length > 0 && (
             <View style={styles.goalsList}>
               {goals.map((goal) => (
-                <View key={goal.id} style={[styles.goalCard, { backgroundColor: '#FFFFFF', borderColor: currentTheme.secondary + '33' }]}>
+                <View key={goal.id} style={[styles.goalCard, { backgroundColor: '#FFFFFF', borderColor: currentTheme.secondary + '33', maxWidth: layout.goalCardMaxWidth }]}>
                   <View style={[styles.goalHeader, { position: 'relative', zIndex: 1 }]}>
                     <View style={[styles.goalTypeBadge, { backgroundColor: getGoalTypeColor(goal.goal_type) }]}>
                       <Text style={styles.goalTypeBadgeText}>{getGoalTypeLabel(goal.goal_type)}</Text>
@@ -1952,8 +1942,7 @@ export default function GoalsScreen() {
                                       }
                                     }
                                   } catch (error) {
-                                    console.error('サブ目標の更新エラー:', error);
-                                    Alert.alert('エラー', 'サブ目標の更新に失敗しました');
+                                    ErrorHandler.handle(error, 'サブ目標更新', true);
                                   }
                                 }}
                                 activeOpacity={0.7}
@@ -2012,11 +2001,8 @@ export default function GoalsScreen() {
                                             if (remainingSubGoals.length === 0) {
                                               logger.debug('サブ目標が全て削除されました。手動進捗調整モードに戻ります。');
                                             }
-                                            
-                                            Alert.alert('成功', 'サブ目標を削除しました');
                                           } catch (error) {
-                                            console.error('サブ目標の削除エラー:', error);
-                                            Alert.alert('エラー', 'サブ目標の削除に失敗しました');
+                                            ErrorHandler.handle(error, 'サブ目標削除', true);
                                           }
                                         }
                                       }
@@ -2095,7 +2081,7 @@ export default function GoalsScreen() {
                                           if (errorMessage.includes('10個まで')) {
                                             Alert.alert('上限に達しました', 'サブ目標は最大10個まで設定できます');
                                           } else {
-                                            Alert.alert('エラー', 'サブ目標の追加に失敗しました');
+                                            ErrorHandler.handle(new Error(errorMessage || 'サブ目標の追加に失敗しました'), 'サブ目標追加', true);
                                           }
                                         }
                                       }}
@@ -2224,7 +2210,7 @@ export default function GoalsScreen() {
                                       if (errorMessage.includes('10個まで')) {
                                         Alert.alert('上限に達しました', 'サブ目標は最大10個まで設定できます');
                                       } else {
-                                        Alert.alert('エラー', 'サブ目標の追加に失敗しました');
+                                        ErrorHandler.handle(new Error(errorMessage || 'サブ目標の追加に失敗しました'), 'サブ目標追加', true);
                                       }
                                     }
                                   }}
@@ -2325,6 +2311,7 @@ export default function GoalsScreen() {
         onSelectDate={selectDate}
         onChangeMonth={changeMonth}
         currentTheme={currentTheme}
+        calendarModalWidth={layout.calendarModalWidth}
       />
 
       {/* タブバー上に広告バナー（フリープランのみ） */}

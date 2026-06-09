@@ -28,6 +28,7 @@ interface EventData {
     id: string;
     title: string;
     description?: string;
+    location?: string | null;
     date: string;
     color?: string | null;
   }>;
@@ -622,11 +623,12 @@ export function useCalendarData(currentDate: Date) {
         id: string;
         title: string;
         description?: string;
+        location?: string | null;
         date: string;
         color?: string | null;
         instrument_id?: string | null;
       };
-      let eventsData: Array<{ id: string; title: string; description?: string; date: string; color?: string | null }> | null = null;
+      let eventsData: Array<{ id: string; title: string; description?: string; date: string; location?: string | null; color?: string | null }> | null = null;
       
       if (error) {
         // エラー処理は後続のコードで行う
@@ -643,6 +645,7 @@ export function useCalendarData(currentDate: Date) {
           id: row.id,
           title: row.title,
           description: row.description,
+          location: row.location ?? null,
           date: row.date,
           color: row.color || null,
         }));
@@ -693,7 +696,7 @@ export function useCalendarData(currentDate: Date) {
       if (eventsData) {
         const newEvents: EventData = {};
         
-        eventsData.forEach((event: { id: string; title: string; description?: string; date: string; color?: string | null }) => {
+        eventsData.forEach((event: { id: string; title: string; description?: string; date: string; location?: string | null; color?: string | null }) => {
           // 日付文字列（YYYY-MM-DD）をキーとして使用
           const dateStr = event.date;
           if (!newEvents[dateStr]) {
@@ -703,6 +706,7 @@ export function useCalendarData(currentDate: Date) {
             id: event.id,
             title: event.title,
             description: event.description || undefined,
+            location: event.location ?? null,
             date: event.date,
             color: event.color || null,
           });
@@ -1374,6 +1378,7 @@ export function useCalendarData(currentDate: Date) {
           id: row.id,
           title: row.title,
           description: row.description || undefined,
+          location: row.location ?? null,
           date: row.date,
           color: row.color || null,
         });

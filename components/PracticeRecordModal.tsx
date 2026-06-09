@@ -10,7 +10,7 @@ if (Platform.OS !== 'web') {
     // expo-audioが利用できない場合は無視
   }
 }
-import { X, Save, Mic, Video, Trash2, Calendar, Play, Pause, Edit } from 'lucide-react-native';
+import { X, Save, Mic, Video, Trash2, Calendar, Play, Pause, Edit, ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import AudioRecorder from './AudioRecorder';
 import { supabase } from '@/lib/supabase';
@@ -140,12 +140,13 @@ interface PracticeRecordModalProps {
   visible: boolean;
   onClose: () => void;
   selectedDate: Date | null;
-  events?: Array<{id: string, title: string, description?: string, location?: string | null}>; // 選択された日付のイベント
+  events?: Array<{id: string, title: string, description?: string, location?: string | null, color?: string | null, date?: string}>; // 選択された日付のイベント
   onSave?: (minutes: number, content?: string, audioUrl?: string, videoUrl?: string, startTime?: string, endTime?: string) => void | Promise<void>; // videoUrlは後方互換性のため残す（未使用）
   onRecordingSaved?: () => void; // 録音保存後のコールバック
   onRefresh?: number; // データ再読み込みのトリガー（数値が変更されると再読み込み）
-  onEventEdit?: (event: {id: string, title: string, description?: string, location?: string | null}) => void; // イベント編集のコールバック
-  onEventDelete?: (event: {id: string, title: string, description?: string, location?: string | null}) => void; // イベント削除のコールバック
+  onEventEdit?: (event: {id: string, title: string, description?: string, location?: string | null, color?: string | null, date?: string}) => void; // イベント編集のコールバック
+  onEventPress?: (event: {id: string, title: string, description?: string, location?: string | null, color?: string | null, date?: string}) => void; // イベント詳細表示のコールバック
+  onEventDelete?: (event: {id: string, title: string, description?: string, location?: string | null, color?: string | null, date?: string}) => void; // イベント削除のコールバック
   onEventCreate?: (date: Date) => void; // イベント作成のコールバック
 }
 
@@ -158,6 +159,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   onRecordingSaved,
   onRefresh,
   onEventEdit,
+  onEventPress,
   onEventDelete,
   onEventCreate
 }: PracticeRecordModalProps) {
@@ -1323,7 +1325,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
         const message = isPremium 
           ? '録音を保存しました。60分まで録音可能です。'
           : '録音を保存しました。フリープランは3分まで。プレミアムなら60分まで録音可能です。';
-        Alert.alert('保存完了', message);
       }
     } catch (e) {
       Alert.alert('エラー', '録音の保存に失敗しました');
@@ -1564,7 +1565,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
     const canDeleteRecording = existingRecordings.length > 0;
 
     if (!canDeletePractice && !canDeleteRecording) {
-      Alert.alert('情報', '削除できる項目がありません');
       return;
     }
 
@@ -1610,7 +1610,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       }
       
       if (!sessions || sessions.length === 0) {
-        Alert.alert('情報', '削除する練習記録がありません');
         return;
       }
       
@@ -1649,10 +1648,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
 
       // コールバックを呼び出してデータを更新
       onRecordingSaved?.();
-      
-      Alert.alert('削除完了', '練習時間を削除しました（練習内容は保持されています）', [
-        { text: 'OK', onPress: () => onClose() }
-      ]);
+      onClose();
     } catch (error) {
       console.error('Error deleting practice time:', error);
       Alert.alert('エラー', '練習時間の削除に失敗しました');
@@ -1662,7 +1658,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
   const deleteRecordingOnly = async (recordingIndex?: number) => {
     try {
       if (existingRecordings.length === 0) {
-        Alert.alert('情報', '削除できる演奏録音がありません');
         return;
       }
 
@@ -1700,14 +1695,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                     await loadRecording();
                   }, 500);
 
-                  Alert.alert('削除完了', '録音データを削除しました', [
-                    { text: 'OK', onPress: () => {
-                      // 他の記録がない場合はモーダルを閉じる
-                      if (!existingRecord && existingRecordings.length === 1) {
-                        onClose();
-                      }
-                    }}
-                  ]);
+                  // 他の記録がない場合はモーダルを閉じる
+                  if (!existingRecord && existingRecordings.length === 1) {
+                    onClose();
+                  }
                 } catch (error) {
                   logger.error('Error deleting recording:', error);
                   Alert.alert('エラー', '演奏録音の削除に失敗しました');
@@ -1751,14 +1742,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 // コールバックを呼び出してデータを更新（カレンダーも更新される）
                 onRecordingSaved?.();
 
-                Alert.alert('削除完了', '録音データを削除しました', [
-                  { text: 'OK', onPress: () => {
-                    // 他の記録がない場合はモーダルを閉じる
-                    if (!existingRecord) {
-                      onClose();
-                    }
-                  }}
-                ]);
+                // 他の記録がない場合はモーダルを閉じる
+                if (!existingRecord) {
+                  onClose();
+                }
               } catch (error) {
                 logger.error('Error deleting recording:', error);
                 Alert.alert('エラー', '演奏録音の削除に失敗しました');
@@ -1782,7 +1769,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
       }
 
       if (basicPracticeRecords.length === 0) {
-        Alert.alert('情報', '削除できる基礎練マークがありません');
         return;
       }
 
@@ -1829,14 +1815,10 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                 // コールバックを呼び出してデータを更新
                 onRecordingSaved?.();
 
-                Alert.alert('削除完了', '基礎練マークを削除しました', [
-                  { text: 'OK', onPress: () => {
-                    // 他の記録がない場合はモーダルを閉じる
-                    if (!existingRecord && existingRecordings.length === 0) {
-                      onClose();
-                    }
-                  }}
-                ]);
+                // 他の記録がない場合はモーダルを閉じる
+                if (!existingRecord && existingRecordings.length === 0) {
+                  onClose();
+                }
               } catch (error) {
                 logger.error('Error deleting basic practice mark:', error);
                 Alert.alert('エラー', '基礎練マークの削除に失敗しました');
@@ -1974,9 +1956,7 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
             onRecordingSaved?.();
 
             logger.debug('両方削除が完了しました');
-            Alert.alert('削除完了', '練習記録と演奏録音を削除しました', [
-              { text: 'OK', onPress: () => onClose() }
-            ]);
+            onClose();
           } catch (error) {
             logger.error('両方削除処理エラー:', error);
             Alert.alert('エラー', '削除処理に失敗しました');
@@ -2053,11 +2033,29 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                     ]}
                   >
                     <View style={styles.eventItemContent}>
-                      <View style={styles.eventItemText}>
-                        <Text style={[styles.eventTitle, { color: currentTheme.text }]}>{event.title}</Text>
+                      <TouchableOpacity
+                        style={styles.eventItemText}
+                        onPress={() => {
+                          const handler = onEventPress || onEventEdit;
+                          if (handler) {
+                            handler(event);
+                          }
+                        }}
+                        activeOpacity={0.7}
+                        disabled={!onEventPress && !onEventEdit}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${event.title}の詳細を表示`}
+                        accessibilityHint="タップするとイベントの詳細を表示します"
+                      >
+                        <View style={styles.eventTitleRow}>
+                          <Text style={[styles.eventTitle, { color: currentTheme.text }]}>{event.title}</Text>
+                          {(onEventPress || onEventEdit) && (
+                            <ChevronRight size={14} color={currentTheme.textSecondary} />
+                          )}
+                        </View>
                         {event.location && event.location.trim() && (
                           <Text style={[styles.eventLocation, { color: currentTheme.textSecondary }]}>
-                            {event.location}
+                            📍 {event.location}
                           </Text>
                         )}
                         {event.description && (
@@ -2065,7 +2063,12 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                             {event.description}
                           </Text>
                         )}
-                      </View>
+                        {(onEventPress || onEventEdit) && (
+                          <Text style={[styles.eventTapHint, { color: currentTheme.textSecondary }]}>
+                            タップで詳細
+                          </Text>
+                        )}
+                      </TouchableOpacity>
                       <View style={styles.eventActionButtons}>
                         {onEventEdit && (
                           <TouchableOpacity
@@ -2147,7 +2150,6 @@ const PracticeRecordModal = memo(function PracticeRecordModal({
                                 }
                                 
                                 logger.info('練習記録画面: イベントを削除しました', event.id);
-                                Alert.alert('削除完了', 'イベントを削除しました');
                                 
                                 // データを再読み込みするために親コンポーネントに通知
                                 if (onRecordingSaved) {
@@ -3578,6 +3580,12 @@ const styles = StyleSheet.create({
   eventItemText: {
     flex: 1,
   },
+  eventTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 4,
+  },
   eventTitle: {
     fontSize: 13,
     fontWeight: '600',
@@ -3596,6 +3604,12 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     marginTop: 1,
     opacity: 0.75,
+  },
+  eventTapHint: {
+    fontSize: 10,
+    lineHeight: 12,
+    marginTop: 4,
+    opacity: 0.6,
   },
   eventActionButtons: {
     flexDirection: 'row',

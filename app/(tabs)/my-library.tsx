@@ -221,11 +221,8 @@ export default function MyLibraryScreen() {
         setSongs([]);
       }
     } catch (error) {
-      // 曲の読み込みエラー
       ErrorHandler.handle(error, '楽曲読み込み', true);
-      logger.error('楽曲読み込みエラー:', error);
-      Alert.alert('エラー', '楽曲の読み込みに失敗しました。もう一度お試しください。');
-      setSongs([]); // エラー時は空配列を設定
+      setSongs([]);
     }
   };
 
@@ -249,7 +246,6 @@ export default function MyLibraryScreen() {
       
       if (authError || !user) {
         ErrorHandler.handle(authError, '認証', true);
-        Alert.alert('エラー', 'ログインが必要です。再度ログインしてください。');
         return;
       }
 
@@ -393,8 +389,6 @@ export default function MyLibraryScreen() {
         setShowAddModal(false);
         setEditingSong(null);
         resetForm();
-        
-        Alert.alert('成功', '曲の情報を更新しました');
       } else {
         // 新規追加の場合、Freeプランで新しい楽器にデータを保存できるかチェック
         const canSaveCheck = await canSaveDataForInstrument(user.id, selectedInstrument, entitlement);
@@ -635,13 +629,6 @@ export default function MyLibraryScreen() {
         setShowAddModal(false);
         setEditingSong(null);
         resetForm();
-        
-        // 保存成功のメッセージを表示
-        const statusText = statusValue === 'learning' ? '練習中の曲' : 
-                          statusValue === 'played' ? '演奏済みの曲' :
-                          statusValue === 'mastered' ? 'マスター済みの曲' : 
-                          '弾きたい曲';
-        Alert.alert('保存完了！', `${statusText}を追加しました`);
       }
     } catch (error: unknown) {
       ErrorHandler.handle(error, '曲保存', true);
@@ -676,8 +663,6 @@ export default function MyLibraryScreen() {
       
       // 選択されたステータスのフィルターに自動切り替え
       setFilterStatus(newStatus);
-      
-      Alert.alert('成功', `ステータスを「${getStatusText(newStatus)}」に変更しました`);
     } catch (error) {
       logger.error('ステータス変更エラー:', error);
       Alert.alert('エラー', 'ステータスの変更に失敗しました');
@@ -758,9 +743,6 @@ export default function MyLibraryScreen() {
               } catch (error) {
                 logger.error('制限チェック更新エラー:', error);
               }
-        
-        // Web環境では簡易的なアラートを表示
-        window.alert('曲を削除しました');
       } catch (error) {
         logger.error('曲削除エラー:', error);
         window.alert('曲の削除に失敗しました。もう一度お試しください。');
@@ -807,8 +789,6 @@ export default function MyLibraryScreen() {
               } catch (error) {
                 logger.error('制限チェック更新エラー:', error);
               }
-              
-              Alert.alert('削除完了', '曲を削除しました');
             } catch (error) {
               logger.error('曲削除エラー:', error);
               Alert.alert('エラー', '曲の削除に失敗しました。もう一度お試しください。');
@@ -1065,36 +1045,43 @@ export default function MyLibraryScreen() {
         )}
 
         
-        {/* フィルター */}
+        {/* フィルター（4つを均等配置） */}
         <View style={styles.filterContainer}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterScrollContent}>
+          <View style={styles.filterRow}>
             {([
               { key: 'want_to_play' as const, label: '弾きたい' },
               { key: 'learning' as const, label: '練習中' },
               { key: 'played' as const, label: '演奏済み' },
               { key: 'mastered' as const, label: 'マスター' }
-            ] as const).map((filter, index) => (
+            ] as const).map((filter) => (
               <TouchableOpacity
                 key={filter.key}
                 style={[
                   styles.filterButton,
-                  filterStatus === filter.key && { backgroundColor: currentTheme.primary },
-                  index === 0 && styles.firstFilterButton
+                  {
+                    backgroundColor: filterStatus === filter.key ? currentTheme.primary : currentTheme.surface,
+                    borderColor: filterStatus === filter.key ? currentTheme.primary : currentTheme.secondary,
+                  },
+                  filterStatus === filter.key && styles.filterButtonSelected,
                 ]}
                 onPress={() => {
                   type SongStatus = 'want_to_play' | 'learning' | 'played' | 'mastered';
                   setFilterStatus(filter.key as SongStatus);
                 }}
               >
-                <Text style={[
-                  styles.filterButtonText,
-                  { color: filterStatus === filter.key ? '#FFFFFF' : currentTheme.text }
-                ]}>
+                <Text
+                  style={[
+                    styles.filterButtonText,
+                    { color: filterStatus === filter.key ? '#FFFFFF' : currentTheme.text }
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
                   {filter.label}
                 </Text>
               </TouchableOpacity>
             ))}
-          </ScrollView>
+          </View>
         </View>
 
         {/* 曲リスト */}
@@ -1550,27 +1537,29 @@ const styles = StyleSheet.create({
     paddingBottom: 80, // 下部タブメニューの高さ分のパディングを追加
   },
   filterContainer: {
-    marginVertical: 20,
-    marginLeft: -20,
-    paddingLeft: 0,
-    marginRight: -20,
+    marginTop: 8,
+    marginBottom: 16,
   },
-  filterScrollContent: {
-    paddingLeft: 0,
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 6,
   },
   filterButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-    marginRight: 3,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 0,
   },
-  firstFilterButton: {
-    marginLeft: 4,
+  filterButtonSelected: {
+    borderWidth: 1.5,
   },
   filterButtonText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   songsContainer: {

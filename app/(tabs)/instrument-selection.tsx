@@ -17,12 +17,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
 
 const OTHER_INSTRUMENT_ID = '550e8400-e29b-41d4-a716-446655440016';
+const VOCAL_INSTRUMENT_ID = '550e8400-e29b-41d4-a716-446655440023';
+const CONDUCTOR_INSTRUMENT_ID = '550e8400-e29b-41d4-a716-446655440024';
 
 interface Instrument {
   id: string;
   name: string;
   nameEn: string;
   emoji: string;
+  subLabel?: string;
 }
 
 export default function InstrumentSelectionScreen() {
@@ -83,7 +86,11 @@ export default function InstrumentSelectionScreen() {
       { id: '550e8400-e29b-41d4-a716-446655440010', name: 'トロンボーン', nameEn: 'Trombone', emoji: '🎺' },
       { id: '550e8400-e29b-41d4-a716-446655440015', name: 'コントラバス', nameEn: 'Contrabass', emoji: '🎻' },
       { id: '550e8400-e29b-41d4-a716-446655440012', name: 'ファゴット', nameEn: 'Bassoon', emoji: '🎵' },
-      // 注意: 将来的に追加予定の楽器（ハープ、シンセサイザー、太鼓、琴）は実装時に追加
+      // ボーカル・指揮者・ユーフォニアム・リコーダー・その他を最後に表示
+      { id: VOCAL_INSTRUMENT_ID, name: 'ボーカル', nameEn: 'Vocal', emoji: '🎤' },
+      { id: CONDUCTOR_INSTRUMENT_ID, name: '指揮者', nameEn: 'Conductor', emoji: '🎼', subLabel: 'その他' },
+      { id: '550e8400-e29b-41d4-a716-446655440025', name: 'ユーフォニアム', nameEn: 'Euphonium', emoji: '🎺' },
+      { id: '550e8400-e29b-41d4-a716-446655440026', name: 'リコーダー', nameEn: 'Recorder', emoji: '🪈' },
       {
         id: OTHER_INSTRUMENT_ID,
         // 「その他」で名前登録済みなら、その名前を“楽器名”として表示（その他とは別に見えるように）
@@ -92,11 +99,7 @@ export default function InstrumentSelectionScreen() {
         emoji: customInstrumentName.trim() ? '🎵' : '❓',
       },
     ];
-
-    // 以前の並び（定義順）を維持し、「その他」だけ最後に固定
-    const otherInstrument = allInstruments.find(i => i.id === OTHER_INSTRUMENT_ID);
-    const regularInstruments = allInstruments.filter(i => i.id !== OTHER_INSTRUMENT_ID);
-    return otherInstrument ? [...regularInstruments, otherInstrument] : regularInstruments;
+    return allInstruments;
   }, [customInstrumentName]);
 
   // すべての楽器を表示（非表示にしていた楽器も表示）
@@ -284,10 +287,7 @@ export default function InstrumentSelectionScreen() {
           <View style={[styles.freePlanInfoBanner, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
             <View style={styles.freePlanInfoContent}>
               <Text style={[styles.freePlanInfoTitle, { color: currentTheme.text }]}>
-                ⚠️ Freeプラン：楽器2個まで。
-              </Text>
-              <Text style={[styles.freePlanInfoSubtitle, { color: currentTheme.textSecondary }]}>
-                3個目以降はプレミアムへアップグレード
+                ⚠️ Freeプランでは楽器は2個まで。3個目以降はプレミアムへアップグレードしてください。
               </Text>
               {/* 現在使用中の楽器を表示 */}
               {activeInstrumentIds.length > 0 && (
@@ -372,6 +372,16 @@ export default function InstrumentSelectionScreen() {
               >
                 {instrument.nameEn}
               </Text>
+              {instrument.subLabel ? (
+                <Text
+                  style={[
+                    styles.instrumentSubLabel,
+                    { color: selectedInstrumentId === instrument.id ? 'rgba(255,255,255,0.8)' : currentTheme.textSecondary }
+                  ]}
+                >
+                  {instrument.subLabel}
+                </Text>
+              ) : null}
               {selectedInstrumentId === instrument.id && (
                 <View style={styles.checkmarkContainer}>
                   <CheckCircle size={24} color="#FFFFFF" />
@@ -543,6 +553,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     opacity: 0.7,
     lineHeight: 12,
+  },
+  instrumentSubLabel: {
+    fontSize: 9,
+    textAlign: 'center',
+    opacity: 0.8,
+    marginTop: 2,
   },
   checkmarkContainer: {
     position: 'absolute',

@@ -120,10 +120,10 @@ export default function TermsOfServiceScreen() {
           </Text>
           <View style={styles.bulletList}>
             <Text style={[styles.bulletItem, { color: currentTheme.textSecondary }]}>
-              • 月額プラン: 380円（税込）
+              • 月額プラン: 290円（税込）
             </Text>
             <Text style={[styles.bulletItem, { color: currentTheme.textSecondary }]}>
-              • 年額プラン: 3,600円（税込、月額換算300円、月額プランより約21%割引）
+              • 年額プラン: 2,900円（税込、月額換算242円、月額プランより約17%割引）
             </Text>
           </View>
           <Text style={[styles.sectionText, { color: currentTheme.textSecondary }]}>

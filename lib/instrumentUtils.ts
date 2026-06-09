@@ -28,6 +28,8 @@ const INSTRUMENT_NAME_TO_EMOJI_MAP: Record<string, string> = {
   'Taiko': '🥁',
   'Other': '❓',
   'Tuba': '🎺',
+  'Vocal': '🎤',
+  'Conductor': '🎼',
 };
 
 /**
@@ -56,6 +58,10 @@ const INSTRUMENT_ID_TO_KEY_MAP: Record<string, string> = {
   '550e8400-e29b-41d4-a716-446655440022': 'tuba',      // チューバ
   '550e8400-e29b-41d4-a716-446655440020': 'synthesizer', // シンセサイザー
   '550e8400-e29b-41d4-a716-446655440021': 'taiko',     // 太鼓
+  '550e8400-e29b-41d4-a716-446655440023': 'vocal',     // ボーカル
+  '550e8400-e29b-41d4-a716-446655440024': 'conductor', // 指揮者
+  '550e8400-e29b-41d4-a716-446655440025': 'euphonium', // ユーフォニアム
+  '550e8400-e29b-41d4-a716-446655440026': 'recorder',  // リコーダー
 };
 
 /**

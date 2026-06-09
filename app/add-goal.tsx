@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ArrowLeft, Plus, Target, Calendar, ChevronLeft, ChevronRight, List, CheckSquare2, Square, Trash2 } from 'lucide-react-native';
@@ -192,7 +192,6 @@ export default function AddGoalScreen() {
 
       if (!result.success) {
         ErrorHandler.handle(new Error(result.error || '目標の作成に失敗しました'), '目標作成', true);
-        Alert.alert('エラー', result.error || '目標の作成に失敗しました');
         setIsLoading(false);
         return;
       }
@@ -243,7 +242,6 @@ export default function AddGoalScreen() {
       safeGoBack(router, '/(tabs)/goals', true);
     } catch (error) {
       ErrorHandler.handle(error, '目標保存', true);
-      Alert.alert('エラー', '目標の保存に失敗しました');
     } finally {
       setIsLoading(false);
     }

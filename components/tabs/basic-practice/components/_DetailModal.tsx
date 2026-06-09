@@ -2,7 +2,7 @@
  * 練習メニュー詳細モーダルコンポーネント
  */
 import React, { useEffect } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ScrollView, Alert, Platform, Linking } from 'react-native';
 import { Play } from 'lucide-react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { PracticeItem } from '@/lib/tabs/basic-practice/types';
@@ -90,12 +90,7 @@ export const DetailModal: React.FC<DetailModalProps> = ({
                     style={[styles.youtubeButton, { backgroundColor: '#FF0000' }]}
                     onPress={() => {
                       if (practiceItem.videoUrl) {
-                        Alert.alert('YouTube再生', 'ブラウザでYouTube動画を開きます', [
-                          { text: 'キャンセル' },
-                          { text: '開く', onPress: () => {
-                            logger.debug('Opening:', practiceItem.videoUrl);
-                          }}
-                        ]);
+                        Linking.openURL(practiceItem.videoUrl).catch(() => {});
                       }
                     }}
                   >

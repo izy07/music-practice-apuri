@@ -4,6 +4,100 @@
  */
 import { supabase } from './supabase';
 import logger from './logger';
+import type { Session } from '@supabase/supabase-js';
+
+const AUTH_STORAGE_KEY = 'music-practice-auth';
+
+export function isNetworkAuthError(error: { message?: string } | null | undefined): boolean {
+  if (!error?.message) return false;
+  const message = error.message;
+  return (
+    message.includes('Failed to fetch') ||
+    message.includes('NetworkError') ||
+    message.includes('ERR_INTERNET_DISCONNECTED') ||
+    message.includes('internet disconnected') ||
+    message === 'NETWORK_ERROR' ||
+    message.includes('ERR_NAME_NOT_RESOLVED')
+  );
+}
+
+export function isInvalidRefreshTokenError(error: { message?: string } | null | undefined): boolean {
+  if (!error?.message) return false;
+  const message = error.message;
+  return (
+    message.includes('Invalid Refresh Token') ||
+    message.includes('Refresh Token Not Found') ||
+    message.includes('refresh_token_not_found')
+  );
+}
+
+/**
+ * localStorage/AsyncStorageに保存されたセッションを読み取る（ネットワーク不要）
+ */
+export function readPersistedAuthSession(): Session | null {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) {
+      return null;
+    }
+    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const session = parsed?.currentSession ?? parsed?.session ?? null;
+    if (session?.refresh_token && session?.user) {
+      return session as Session;
+    }
+    return null;
+  } catch (error) {
+    logger.debug('永続化セッションの読み取りに失敗:', error);
+    return null;
+  }
+}
+
+/**
+ * リフレッシュトークンでセッションを復元する（Instagram等と同様の永続ログイン）
+ */
+export async function refreshPersistedSession(): Promise<Session | null> {
+  try {
+    const { data: { session: currentSession } } = await supabase.auth.getSession();
+    if (currentSession?.user) {
+      const now = Math.floor(Date.now() / 1000);
+      if (!currentSession.expires_at || currentSession.expires_at > now) {
+        return currentSession;
+      }
+    }
+
+    const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession();
+    if (refreshedSession?.user) {
+      logger.debug('永続セッションのリフレッシュに成功');
+      return refreshedSession;
+    }
+
+    if (refreshError && !isInvalidRefreshTokenError(refreshError)) {
+      const persisted = readPersistedAuthSession();
+      if (persisted?.refresh_token) {
+        const { data: { session: restoredSession }, error: restoreError } = await supabase.auth.setSession({
+          access_token: persisted.access_token,
+          refresh_token: persisted.refresh_token,
+        });
+        if (restoredSession?.user) {
+          logger.debug('永続化ストレージからセッションを復元');
+          return restoredSession;
+        }
+        if (restoreError) {
+          logger.warn('永続化ストレージからのセッション復元に失敗:', restoreError.message);
+        }
+      }
+    }
+
+    if (refreshError && isInvalidRefreshTokenError(refreshError)) {
+      logger.warn('リフレッシュトークンが無効です');
+    }
+    return null;
+  } catch (error) {
+    logger.error('refreshPersistedSessionでエラー:', error);
+    return readPersistedAuthSession();
+  }
+}
 
 /**
  * 認証セッションを確認し、必要に応じてリフレッシュする
@@ -64,9 +158,10 @@ export async function ensureValidSession(): Promise<boolean> {
       return true;
     }
     
-    // セッションが期限切れの場合
-    logger.warn('セッションが期限切れです');
-    return false;
+    // セッションが期限切れの場合もリフレッシュを試行
+    logger.debug('セッションが期限切れのため、リフレッシュを試行します');
+    const refreshed = await refreshPersistedSession();
+    return !!refreshed?.user;
   } catch (error) {
     logger.error('ensureValidSessionでエラー:', error);
     return false;

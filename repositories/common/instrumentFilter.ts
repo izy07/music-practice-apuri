@@ -141,50 +141,25 @@ export const checkInstrumentIdSupport = async (forceCheck: boolean = false): Pro
 };
 
 /**
- * 楽器フィルタリングを適用する（根本的に改善された版）
- * 
- * 問題: Supabaseの.or()メソッドがクエリビルダーのチェーンを壊す
- * 解決策: SQLレベルでのフィルタリングを諦め、常に元のクエリを返す
- *         呼び出し側でTypeScript側でのフィルタリングを実行する
- * 
+ * 楽器フィルタ用のクエリを返す（DB問い合わせなし・スケール対応）
+ *
+ * SQL側の .or() がチェーンを壊すため、フィルタは行わずクエリをそのまま返します。
+ * 呼び出し側では必ず filterByInstrumentIdInMemory でメモリフィルタを実行してください。
+ * 大規模（10万ユーザー想定）では不要なDB往復を避けるため、ここでは同期的にクエリのみ返します。
+ *
  * @param query Supabaseクエリビルダー
- * @param instrumentId 楽器ID（オプション）
- * @param includeLegacyNull 既存のnullデータを含めるか（デフォルト: true）
- * @param tableName テーブル名（オプション、指定すると自動作成を試みる）
- * @returns 元のクエリ（フィルタリングは呼び出し側でTypeScript側で実行）
+ * @param _instrumentId 楽器ID（未使用・API互換のため残置）
+ * @param _includeLegacyNull 既存のnullを含むか（未使用・API互換のため残置）
+ * @param _tableName テーブル名（未使用・API互換のため残置）
+ * @returns 元のクエリ（フィルタは呼び出し側で filterByInstrumentIdInMemory を実行）
  */
-export async function applyInstrumentFilter<T extends any>(
+export function applyInstrumentFilter<T extends any>(
   query: T,
-  instrumentId?: string | null,
-  includeLegacyNull: boolean = true,
-  tableName?: string
+  _instrumentId?: string | null,
+  _includeLegacyNull: boolean = true,
+  _tableName?: string
 ): Promise<T> {
-  // 根本的な改善: SQLレベルでのフィルタリングを諦める
-  // .or()メソッドがクエリビルダーのチェーンを壊すため、常に元のクエリを返す
-  // 呼び出し側でTypeScript側でのフィルタリングを実行する
-  
-  // instrument_idカラムの存在を確認（ログ用）
-  const supports = await checkInstrumentIdSupport();
-  if (tableName) {
-    const tableSupports = await checkTableInstrumentIdSupport(tableName);
-    if (!tableSupports) {
-      logger.debug(`[instrumentFilter] ${tableName}テーブルにinstrument_idカラムが存在しません。TypeScript側でフィルタリングします。`);
-      return query;
-    }
-  } else if (!supports) {
-    logger.debug(`[instrumentFilter] instrument_idカラムが存在しません。TypeScript側でフィルタリングします。`);
-    return query;
-  }
-
-  // 常に元のクエリを返す（フィルタリングは呼び出し側でTypeScript側で実行）
-  // これにより、クエリビルダーのチェーンが壊れることがない
-  logger.debug(`[instrumentFilter] クエリをそのまま返します。TypeScript側でフィルタリングを実行してください。`, {
-    tableName,
-    instrumentId,
-    includeLegacyNull
-  });
-  
-      return query;
+  return Promise.resolve(query);
 }
 
 /**

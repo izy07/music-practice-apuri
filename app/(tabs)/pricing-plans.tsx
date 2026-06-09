@@ -34,8 +34,6 @@ export default function PricingPlansScreen() {
       } catch (refreshError) {
         logger.warn('サブスクリプション状態のリフレッシュに失敗しました（続行）:', refreshError);
       }
-      
-      Alert.alert('完了', 'プレミアムが有効になりました。');
     } catch (e) {
       // エラーを適切に記録
       const errorMessage = e instanceof Error ? e.message : String(e);
@@ -86,7 +84,7 @@ export default function PricingPlansScreen() {
         <View style={[styles.hero, { backgroundColor: currentTheme.surface }]}>
           <Crown size={28} color={currentTheme.primary} />
           <Text style={[styles.heroTitle, { color: currentTheme.text }]}>練習を、もっと効率的に</Text>
-          <Text style={[styles.heroSubtitle, { color: currentTheme.textSecondary }]}>月額¥380（年額¥3,600）で全ての機能が無制限</Text>
+          <Text style={[styles.heroSubtitle, { color: currentTheme.textSecondary }]}>月額¥290（年額¥2,900）で全ての機能が無制限</Text>
         </View>
 
         {/* プラン比較 */}
@@ -117,7 +115,7 @@ export default function PricingPlansScreen() {
           <View style={[styles.planCard, styles.planCardFeatured, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}> 
             <Text style={[styles.planName, { color: currentTheme.text }]}>Premium</Text>
             <Text style={[styles.price, { color: currentTheme.primary }]}>
-              ¥380<span style={{ fontSize: 12 }}>/月</span>
+              ¥290<span style={{ fontSize: 12 }}>/月</span>
             </Text>
             <View style={styles.featureList}>
               {[
@@ -145,8 +143,8 @@ export default function PricingPlansScreen() {
         <View style={[styles.planCard, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary, marginTop: 12 }]}> 
           <Text style={[styles.planName, { color: currentTheme.text }]}>Premium 年額</Text>
           <Text style={[styles.price, { color: currentTheme.primary }]}> 
-            ¥3,600<span style={{ fontSize: 12 }}>/年</span>
-            <Text style={{ fontSize: 12, color: currentTheme.textSecondary }}>（月額換算¥300）</Text>
+            ¥2,900<span style={{ fontSize: 12 }}>/年</span>
+            <Text style={{ fontSize: 12, color: currentTheme.textSecondary }}>（月額換算¥242）</Text>
           </Text>
           <View style={styles.featureList}>
             {[

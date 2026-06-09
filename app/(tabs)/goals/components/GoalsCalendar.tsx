@@ -15,6 +15,8 @@ interface GoalsCalendarProps {
     textSecondary: string;
     background: string;
   };
+  /** レスポンシブ: カレンダーモーダルの幅（未指定時はスタイルのデフォルト） */
+  calendarModalWidth?: number;
 }
 
 const GoalsCalendar: React.FC<GoalsCalendarProps> = ({
@@ -24,6 +26,7 @@ const GoalsCalendar: React.FC<GoalsCalendarProps> = ({
   onSelectDate,
   onChangeMonth,
   currentTheme,
+  calendarModalWidth,
 }) => {
   const getDaysInMonth = (date: Date) => {
     const year = date.getFullYear();
@@ -64,7 +67,7 @@ const GoalsCalendar: React.FC<GoalsCalendarProps> = ({
       onRequestClose={onClose}
     >
       <View style={styles.calendarOverlay}>
-        <View style={styles.calendarModal}>
+        <View style={[styles.calendarModal, calendarModalWidth != null ? { width: calendarModalWidth } : undefined]}>
           <View style={styles.calendarHeader}>
             <TouchableOpacity onPress={() => onChangeMonth('prev')}>
               <ChevronLeft size={24} color="#666666" />

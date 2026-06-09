@@ -7,6 +7,7 @@ import { goalRepository } from '@/repositories/goalRepository';
 import { OfflineStorage } from '@/lib/offlineStorage';
 import { getGoalsFromCache } from '@/lib/goals/goalCache';
 import { isOnline } from '@/lib/offlineStorage';
+import { filterByInstrumentIdInMemory } from '@/repositories/common/instrumentFilter';
 import logger from '@/lib/logger';
 
 /**
@@ -74,26 +75,14 @@ export async function loadGoalsFromDB(
 }
 
 /**
- * 目標データを楽器IDでフィルタリング
+ * 目標データを楽器IDでフィルタリング（共通 instrumentFilter に委譲）
+ * 楽器選択時はその楽器のみ、未選択時は instrument_id=null のみ。後方互換の null 混在は含めない。
  */
 export function filterGoalsByInstrument(
   goalsData: GoalFromDB[],
   instrumentId: string | null
 ): GoalFromDB[] {
-  return goalsData.filter((g: GoalFromDB) => {
-    const goalInstrumentId = g.instrument_id;
-    // instrument_idフィールドが存在しない場合（カラムが存在しない場合）はすべて表示
-    if (goalInstrumentId === undefined) {
-      return true;
-    }
-    if (instrumentId) {
-      // 楽器が選択されている場合: その楽器の目標のみ表示（instrument_idがnullの目標は除外）
-      return goalInstrumentId === instrumentId;
-    } else {
-      // 楽器が選択されていない場合: instrument_idがnullの目標のみ表示
-      return !goalInstrumentId || goalInstrumentId === null;
-    }
-  });
+  return filterByInstrumentIdInMemory(goalsData, instrumentId ?? undefined, false);
 }
 
 /**

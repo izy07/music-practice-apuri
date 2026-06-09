@@ -45,12 +45,10 @@ export const navigateToAppropriateScreen = (
     // オプションで渡された値を使用することを推奨
     const hasSelectedInstrument = options?.user?.selected_instrument_id != null && options.user.selected_instrument_id !== '';
     const canAccess = options?.canAccessMainApp?.() ?? false;
-    const needsTut = options?.needsTutorial?.() ?? false;
     
     logger.debug('[navigateToAppropriateScreen] 判定結果', {
       hasSelectedInstrument,
       canAccess,
-      needsTut,
     });
     
     // タイムアウト時のフォールバックユーザーの判定
@@ -63,12 +61,10 @@ export const navigateToAppropriateScreen = (
         selectedInstrumentId: options?.user?.selected_instrument_id
       });
       router.push('/(tabs)/index');
-    } else if (needsTut) {
+    } else {
+      // 楽器未選択の場合は必ずチュートリアルから開始
       logger.debug('[navigateToAppropriateScreen] チュートリアル画面に遷移');
       router.push('/(tabs)/tutorial');
-    } else {
-      logger.debug('[navigateToAppropriateScreen] 楽器選択画面に遷移');
-      router.push('/(tabs)/instrument-selection');
     }
   } catch (error) {
     logger.error('[navigateToAppropriateScreen] 画面遷移エラー:', error);

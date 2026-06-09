@@ -334,7 +334,6 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
         nameEn: customColors.nameEn || 'Custom',
       };
       await setCustomTheme(themeToSave);
-      Alert.alert('保存完了', 'この楽器のテーマを保存しました。この楽器では次回からこのテーマが自動的に適用されます。');
     } catch (error) {
       Alert.alert('エラー', 'テーマの保存に失敗しました');
     }
@@ -344,7 +343,6 @@ export const AppearanceSettings: React.FC<AppearanceSettingsProps> = ({
   const handleResetTheme = async () => {
     setUseCustomTheme(false);
     await resetToInstrumentTheme();
-    Alert.alert('リセット完了', '楽器の自動テーマに戻しました');
   };
 
   const getCurrentPresetName = () => {

@@ -6,6 +6,7 @@
 
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
+import { isColumnNotFoundError } from '@/lib/columnErrorHandler';
 
 // 同時実行を防ぐためのロック
 let isChecking = false;
@@ -39,11 +40,9 @@ async function checkLocationColumnExists(): Promise<boolean> {
       errorMessage: selectError.message,
     });
     
-    // 42703エラーコードは「カラムが存在しない」を意味する
-    // ただし、一時的なネットワークエラーや権限エラーの可能性もあるため、
-    // エラーメッセージも確認する
-    if (selectError.code === '42703' && selectError.message?.includes('location')) {
-      logger.debug('[ensureLocationColumn] ❌ eventsテーブルにlocationカラムは存在しません（42703エラー + locationメッセージ）');
+    // PostgREST(PGRST204) / Postgres(42703) いずれも「カラム不存在」を示す
+    if (isColumnNotFoundError(selectError, 'location')) {
+      logger.debug('[ensureLocationColumn] ❌ eventsテーブルにlocationカラムは存在しません');
       return false;
     }
     

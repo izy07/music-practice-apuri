@@ -138,13 +138,6 @@ const EventManagementSection = memo(function EventManagementSection({
       
       // コールバックを呼び出してデータを更新
       await onEventDeleted();
-      
-      // 削除成功のアラートを表示
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
-        window.alert('イベントを削除しました');
-      } else {
-        Alert.alert('削除完了', 'イベントを削除しました');
-      }
     } catch (error) {
       ErrorHandler.handle(error, 'イベントの削除', true);
       logger.error('イベント管理一覧: イベントの削除エラー:', error);

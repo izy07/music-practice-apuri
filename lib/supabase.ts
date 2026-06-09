@@ -55,13 +55,17 @@ const useLocalOnNative = process.env.EXPO_PUBLIC_USE_LOCAL_SUPABASE === 'true';
 const useLocalOnWeb = process.env.EXPO_PUBLIC_USE_LOCAL_SUPABASE_WEB === 'true';
 
 // WebはPC上で動作するためローカル優先、ネイティブはクラウド優先
-// Webは常にクラウドを使用（ローカルは明示的に実装しない）
+// 開発時は EXPO_PUBLIC_USE_LOCAL_SUPABASE_WEB=true でローカルSupabaseへ切替可能
 // 本番環境では環境変数が必須、開発環境ではローカルフォールバック可
 const finalUrl = isWeb
-  ? (supabaseUrl || (() => { throw new Error('EXPO_PUBLIC_SUPABASE_URL環境変数が設定されていません'); })())
+  ? (isDev && useLocalOnWeb
+      ? localUrl
+      : (supabaseUrl || (isDev ? localUrl : (() => { throw new Error('EXPO_PUBLIC_SUPABASE_URL環境変数が設定されていません'); })())))
   : (isDev ? (useLocalOnNative ? localUrl : (supabaseUrl || localUrl)) : (supabaseUrl || (() => { throw new Error('EXPO_PUBLIC_SUPABASE_URL環境変数が設定されていません'); })()));
 const finalKey = isWeb
-  ? (supabaseAnonKey || (() => { throw new Error('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数が設定されていません'); })())
+  ? (isDev && useLocalOnWeb
+      ? localKey
+      : (supabaseAnonKey || (isDev ? localKey : (() => { throw new Error('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数が設定されていません'); })())))
   : (isDev ? (useLocalOnNative ? localKey : (supabaseAnonKey || localKey)) : (supabaseAnonKey || (() => { throw new Error('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数が設定されていません'); })()));
 
 // 開発環境でのみ接続情報をログ出力（本番では機密情報を隠す）

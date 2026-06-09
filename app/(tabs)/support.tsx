@@ -71,7 +71,6 @@ export default function SupportScreen() {
         try {
           if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
             await navigator.clipboard.writeText(text);
-            Alert.alert('コピー完了', 'アプリの情報をクリップボードにコピーしました');
           } else if (typeof document !== 'undefined') {
             // フォールバック: テキストエリアを使用してコピー
             const textArea = document.createElement('textarea');
@@ -85,9 +84,7 @@ export default function SupportScreen() {
             const success = document.execCommand('copy');
             document.body.removeChild(textArea);
             
-            if (success) {
-              Alert.alert('コピー完了', 'アプリの情報をクリップボードにコピーしました');
-            } else {
+            if (!success) {
               throw new Error('クリップボードへのコピーに失敗しました');
             }
           } else {
@@ -156,7 +153,7 @@ export default function SupportScreen() {
           <ArrowLeft size={24} color={currentTheme?.text || '#333333'} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme?.text || '#333333' }]}>
-          フィードバックする
+          フィードバック
         </Text>
         <View style={styles.placeholder} />
       </View>
@@ -166,10 +163,10 @@ export default function SupportScreen() {
         contentContainerStyle={{ paddingBottom: 125 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* フィードバックする */}
+        {/* フィードバック */}
         <View style={[styles.section, { backgroundColor: currentTheme?.surface || '#FFFFFF' }]}>
           <TouchableOpacity
-            style={[styles.actionButton, { borderColor: currentTheme?.primary || '#1976D2' }]}
+            style={[styles.actionButton, styles.actionButtonFirst, { borderColor: currentTheme?.primary || '#1976D2' }]}
             onPress={() => {
               const googleFormUrl = 'https://docs.google.com/forms/d/e/1FAIpQLSeIhSRv5i5gHc7MZ8nLvS6hZtTQm7WEnE_ehgDbeP9XANJQ-A/viewform';
               Linking.openURL(googleFormUrl).catch(() => {
@@ -180,7 +177,7 @@ export default function SupportScreen() {
             <MessageSquare size={20} color={currentTheme?.primary || '#1976D2'} />
             <View style={styles.actionButtonContent}>
               <Text style={[styles.actionButtonTitle, { color: currentTheme?.text || '#333333' }]}>
-                フィードバックする
+                フィードバック
               </Text>
               <Text style={[styles.actionButtonSubtitle, { color: currentTheme?.textSecondary || '#666666' }]}>
                 ご質問・ご要望をお聞かせください
@@ -355,6 +352,9 @@ const styles = StyleSheet.create({
     padding: 16,
     borderTopWidth: 1,
     gap: 12,
+  },
+  actionButtonFirst: {
+    borderTopWidth: 0,
   },
   actionButtonContent: {
     flex: 1,

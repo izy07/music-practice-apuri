@@ -168,6 +168,7 @@ export const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 20,
+    marginTop: 20,
     marginBottom: 16,
     elevation: 4,
   },

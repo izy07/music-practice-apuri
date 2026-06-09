@@ -55,8 +55,8 @@
   - ファイル: `lib/subscriptionService.ts` を更新
 
 - [ ] **サブスクリプション商品の登録**
-  - 月額プラン: `premium_monthly` (¥380)
-  - 年額プラン: `premium_yearly` (¥3,800)
+  - 月額プラン: `premium_monthly` (¥290)
+  - 年額プラン: `premium_yearly` (¥2,900)
   - App Store Connectで商品IDを登録
 
 - [ ] **サブスクリプション情報の表示**

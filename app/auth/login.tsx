@@ -66,7 +66,6 @@ export default function LoginScreen() {
     isAuthenticated,
     user,
     hasInstrumentSelected,
-    needsTutorial,
     canAccessMainApp,
   } = useAuthAdvanced();
   
@@ -117,32 +116,13 @@ export default function LoginScreen() {
         }
       }
 
-      // 既存ユーザーの判定: last_sign_in_atが存在し、created_atと異なる場合
-      const isExistingUser = user.last_sign_in_at && user.created_at && 
-        new Date(user.last_sign_in_at).getTime() > new Date(user.created_at).getTime() + 60000;
-      
-      // 既存ユーザーで楽器IDが取得できていない場合、カレンダー画面に遷移（楽器情報は後で取得される）
-      if (isExistingUser && !user.selected_instrument_id) {
-        logger.debug('[ログイン画面] 既存ユーザー → カレンダー画面に遷移', { userId: user.id });
-        // ナビゲーションを次のフレームで実行して、Root Layoutが確実にマウントされるようにする
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            router.replace('/(tabs)/index');
-          });
-        });
-        return;
-      }
-
-      // 通常の画面遷移ロジック
+      // 楽器未選択の場合は必ずチュートリアルから開始（新規登録後クラッシュした場合の再ログイン時も同様）
       const hasInstrument = hasInstrumentSelected();
-      const needsTut = needsTutorial();
       const canAccess = canAccessMainApp();
 
       const targetPath = hasInstrument || canAccess
         ? '/(tabs)/index'
-        : needsTut
-        ? '/(tabs)/tutorial'
-        : '/(tabs)/instrument-selection';
+        : '/(tabs)/tutorial';
 
       logger.debug('[ログイン画面] 認証成功 → 画面遷移:', targetPath);
       // ナビゲーションを次のフレームで実行して、Root Layoutが確実にマウントされるようにする
@@ -151,7 +131,7 @@ export default function LoginScreen() {
           router.replace(targetPath as any);
         });
       });
-    }, [isAuthenticated, isLoading, user, router, isLoggingIn, segments, hasInstrumentSelected, needsTutorial, canAccessMainApp])
+    }, [isAuthenticated, isLoading, user, router, isLoggingIn, segments, hasInstrumentSelected, canAccessMainApp])
   );
 
   // アニメーション開始

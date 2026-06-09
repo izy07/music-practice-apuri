@@ -17,6 +17,10 @@ interface Props {
   onDeleteGoal?: (goalId: string) => Promise<void>;
   onUncompleteGoal?: (goalId: string) => Promise<void>;
   onGoalUpdated?: (goal: Goal) => void;
+  /** レスポンシブ: セクションの最大幅（指定時のみ適用） */
+  sectionMaxWidth?: number;
+  /** レスポンシブ: セクションのパディング */
+  sectionPadding?: number;
 }
 
 export const CompletedGoalsSection: React.FC<Props> = memo(({
@@ -27,13 +31,17 @@ export const CompletedGoalsSection: React.FC<Props> = memo(({
   onDeleteGoal,
   onUncompleteGoal,
   onGoalUpdated,
+  sectionMaxWidth,
+  sectionPadding,
 }) => {
   const colors = useThemeColors();
 
   const sectionStyle = useMemo(() => [
     styles.section,
-    { backgroundColor: colors.surface }
-  ], [colors.surface]);
+    { backgroundColor: colors.surface },
+    ...(sectionMaxWidth != null ? [{ maxWidth: sectionMaxWidth }] : []),
+    ...(sectionPadding != null ? [{ padding: sectionPadding }] : []),
+  ], [colors.surface, sectionMaxWidth, sectionPadding]);
 
   const sectionTitleStyle = useMemo(() => [
     styles.sectionTitle,

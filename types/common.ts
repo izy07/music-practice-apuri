@@ -46,7 +46,7 @@ export interface SortParams {
 }
 
 /**
- * フィルタパラメータ
+ * フィルタパラメータ（将来の汎用クエリ用に予約。現在は未使用）
  */
 export interface FilterParams {
   field: string;
@@ -55,7 +55,7 @@ export interface FilterParams {
 }
 
 /**
- * クエリパラメータ
+ * クエリパラメータ（将来の汎用クエリ用に予約。現在は未使用）
  */
 export interface QueryParams {
   filters?: FilterParams[];

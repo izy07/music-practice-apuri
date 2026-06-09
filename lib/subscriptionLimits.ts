@@ -9,6 +9,7 @@
 
 import { listRecordingsByMonth } from './database';
 import { goalRepository } from '@/repositories/goalRepository';
+import { filterByInstrumentIdInMemory } from '@/repositories/common/instrumentFilter';
 import { supabase } from './supabase';
 import logger from './logger';
 import { ErrorHandler } from './errorHandler';
@@ -28,6 +29,19 @@ export interface Entitlement {
 export const isPremiumUser = (entitlement: Entitlement | null | undefined): boolean => {
   return !!entitlement?.isEntitled;
 };
+
+/**
+ * Freeプラン時のみ制限処理を実行するヘルパー（重複排除・安全なフロー用）
+ * プレミアム時は premiumReturn を即返し、DB/負荷の無駄を防ぐ。
+ */
+async function runIfFreeUser<T>(
+  entitlement: Entitlement | null | undefined,
+  freeUserFn: () => Promise<T>,
+  premiumReturn: T
+): Promise<T> {
+  if (isPremiumUser(entitlement)) return premiumReturn;
+  return freeUserFn();
+}
 
 /**
  * Freeプランの制限値（楽器1個あたり）
@@ -361,66 +375,60 @@ export const checkDailyRecordingLimit = async (
   entitlement: Entitlement | null | undefined,
   selectedDate?: Date | string | null
 ): Promise<{ canRecord: boolean; currentCount: number; limit: number; reason?: string }> => {
-  try {
-    // Premiumユーザーは無制限
-    const isPremium = isPremiumUser(entitlement);
-    if (isPremium) {
-      logger.debug("プレミアムユーザーのため、1日録音制限チェックをスキップします");
-      return { canRecord: true, currentCount: 0, limit: Infinity };
-    }
+  return runIfFreeUser(
+    entitlement,
+    async () => {
+      try {
+        const maxDaily = getMaxDailyRecordings(entitlement);
+        const targetDate = selectedDate ? new Date(selectedDate) : new Date();
+        const startOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
+        const endOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 23, 59, 59);
+        const { data: recordings, error } = await supabase
+          .from('recordings')
+          .eq('user_id', userId)
+          .gte('recorded_at', startOfDay.toISOString())
+          .lte('recorded_at', endOfDay.toISOString());
 
-    // Freeプランの場合のみ制限チェックを実行
-    const maxDaily = getMaxDailyRecordings(entitlement);
-    // チェック対象の日付を決定
-    const targetDate = selectedDate ? new Date(selectedDate) : new Date();
-    const startOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 0, 0, 0);
-    // Freeプランの場合のみ制限チェックを実行
-    const endOfDay = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate(), 23, 59, 59);
-    const { data: recordings, error } = await supabase
-      .from('recordings')
-      .eq('user_id', userId)
-      .gte('recorded_at', startOfDay.toISOString())
-      .lte('recorded_at', endOfDay.toISOString());
+        if (error) {
+          logger.warn('1日の録音数取得に失敗しました。制限チェックをスキップします。', {
+            error,
+            userId,
+            targetDate: targetDate.toISOString()
+          });
+          ErrorHandler.handle(error, '1日録音数取得', false);
+          return { canRecord: true, currentCount: 0, limit: maxDaily };
+        }
 
-    if (error) {
-      logger.warn('1日の録音数取得に失敗しました。制限チェックをスキップします。', {
-        error,
-        userId,
-        targetDate: targetDate.toISOString()
-      });
-      ErrorHandler.handle(error, '1日録音数取得', false);
-      // エラー時は許可（フォールバック）
-      return { canRecord: true, currentCount: 0, limit: maxDaily };
-    }
+        const currentCount = recordings?.length || 0;
+        const canRecord = currentCount < maxDaily;
 
-    const currentCount = recordings?.length || 0;
-    const canRecord = currentCount < maxDaily;
-
-    logger.debug('1日録音制限チェック:', {
-      userId,
-      currentCount,
-      limit: maxDaily,
-      canRecord,
-      targetDate: targetDate.toISOString()
-    });
-    return { 
-      canRecord, 
-      currentCount, 
-      limit: maxDaily,
-      reason: !canRecord 
-        ? `本日は既に${maxDaily}個の録音があります。${isPremium ? '明日以降録音できます。' : '明日以降またはプレミアムで録音できます。'}`
-        : undefined
-    };
-  } catch (error) {
-    logger.error('1日録音制限チェック中にエラーが発生しました:', {
-      error,
-      userId
-    });
-    ErrorHandler.handle(error, '1日録音制限チェック', false);
-    // エラー時は許可（フォールバック）
-    const fallbackLimit = getMaxDailyRecordings(entitlement);
-    return { canRecord: true, currentCount: 0, limit: fallbackLimit };
-  }
+        logger.debug('1日録音制限チェック:', {
+          userId,
+          currentCount,
+          limit: maxDaily,
+          canRecord,
+          targetDate: targetDate.toISOString()
+        });
+        return {
+          canRecord,
+          currentCount,
+          limit: maxDaily,
+          reason: !canRecord
+            ? `本日は既に${maxDaily}個の録音があります。明日以降またはプレミアムで録音できます。`
+            : undefined
+        };
+      } catch (error) {
+        logger.error('1日録音制限チェック中にエラーが発生しました:', {
+          error,
+          userId
+        });
+        ErrorHandler.handle(error, '1日録音制限チェック', false);
+        const fallbackLimit = getMaxDailyRecordings(entitlement);
+        return { canRecord: true, currentCount: 0, limit: fallbackLimit };
+      }
+    },
+    { canRecord: true, currentCount: 0, limit: Infinity }
+  );
 };
 
 /**
@@ -1436,15 +1444,11 @@ export const checkMyLibraryLimit = async (
   entitlement: Entitlement | null | undefined,
   instrumentId?: string | null
 ): Promise<{ canAdd: boolean; currentCount: number; limit: number }> => {
-  try {
-    // Premiumユーザーは無制限
-    const isPremium = isPremiumUser(entitlement);
-    if (isPremium) {
-      return { canAdd: true, currentCount: 0, limit: Infinity };
-    }
-
-    // 各楽器ごとに10個まで（楽器数で掛け算しない）
-    const limit = FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT;
+  return runIfFreeUser(
+    entitlement,
+    async () => {
+      try {
+        const limit = FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT;
 
     // 既存の曲数を取得（楽器IDでフィルタリング、非表示曲は除外）
     // instrument_idカラムが存在しない可能性があるため、TypeScript側でフィルタリング
@@ -1536,25 +1540,12 @@ export const checkMyLibraryLimit = async (
       return { canAdd: true, currentCount: 0, limit };
     }
 
-    // TypeScript側で楽器IDでフィルタリング（データベース側でフィルタリングできない場合のフォールバック）
-    // 型安全性のため明示的に型を指定（any型を回避）
-    interface SongWithInstrumentId {
-      id: string;
-      instrument_id?: string | null;
-    }
-    let filteredSongs: SongWithInstrumentId[] = (allSongs as SongWithInstrumentId[]) || [];
-    
-    if (instrumentId !== undefined && instrumentId !== null) {
-      // 楽器IDが指定されている場合、その楽器IDに一致する曲のみをカウント
-      // instrument_idがnullの曲は含めない（楽器が選択されている場合は、その楽器の曲のみをカウント）
-      filteredSongs = filteredSongs.filter((song: SongWithInstrumentId) => 
-        song.instrument_id === instrumentId
-      );
-    } else if (instrumentId === null) {
-      // instrumentIdがnullの場合は、instrument_idがnullの曲のみをカウント（レガシーデータ対応）
-      filteredSongs = filteredSongs.filter((song: SongWithInstrumentId) => song.instrument_id === null);
-    }
-    // instrumentIdがundefinedの場合は、すべての曲をカウント（楽器が選択されていない場合）
+    // 楽器フィルタは共通ヘルパーで一貫して適用（10万ユーザー規模でも安全・効率的）
+    const songsList = (allSongs || []) as Array<{ id: string; instrument_id?: string | null }>;
+    const filteredSongs =
+      instrumentId === undefined
+        ? songsList
+        : filterByInstrumentIdInMemory(songsList, instrumentId, false);
 
     const currentCount = filteredSongs.length;
     const canAdd = currentCount < limit;
@@ -1568,16 +1559,18 @@ export const checkMyLibraryLimit = async (
       totalSongs: allSongs?.length || 0
     });
 
-    return { canAdd, currentCount, limit };
-  } catch (error) {
-    logger.error('マイライブラリ制限チェック中にエラーが発生しました:', {
-      error,
-      userId,
-      instrumentId
-    });
-    ErrorHandler.handle(error, 'マイライブラリ制限チェック', false);
-    // エラー時は許可（フォールバック）
-    const fallbackLimit = FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT;
-    return { canAdd: true, currentCount: 0, limit: fallbackLimit };
-  }
+        return { canAdd, currentCount, limit };
+      } catch (error) {
+        logger.error('マイライブラリ制限チェック中にエラーが発生しました:', {
+          error,
+          userId,
+          instrumentId
+        });
+        ErrorHandler.handle(error, 'マイライブラリ制限チェック', false);
+        const fallbackLimit = FREE_PLAN_LIMITS.MY_LIBRARY_SONGS_PER_INSTRUMENT;
+        return { canAdd: true, currentCount: 0, limit: fallbackLimit };
+      }
+    },
+    { canAdd: true, currentCount: 0, limit: Infinity }
+  );
 };

@@ -148,7 +148,15 @@ export default function EventModal({
       }
 
       // 場所を保存するために location カラムが存在することを確保
-      await ensureLocationColumn();
+      const hasLocationColumn = await ensureLocationColumn();
+      if (!hasLocationColumn) {
+        setLoading(false);
+        Alert.alert(
+          '保存できません',
+          'イベントの「場所」を保存するためのデータベース設定が不足しています。\n\n開発環境では以下を実行してください:\n  supabase db reset\nまたは最新のマイグレーションを適用してください。'
+        );
+        return;
+      }
 
       if (event) {
         // 既存イベントの更新
@@ -429,15 +437,6 @@ ${errorMessage}`
       // モーダルを閉じる前にフォーカスを外す（aria-hidden警告を防ぐため）
       blurActiveElement();
       onClose();
-      
-      // 削除成功のアラートは削除後に表示
-      setTimeout(() => {
-        if (Platform.OS === 'web' && typeof window !== 'undefined') {
-          window.alert('イベントを削除しました');
-        } else {
-          Alert.alert('削除完了', 'イベントを削除しました');
-        }
-      }, 100);
     } catch (error) {
       logger.error('EventModal: イベント削除例外', error);
       ErrorHandler.handle(error, 'イベント削除', true);

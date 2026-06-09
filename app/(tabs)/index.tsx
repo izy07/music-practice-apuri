@@ -139,6 +139,8 @@ export default function CalendarScreen() {
   const eventUpdateTimerRefs = useRef<ReturnType<typeof setTimeout>[]>([]);
   // 成功メッセージ表示用タイマーIDを保持（メモリリーク防止）
   const successMessageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // イベントモーダル閉じた後に練習記録モーダルを再表示するか
+  const reopenPracticeRecordRef = useRef(false);
   
   // 練習記録更新処理の重複実行を防ぐためのフラグ
   const isUpdatingRef = useRef(false);
@@ -544,9 +546,7 @@ export default function CalendarScreen() {
       }
       logger.debug('[refreshPracticeData] ========== refreshPracticeData完了 ==========');
     } catch (error) {
-      // エラーは無視（データ読み込み失敗は致命的ではない）
-      logger.error('[refreshPracticeData] ❌ カレンダーデータ読み込みエラー:', error);
-      console.error('カレンダーデータ読み込みエラー:', error);
+      ErrorHandler.handle(error, 'カレンダーデータ読み込み', true);
     }
   }, [loadPracticeData, loadTotalPracticeTime, loadRecordingsData]);
 
@@ -985,6 +985,22 @@ export default function CalendarScreen() {
     setShowEventModal(true);
   }, [setSelectedEvent, setShowEventModal]);
 
+  const openEventModalFromPracticeRecord = useCallback((event: {id: string, title: string, description?: string, location?: string | null, color?: string | null, date?: string}) => {
+    reopenPracticeRecordRef.current = uiState.showPracticeRecord;
+    setSelectedEvent(event);
+    setShowPracticeRecord(false);
+    setShowEventModal(true);
+  }, [uiState.showPracticeRecord, setSelectedEvent, setShowPracticeRecord, setShowEventModal]);
+
+  const closeEventModal = useCallback(() => {
+    setShowEventModal(false);
+    setSelectedEvent(null);
+    if (reopenPracticeRecordRef.current) {
+      reopenPracticeRecordRef.current = false;
+      setShowPracticeRecord(true);
+    }
+  }, [setShowEventModal, setSelectedEvent, setShowPracticeRecord]);
+
   const navigateMonth = useCallback((direction: 'prev' | 'next') => {
     const newDate = new Date(currentDate);
     if (direction === 'prev') {
@@ -1296,11 +1312,8 @@ export default function CalendarScreen() {
           await refreshPracticeData(true);
         }}
         onRefresh={practiceRecordRefreshKey}
-        onEventEdit={(event) => {
-          // イベント編集モーダルを開く
-          setSelectedEvent(event);
-          setShowEventModal(true);
-        }}
+        onEventEdit={openEventModalFromPracticeRecord}
+        onEventPress={openEventModalFromPracticeRecord}
         onEventDelete={async (event) => {
           // イベント削除
           try {
@@ -1340,9 +1353,6 @@ export default function CalendarScreen() {
               clearTimeout(successMessageTimerRef.current);
             }
             successMessageTimerRef.current = setTimeout(() => setSuccessMessage(''), 3000);
-            
-            // 削除成功のアラートを表示
-            Alert.alert('削除完了', 'イベントを削除しました');
           } catch (error) {
             logger.error('カレンダー画面: イベントの削除エラー:', error);
             ErrorHandler.handle(error, 'イベントの削除', true);
@@ -1350,19 +1360,17 @@ export default function CalendarScreen() {
           }
         }}
         onEventCreate={(date) => {
-          // イベント作成モーダルを開く（PracticeRecordModalは開いたまま）
+          reopenPracticeRecordRef.current = true;
           setSelectedDate(date);
           setSelectedEvent(null);
+          setShowPracticeRecord(false);
           setShowEventModal(true);
         }}
       />
 
       <EventModal
         visible={uiState.showEventModal}
-        onClose={() => {
-          setShowEventModal(false);
-          setSelectedEvent(null);
-        }}
+        onClose={closeEventModal}
         selectedDate={uiState.selectedDate || undefined}
         event={uiState.selectedEvent ? {
           id: uiState.selectedEvent!.id,
@@ -1376,6 +1384,7 @@ export default function CalendarScreen() {
         onEventSaved={async () => {
           logger.debug('onEventSavedコールバックが呼ばれました');
           setSelectedEvent(null);
+          const shouldReopenPracticeRecord = reopenPracticeRecordRef.current;
           
           // データベースへの反映を待つため、少し遅延を設けてから更新
           // 1回の読み込みで十分（2回読み込みを削除して効率化）
@@ -1391,6 +1400,9 @@ export default function CalendarScreen() {
               if (loadAllEvents) {
                 const allEventsData = await loadAllEvents();
                 setAllEvents(allEventsData || {});
+              }
+              if (shouldReopenPracticeRecord) {
+                setPracticeRecordRefreshKey(prev => prev + 1);
               }
               setSuccessMessage('イベントを保存しました！');
               // 既存のタイマーをクリア（メモリリーク防止）

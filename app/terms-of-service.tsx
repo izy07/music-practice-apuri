@@ -106,10 +106,10 @@ export default function TermsOfServiceScreen() {
             プレミアム機能（楽譜共有、高度な分析機能、無制限クラウドストレージ等）については、以下の料金体系に従います。
           </Text>
           <Text style={styles.text}>
-            月額プラン: 380円（税込）
+            月額プラン: 290円（税込）
           </Text>
           <Text style={styles.text}>
-            年額プラン: 3,600円（税込、月額換算300円、月額プランより約21%割引）
+            年額プラン: 2,900円（税込、月額換算242円、月額プランより約17%割引）
           </Text>
           <Text style={styles.text}>
             料金の支払いは、App Store、Google Play Storeを通じて行うものとし、各ストアの利用規約が適用されます。

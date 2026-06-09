@@ -40,6 +40,9 @@ const TUNING_PRECISION = {
   POOR: 10,       // ±10セント以内: 調整必要
 };
 
+// セント表示のデッドゾーン: この範囲内は「0」と表示して針を中央に（正しい音でも±2セント程度は揺れるため）
+const CENTS_DISPLAY_DEAD_ZONE = 2.5;
+
 // 楽器別チューニング設定
 const INSTRUMENT_TUNINGS = {
   guitar: {
@@ -413,17 +416,13 @@ export default function TunerScreen() {
   const [noteDisplayMode, setNoteDisplayMode] = useState<'en' | 'ja'>('en');
   const NOTE_DISPLAY_MODE_KEY = '@tuner_note_display_mode';
   
-  // A4周波数の設定（デフォルト440Hz）
+  // A4周波数の設定（デフォルト442Hz）
   const [a4Frequency, setA4Frequency] = useState<number>(DEFAULT_A4_FREQUENCY);
   const a4FrequencyRef = useRef<number>(DEFAULT_A4_FREQUENCY);
   useEffect(() => {
     a4FrequencyRef.current = a4Frequency;
   }, [a4Frequency]);
 
-  // 端末の再生環境差（スピーカー/OS処理など）で基準音が僅かにズレて聞こえる場合の微調整（セント）
-  const REFERENCE_TONE_CENTS_OFFSET_KEY = '@tuner_reference_tone_cents_offset';
-  const [referenceToneCentsOffset, setReferenceToneCentsOffset] = useState<number>(0);
-  
   // プロ仕様設定
   // データベースの楽器IDとチューナー楽器キーのマッピング（useMemoでメモ化）
   const instrumentIdToTunerKey: Record<string, keyof typeof INSTRUMENT_TUNINGS> = useMemo(() => ({
@@ -439,15 +438,19 @@ export default function TunerScreen() {
     '550e8400-e29b-41d4-a716-446655440022': 'tuba',      // チューバ
     '550e8400-e29b-41d4-a716-446655440013': 'guitar',    // オーボエ（フォールバック）
     '550e8400-e29b-41d4-a716-446655440004': 'guitar',    // フルート（フォールバック）
-    '550e8400-e29b-41d4-a716-446655440007': 'guitar',    // サックス（フォールバック）
-    '550e8400-e29b-41d4-a716-446655440009': 'guitar',    // クラリネット（フォールバック）
+    '550e8400-e29b-41d4-a716-446655440007': 'saxophone', // サックス（B♭管の説明あり）
+    '550e8400-e29b-41d4-a716-446655440009': 'clarinet',  // クラリネット（B♭管の説明あり）
     '550e8400-e29b-41d4-a716-446655440006': 'guitar',    // ドラム（フォールバック）
     '550e8400-e29b-41d4-a716-446655440012': 'guitar',    // ファゴット（フォールバック）
     '550e8400-e29b-41d4-a716-446655440014': 'guitar',    // ハープ（フォールバック）
     '550e8400-e29b-41d4-a716-446655440020': 'piano',     // シンセサイザー（ピアノとして）
     '550e8400-e29b-41d4-a716-446655440021': 'guitar',    // 太鼓（フォールバック）
     '550e8400-e29b-41d4-a716-446655440019': 'guitar',    // 琴（フォールバック）
-    '550e8400-e29b-41d4-a716-446655440016': 'guitar'     // その他（フォールバック：ギターとして）
+    '550e8400-e29b-41d4-a716-446655440016': 'guitar',    // その他（フォールバック：ギターとして）
+    '550e8400-e29b-41d4-a716-446655440023': 'piano',     // ボーカル（ピアノのA4基準でチューナー表示）
+    '550e8400-e29b-41d4-a716-446655440024': 'piano',     // 指揮者（ピアノのA4基準でチューナー表示）
+    '550e8400-e29b-41d4-a716-446655440025': 'guitar',    // ユーフォニアム（金管フォールバック）
+    '550e8400-e29b-41d4-a716-446655440026': 'guitar',    // リコーダー（木管フォールバック）
   }), []);
   
   const selectedInstrument = useMemo(() => 
@@ -519,22 +522,15 @@ export default function TunerScreen() {
           setNoteDisplayMode(savedMode);
         }
 
-        // 基準音の微調整（セント）を読み込み
-        const savedOffset = await AsyncStorage.getItem(REFERENCE_TONE_CENTS_OFFSET_KEY);
-        if (savedOffset !== null) {
-          const parsed = Number(savedOffset);
-          if (!Number.isNaN(parsed) && Number.isFinite(parsed)) {
-            setReferenceToneCentsOffset(Math.max(-50, Math.min(50, parsed)));
-          }
-        }
-        
         // A4周波数を設定から読み込み
         const { user, error: userError } = await getCurrentUser();
         if (!userError && user) {
           const settingsResult = await getUserSettings(user.id);
           if (!settingsResult.error && settingsResult.data?.tuner_settings) {
             const settings = settingsResult.data.tuner_settings;
-            const a4Freq = settings.a4Frequency || settings.reference_pitch || DEFAULT_A4_FREQUENCY;
+            let a4Freq = Math.round(settings.a4Frequency || settings.reference_pitch || DEFAULT_A4_FREQUENCY);
+            // 従来の440Hz設定を442Hzにマイグレーション（基準を442に統一）
+            if (a4Freq === 440) a4Freq = DEFAULT_A4_FREQUENCY;
             setA4Frequency(a4Freq);
             logger.debug('A4周波数を設定から読み込みました', { a4Freq });
           }
@@ -556,27 +552,18 @@ export default function TunerScreen() {
     }
   }, []);
 
-  const saveReferenceToneCentsOffset = useCallback(async (value: number) => {
-    const clamped = Math.max(-50, Math.min(50, value));
-    try {
-      await AsyncStorage.setItem(REFERENCE_TONE_CENTS_OFFSET_KEY, String(clamped));
-      setReferenceToneCentsOffset(clamped);
-    } catch (error) {
-      ErrorHandler.handle(error, '基準音微調整の保存', false);
-    }
-  }, []);
-
   // A4周波数を保存する（useCallbackでメモ化）
   const saveA4Frequency = useCallback(async (frequency: number) => {
     try {
+      const freq = Math.round(frequency);
       const { user, error: userError } = await getCurrentUser();
       if (!userError && user) {
         await saveTunerSettings(user.id, {
-          reference_pitch: frequency,
+          reference_pitch: freq,
           temperament: 'equal',
           volume: 0.5,
         });
-        logger.debug('A4周波数を保存しました', { frequency });
+        logger.debug('A4周波数を保存しました', { frequency: freq });
       }
     } catch (error) {
       ErrorHandler.handle(error, 'A4周波数の保存', false);
@@ -635,7 +622,8 @@ export default function TunerScreen() {
       source.connect(analyser);
       analyserNodeRef.current = analyser;
 
-      // 音程検出を開始
+      // 音程検出を開始（A4基準周波数を確実に反映）
+      a4FrequencyRef.current = a4Frequency;
       setIsListening(true);
       smoothedFrequencyRef.current = 0;
 
@@ -659,7 +647,8 @@ const processAudio = () => {
         
         if (!analyserNodeRef.current || !audioContextRef.current) return;
 
-        const bufferLength = analyserNodeRef.current.frequencyBinCount;
+        // 時間領域データは fftSize 長が必要（frequencyBinCount は FFT 周波数ビン数で半分）
+        const bufferLength = analyserNodeRef.current.fftSize;
         const dataArray = new Float32Array(bufferLength);
         analyserNodeRef.current.getFloatTimeDomainData(dataArray);
 
@@ -810,18 +799,19 @@ const processAudio = () => {
           setCurrentNote(noteInfo.note);
           setCurrentNoteJa(noteInfo.noteJa);
           setCurrentOctave(noteInfo.octave);
-          setCurrentCents(noteInfo.cents);
+          const displayCents = Math.abs(noteInfo.cents) <= CENTS_DISPLAY_DEAD_ZONE ? 0 : noteInfo.cents;
+          setCurrentCents(displayCents);
 
           // チューニングバーの位置を更新（より滑らかなアニメーション）
           Animated.timing(tuningBarAnimation, {
-            toValue: noteInfo.cents,
+            toValue: displayCents,
             duration: 200, // より長いdurationで滑らかに
             easing: Easing.out(Easing.cubic), // より滑らかなイージング
             useNativeDriver: false,
           }).start();
 
-          // インジケーターの色を更新
-          const { color } = getTuningColor(Math.abs(noteInfo.cents));
+          // インジケーターの色を更新（デッドゾーン内は0として緑表示）
+          const { color } = getTuningColor(Math.abs(displayCents));
           setIndicatorColor(color);
         } else {
           // 音が検出されない場合、履歴をクリア
@@ -847,16 +837,17 @@ const processAudio = () => {
                 useNativeDriver: false,
               }).start();
             } else {
-              // フェードアウト中もUIを更新（滑らかに）
+              // フェードアウト中もUI更新（デッドゾーン適用）
               const noteInfo = getNoteFromFrequency(smoothedFrequencyRef.current, a4FrequencyRef.current);
+              const displayCents = Math.abs(noteInfo.cents) <= CENTS_DISPLAY_DEAD_ZONE ? 0 : noteInfo.cents;
               setCurrentFrequency(smoothedFrequencyRef.current);
               setCurrentNote(noteInfo.note);
               setCurrentNoteJa(noteInfo.noteJa);
               setCurrentOctave(noteInfo.octave);
-              setCurrentCents(noteInfo.cents);
+              setCurrentCents(displayCents);
               
               Animated.timing(tuningBarAnimation, {
-                toValue: noteInfo.cents,
+                toValue: displayCents,
                 duration: 200,
                 easing: Easing.out(Easing.cubic),
                 useNativeDriver: false,
@@ -870,9 +861,15 @@ const processAudio = () => {
       audioProcessingIntervalRef.current = window.setInterval(processAudio, 16.67);
 
       logger.debug('チューナー機能を開始しました');
-    } catch (error) {
+    } catch (error: any) {
       ErrorHandler.handle(error, 'チューナー開始', true);
-      Alert.alert('エラー', 'チューナー機能を開始できませんでした');
+      const message = error?.message || String(error);
+      Alert.alert(
+        'エラー',
+        message.includes('マイク') || message.includes('権限') || message.includes('AudioContext')
+          ? message
+          : `チューナー機能を開始できませんでした。${message ? `\n${message}` : ''}`
+      );
       setIsListening(false);
     }
   };
@@ -959,9 +956,7 @@ const processAudio = () => {
       oscillator.connect(gainNode);
       gainNode.connect(audioCtx.destination);
       
-      // 微調整（セント）を周波数に反映
-      const adjustedFrequency = frequency * Math.pow(2, referenceToneCentsOffset / 1200);
-      oscillator.frequency.setValueAtTime(adjustedFrequency, audioCtx.currentTime);
+      oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
       oscillator.type = 'sine';
       
       // フェードインしてから連続再生
@@ -990,10 +985,7 @@ const processAudio = () => {
       oscillator.start(audioCtx.currentTime);
       setPlayingOpenString(note);
       
-      logger.debug(`Playing open string continuously: ${note} at ${adjustedFrequency}Hz`, {
-        base: frequency,
-        centsOffset: referenceToneCentsOffset,
-      });
+      logger.debug(`Playing open string continuously: ${note} at ${frequency}Hz`);
     } catch (error) {
       ErrorHandler.handle(error, '開放弦の音再生', true);
       // エラーメッセージを詳細化
@@ -1015,21 +1007,15 @@ const processAudio = () => {
             
             oscillator.connect(gainNode);
             gainNode.connect(audioCtx.destination);
-            // 微調整（セント）を周波数に反映（リトライ経路にも必ず適用）
-            const adjustedFrequency = frequency * Math.pow(2, referenceToneCentsOffset / 1200);
-            oscillator.frequency.setValueAtTime(adjustedFrequency, audioCtx.currentTime);
+            oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
             oscillator.type = 'sine';
             // 低周波数（100Hz以下）では体感音量が小さく感じられるため、gainを上げる
-            // 周波数に応じたgain補正: 100Hz以下は1.0、それ以上は0.3
             const baseGain = frequency <= 100 ? 1.0 : 0.3;
             gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
             gainNode.gain.linearRampToValueAtTime(baseGain, audioCtx.currentTime + 0.1);
             oscillator.start(audioCtx.currentTime);
             setPlayingOpenString(note);
-            logger.debug(`Playing open string retry: ${note} at ${adjustedFrequency}Hz`, {
-              base: frequency,
-              centsOffset: referenceToneCentsOffset,
-            });
+            logger.debug(`Playing open string retry: ${note} at ${frequency}Hz`);
             return;
           } catch (retryError) {
             logger.error('再試行も失敗:', retryError);
@@ -1142,17 +1128,14 @@ const processAudio = () => {
       oscillator.connect(gainNode);
       gainNode.connect(audioCtx.destination);
       
-      const adjustedFrequency = frequency * Math.pow(2, referenceToneCentsOffset / 1200);
-      oscillator.frequency.setValueAtTime(adjustedFrequency, audioCtx.currentTime);
+      oscillator.frequency.setValueAtTime(frequency, audioCtx.currentTime);
       oscillator.type = 'sine';
       
       // フェードインしてから連続再生
-      // 音量を上げる（低周波数は1.0、それ以上は0.6に変更）
       const baseGain = frequency <= 100 ? 1.0 : 0.6;
       gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
       gainNode.gain.linearRampToValueAtTime(baseGain, audioCtx.currentTime + 0.1);
       
-      // 連続再生: stop()を呼ばない限り継続再生される
       oscillator.onended = () => {
         logger.warn('Scale note oscillator ended unexpectedly, restarting...', { frequency, noteKey });
         const currentNote = playingScaleNoteRef.current;
@@ -1168,13 +1151,9 @@ const processAudio = () => {
       oscillator.start(audioCtx.currentTime);
       setPlayingScaleNote(noteKey);
       
-      logger.debug(`Playing scale note continuously: ${noteKey} at ${adjustedFrequency}Hz`, {
-        base: frequency,
-        centsOffset: referenceToneCentsOffset,
-      });
+      logger.debug(`Playing scale note continuously: ${noteKey} at ${frequency}Hz`);
     } catch (error) {
       ErrorHandler.handle(error, '音階の音再生', true);
-      Alert.alert('エラー', '音の再生に失敗しました。');
     }
   };
   
@@ -1466,14 +1445,17 @@ const processAudio = () => {
                   </View>
                 </View>
 
-                {/* 開放弦の音を聞く / 基本の音を聞く */}
+                {/* 開放弦の音を聞く / チューニング音を聞く */}
                 <View style={styles.openStringContent}>
                   <Text style={[styles.openStringTitle, { color: currentTheme.text }]}>
-                    {isStringInstrument(selectedInstrument) ? '開放弦の音を聞く' : '基本の音を聞く'}
+                    {isStringInstrument(selectedInstrument) ? '開放弦の音を聞く' : 'チューニング音を聞く'}
                   </Text>
                   
                   <View style={styles.openStringButtons}>
-                    {INSTRUMENT_TUNINGS[selectedInstrument].openStrings.slice(0, 4).map((openString, index) => {
+                    {(isStringInstrument(selectedInstrument)
+                      ? INSTRUMENT_TUNINGS[selectedInstrument].openStrings.slice(0, 4)
+                      : [{ note: 'A4', frequency: a4Frequency, string: '基準音' }]
+                    ).map((openString, index) => {
                       const isPlaying = playingOpenString === openString.note;
                       // ユーザーが設定したA4周波数を使用して周波数を再計算
                       // openString.noteは "A4", "E5", "B♭1" などの形式
@@ -1516,7 +1498,10 @@ const processAudio = () => {
                           }}
                         >
                           <Text style={[styles.openStringButtonText, { color: currentTheme.surface }]}>
-                            {convertNoteName(openString.note, noteDisplayMode)}
+                            {isStringInstrument(selectedInstrument)
+                              ? convertNoteName(openString.note, noteDisplayMode)
+                              : (noteDisplayMode === 'en' ? 'A' : 'ラ')
+                            }
                           </Text>
                           <Text style={[styles.openStringFrequency, { color: currentTheme.surface }]}>
                             {actualFrequency.toFixed(1)}Hz
@@ -1701,13 +1686,13 @@ const processAudio = () => {
               チューニングの基準周波数
             </Text>
             <Text style={[styles.settingDescription, { color: currentTheme.textSecondary }]}>
-              チューニングの基準となるA4の周波数を設定します（標準は440Hz）
+              チューニングの基準となるA4の周波数を設定します（標準は442Hz）
             </Text>
             <View style={styles.frequencyAdjuster}>
               <TouchableOpacity
                 style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
                 onPress={() => {
-                  const newFreq = Math.max(440, a4Frequency - 1);
+                  const newFreq = Math.max(432, Math.round(a4Frequency) - 1);
                   setA4Frequency(newFreq);
                   saveA4Frequency(newFreq);
                 }}
@@ -1715,47 +1700,18 @@ const processAudio = () => {
                 <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>-</Text>
               </TouchableOpacity>
               <View style={[styles.frequencyDisplay, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary }]}>
-                <Text style={[styles.frequencyValue, { color: currentTheme.primary, marginBottom: 0 }]}>{a4Frequency} Hz</Text>
+                <Text style={[styles.frequencyValue, { color: currentTheme.primary, marginBottom: 0 }]}>{Math.round(a4Frequency)} Hz</Text>
               </View>
               <TouchableOpacity
                 style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
                 onPress={() => {
-                  const newFreq = Math.min(450, a4Frequency + 1);
+                  const newFreq = Math.min(450, Math.round(a4Frequency) + 1);
                   setA4Frequency(newFreq);
                   saveA4Frequency(newFreq);
                 }}
               >
                 <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>+</Text>
               </TouchableOpacity>
-            </View>
-
-            {/* 基準音の微調整（再生環境差の補正） */}
-            <View style={{ marginTop: 14 }}>
-              <Text style={[styles.settingsTitle, { color: currentTheme.text, fontSize: 14 }]}>
-                基準音の微調整（セント）
-              </Text>
-              <Text style={[styles.settingDescription, { color: currentTheme.textSecondary }]}>
-                端末のスピーカー等で「少しズレる」と感じる場合に、基準音/音階の再生だけを微調整できます（-50〜+50）
-              </Text>
-              <View style={styles.frequencyAdjuster}>
-                <TouchableOpacity
-                  style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
-                  onPress={() => saveReferenceToneCentsOffset(referenceToneCentsOffset - 1)}
-                >
-                  <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>-</Text>
-                </TouchableOpacity>
-                <View style={[styles.frequencyDisplay, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary }]}>
-                  <Text style={[styles.frequencyValue, { color: currentTheme.primary, marginBottom: 0 }]}>
-                    {referenceToneCentsOffset > 0 ? '+' : ''}{referenceToneCentsOffset} cent
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
-                  onPress={() => saveReferenceToneCentsOffset(referenceToneCentsOffset + 1)}
-                >
-                  <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>+</Text>
-                </TouchableOpacity>
-              </View>
             </View>
           </View>
         )}

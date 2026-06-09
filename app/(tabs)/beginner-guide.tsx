@@ -11,7 +11,11 @@ import logger from '@/lib/logger';
 import { getInstrumentCategory } from '@/lib/instrumentUtils';
 import { getTermsForInstrument } from '@/data/musicTermsData';
 import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
-import { shouldUsePersistentCache } from '@/lib/cache/cachePolicy';
+import {
+  shouldCacheInstrumentGuides,
+  INSTRUMENT_GUIDES_CACHE_KEY,
+  INSTRUMENT_GUIDES_CACHE_VERSION,
+} from '@/lib/cache/cachePolicy';
 // Web環境（GitHub Pages等）では直接インポートを使用（動的インポートが動作しない場合があるため）
 // モバイル環境では動的インポートで遅延読み込み（軽量化）
 import { instrumentGuides as staticInstrumentGuides } from '@/data/instrumentGuides';
@@ -59,15 +63,31 @@ const buildPracticeTermsForGuide = (instrumentKey: string): Record<string, strin
   }
 };
 
+type BasicTermValue =
+  | string
+  | {
+      description: string;
+      subTerms?: Record<string, string>;
+    };
+
+const getTermLabel = (value: BasicTermValue): string => {
+  const text = typeof value === 'string' ? value : value.description;
+  return text.split('：')[0] || text;
+};
+
+const getTermDescription = (value: BasicTermValue): string => {
+  const text = typeof value === 'string' ? value : value.description;
+  const parts = text.split('：');
+  return parts.slice(1).join('：') || text;
+};
+
 const mergeGuideTermsByTermName = (
-  base: Record<string, string>,
+  base: Record<string, BasicTermValue>,
   extra: Record<string, string>
-): Record<string, string> => {
-  const out: Record<string, string> = { ...base };
+): Record<string, BasicTermValue> => {
+  const out: Record<string, BasicTermValue> = { ...base };
   const existingNames = new Set<string>(
-    Object.values(out)
-      .filter((v) => typeof v === 'string')
-      .map((v) => String(v).split('：')[0])
+    Object.values(out).map((v) => getTermLabel(v))
   );
 
   Object.entries(extra).forEach(([k, v]) => {
@@ -79,6 +99,41 @@ const mergeGuideTermsByTermName = (
 
   return out;
 };
+
+const isValidGuidesObject = (guides: unknown): guides is Record<string, unknown> =>
+  Boolean(
+    guides &&
+      typeof guides === 'object' &&
+      !Array.isArray(guides) &&
+      Object.keys(guides as object).length > 0 &&
+      Object.values(guides as object).some((guide) => guide && typeof guide === 'object')
+  );
+
+const parseCachedGuides = (raw: string): Record<string, unknown> | null => {
+  try {
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      parsed.version === INSTRUMENT_GUIDES_CACHE_VERSION &&
+      isValidGuidesObject(parsed.data)
+    ) {
+      return parsed.data;
+    }
+    if (isValidGuidesObject(parsed)) {
+      return parsed;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+const serializeGuidesForCache = (guides: Record<string, unknown>): string =>
+  JSON.stringify({
+    version: INSTRUMENT_GUIDES_CACHE_VERSION,
+    data: guides,
+  });
 
 const loadInstrumentGuides = async (): Promise<any> => {
   // 既に読み込まれている場合は即座に返す
@@ -188,6 +243,12 @@ export default function BeginnerGuideScreen() {
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [guidesLoaded, setGuidesLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [guidesRevision, setGuidesRevision] = useState(0);
+
+  const applyGuides = useCallback((guides: any) => {
+    instrumentGuides = guides;
+    setGuidesRevision((v) => v + 1);
+  }, []);
 
   // 楽器データを動的インポートで読み込み（オフライン対応付き・根本的解決版）
   useEffect(() => {
@@ -196,61 +257,52 @@ export default function BeginnerGuideScreen() {
 
     const loadGuides = async () => {
       try {
-        // 開発環境では永続キャッシュを使わない（古いキャッシュが残って挙動がブレるのを防ぐ）
-        const useCache = shouldUsePersistentCache();
+        // Web（GitHub Pages等）はバンドル済みデータを優先。モバイルのみ永続キャッシュを使用
+        const useCache = shouldCacheInstrumentGuides();
+
+        // 旧キャッシュキーは削除（古い用語データが残らないようにする）
+        await AsyncStorage.removeItem('instrumentGuides_cache').catch(() => {});
         
-        // まずキャッシュから読み込みを試行（オフライン対応・最優先）
+        // まずキャッシュから読み込みを試行（モバイルのオフライン対応）
         let loadedFromCache = false;
         if (useCache) {
           try {
-            const cachedData = await AsyncStorage.getItem('instrumentGuides_cache');
+            const cachedData = await AsyncStorage.getItem(INSTRUMENT_GUIDES_CACHE_KEY);
             if (cachedData) {
-              try {
-                const parsed = JSON.parse(cachedData);
-                // データの検証を強化
-                if (
-                  parsed && 
-                  typeof parsed === 'object' && 
-                  !Array.isArray(parsed) &&
-                  Object.keys(parsed).length > 0 &&
-                  Object.values(parsed).some((guide: any) => guide && typeof guide === 'object')
-                ) {
-                  instrumentGuides = parsed;
-                  loadedFromCache = true;
-                  if (isMounted) {
-      setGuidesLoaded(true);
-                    setLoadError(null);
-                  }
-                  logger.debug('✅ ガイドデータをキャッシュから読み込みました', {
-                    keys: Object.keys(parsed).length
-                  });
-                } else {
-                  logger.warn('⚠️ キャッシュデータが無効です。再読み込みします。');
-                  // 無効なキャッシュを削除
-                  await AsyncStorage.removeItem('instrumentGuides_cache').catch(() => {});
+              const parsed = parseCachedGuides(cachedData);
+              if (parsed) {
+                applyGuides(parsed);
+                loadedFromCache = true;
+                if (isMounted) {
+                  setGuidesLoaded(true);
+                  setLoadError(null);
                 }
-              } catch (parseError) {
-                logger.warn('⚠️ キャッシュデータのパースエラー:', parseError);
-                // 破損したキャッシュを削除
-                await AsyncStorage.removeItem('instrumentGuides_cache').catch(() => {});
+                logger.debug('✅ ガイドデータをキャッシュから読み込みました', {
+                  keys: Object.keys(parsed).length,
+                });
+              } else {
+                logger.warn('⚠️ キャッシュデータが無効です。再読み込みします。');
+                await AsyncStorage.removeItem(INSTRUMENT_GUIDES_CACHE_KEY).catch(() => {});
               }
             }
           } catch (cacheError) {
             logger.debug('キャッシュ読み込みエラー（無視）:', cacheError);
           }
         } else {
-          logger.debug('🔧 開発環境: 永続キャッシュをスキップして最新データを読み込みます');
+          logger.debug('🔧 キャッシュをスキップして最新データを読み込みます（Web/開発環境）');
         }
 
         // キャッシュから読み込めた場合は、バックグラウンドで最新データを更新
         if (loadedFromCache && useCache) {
-          // バックグラウンドで最新データを読み込んで更新（非ブロッキング）
           loadInstrumentGuides()
             .then((guides) => {
               if (guides && isMounted) {
                 try {
-                  AsyncStorage.setItem('instrumentGuides_cache', JSON.stringify(guides)).catch(() => {});
-                  instrumentGuides = guides;
+                  AsyncStorage.setItem(
+                    INSTRUMENT_GUIDES_CACHE_KEY,
+                    serializeGuidesForCache(guides)
+                  ).catch(() => {});
+                  applyGuides(guides);
                   logger.debug('✅ ガイドデータを最新版に更新しました');
                 } catch (updateError) {
                   logger.debug('キャッシュ更新エラー（無視）:', updateError);
@@ -258,7 +310,6 @@ export default function BeginnerGuideScreen() {
               }
             })
             .catch((error) => {
-              // 最新データの読み込みエラーは無視（キャッシュを使用）
               logger.debug('最新データの読み込みエラー（無視）:', error);
             });
           return;
@@ -289,16 +340,21 @@ export default function BeginnerGuideScreen() {
           Object.keys(guides).length > 0 &&
           Object.values(guides).some((guide: any) => guide && typeof guide === 'object')
         ) {
-          // キャッシュに保存（オフライン対応）
+          applyGuides(guides);
+
+          // キャッシュに保存（モバイルのオフライン対応）
           if (useCache) {
             try {
-              await AsyncStorage.setItem('instrumentGuides_cache', JSON.stringify(guides));
+              await AsyncStorage.setItem(
+                INSTRUMENT_GUIDES_CACHE_KEY,
+                serializeGuidesForCache(guides)
+              );
               logger.debug('✅ ガイドデータをキャッシュに保存しました');
             } catch (saveError) {
               logger.debug('キャッシュ保存エラー（無視）:', saveError);
             }
           } else {
-            logger.debug('🔧 開発環境: 永続キャッシュを保存しません');
+            logger.debug('🔧 永続キャッシュを保存しません（Web/開発環境）');
           }
           
           if (isMounted) {
@@ -315,29 +371,20 @@ export default function BeginnerGuideScreen() {
         logger.error('❌ ガイドデータ読み込みエラー:', error);
         ErrorHandler.handle(error, 'ガイドデータ読み込み', false);
         
-        // エラー時もキャッシュがあれば使用（最後の手段）
-        if (shouldUsePersistentCache() && (!instrumentGuides || Object.keys(instrumentGuides).length === 0)) {
+        // エラー時もキャッシュがあれば使用（最後の手段・モバイルのみ）
+        if (shouldCacheInstrumentGuides() && (!instrumentGuides || Object.keys(instrumentGuides).length === 0)) {
           try {
-            const cachedData = await AsyncStorage.getItem('instrumentGuides_cache');
+            const cachedData = await AsyncStorage.getItem(INSTRUMENT_GUIDES_CACHE_KEY);
             if (cachedData) {
-              try {
-                const parsed = JSON.parse(cachedData);
-                if (
-                  parsed && 
-                  typeof parsed === 'object' && 
-                  !Array.isArray(parsed) &&
-                  Object.keys(parsed).length > 0
-                ) {
-                  instrumentGuides = parsed;
-                  if (isMounted) {
-                    setGuidesLoaded(true);
-                    setLoadError(null);
-                    logger.debug('✅ エラー時、キャッシュからガイドデータを復元しました');
-                    return;
-                  }
+              const parsed = parseCachedGuides(cachedData);
+              if (parsed) {
+                applyGuides(parsed);
+                if (isMounted) {
+                  setGuidesLoaded(true);
+                  setLoadError(null);
+                  logger.debug('✅ エラー時、キャッシュからガイドデータを復元しました');
+                  return;
                 }
-              } catch (parseError) {
-                logger.debug('エラー時のキャッシュパースエラー:', parseError);
               }
             }
           } catch (cacheError) {
@@ -398,6 +445,10 @@ export default function BeginnerGuideScreen() {
       '550e8400-e29b-41d4-a716-446655440022': 'tuba',      // チューバ
       '550e8400-e29b-41d4-a716-446655440020': 'piano',     // シンセサイザー（ピアノとして）
       '550e8400-e29b-41d4-a716-446655440021': 'drums',     // 太鼓（ドラムとして）
+      '550e8400-e29b-41d4-a716-446655440023': 'vocal',     // ボーカル
+      '550e8400-e29b-41d4-a716-446655440024': 'conductor', // 指揮者
+      '550e8400-e29b-41d4-a716-446655440025': 'euphonium', // ユーフォニアム
+      '550e8400-e29b-41d4-a716-446655440026': 'recorder',  // リコーダー
     };
     return map[id] || 'violin';
   };
@@ -431,7 +482,7 @@ export default function BeginnerGuideScreen() {
     
     logger.warn('⚠️ フォールバックガイドも見つかりません');
     return null;
-  }, [guidesLoaded, instrumentGuides, selectedInstrument]);
+  }, [guidesLoaded, guidesRevision, selectedInstrument]);
   
 
   const goBack = () => {
@@ -953,7 +1004,7 @@ export default function BeginnerGuideScreen() {
         const mergedTerms =
           basicTerms && typeof basicTerms === 'object'
             ? mergeGuideTermsByTermName(
-                basicTerms as Record<string, string>,
+                basicTerms as Record<string, BasicTermValue>,
                 buildPracticeTermsForGuide(instrumentName)
               )
             : basicTerms;
@@ -971,16 +1022,36 @@ export default function BeginnerGuideScreen() {
               {mergedTerms && typeof mergedTerms === 'object' ? (
                 // basicTermsから動的に用語を表示
                 Object.entries(mergedTerms).map(([key, value]) => {
-                  if (typeof value !== 'string') return null;
-                  // 用語名と説明を分割（例: "ペグ：説明文" → "ペグ" と "説明文"）
-                  const parts = value.split('：');
-                  const termName = parts[0] || key;
-                  const termDescription = parts.slice(1).join('：') || value;
+                  if (typeof value !== 'string' && (typeof value !== 'object' || value === null || !('description' in value))) {
+                    return null;
+                  }
+                  const termName = getTermLabel(value as BasicTermValue);
+                  const termDescription = getTermDescription(value as BasicTermValue);
+                  const subTerms =
+                    typeof value === 'object' && value !== null && 'subTerms' in value
+                      ? value.subTerms
+                      : undefined;
                   
                   return (
                     <View key={key} style={styles.infoItem}>
                       <Text style={[styles.infoLabel, { color: currentTheme.textSecondary }]}>{termName}</Text>
                       <Text style={[styles.infoText, { color: currentTheme.text }]}>{termDescription}</Text>
+                      {subTerms &&
+                        Object.entries(subTerms).map(([subKey, subValue]) => {
+                          const subParts = String(subValue).split('：');
+                          const subName = subParts[0] || subKey;
+                          const subDescription = subParts.slice(1).join('：') || String(subValue);
+                          return (
+                            <View key={`${key}-${subKey}`} style={styles.subTermItem}>
+                              <Text style={[styles.subTermLabel, { color: currentTheme.textSecondary }]}>
+                                └ {subName}
+                              </Text>
+                              <Text style={[styles.subTermText, { color: currentTheme.text }]}>
+                                {subDescription}
+                              </Text>
+                            </View>
+                          );
+                        })}
                     </View>
                   );
                 })
@@ -1525,19 +1596,21 @@ export default function BeginnerGuideScreen() {
               // 再読み込み
               const loadGuides = async () => {
                 try {
-                  const cachedData = await AsyncStorage.getItem('instrumentGuides_cache');
-                  if (cachedData) {
-                    const parsed = JSON.parse(cachedData);
-                    if (parsed && typeof parsed === 'object' && Object.keys(parsed).length > 0) {
-                      instrumentGuides = parsed;
-                      setGuidesLoaded(true);
-                      setLoadError(null);
-                      return;
+                  if (shouldCacheInstrumentGuides()) {
+                    const cachedData = await AsyncStorage.getItem(INSTRUMENT_GUIDES_CACHE_KEY);
+                    if (cachedData) {
+                      const parsed = parseCachedGuides(cachedData);
+                      if (parsed) {
+                        applyGuides(parsed);
+                        setGuidesLoaded(true);
+                        setLoadError(null);
+                        return;
+                      }
                     }
                   }
                   const guides = await loadInstrumentGuides();
                   if (guides) {
-                    instrumentGuides = guides;
+                    applyGuides(guides);
                     setGuidesLoaded(true);
                     setLoadError(null);
                   }

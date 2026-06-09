@@ -132,14 +132,15 @@ export default function ProfileSettingsScreen() {
         // ユーザープロフィールを取得
         const profileResult = await getUserProfile(user.id);
         
-        // 新規登録時のニックネームを取得（プロフィール > user_metadata > メールアドレスの順）
-        // プロフィール取得エラー時でも、user_metadataから取得できるようにする
+        // ニックネーム: プロフィールで削除済み(null/空)の場合は「ユーザー」、未設定時は user_metadata 等を使用
         const profile = profileResult.data;
-        const resolvedNickname = profile?.display_name?.trim() || 
-                                  user.user_metadata?.display_name?.trim() || 
-                                  user.user_metadata?.name?.trim() || 
-                                  user.email?.split('@')[0] || 
-                                  'ユーザー';
+        const hasDisplayName = profile != null && profile.display_name != null && String(profile.display_name).trim() !== '';
+        const displayNameCleared = profile != null && (profile.display_name === null || profile.display_name === '');
+        const resolvedNickname = hasDisplayName
+          ? String(profile!.display_name).trim()
+          : displayNameCleared
+            ? 'ユーザー'
+            : (user.user_metadata?.display_name?.trim() || user.user_metadata?.name?.trim() || user.email?.split('@')[0] || 'ユーザー');
         
         if (profileResult.error) {
           logger.error('プロフィール取得エラー:', profileResult.error);
@@ -160,20 +161,23 @@ export default function ProfileSettingsScreen() {
             setBirthYear(String(bday.getFullYear()));
             setBirthMonth(String(bday.getMonth() + 1).padStart(2, '0'));
             setBirthDay(String(bday.getDate()).padStart(2, '0'));
+          } else {
+            setBirthYear('');
+            setBirthMonth('');
+            setBirthDay('');
           }
           
           // 所属団体を読み込み（カンマ区切りから配列に変換）
-          // current_organizationまたはorganizationのどちらかを使用
           const organizationValue = profile.current_organization || profile.organization;
-          if (organizationValue) {
-            const orgs = organizationValue.split(',').filter((name: string) => name.trim() !== '');
+          if (organizationValue && String(organizationValue).trim() !== '') {
+            const orgs = String(organizationValue).split(',').filter((name: string) => name.trim() !== '');
             setCurrentOrganizations(
-              orgs.length > 0 
+              orgs.length > 0
                 ? orgs.map((name: string, index: number) => ({ id: (index + 1).toString(), name: name.trim() }))
-                : [
-                    { id: '1', name: '' },
-                  ]
+                : [{ id: '1', name: '' }]
             );
+          } else {
+            setCurrentOrganizations([{ id: '1', name: '' }]);
           }
           
           // 楽器ごとのデータを読み込む（現在選択されている楽器がある場合のみ）
@@ -620,6 +624,12 @@ export default function ProfileSettingsScreen() {
       return;
     }
 
+    // 登録されている楽器が1つの場合は削除できない（必ず1つは楽器が残る状態を保つ）
+    if (instrumentTypes.length <= 1) {
+      Alert.alert('削除できません', '登録されている楽器が1つの場合は削除できません。');
+      return;
+    }
+
     try {
       logger.info('[ProfileSettings] 楽器データ削除処理を開始:', { instrumentId, userId: currentUser.id });
 
@@ -752,14 +762,12 @@ export default function ProfileSettingsScreen() {
       if (saveResult.error) {
         // エラーが発生した場合は元に戻す
         setBreakPeriods(breakPeriods);
-        ErrorHandler.handle(saveResult.error, '休止期間の削除', false);
-        Alert.alert('エラー', '休止期間の削除に失敗しました');
+        ErrorHandler.handle(saveResult.error, '休止期間の削除', true);
       }
     } catch (error) {
       // エラーが発生した場合は元に戻す
       setBreakPeriods(breakPeriods);
-      ErrorHandler.handle(error, '休止期間の削除', false);
-      Alert.alert('エラー', '休止期間の削除に失敗しました');
+      ErrorHandler.handle(error, '休止期間の削除', true);
     }
   };
 
@@ -809,7 +817,7 @@ export default function ProfileSettingsScreen() {
       setPastOrgForm({ name: '', role: '' });
       await loadCareerData();
     } catch (e) {
-      Alert.alert('エラー', '過去の所属団体の保存に失敗しました');
+      ErrorHandler.handle(e, '過去の所属団体の保存', true);
     }
   };
   // 可変行の追加/削除
@@ -857,7 +865,7 @@ export default function ProfileSettingsScreen() {
       setAwardForm({ title: '', organization: '', date: '', description: '' });
       await loadCareerData();
     } catch (e) {
-      Alert.alert('エラー', '受賞履歴の保存に失敗しました');
+      ErrorHandler.handle(e, '受賞履歴の保存', true);
     }
   };
 
@@ -881,7 +889,7 @@ export default function ProfileSettingsScreen() {
       setPerfForm({ title: '', venue: '', date: '', role: '', description: '' });
       await loadCareerData();
     } catch (e) {
-      Alert.alert('エラー', '演奏経験の保存に失敗しました');
+      ErrorHandler.handle(e, '演奏経験の保存', true);
     }
   };
 
@@ -1023,11 +1031,8 @@ export default function ProfileSettingsScreen() {
       
       // プロフィール情報を再読み込み（次回ログイン時に反映されるように）
       await loadCurrentUser();
-      
-      Alert.alert('保存されました', '基本情報を保存しました');
     } catch (error) {
-      logger.error('プロフィール保存エラー:', error);
-      Alert.alert('エラー', `プロフィールの保存に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
+      ErrorHandler.handle(error, 'プロフィール保存', true);
     } finally {
       setLoading(false);
     }
@@ -1088,26 +1093,40 @@ export default function ProfileSettingsScreen() {
     
     try {
       logger.info('[ProfileSettings] プロフィール削除処理を開始');
-      
-      // プロフィール情報をクリア
-      // 注意: プロフィール情報のみを削除し、練習記録・録音・目標などの他のデータは削除しません
-      const { error: profileError } = await supabase
+
+      // プロフィール情報をクリア（display_name, 所属団体, 誕生日, 楽器別データ）
+      const basePayload = {
+        display_name: null,
+        instrument_specific_data: {} as Record<string, unknown>,
+        updated_at: new Date().toISOString(),
+      };
+      // スキーマに存在する場合のみ有効なカラム（birthday, organization 等）
+      const fullPayload = {
+        ...basePayload,
+        birthday: null as string | null,
+        organization: null as string | null,
+        current_organization: null as string | null,
+      };
+
+      let profileError: { message?: string; code?: string } | null = null;
+      const { error: err1 } = await supabase
         .from('user_profiles')
-        .update({
-          display_name: null,
-          nickname: null,
-          birthday: null,
-          music_start_age: null,
-          music_experience_years: null,
-          avatar_url: null,
-          instrument_specific_data: {}, // 楽器ごとのデータ（経歴・実績を含む）をすべてクリア
-          updated_at: new Date().toISOString(),
-        })
+        .update(fullPayload)
         .eq('user_id', user.id);
-      
+      profileError = err1;
+
+      // 存在しないカラムでエラーになった場合は、基本カラムのみで再試行
+      if (profileError && (profileError.code === 'PGRST204' || (profileError.message && profileError.message.includes('column')))) {
+        const { error: err2 } = await supabase
+          .from('user_profiles')
+          .update(basePayload)
+          .eq('user_id', user.id);
+        profileError = err2;
+      }
+
       if (profileError) {
         logger.error('[ProfileSettings] プロフィール削除エラー:', profileError);
-        Alert.alert('エラー', `プロフィール情報の削除に失敗しました: ${profileError.message}`);
+        ErrorHandler.handle(profileError, 'プロフィール情報削除', true);
         setIsDeleting(false);
         return;
       }
@@ -2339,12 +2358,9 @@ export default function ProfileSettingsScreen() {
                 if (saveResult.error) {
                   throw saveResult.error;
                 }
-                
-                Alert.alert('保存完了', '経歴・実績を保存しました');
               } catch (e) {
                 logger.error('経歴・実績の保存エラー:', e);
-                ErrorHandler.handle(e, '経歴・実績の保存', false);
-                Alert.alert('エラー', '保存に失敗しました');
+                ErrorHandler.handle(e, '経歴・実績の保存', true);
               }
             }}
             activeOpacity={0.8}

@@ -89,7 +89,6 @@ export default function NotificationSettingsScreen() {
         }
 
         setSettings(newSettings);
-        Alert.alert('成功', '通知設定を保存しました');
       }
     } catch (error) {
       Alert.alert('エラー', '通知設定の保存に失敗しました');
@@ -112,7 +111,7 @@ export default function NotificationSettingsScreen() {
 
         const permission = await Notification.requestPermission();
         if (permission === 'granted') {
-          Alert.alert('成功', '通知の許可が完了しました');
+          // 許可完了（ポップアップは表示しない）
         } else if (permission === 'denied') {
           Alert.alert('通知が拒否されました', 'ブラウザの設定で通知を許可してください');
         } else {

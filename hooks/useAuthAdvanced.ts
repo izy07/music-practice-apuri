@@ -20,6 +20,11 @@ import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { TIMEOUT } from '@/lib/constants';
 import { getBasePath, redirectToLogin } from '@/lib/navigationUtils';
+import {
+  isNetworkAuthError,
+  readPersistedAuthSession,
+  refreshPersistedSession,
+} from '@/lib/authUtils';
 
 // Web環境での最後のアクティビティ時刻を保存するキー（useIdleTimeoutと同じキー）
 const LAST_ACTIVITY_KEY = 'music-practice-last-activity';
@@ -296,86 +301,90 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       }
       
       if (sessionError) {
-        // ネットワークエラーと認証エラーを区別
-        const isNetworkError = 
-          sessionError.message?.includes('Failed to fetch') || 
-          sessionError.message?.includes('NetworkError') ||
-          sessionError.message?.includes('ERR_INTERNET_DISCONNECTED') ||
-          sessionError.message?.includes('internet disconnected') ||
-          sessionError.message === 'NETWORK_ERROR';
+        const isNetworkError = isNetworkAuthError(sessionError);
         
-        // ネットワークエラーの場合は、エラーを表示せずに未認証状態として処理
-        // オフライン時は正常な動作として扱う
+        // ネットワークエラー時はローカルに保存されたセッションを優先してログイン状態を維持
         if (isNetworkError) {
-          // 開発環境でのみログを出力（本番環境では表示しない）
           if (__DEV__) {
-            logger.debug(`[useAuthAdvanced] ネットワークエラー - オフライン状態として処理`, {
+            logger.debug('[useAuthAdvanced] ネットワークエラー - 永続化セッションから復元を試行', {
               retryCount,
             });
           }
+
+          const persistedSession = sessionData?.session?.user
+            ? sessionData.session
+            : readPersistedAuthSession();
+
+          if (persistedSession?.user) {
+            sessionData = { session: persistedSession };
+            sessionError = null;
+          } else {
+            updateAuthState({
+              isAuthenticated: false,
+              isLoading: false,
+              isInitialized: true,
+              error: null,
+            });
+            return;
+          }
+        }
+        
+        // ネットワークエラー以外の認証エラーの場合
+        if (sessionError) {
+          const errorMessage = sessionError.message;
           
-          // ネットワークエラーの場合は、エラーメッセージを設定せずに未認証状態として処理
-          // これにより、オフライン時でもアプリが正常に動作する
+          logger.error(`[useAuthAdvanced] セッション取得エラー`, {
+            isNetworkError,
+            error: sessionError.message,
+            retryCount,
+          });
+          
           updateAuthState({
             isAuthenticated: false,
             isLoading: false,
             isInitialized: true,
-            error: null, // ネットワークエラーはエラーとして扱わない
+            error: errorMessage,
           });
           return;
         }
-        
-        // ネットワークエラー以外の認証エラーの場合
-        const errorMessage = sessionError.message;
-        
-        logger.error(`[useAuthAdvanced] セッション取得エラー`, {
-          isNetworkError,
-          error: sessionError.message,
-          retryCount,
-        });
-        
-        updateAuthState({
-          isAuthenticated: false,
-          isLoading: false,
-          isInitialized: true,
-          error: errorMessage,
-        });
-        return;
       }
       
       if (sessionData.session?.user) {
-        // セッションの有効期限を確認
-        const session = sessionData.session;
+        let session = sessionData.session;
         const now = Math.floor(Date.now() / 1000);
         
-        // セッションが期限切れの場合は強制的にログアウト
+        // アクセストークン期限切れ時はリフレッシュトークンで復元（永続ログイン）
         if (session.expires_at && session.expires_at < now) {
-          logger.debug('[useAuthAdvanced] セッションが期限切れ - 強制ログアウト', {
+          logger.debug('[useAuthAdvanced] アクセストークン期限切れ - リフレッシュを試行', {
             expires_at: session.expires_at,
             now,
             diff: now - session.expires_at,
           });
-          
-          // 期限切れセッションをクリア
-          await supabase.auth.signOut();
-          
-          // Web環境では最後のアクティビティ時刻も削除
-          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-            try {
-              window.localStorage.removeItem(LAST_ACTIVITY_KEY);
-            } catch (error) {
-              // エラーは無視
+
+          const refreshedSession = await refreshPersistedSession();
+          if (refreshedSession?.user) {
+            session = refreshedSession;
+            sessionData = { session: refreshedSession };
+          } else {
+            logger.warn('[useAuthAdvanced] セッションリフレッシュに失敗 - ログアウト');
+            await supabase.auth.signOut();
+
+            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+              try {
+                window.localStorage.removeItem(LAST_ACTIVITY_KEY);
+              } catch {
+                // エラーは無視
+              }
             }
+
+            updateAuthState({
+              isAuthenticated: false,
+              isLoading: false,
+              isInitialized: true,
+              error: null,
+            });
+            return;
           }
-          
-          // 未認証状態として処理
-          updateAuthState({
-            isAuthenticated: false,
-            isLoading: false,
-            isInitialized: true,
-            error: null,
-          });
-          return;
         }
         
         // セッションが有効な場合、handleAuthenticatedUserを呼び出して認証状態を更新
@@ -1551,6 +1560,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             isSignupInProgress = false;
             logger.debug('[onAuthStateChange] ログイン/新規登録処理フラグをリセットしました');
           }
+        } else if (event === 'TOKEN_REFRESHED' && session?.user && globalHandleAuthenticatedUserRef) {
+          // トークン自動更新後もログイン状態を維持
+          await globalHandleAuthenticatedUserRef(session.user);
         } else if (event === 'SIGNED_OUT') {
           // ログアウト時に認証状態をクリア
           // 処理中のPromiseもクリア
@@ -1563,8 +1575,6 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             error: null,
           });
         }
-        // INITIAL_SESSION, TOKEN_REFRESHEDなどの他のイベントはスキップ
-        // INITIAL_SESSIONはinitializeAuthで処理されるため、ここでは処理しない
       }
     );
 

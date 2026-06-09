@@ -8,6 +8,7 @@ import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { supabase } from '@/lib/supabase';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import logger from '@/lib/logger';
+import { ErrorHandler } from '@/lib/errorHandler';
 import { safeGoBack } from '@/lib/navigationUtils';
 import { getRepresentativeSongsByInstrumentId, StaticRepresentativeSong } from '@/data/staticRepresentativeSongs';
 
@@ -136,14 +137,14 @@ export default function RepresentativeSongsScreen() {
           details: instrumentError.details,
           hint: instrumentError.hint
         });
-        Alert.alert('エラー', `楽器情報の取得に失敗しました: ${instrumentError.message}`);
+        ErrorHandler.handle(instrumentError, '楽器情報取得', true);
         setLoading(false);
         return;
       }
       
       if (!instrumentData) {
         logger.error('[代表曲画面] 楽器データが見つかりません');
-        Alert.alert('エラー', '楽器データが見つかりません');
+        ErrorHandler.handle(new Error('楽器データが見つかりません'), '楽器情報取得', true);
         setLoading(false);
         return;
       }
@@ -250,7 +251,7 @@ export default function RepresentativeSongsScreen() {
       // エラー時は空配列
       setSongs([]);
       if (error instanceof Error) {
-        Alert.alert('エラー', `データの読み込みに失敗しました: ${error.message}`);
+        ErrorHandler.handle(error, '代表曲データ読み込み', true);
       }
     } finally {
       setLoading(false);
@@ -283,7 +284,7 @@ export default function RepresentativeSongsScreen() {
         
         if (!isTableNotFound) {
           logger.error('[代表曲画面] お気に入り曲取得エラー:', error);
-          Alert.alert('エラー', `お気に入り曲の読み込みに失敗しました: ${error.message}`);
+          ErrorHandler.handle(error, 'お気に入り曲読み込み', true);
         } else {
           logger.debug('[代表曲画面] user_favorite_songsテーブルが存在しません（マイグレーション未適用の可能性）');
         }
@@ -316,7 +317,7 @@ export default function RepresentativeSongsScreen() {
       });
     } catch (error) {
       logger.error('[代表曲画面] お気に入り曲読み込みエラー:', error);
-      Alert.alert('エラー', `お気に入り曲の読み込みに失敗しました: ${error instanceof Error ? error.message : String(error)}`);
+      ErrorHandler.handle(error, 'お気に入り曲読み込み', true);
       setFavoriteSongs([]);
     }
   };
@@ -367,7 +368,7 @@ export default function RepresentativeSongsScreen() {
             'お気に入り曲テーブルが存在しません。\n\nマイグレーションを適用してください:\n\n1. Supabaseダッシュボードにアクセス\n2. SQL Editorを開く\n3. supabase/migrations/20250110000000_create_user_favorite_songs.sql を実行'
           );
         } else {
-          Alert.alert('エラー', `お気に入り曲の追加に失敗しました: ${error.message}`);
+          ErrorHandler.handle(error, 'お気に入り曲追加', true);
         }
         return;
       }
@@ -400,10 +401,9 @@ export default function RepresentativeSongsScreen() {
         famous_note: '',
       });
       setShowAddModal(false);
-      Alert.alert('成功', 'お気に入り曲を追加しました');
     } catch (error) {
       logger.error('[代表曲画面] お気に入り曲追加で予期しないエラー:', error);
-      Alert.alert('エラー', 'お気に入り曲の追加に失敗しました');
+      ErrorHandler.handle(error, 'お気に入り曲追加', true);
     }
   };
 
@@ -453,7 +453,7 @@ export default function RepresentativeSongsScreen() {
 
       if (error) {
         logger.error('[代表曲画面] お気に入り曲更新エラー:', error);
-        Alert.alert('エラー', `お気に入り曲の更新に失敗しました: ${error.message}`);
+        ErrorHandler.handle(error, 'お気に入り曲更新', true);
         return;
       }
 
@@ -485,10 +485,9 @@ export default function RepresentativeSongsScreen() {
       });
       setEditingSong(null);
       setShowEditModal(false);
-      Alert.alert('成功', 'お気に入り曲を更新しました');
     } catch (error) {
       logger.error('[代表曲画面] お気に入り曲更新で予期しないエラー:', error);
-      Alert.alert('エラー', 'お気に入り曲の更新に失敗しました');
+      ErrorHandler.handle(error, 'お気に入り曲更新', true);
     }
   };
 
@@ -549,8 +548,6 @@ export default function RepresentativeSongsScreen() {
             // 再読み込みエラーは無視（既に状態は更新済み）
           }
         }, 300);
-        
-        (window as any).alert('お気に入り曲を削除しました');
       } catch (error) {
         logger.error('[代表曲画面] お気に入り曲削除で予期しないエラー:', error);
         (window as any).alert('お気に入り曲の削除に失敗しました');
@@ -586,7 +583,7 @@ export default function RepresentativeSongsScreen() {
                   details: error.details,
                   hint: error.hint
                 });
-                Alert.alert('エラー', `お気に入り曲の削除に失敗しました: ${error.message}`);
+                ErrorHandler.handle(error, 'お気に入り曲削除', true);
                 return;
               }
 
@@ -608,11 +605,9 @@ export default function RepresentativeSongsScreen() {
                   // 再読み込みエラーは無視（既に状態は更新済み）
                 }
               }, 300);
-              
-              Alert.alert('成功', 'お気に入り曲を削除しました');
             } catch (error) {
               logger.error('[代表曲画面] お気に入り曲削除で予期しないエラー:', error);
-              Alert.alert('エラー', 'お気に入り曲の削除に失敗しました');
+              ErrorHandler.handle(error, 'お気に入り曲削除', true);
             }
           },
         },
@@ -648,7 +643,7 @@ export default function RepresentativeSongsScreen() {
       }
     } catch (error) {
       console.error('URLを開く際にエラーが発生しました:', error);
-      Alert.alert('エラー', 'URLを開くことができませんでした');
+      ErrorHandler.handle(error, 'URLを開く', true);
     }
   };
 
@@ -772,7 +767,7 @@ export default function RepresentativeSongsScreen() {
                               }
                             } catch (error) {
                               logger.error('[代表曲画面] 削除ボタンのonPressでエラーが発生しました:', error);
-                              Alert.alert('エラー', '削除処理中にエラーが発生しました');
+                                ErrorHandler.handle(error, 'お気に入り曲削除', true);
                             }
                           }}
                           style={styles.deleteButton}

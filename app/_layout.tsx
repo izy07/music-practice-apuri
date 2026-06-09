@@ -158,32 +158,19 @@ function RootLayoutContent() {
     };
   }, []);
 
-  // ネットワーク切断検出：ネットワークが切断されたらログイン画面にリダイレクト（統合版）
-  // Web環境ではnavigator.onLineを使用、ネイティブ環境では将来的にNetInfoを統合可能
+  // ネットワーク状態の監視（オフライン時もログイン状態を維持するため、ログイン画面へは遷移しない）
   React.useEffect(() => {
-    // Web環境でのオフライン検出
     if (Platform.OS === 'web' && typeof window !== 'undefined') {
       const handleOffline = () => {
         if (!isOnline()) {
-          const currentSegments = segmentsRef.current;
-          const isInAuthGroup = currentSegments[0] === 'auth';
-          
-          // ログイン画面にいない場合のみリダイレクト
-          if (!isInAuthGroup && isReady && isRouterReady && isInitialized) {
-            redirectToLogin(router, 'ネットワーク切断を検出');
-          }
+          logger.debug('オフラインになりました - ログイン状態は維持します');
         }
       };
 
       const handleOnline = () => {
-        // オンライン復帰時の処理（必要に応じて実装）
         logger.debug('ネットワーク接続が復旧しました');
       };
 
-      // 初回チェック
-      handleOffline();
-
-      // ネットワーク状態の変化を監視
       window.addEventListener('offline', handleOffline);
       window.addEventListener('online', handleOnline);
       return () => {
@@ -191,11 +178,7 @@ function RootLayoutContent() {
         window.removeEventListener('online', handleOnline);
       };
     }
-    
-    // ネイティブ環境でのオフライン検出（将来的にNetInfoを統合可能）
-    // TODO: ネイティブ環境でのオフライン検出を実装する場合は、@react-native-community/netinfoを使用
-    // 現時点では、ネイティブ環境ではオフライン検出を行わない（Web環境のみ対応）
-  }, [isReady, isInitialized, router, segments]);
+  }, []);
 
 
   // データベーススキーマの整合性をチェック（認証完了後、一度だけ実行）
@@ -685,62 +668,29 @@ function RootLayoutContent() {
     // その他の認証画面（callback、reset-passwordなど）は後続処理で対応
     
     // 楽器未選択の場合の処理
-    // 重要: ネットワークエラー時や初期化中は楽器選択画面に遷移しない
-    // これにより、エラー時に誤って楽器選択画面が表示されることを防ぐ
+    // 楽器未選択の状態でメイン画面に留まらないように、必ずチュートリアルへ誘導する
     const instrumentSelected = hasInstrumentSelected();
     if (!instrumentSelected) {
       // チュートリアル画面にいる場合は許可（遷移をブロックしない）
       if (currentTab === 'tutorial') {
         return;
       }
-      
-      // 楽器選択画面にいる場合は許可（遷移をブロックしない）
+      // 楽器選択画面にいる場合は許可（チュートリアルから遷移した先）
       if (currentTab === 'instrument-selection') {
         return;
       }
-      
-      // 既に適切な画面（タブグループ内）にいる場合は、エラー時でも画面を維持
-      // これにより、ネットワークエラー時に誤って楽器選択画面に遷移することを防ぐ
-      // 特に、カレンダー画面やその他のメイン画面にいる場合は、エラー時でも画面を維持
-      if (isInTabsGroup && currentTab && currentTab !== 'tutorial' && currentTab !== 'instrument-selection') {
-        logger.debug('楽器未選択だが、既に適切な画面にいるため画面を維持（エラー時の誤遷移を防止）', { 
-          currentTab, 
-          isAuthenticated,
-          isInitialized,
-          isLoading,
-          userSelectedInstrument: user?.selected_instrument_id
+      // 初期化完了かつローディング完了時は、チュートリアルへリダイレクト
+      // メイン画面（index等）に楽器未選択のまま留まらないようにする
+      if (isInitialized && !isLoading) {
+        logger.debug('楽器未選択のため、チュートリアル画面にリダイレクト', {
+          currentTab,
+          isAtRoot,
+          isInAuthGroup
         });
-        return;
-      }
-      
-      // チュートリアルが必要な場合はチュートリアル画面に遷移
-      if (needsTutorial()) {
-        logger.debug('新規登録直後のため、チュートリアル画面にリダイレクト');
         router.replace('/(tabs)/tutorial');
         return;
       }
-      
-      // その他の場合は楽器選択画面に遷移
-      // ただし、ルートパスや認証画面からの遷移のみ（既存画面からの誤遷移を防ぐ）
-      // また、初期化中やローディング中は遷移しない（エラー時の誤遷移を防ぐ）
-      if ((isAtRoot || isInAuthGroup) && isInitialized && !isLoading) {
-        logger.debug('楽器未選択のため、楽器選択画面にリダイレクト', { 
-          isAtRoot, 
-          isInAuthGroup,
-          isInitialized,
-          isLoading
-        });
-        router.replace('/(tabs)/instrument-selection');
-        return;
-      }
-      
-      // その他の場合は画面を維持（エラー時の誤遷移を防止）
-      logger.debug('楽器未選択だが、既存画面からの遷移または初期化中のため画面を維持（エラー時の誤遷移を防止）', { 
-        currentSegments,
-        isInitialized,
-        isLoading,
-        isAuthenticated
-      });
+      // 初期化中・ローディング中は画面を維持（チラつき防止）
       return;
     }
 
@@ -766,13 +716,13 @@ function RootLayoutContent() {
     // その他の認証画面（callback、reset-passwordなど）の処理
     if (isInAuthGroup) {
       if (!hasInstrumentSelected()) {
-        router.replace('/(tabs)/instrument-selection');
+        router.replace('/(tabs)/tutorial');
       } else {
         router.replace('/(tabs)/index');
       }
       return;
     }
-  }, [isReady, isRouterReady, isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, needsTutorial, router, segments]);
+  }, [isReady, isRouterReady, isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, router, segments]);
 
   // checkUserProgressAndNavigate関数は削除（シンプル化のため不要）
 

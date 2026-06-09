@@ -3,6 +3,8 @@
  * 周波数検出、音名変換、平滑化処理などを提供
  */
 
+import { DEFAULT_A4_FREQUENCY } from '@/lib/tunerUtils';
+
 // プロ仕様の音名と周波数対応
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 const NOTE_NAMES_JA = ['ド', 'ド#', 'レ', 'レ#', 'ミ', 'ファ', 'ファ#', 'ソ', 'ソ#', 'ラ', 'ラ#', 'シ'];
@@ -30,7 +32,7 @@ export interface NoteInfo {
  */
 export const getNoteFromFrequency = (
   frequency: number,
-  a4Freq: number = 440
+  a4Freq: number = DEFAULT_A4_FREQUENCY
 ): NoteInfo => {
   if (frequency <= 0) {
     return {

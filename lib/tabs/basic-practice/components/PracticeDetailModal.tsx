@@ -119,7 +119,6 @@ export function PracticeDetailModal({
           // 既に存在する場合は何もしない（無視）
           logger.debug('基礎練メニューが既に記録されています:', menuTitle);
           onClose();
-          Alert.alert('情報', `${menuTitle}は既に記録されています`);
           onSaveComplete?.();
           return;
         }
@@ -192,9 +191,6 @@ export function PracticeDetailModal({
 
       // モーダルを即座に閉じる（楽観的更新）
       onClose();
-      
-      // 成功メッセージ（非ブロッキング）
-      Alert.alert('保存完了', `${selectedMenu.title}の練習記録を保存しました！`, [{ text: 'OK' }]);
       
       // コールバックを呼び出し
       onSaveComplete?.();

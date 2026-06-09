@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions, Alert } from 'react-native';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { useLanguage } from '@/components/LanguageContext';
@@ -17,6 +17,7 @@ import { formatMinutesToHours } from '@/lib/dateUtils';
 import { getEffectiveInstrumentId, getInstrumentId } from '@/lib/instrumentUtils';
 import { practiceDataCache, PracticeDataCache } from '@/lib/cache/practiceDataCache';
 import logger from '@/lib/logger';
+import { ErrorHandler } from '@/lib/errorHandler';
 
 const { width } = Dimensions.get('window');
 
@@ -94,12 +95,14 @@ export default function StatisticsScreen() {
   const { t, language } = useLanguage();
   const router = useRouter();
   const { user } = useAuthAdvanced();
+  const insets = useSafeAreaInsets();
   const [span, setSpan] = useState<Span>('daily');
   const [statsMode, setStatsMode] = useState<StatsMode>('monthly');
   const [anchorDate, setAnchorDate] = useState(new Date()); // 週/月の基準日
   const [practiceRecords, setPracticeRecords] = useState<PracticeRecord[]>([]);
   const [loading, setLoading] = useState(true);
-  
+  const [loadError, setLoadError] = useState<Error | null>(null);
+
   // 日付範囲フィルタリング
   const [dateFilterStart, setDateFilterStart] = useState<string | null>(null);
   const [dateFilterEnd, setDateFilterEnd] = useState<string | null>(null);
@@ -121,7 +124,8 @@ export default function StatisticsScreen() {
     
     try {
       setLoading(true);
-      
+      setLoadError(null);
+
       // 有効な楽器IDを取得（統一的なフォールバック処理）
       const currentInstrumentId = getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id);
       
@@ -155,6 +159,7 @@ export default function StatisticsScreen() {
         const cachedData = practiceDataCache.get<PracticeRecord[]>(cacheKey);
         if (cachedData) {
           logger.debug('[統計画面] メモリキャッシュから取得しました', { count: cachedData.length });
+          setLoadError(null);
           setPracticeRecords(cachedData);
           setLoading(false);
           return;
@@ -164,8 +169,8 @@ export default function StatisticsScreen() {
         const storageData = await practiceDataCache.getFromStorage<PracticeRecord[]>(cacheKey);
         if (storageData) {
           logger.debug('[統計画面] ローカルストレージキャッシュから取得しました', { count: storageData.length });
+          setLoadError(null);
           setPracticeRecords(storageData);
-          // メモリキャッシュにも保存
           practiceDataCache.set(cacheKey, storageData);
           setLoading(false);
           return;
@@ -194,8 +199,9 @@ export default function StatisticsScreen() {
       );
 
       if (result.error) {
-        logger.error('[統計画面] 練習記録取得エラー:', result.error);
-        Alert.alert('エラー', '練習記録の取得に失敗しました');
+        const err = new Error(result.error);
+        setLoadError(err);
+        ErrorHandler.handle(err, '練習記録取得', true);
         return;
       }
 
@@ -226,14 +232,15 @@ export default function StatisticsScreen() {
           created_at: session.created_at!,
         }));
 
-      // キャッシュに保存（メモリとローカルストレージ）
       practiceDataCache.set(cacheKey, records);
       await practiceDataCache.setToStorage(cacheKey, records);
 
+      setLoadError(null);
       setPracticeRecords(records);
     } catch (error) {
-      logger.error('[統計画面] 練習記録取得例外:', error);
-      Alert.alert('エラー', '練習記録の取得に失敗しました');
+      const err = error instanceof Error ? error : new Error(String(error));
+      setLoadError(err);
+      ErrorHandler.handle(error, '練習記録取得', true);
     } finally {
       setLoading(false);
     }
@@ -1041,6 +1048,29 @@ export default function StatisticsScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: Background }]}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.replace('/(tabs)/index')} style={styles.backBtn}>
+            <ArrowLeft size={22} color={TextColor} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: TextColor }]}>統計・分析</Text>
+          <View style={{ width: 44 }} />
+        </View>
+        <View style={[styles.loadingContainer, { backgroundColor: currentTheme.background, padding: 24 }]}>
+          <Text style={[styles.loadingText, { color: TextColor, marginBottom: 16 }]}>データの読み込みに失敗しました</Text>
+          <TouchableOpacity
+            style={{ backgroundColor: currentTheme.primary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 8 }}
+            onPress={() => fetchPracticeRecords(true)}
+          >
+            <Text style={{ color: '#FFF', fontWeight: '600' }}>再試行</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: Background }]} > 
         <View style={styles.header}>
@@ -1080,8 +1110,8 @@ export default function StatisticsScreen() {
       </View>
 
       <ScrollView 
-        contentContainerStyle={{ padding: 12 }} 
-        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ padding: 12, paddingBottom: Math.max(160, 80 + insets.bottom) }} 
+        showsVerticalScrollIndicator={true}
         nestedScrollEnabled={true}
         style={{ flex: 1 }}
       >
@@ -1267,9 +1297,16 @@ export default function StatisticsScreen() {
         <View style={[styles.detailAnalysisCard, { backgroundColor: Surface }]}>
           <Text style={[styles.detailAnalysisTitle, { color: TextColor }]}>{t('detailedAnalysis')}</Text>
 
+          {!getAdditionalStats ? (
+            <Text style={[styles.detailAnalysisEmpty, { color: SecondaryText }]}>
+              {language === 'en'
+                ? 'No practice records yet. Record practice from the calendar or quick record to see detailed analysis here.'
+                : '練習記録がまだありません。カレンダーやクイック記録で練習を記録すると、ここに詳細が表示されます。'}
+            </Text>
+          ) : (
+            <>
           {/* 基礎統計 */}
-          {getAdditionalStats && (
-            <View style={styles.analysisSection}>
+          <View style={styles.analysisSection}>
               <Text style={[styles.analysisSectionTitle, { color: TextColor }]}>{t('basicStats')}</Text>
               <View style={styles.analysisRow}>
                 <Text style={[styles.analysisLabel, { color: SecondaryText }]}>総合計練習時間</Text>
@@ -1296,7 +1333,6 @@ export default function StatisticsScreen() {
                 </Text>
               </View>
             </View>
-          )}
 
           {/* 週間練習パターン */}
           {getAdditionalStats && Object.keys(getAdditionalStats.weeklyPattern).length > 0 && (
@@ -1379,6 +1415,8 @@ export default function StatisticsScreen() {
                 </Text>
               </View>
             </View>
+          )}
+            </>
           )}
         </View>
       </ScrollView>
@@ -1643,6 +1681,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginTop: 16,
+    marginBottom: 48,
     elevation: 4,
   },
   detailAnalysisTitle: {
@@ -1650,6 +1689,13 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 16,
     textAlign: 'center',
+  },
+  detailAnalysisEmpty: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingVertical: 24,
+    paddingHorizontal: 16,
   },
   analysisSection: {
     marginBottom: 20,
