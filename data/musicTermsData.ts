@@ -255,7 +255,7 @@ export const DEFAULT_MUSIC_TERMS: Record<MusicTermCategory, MusicTermData[]> = {
       term_ja: 'D.S. (Dal Segno)',
       term_en: 'Dal Segno',
       symbol: 'D.S.',
-      description_ja: 'セーニョ（♪記号）から戻る',
+      description_ja: 'セーニョ記号（𝄋）から戻る',
       description_en: 'Return to the segno sign',
     },
     {
@@ -275,7 +275,7 @@ export const DEFAULT_MUSIC_TERMS: Record<MusicTermCategory, MusicTermData[]> = {
     {
       term_ja: 'Segno（セーニョ）',
       term_en: 'Segno',
-      symbol: '♪',
+      symbol: '𝄋',
       description_ja: '記号の位置をマーク',
       description_en: 'Marks a specific point in the music',
     },
@@ -340,9 +340,15 @@ export const DEFAULT_MUSIC_TERMS: Record<MusicTermCategory, MusicTermData[]> = {
     {
       term_ja: 'トレモロ',
       term_en: 'Tremolo',
-      symbol: 'tr',
-      description_ja: '同じ音を素早く繰り返す',
+      description_ja: '同じ音を素早く繰り返す（音符の符幹に斜線を付けて表す）',
       description_en: 'Rapidly repeat the same note',
+    },
+    {
+      term_ja: 'トリル',
+      term_en: 'Trill',
+      symbol: 'tr',
+      description_ja: '記された音と2度上の音を素早く交互に演奏する装飾音',
+      description_en: 'Rapidly alternate between the written note and the note above',
     },
     {
       term_ja: 'フェルマータ',
@@ -460,13 +466,13 @@ export const DEFAULT_MUSIC_TERMS: Record<MusicTermCategory, MusicTermData[]> = {
       term_ja: 'ハーモニクス',
       term_en: 'Harmonics',
       description_ja: 'ヴァイオリンやヴィオラ,チェロ,コントラバスなどの弦楽器には, ハーモニクスと呼ばれる奏法があります。 これらの弦楽器では弦の上のある一点を左指で軽く指を触れ(押さえつけずに), 右手の弓で演奏すると振動の節ができ、倍音（１オクターブ上など）を得ることができます。 これがハーモニクス奏法です。',
-      categories: ['wind', 'string'],
+      categories: ['string'],
     },
     {
       term_ja: '倍音',
       term_en: 'Harmonic',
       description_ja: '基音に対して整数倍の周波数を持つ音。楽器ではハーモニクス奏法で鳴らすことができる。',
-      categories: ['wind'],
+      categories: ['wind', 'string'],
     },
     {
       term_ja: 'シングルストローク',

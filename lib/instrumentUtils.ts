@@ -168,7 +168,7 @@ export const getInstrumentCategory = (instrumentKey: string): InstrumentCategory
   }
   
   // 管楽器
-  const windInstruments = ['flute', 'clarinet', 'oboe', 'bassoon', 'saxophone', 'trumpet', 'trombone', 'horn'];
+  const windInstruments = ['flute', 'clarinet', 'oboe', 'bassoon', 'saxophone', 'trumpet', 'trombone', 'horn', 'tuba', 'euphonium', 'recorder'];
   if (windInstruments.includes(instrumentKey)) {
     return 'wind';
   }
