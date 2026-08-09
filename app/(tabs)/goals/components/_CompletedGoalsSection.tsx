@@ -39,7 +39,9 @@ export const CompletedGoalsSection: React.FC<Props> = memo(({
   const sectionStyle = useMemo(() => [
     styles.section,
     { backgroundColor: colors.surface },
-    ...(sectionMaxWidth != null ? [{ maxWidth: sectionMaxWidth }] : []),
+    ...(sectionMaxWidth != null
+      ? [{ width: sectionMaxWidth, maxWidth: '100%' as const, alignSelf: 'center' as const }]
+      : [{ width: '100%' as const, alignSelf: 'stretch' as const }]),
     ...(sectionPadding != null ? [{ padding: sectionPadding }] : []),
   ], [colors.surface, sectionMaxWidth, sectionPadding]);
 
@@ -90,19 +92,22 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     padding: 16,
     borderRadius: 12,
-    width: '96%',
-    maxWidth: 550,
-    alignSelf: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
+    minWidth: 0,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginLeft: 8,
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   emptyText: {
     fontSize: 14,
@@ -111,6 +116,8 @@ const styles = StyleSheet.create({
   },
   goalsList: {
     gap: 12,
+    width: '100%',
+    alignItems: 'stretch',
   },
   completedGoalCard: {
     padding: 16,

@@ -30,7 +30,7 @@ export function shouldUsePersistentCache(): boolean {
 }
 
 /** 楽器ガイドのキャッシュ世代（データ更新時にインクリメントして古いキャッシュを無効化） */
-export const INSTRUMENT_GUIDES_CACHE_VERSION = '2';
+export const INSTRUMENT_GUIDES_CACHE_VERSION = '4';
 
 export const INSTRUMENT_GUIDES_CACHE_KEY = `instrumentGuides_cache_v${INSTRUMENT_GUIDES_CACHE_VERSION}`;
 

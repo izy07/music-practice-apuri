@@ -23,7 +23,7 @@ import { styles } from '@/lib/tabs/tuner/styles';
 import audioResourceManager from '@/lib/audioResourceManager';
 import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { autoCorrelate, getNoteFromFrequency, smoothValue, getTuningColor, combineAlgorithms } from '@/lib/tunerAudioProcessor';
+import { getNoteFromFrequency, smoothValue, getTuningColor, combineAlgorithms } from '@/lib/tunerAudioProcessor';
 import { getUserSettings } from '@/repositories/userSettingsRepository';
 import { getCurrentUser } from '@/lib/authService';
 import { DEFAULT_A4_FREQUENCY, getFrequency, NOTE_NAMES, NOTE_NAMES_JA } from '@/lib/tunerUtils';
@@ -40,8 +40,8 @@ const TUNING_PRECISION = {
   POOR: 10,       // ±10セント以内: 調整必要
 };
 
-// セント表示のデッドゾーン: この範囲内は「0」と表示して針を中央に（正しい音でも±2セント程度は揺れるため）
-const CENTS_DISPLAY_DEAD_ZONE = 2.5;
+// セント表示のデッドゾーン: この範囲内は「0」と表示して針を中央に（市販チューナー相当の±1セント）
+const CENTS_DISPLAY_DEAD_ZONE = 1.0;
 
 // 楽器別チューニング設定
 const INSTRUMENT_TUNINGS = {
@@ -617,8 +617,8 @@ export default function TunerScreen() {
       // マイク入力をAudioContextに接続
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 8192; // コントラバスの低周波数検出精度向上のため、FFTサイズを8192に拡大
-      analyser.smoothingTimeConstant = 0.5; // より滑らかな平滑化
+      analyser.fftSize = 16384; // 市販チューナー級の周波数分解能（低音域の精度向上）
+      analyser.smoothingTimeConstant = 0; // 時間領域ピッチ検出では平滑化不要（最新サンプルを使う）
       source.connect(analyser);
       analyserNodeRef.current = analyser;
 
@@ -627,12 +627,12 @@ export default function TunerScreen() {
       setIsListening(true);
       smoothedFrequencyRef.current = 0;
 
-      // 定期的に音程を検出（60fps相当）
-      // 周波数検出の信頼性を向上させるため、複数フレームの平均を使用
-      const HISTORY_SIZE = 10; // 10フレームの履歴を使用（安定性を優先）
+      // 定期的に音程を検出（約30fps: 精度と応答性のバランス、市販チューナー相当）
+      // 短めの履歴で中央値を取り、ジッターを抑えつつ追従遅れを最小化
+      const HISTORY_SIZE = 5;
       frequencyHistoryRef.current = []; // 履歴をリセット
 
-      
+
   
   
 const processAudio = () => {
@@ -640,9 +640,8 @@ const processAudio = () => {
         const isOctaveRelation = (freq1: number, freq2: number): boolean => {
           if (freq1 <= 0 || freq2 <= 0) return false;
           const ratio = freq1 > freq2 ? freq1 / freq2 : freq2 / freq1;
-          // 2倍（オクターブ）、4倍（2オクターブ）、1/2倍、1/4倍の関係をチェック
-          return (ratio > 1.9 && ratio < 2.1) || (ratio > 3.8 && ratio < 4.2) || 
-                 (ratio > 0.475 && ratio < 0.525) || (ratio > 0.2375 && ratio < 0.2625);
+          // 2倍（オクターブ）、4倍（2オクターブ）
+          return (ratio > 1.9 && ratio < 2.1) || (ratio > 3.8 && ratio < 4.2);
         };
         
         if (!analyserNodeRef.current || !audioContextRef.current) return;
@@ -652,131 +651,75 @@ const processAudio = () => {
         const dataArray = new Float32Array(bufferLength);
         analyserNodeRef.current.getFloatTimeDomainData(dataArray);
 
-        // 周波数を検出（複数アルゴリズムを統合して高精度化）
+        // 周波数を検出（MPM主の複数アルゴリズム統合）
         const detectedFrequency = combineAlgorithms(dataArray, audioContextRef.current.sampleRate);
 
         if (detectedFrequency > 0 && detectedFrequency < 2000) {
-          // 異常値の検出：前回の平滑化値と比較して、異常に大きな変化（100%以上）の場合は無視
-          // ただし、オクターブ関係（2倍、4倍、1/2倍、1/4倍）の場合は正常な検出として扱う
+          // 異常値の検出：前回と比較して急変かつオクターブでない場合は無視
           if (smoothedFrequencyRef.current > 0) {
             const changeRatio = Math.abs(detectedFrequency - smoothedFrequencyRef.current) / smoothedFrequencyRef.current;
-            
-            // オクターブ関係の場合は正常な検出として扱う
-            if (isOctaveRelation(detectedFrequency, smoothedFrequencyRef.current)) {
-              // オクターブ関係の場合は正常な検出として扱う（スキップしない）
-            } else if (changeRatio > 1.0) {
-              // 異常値の可能性が高いため、履歴に追加せずにスキップ（100%以上の変化）
-              // デバッグログは削除（高頻度で出力されるため）
+            if (!isOctaveRelation(detectedFrequency, smoothedFrequencyRef.current) && changeRatio > 0.5) {
               return;
             }
           }
-          // 履歴に追加
+
+          // オクターブジャンプ時は履歴をリセットして基音側へ素早く収束
+          if (
+            smoothedFrequencyRef.current > 0 &&
+            isOctaveRelation(detectedFrequency, smoothedFrequencyRef.current)
+          ) {
+            const fundamental = Math.min(detectedFrequency, smoothedFrequencyRef.current);
+            // 高い方（倍音）を検出していた場合は基音へ寄せる
+            if (detectedFrequency < smoothedFrequencyRef.current * 0.75) {
+              frequencyHistoryRef.current = [detectedFrequency];
+              smoothedFrequencyRef.current = detectedFrequency;
+            } else if (Math.abs(detectedFrequency - fundamental) < Math.abs(smoothedFrequencyRef.current - fundamental)) {
+              frequencyHistoryRef.current = [fundamental];
+              smoothedFrequencyRef.current = fundamental;
+            }
+          }
+
           frequencyHistoryRef.current.push(detectedFrequency);
           if (frequencyHistoryRef.current.length > HISTORY_SIZE) {
-            frequencyHistoryRef.current.shift(); // 古い値を削除
+            frequencyHistoryRef.current.shift();
           }
 
-          // 履歴が十分にたまったら中央値を使用（外れ値の影響を減らす）
-          // より安定した検出のため、履歴を十分に蓄積
+          // 中央値で外れ値を除去（市販チューナー相当の安定化）
           let medianFreq = detectedFrequency;
-          if (frequencyHistoryRef.current.length >= 7) {
-            // 7フレーム以上の場合、外れ値を除去してから中央値を計算
-            const sortedFreqs = [...frequencyHistoryRef.current].sort((a, b) => a - b);
-            // 外れ値を除去（上下25%を除外）
-            const q1Index = Math.floor(sortedFreqs.length * 0.25);
-            const q3Index = Math.floor(sortedFreqs.length * 0.75);
-            const trimmedFreqs = sortedFreqs.slice(q1Index, q3Index + 1);
-            // トリム後の中央値を使用
-            medianFreq = trimmedFreqs[Math.floor(trimmedFreqs.length / 2)];
-            
-            // さらに、トリム後の平均も計算して、中央値と平均の加重平均を使用
-            const trimmedMean = trimmedFreqs.reduce((a, b) => a + b, 0) / trimmedFreqs.length;
-            // 中央値70%、平均30%の加重平均（安定性と精度のバランス）
-            medianFreq = medianFreq * 0.7 + trimmedMean * 0.3;
-          } else if (frequencyHistoryRef.current.length >= 3) {
-          // 異常値の再チェック：中央値も前回の平滑化値と比較
-          // 中央値計算後も、前回の値と比較して異常に大きな変化（100%以上）がある場合は無視
-          // ただし、オクターブ関係の場合は正常な検出として扱う
-          if (smoothedFrequencyRef.current > 0) {
-            const medianChangeRatio = Math.abs(medianFreq - smoothedFrequencyRef.current) / smoothedFrequencyRef.current;
-            
-            // オクターブ関係の場合は正常な検出として扱う
-            if (!isOctaveRelation(medianFreq, smoothedFrequencyRef.current) && medianChangeRatio > 1.0) {
-              // 中央値も異常値の可能性が高いため、前回の値を維持（100%以上の変化）
-              // デバッグログは削除（高頻度で出力されるため）
-              return;
-            }
-          }
-            // 3フレーム以上の場合、中央値を使用
+          if (frequencyHistoryRef.current.length >= 3) {
             const sortedFreqs = [...frequencyHistoryRef.current].sort((a, b) => a - b);
             medianFreq = sortedFreqs[Math.floor(sortedFreqs.length / 2)];
-          } else if (frequencyHistoryRef.current.length >= 2) {
-            // 2フレームの場合は平均を使用
-            medianFreq = frequencyHistoryRef.current.reduce((a, b) => a + b, 0) / frequencyHistoryRef.current.length;
+          } else if (frequencyHistoryRef.current.length === 2) {
+            medianFreq =
+              (frequencyHistoryRef.current[0] + frequencyHistoryRef.current[1]) / 2;
           }
 
-          // 安定した検出のため、変化量に応じた段階的な平滑化を適用
-          // 平滑化の強度は変化量に反比例（小さな変化ほど強く平滑化、大きな変化ほど弱く平滑化）
-          // これにより、実際の音の変化は反映しつつ、誤検出による急激な変化は抑制される
+          // 軽いEMA: 追従遅れを抑えつつジッターを低減
           const freqDiff = Math.abs(medianFreq - smoothedFrequencyRef.current);
           let smoothedFreq: number;
-          
-          if (smoothedFrequencyRef.current === 0) {
-            // 初回検出時は即座に反映（平滑化なし）
-            smoothedFreq = medianFreq;
-          } else if (freqDiff < 2) {
-            // 非常に小さな変化（2Hz未満）: 50%平滑化（安定性を最優先）
-            // チューニング時の微調整を滑らかに表示
-            smoothedFreq = smoothedFrequencyRef.current * 0.5 + medianFreq * 0.5;
-          } else if (freqDiff < 5) {
-            // 小さな変化（2-5Hz）: 40%平滑化（中程度の安定性）
-            // 楽器の音程の自然な揺れを滑らかに
-            smoothedFreq = smoothedFrequencyRef.current * 0.4 + medianFreq * 0.6;
-          } else if (freqDiff < 10) {
-            // 中程度の変化（5-10Hz）: smoothValue関数で軽い平滑化
-            // 音程の変更を比較的速やかに反映
-            smoothedFreq = smoothValue(
-              smoothedFrequencyRef.current,
-              medianFreq,
-              0.4, // alpha: 変化の反映速度（0.4 = 40%反映）
-              20   // maxChange: 1回の更新で許容する最大変化量（Hz）
-            );
-          } else if (freqDiff < 20) {
-            // 大きな変化（10-20Hz）: 標準的な平滑化
-            // 楽器の変更や大きな音程の変更に対応
-            smoothedFreq = smoothValue(
-              smoothedFrequencyRef.current,
-              medianFreq,
-              0.4, // alpha
-              20   // maxChange
-            );
-          } else {
-            // 非常に大きな変化（20Hz以上）: 強い平滑化（外れ値の可能性が高い）
-            // 誤検出やノイズによる急激な変化を抑制
-            smoothedFreq = smoothValue(
-              smoothedFrequencyRef.current,
-              medianFreq,
-              0.2, // alpha: より強い平滑化（20%反映）
-              10   // maxChange: より厳しい制限（10Hz/回）
-            );
-          }
-          
-          smoothedFrequencyRef.current = smoothedFreq;          
-          // 最終的な異常値チェック：平滑化後の値も妥当性を確認
-          if (smoothedFrequencyRef.current > 0) {
-            const finalChangeRatio = Math.abs(smoothedFreq - smoothedFrequencyRef.current) / smoothedFrequencyRef.current;
-            if (finalChangeRatio > 0.3) {
-              // 平滑化後も異常に大きな変化がある場合は、前回の値を維持
-              if (__DEV__) console.warn(`[Tuner] 平滑化後の値が異常値のためスキップ: ${smoothedFreq.toFixed(2)}Hz (前回: ${smoothedFrequencyRef.current.toFixed(2)}Hz, 変化率: ${(finalChangeRatio * 100).toFixed(1)}%)`);
-              return;
-            }
-          }          
 
+          if (smoothedFrequencyRef.current === 0) {
+            smoothedFreq = medianFreq;
+          } else if (freqDiff < 0.5) {
+            // 0.5Hz未満: ほぼ確定 → 強めの平滑化で針を安定
+            smoothedFreq = smoothedFrequencyRef.current * 0.65 + medianFreq * 0.35;
+          } else if (freqDiff < 3) {
+            // 微調整域: 半分ずつ
+            smoothedFreq = smoothedFrequencyRef.current * 0.45 + medianFreq * 0.55;
+          } else if (freqDiff < 15) {
+            // チューニング操作中: 素早く追従
+            smoothedFreq = smoothValue(smoothedFrequencyRef.current, medianFreq, 0.55, 25);
+          } else {
+            // 大きな変化: やや慎重
+            smoothedFreq = smoothValue(smoothedFrequencyRef.current, medianFreq, 0.35, 20);
+          }
+
+          smoothedFrequencyRef.current = smoothedFreq;
 
           // 音名を取得（設定されたA4周波数を使用）
           const noteInfo = getNoteFromFrequency(smoothedFreq, a4FrequencyRef.current);
           
-          // デバッグ情報（開発時のみ、本番環境でもコンソールに出力）
+          // デバッグ情報（開発時のみ）
           if (__DEV__) {
             logger.debug('チューナー検出', {
               detectedFreq: detectedFrequency.toFixed(2),
@@ -791,10 +734,8 @@ const processAudio = () => {
               isInTune: noteInfo.isInTune
             });
           }
-          // 本番環境でも重要な情報をコンソールに出力（デバッグ用）
-          console.log(`[Tuner] 検出周波数: ${detectedFrequency.toFixed(2)}Hz, 平滑化後: ${smoothedFreq.toFixed(2)}Hz, 音名: ${noteInfo.note}${noteInfo.octave}, セント: ${noteInfo.cents.toFixed(1)}, A4: ${a4FrequencyRef.current}Hz`);
           
-          // UIを更新（滑らかな更新のため、状態更新を最適化）
+          // UIを更新
           setCurrentFrequency(smoothedFreq);
           setCurrentNote(noteInfo.note);
           setCurrentNoteJa(noteInfo.noteJa);
@@ -802,11 +743,11 @@ const processAudio = () => {
           const displayCents = Math.abs(noteInfo.cents) <= CENTS_DISPLAY_DEAD_ZONE ? 0 : noteInfo.cents;
           setCurrentCents(displayCents);
 
-          // チューニングバーの位置を更新（より滑らかなアニメーション）
+          // チューニングバーの位置を更新（応答性重視）
           Animated.timing(tuningBarAnimation, {
             toValue: displayCents,
-            duration: 200, // より長いdurationで滑らかに
-            easing: Easing.out(Easing.cubic), // より滑らかなイージング
+            duration: 80,
+            easing: Easing.out(Easing.cubic),
             useNativeDriver: false,
           }).start();
 
@@ -857,8 +798,8 @@ const processAudio = () => {
         }
       };
 
-      // 16.67ms間隔（約60fps）で処理
-      audioProcessingIntervalRef.current = window.setInterval(processAudio, 16.67);
+      // 約30fpsで処理（大きなバッファ解析とCPU負荷のバランス）
+      audioProcessingIntervalRef.current = window.setInterval(processAudio, 33);
 
       logger.debug('チューナー機能を開始しました');
     } catch (error: any) {

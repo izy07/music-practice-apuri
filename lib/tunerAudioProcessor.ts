@@ -344,8 +344,7 @@ export const autoCorrelate = (
   // 3. そうでない場合は、ハーモニクスでない候補を優先
   
   // まず、オクターブ関係をチェック
-  // 注意：periodが大きい = 周波数が低い
-  // candidate.period < other.period の場合、candidateはより高い周波数（短いperiod）
+  // 注意：periodが大きい = 周波数が低い = 基本周波数の候補
   let selectedCandidate = null;
   let maxCorrelation = 0;
   
@@ -354,27 +353,23 @@ export const autoCorrelate = (
     for (let j = i + 1; j < candidates.length; j++) {
       const other = candidates[j];
       
-      // candidateとotherのperiod比を計算
-      // candidate.period < other.period の場合、candidateはより高い周波数
+      // より長い period（低い周波数 = 基音）を優先
       let ratio: number;
-      let higherFreqCandidate: typeof candidate;
+      let fundamentalCandidate: typeof candidate;
       
-      if (candidate.period < other.period) {
-        // candidateがより高い周波数（短いperiod）
-        ratio = other.period / candidate.period; // other.period / candidate.period = 2ならオクターブ
-        higherFreqCandidate = candidate;
+      if (candidate.period > other.period) {
+        ratio = candidate.period / other.period;
+        fundamentalCandidate = candidate;
       } else {
-        // otherがより高い周波数（短いperiod）
-        ratio = candidate.period / other.period; // candidate.period / other.period = 2ならオクターブ
-        higherFreqCandidate = other;
+        ratio = other.period / candidate.period;
+        fundamentalCandidate = other;
       }
       
       // 2倍の関係（オクターブ）の判定（±3%の誤差を許容）
       if (ratio > 1.94 && ratio < 2.06) {
-        // より高い周波数（短いperiod）を優先し、相関値が高い方を選択
-        if (!selectedCandidate || higherFreqCandidate.correlation > maxCorrelation) {
-          selectedCandidate = higherFreqCandidate;
-          maxCorrelation = higherFreqCandidate.correlation;
+        if (!selectedCandidate || fundamentalCandidate.correlation > maxCorrelation) {
+          selectedCandidate = fundamentalCandidate;
+          maxCorrelation = fundamentalCandidate.correlation;
         }
       }
     }
@@ -788,51 +783,35 @@ export const yinPitchDetection = (
   // 候補をソート（値が小さい順 = より確実な候補）
   candidates.sort((a, b) => a.value - b.value);
   
-  // オクターブ関係をチェックして、より高い周波数（短いperiod）を優先
-  // 注意：tau（period）が小さい = 周波数が高い
+  // オクターブ関係をチェックして、より低い周波数（長いperiod = 基音）を優先
   let tauMin = -1;
   if (candidates.length > 0) {
-    // 最も確実な候補（値が最小）を最初の候補として選択
     const primaryCandidate = candidates[0];
     
-    // 他の候補がこの候補のオクターブ関係にあるかチェック
-    let isOctaveHarmonic = false;
-    let higherFreqTau = -1;
+    let fundamentalTau = primaryCandidate.tau;
     
     for (let i = 1; i < candidates.length; i++) {
       const candidate = candidates[i];
       
-      // primaryCandidateとcandidateのtau比を計算
-      // より小さいtau = より高い周波数
       let ratio: number;
-      let higherTau: number;
+      let lowerTau: number;
       
-      if (primaryCandidate.tau < candidate.tau) {
-        // primaryCandidateがより高い周波数（短いtau）
-        ratio = candidate.tau / primaryCandidate.tau; // candidate.tau / primaryCandidate.tau = 2ならオクターブ
-        higherTau = primaryCandidate.tau;
+      if (primaryCandidate.tau > candidate.tau) {
+        ratio = primaryCandidate.tau / candidate.tau;
+        lowerTau = primaryCandidate.tau;
       } else {
-        // candidateがより高い周波数（短いtau）
-        ratio = primaryCandidate.tau / candidate.tau; // primaryCandidate.tau / candidate.tau = 2ならオクターブ
-        higherTau = candidate.tau;
+        ratio = candidate.tau / primaryCandidate.tau;
+        lowerTau = candidate.tau;
       }
       
       // 2倍の関係（オクターブ）の判定（±3%の誤差を許容）
       if (ratio > 1.94 && ratio < 2.06) {
-        // より高い周波数（短いtau）を優先
-        higherFreqTau = higherTau;
-        isOctaveHarmonic = true;
+        fundamentalTau = lowerTau;
         break;
       }
     }
     
-    // オクターブ関係が見つかった場合、より高い周波数を使用
-    if (isOctaveHarmonic && higherFreqTau > 0) {
-      tauMin = higherFreqTau;
-    } else {
-      // オクターブ関係がない場合、最も確実な候補を選択
-      tauMin = primaryCandidate.tau;
-    }
+    tauMin = fundamentalTau;
   }
   
   if (tauMin === -1 || tauMin < minLag || tauMin >= maxLag) {
@@ -873,73 +852,166 @@ export const yinPitchDetection = (
 };
 
 /**
- * 複数アルゴリズムの結果を統合（高精度化・オクターブ誤検出対策）
- * 自己相関法とYINアルゴリズムの結果を統合して、より正確な周波数を推定
+ * McLeod Pitch Method (MPM / NSDF)
+ * 市販クロマチックチューナーでよく使われる高精度ピッチ検出。
+ * 「最大ピークの90%を初めて超えるピーク」を選ぶことでオクターブ誤検出を抑える。
+ */
+export const mpmPitchDetection = (
+  buffer: Float32Array,
+  sampleRate: number
+): number => {
+  const SIZE = buffer.length;
+  if (SIZE < 256) return -1;
+
+  // 無音チェック（窓なしの生RMSで判定）
+  let rms = 0;
+  for (let i = 0; i < SIZE; i++) {
+    rms += buffer[i] * buffer[i];
+  }
+  rms = Math.sqrt(rms / SIZE);
+  const adaptiveThresholds = calculateAdaptiveThresholds(rms, 0);
+  if (rms < adaptiveThresholds.rmsThreshold) return -1;
+
+  // ハン窓
+  const windowed = new Float32Array(SIZE);
+  for (let i = 0; i < SIZE; i++) {
+    const w = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (SIZE - 1));
+    windowed[i] = buffer[i] * w;
+  }
+
+  const maxLag = Math.min(Math.floor(SIZE / 2), Math.floor(sampleRate / 40)); // 40Hz
+  const minLag = Math.max(2, Math.floor(sampleRate / 2000)); // 2000Hz
+  if (maxLag <= minLag + 2) return -1;
+
+  // NSDF: 正規化平方差関数
+  // nsdf(tau) = 2 * r(tau) / (m(0)+m(tau)) 相当を差関数から計算
+  const nsdf = new Float32Array(maxLag + 1);
+  for (let tau = 0; tau <= maxLag; tau++) {
+    let acf = 0;
+    let m = 0;
+    const n = SIZE - tau;
+    for (let i = 0; i < n; i++) {
+      const x = windowed[i];
+      const y = windowed[i + tau];
+      acf += x * y;
+      m += x * x + y * y;
+    }
+    nsdf[tau] = m > 1e-12 ? (2 * acf) / m : 0;
+  }
+
+  // 正のピークを収集（零交差後の局所最大）
+  const peaks: Array<{ tau: number; value: number }> = [];
+  let lookingForMax = false;
+  let maxVal = -1;
+  let maxTau = -1;
+
+  for (let tau = minLag; tau < maxLag; tau++) {
+    if (nsdf[tau] > 0 && nsdf[tau] >= nsdf[tau - 1]) {
+      lookingForMax = true;
+      if (nsdf[tau] > maxVal) {
+        maxVal = nsdf[tau];
+        maxTau = tau;
+      }
+    } else if (lookingForMax) {
+      // 下降に転じた → 直前ピークを確定
+      if (maxTau >= minLag && maxVal > 0) {
+        peaks.push({ tau: maxTau, value: maxVal });
+      }
+      lookingForMax = false;
+      maxVal = -1;
+      maxTau = -1;
+    }
+  }
+
+  if (peaks.length === 0) return -1;
+
+  // 最大ピーク値の clarity 閾値（McLeod: 0.9）
+  let globalMax = peaks[0].value;
+  for (let i = 1; i < peaks.length; i++) {
+    if (peaks[i].value > globalMax) globalMax = peaks[i].value;
+  }
+  const clarityThreshold = globalMax * 0.9;
+
+  // 初めて閾値を超えるピーク = 基本周波数（オクターブ誤検出対策の肝）
+  let chosen = peaks[0];
+  for (const peak of peaks) {
+    if (peak.value >= clarityThreshold) {
+      chosen = peak;
+      break;
+    }
+  }
+
+  // パラボラ補間でサブサンプル精度を出す
+  let tau = chosen.tau;
+  if (tau > 0 && tau < maxLag) {
+    const y1 = nsdf[tau - 1];
+    const y2 = nsdf[tau];
+    const y3 = nsdf[tau + 1];
+    const denom = 2 * (2 * y2 - y1 - y3);
+    if (Math.abs(denom) > 1e-12) {
+      const delta = (y3 - y1) / denom;
+      if (Math.abs(delta) <= 1) {
+        tau = tau + delta;
+      }
+    }
+  }
+
+  if (tau <= 0) return -1;
+  const freq = sampleRate / tau;
+  if (!isFinite(freq) || freq < 40 || freq > 2000) return -1;
+  return freq;
+};
+
+/**
+ * 複数アルゴリズムの結果を統合（MPM主・YIN/自己相関補助）
+ * MPMはオクターブ誤検出に強いため主結果とし、近傍一致時のみ平均で安定化
  */
 export const combineAlgorithms = (
   buffer: Float32Array,
   sampleRate: number
 ): number => {
-  // 自己相関法で検出
-  const autocorrFreq = autoCorrelate(buffer, sampleRate);
-  
-  // YINアルゴリズムで検出
+  const mpmFreq = mpmPitchDetection(buffer, sampleRate);
   const yinFreq = yinPitchDetection(buffer, sampleRate);
-  
-  // オクターブ判定：2倍または1/2倍の関係をチェック
-  const isOctaveRelation = (freq1: number, freq2: number): boolean => {
-    if (freq1 <= 0 || freq2 <= 0) return false;
-    const ratio = freq1 > freq2 ? freq1 / freq2 : freq2 / freq1;
-    // 2倍の関係（オクターブ）の判定（±3%の誤差を許容）
-    return ratio > 1.94 && ratio < 2.06;
+  const autocorrFreq = autoCorrelate(buffer, sampleRate);
+
+  const isNear = (a: number, b: number, rel = 0.02): boolean => {
+    if (a <= 0 || b <= 0) return false;
+    return Math.abs(a - b) / Math.max(a, b) < rel;
   };
-  
-  // 両方の結果が有効な場合
-  if (autocorrFreq > 0 && yinFreq > 0) {
-    // オクターブ関係にある場合、より低い周波数（基本周波数）を優先
-    // ハーモニクス（倍音）ではなく、基本周波数を検出するため
-    if (isOctaveRelation(autocorrFreq, yinFreq)) {
-      // より低い周波数（基本周波数）を選択
-      return Math.min(autocorrFreq, yinFreq);
+
+  const isOctaveRelation = (a: number, b: number): boolean => {
+    if (a <= 0 || b <= 0) return false;
+    const ratio = a > b ? a / b : b / a;
+    return (ratio > 1.94 && ratio < 2.06) || (ratio > 3.85 && ratio < 4.15);
+  };
+
+  // MPMが主。近傍で一致する補助結果があれば加重平均
+  if (mpmFreq > 40 && mpmFreq <= 2000) {
+    const near: number[] = [mpmFreq];
+    if (isNear(yinFreq, mpmFreq)) near.push(yinFreq);
+    if (isNear(autocorrFreq, mpmFreq)) near.push(autocorrFreq);
+    if (near.length >= 2) {
+      // MPMを2票分として平均
+      return (mpmFreq + near.reduce((s, f) => s + f, 0)) / (near.length + 1);
     }
-    
-    // 周波数の差が小さい場合（5%以内）、平均を取る
-    const diff = Math.abs(autocorrFreq - yinFreq);
-    const avgFreq = (autocorrFreq + yinFreq) / 2;
-    
-    if (diff / avgFreq < 0.05) {
-      // 重み付き平均（YINアルゴリズムをより重視、低周波数ではYINが高精度）
-      const weight = avgFreq < 200 ? 0.6 : 0.5; // 低周波数ではYINを60%重視
-      return autocorrFreq * (1 - weight) + yinFreq * weight;
-    } else {
-      // 差が大きい場合（5%以上）、どちらがより信頼できるかを判定
-      // 通常、より低い周波数（基本周波数）を優先（ハーモニクスを除外）
-      // ただし、非常に大きな差（50%以上）の場合は、より低い周波数が正しい可能性が高い
-      const largeDiff = diff / avgFreq > 0.5;
-      
-      if (largeDiff) {
-        // 非常に大きな差の場合、両方の周波数の妥当性をチェック
-        // 一般的な楽器の周波数範囲（40-6000Hz）内の方を優先
-        // 6000Hz以上はハーモニクスの可能性が高い
-        const autocorrInRange = autocorrFreq >= 40 && autocorrFreq <= 6000;
-        const yinInRange = yinFreq >= 40 && yinFreq <= 6000;
-        
-        if (autocorrInRange && !yinInRange) return autocorrFreq;
-        if (yinInRange && !autocorrInRange) return yinFreq;
-        
-        // 両方とも範囲内の場合、より低い周波数（基本周波数）を優先
-        return Math.min(autocorrFreq, yinFreq);
-      } else {
-        // 中程度の差の場合、より低い周波数（基本周波数）を優先
-        return Math.min(autocorrFreq, yinFreq);
-      }
-    }
+    // 補助がオクターブずれでも MPM を採用（基音選択は MPM の clarity に任せる）
+    return mpmFreq;
   }
-  
-  // 片方のみ有効な場合
-  if (yinFreq > 0) return yinFreq;
-  if (autocorrFreq > 0) return autocorrFreq;
-  
+
+  // MPM失敗時: YIN と自己相関が近ければ平均、オクターブなら低い方（基音）
+  if (yinFreq > 40 && yinFreq <= 2000 && autocorrFreq > 40 && autocorrFreq <= 2000) {
+    if (isNear(yinFreq, autocorrFreq)) {
+      return (yinFreq + autocorrFreq) / 2;
+    }
+    if (isOctaveRelation(yinFreq, autocorrFreq)) {
+      return Math.min(yinFreq, autocorrFreq);
+    }
+    // 低域は YIN、それ以外は相関の中央寄り
+    return yinFreq < 200 ? yinFreq : (yinFreq + autocorrFreq) / 2;
+  }
+
+  if (yinFreq > 40 && yinFreq <= 2000) return yinFreq;
+  if (autocorrFreq > 40 && autocorrFreq <= 2000) return autocorrFreq;
   return -1;
 };
 

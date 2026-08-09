@@ -75,20 +75,23 @@ interface UpgradeBannerProps {
 }
 const getUpgradeBannerLayout = () => {
   const { width } = Dimensions.get('window');
-  const horizontalMargin = width < 400 ? 8 : width < 600 ? 12 : 20;
   return {
     container: {
-      marginHorizontal: horizontalMargin,
+      // ScrollView の padding と揃えるため、追加の横マージンは付けない
+      marginHorizontal: 0,
       marginTop: 12,
       marginBottom: 8,
       padding: width < 400 ? 12 : 14,
-      paddingHorizontal: width < 400 ? 20 : width < 600 ? 28 : 32,
+      paddingHorizontal: width < 400 ? 12 : width < 600 ? 16 : 20,
       borderRadius: 8,
       borderWidth: 1,
       flexDirection: 'row' as const,
       alignItems: 'center' as const,
       justifyContent: 'space-between' as const,
       alignSelf: 'stretch' as const,
+      width: '100%' as const,
+      maxWidth: '100%' as const,
+      gap: 8,
       ...(Platform.OS === 'web'
         ? { boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)' }
         : {
@@ -102,8 +105,8 @@ const getUpgradeBannerLayout = () => {
     },
     textContainer: {
       flex: 1,
-      marginRight: 20,
-      flexShrink: 0,
+      marginRight: width < 400 ? 8 : 16,
+      flexShrink: 1,
       minWidth: 0,
     },
     title: {
@@ -118,11 +121,11 @@ const getUpgradeBannerLayout = () => {
       paddingVertical: 8,
       paddingHorizontal: width < 400 ? 10 : 14,
       borderRadius: 6,
-      minWidth: 76,
+      minWidth: width < 400 ? 72 : 76,
       flexShrink: 0,
     },
     buttonText: {
-      fontSize: 12,
+      fontSize: width < 400 ? 11 : 12,
       fontWeight: '600' as const,
       color: '#FFFFFF',
     },
@@ -138,10 +141,10 @@ const UpgradeBanner: React.FC<UpgradeBannerProps> = React.memo(({ currentTheme, 
   return (
     <View style={[layout.container, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
       <View style={layout.textContainer}>
-        <Text style={[layout.title, { color: currentTheme.text }]}>
+        <Text style={[layout.title, { color: currentTheme.text }]} numberOfLines={1}>
           4個まで設定可能
         </Text>
-        <Text style={[layout.subtitle, { color: currentTheme.textSecondary }]}>
+        <Text style={[layout.subtitle, { color: currentTheme.textSecondary }]} numberOfLines={1}>
           プレミアムで無制限に
         </Text>
       </View>
@@ -149,7 +152,7 @@ const UpgradeBanner: React.FC<UpgradeBannerProps> = React.memo(({ currentTheme, 
         style={[layout.button, { backgroundColor: currentTheme.primary }]}
         onPress={() => router.push('/(tabs)/pricing-plans')}
       >
-        <Text style={layout.buttonText}>プレミアムへ</Text>
+        <Text style={layout.buttonText} numberOfLines={1}>プレミアムへ</Text>
       </TouchableOpacity>
     </View>
   );
@@ -169,8 +172,8 @@ const upgradeBannerStyles = {
   },
   textContainer: {
     flex: 1,
-    marginRight: 20,
-    flexShrink: 0,
+    marginRight: 16,
+    flexShrink: 1,
     minWidth: 0,
   },
   title: {
@@ -1802,10 +1805,10 @@ export default function GoalsScreen() {
         )}
 
         {/* 1. 個人目標セクション */}
-        <View style={[styles.section, { backgroundColor: currentTheme.surface, maxWidth: layout.sectionMaxWidth, padding: layout.sectionPadding }]}>
+        <View style={[styles.section, { backgroundColor: currentTheme.surface, width: layout.sectionMaxWidth, maxWidth: '100%', alignSelf: 'center', padding: layout.sectionPadding }]}>
           <View style={styles.sectionHeader}>
             <Target size={26} color={currentTheme.primary} />
-            <Text style={[styles.sectionTitle, { color: currentTheme.text, fontSize: layout.sectionTitleFontSize }]}>
+            <Text style={[styles.sectionTitle, { color: currentTheme.text, fontSize: layout.sectionTitleFontSize }]} numberOfLines={1}>
               {(() => {
                 // 優先順位: userProfile.nickname > user.name > '個人目標'
                 const nickname = userProfile?.nickname && userProfile.nickname.trim().length > 0
@@ -1828,11 +1831,11 @@ export default function GoalsScreen() {
         </View>
 
         {/* 設定した目標セクション */}
-        <View style={[styles.section, { backgroundColor: 'transparent', marginTop: 0, maxWidth: layout.sectionMaxWidth, padding: layout.sectionPadding }]}>
+        <View style={[styles.section, { backgroundColor: 'transparent', marginTop: 0, width: layout.sectionMaxWidth, maxWidth: '100%', alignSelf: 'center', padding: layout.sectionPadding }]}>
           {goals.length > 0 && (
             <View style={styles.goalsList}>
               {goals.map((goal) => (
-                <View key={goal.id} style={[styles.goalCard, { backgroundColor: '#FFFFFF', borderColor: currentTheme.secondary + '33', maxWidth: layout.goalCardMaxWidth }]}>
+                <View key={goal.id} style={[styles.goalCard, { backgroundColor: '#FFFFFF', borderColor: currentTheme.secondary + '33', width: '100%', alignSelf: 'stretch' }]}>
                   <View style={[styles.goalHeader, { position: 'relative', zIndex: 1 }]}>
                     <View style={[styles.goalTypeBadge, { backgroundColor: getGoalTypeColor(goal.goal_type) }]}>
                       <Text style={styles.goalTypeBadgeText}>{getGoalTypeLabel(goal.goal_type)}</Text>
@@ -1862,7 +1865,7 @@ export default function GoalsScreen() {
                     </View>
                   </View>
                   
-                  <Text style={[styles.goalTitle, { color: currentTheme.text }]}>{goal.title}</Text>
+                  <Text style={[styles.goalTitle, { color: currentTheme.text }]} numberOfLines={2}>{goal.title}</Text>
                   
                   {goal.target_date && (
                     <View style={styles.goalDate}>
@@ -1887,7 +1890,13 @@ export default function GoalsScreen() {
                           ]} 
                         />
                       </View>
-                        <Text style={[styles.progressPercentageLabel, { color: getGoalTypeColor(goal.goal_type) }]}>
+                        <Text
+                          style={[
+                            styles.progressPercentageLabel,
+                            { color: getGoalTypeColor(goal.goal_type), fontSize: layout.progressLabelFontSize },
+                          ]}
+                          numberOfLines={1}
+                        >
                           {goal.progress_percentage || 0}%
                           {goal.sub_goals && goal.sub_goals.length > 0 && 
                             ` (${goal.sub_goals.filter(sg => sg.is_completed).length}/${goal.sub_goals.length})`
@@ -2148,8 +2157,14 @@ export default function GoalsScreen() {
                             activeOpacity={0.7}
                           >
                             <List size={16} color={currentTheme.primary} />
-                            <Text style={[styles.addSubGoalButtonText, { color: currentTheme.primary }]}>
-                              サブ目標を作成して自動計算にする
+                            <Text
+                              style={[
+                                styles.addSubGoalButtonText,
+                                { color: currentTheme.primary, fontSize: layout.addSubGoalButtonFontSize },
+                              ]}
+                              numberOfLines={2}
+                            >
+                              {layout.isNarrow ? 'サブ目標を作成（自動計算）' : 'サブ目標を作成して自動計算にする'}
                             </Text>
                           </TouchableOpacity>
                           {showSubGoalInput[goal.id] && (

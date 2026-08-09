@@ -6,20 +6,34 @@ export function getResponsiveLayout(width: number) {
   const isNarrow = width < 380;
   const isWide = width >= 600;
   const isTablet = width >= 768;
+  // ヘッダー・バナーと揃える左右余白
+  const paddingHorizontal = isNarrow ? 12 : isWide ? 20 : 16;
+  const contentWidth = Math.max(280, width - paddingHorizontal * 2);
+  // スマホは常にコンテンツ幅いっぱい。タブレット以上のみ読みやすい上限
+  const sectionMaxWidth = isTablet
+    ? Math.min(contentWidth, 720)
+    : isWide
+      ? Math.min(contentWidth, 640)
+      : contentWidth;
   return {
-    paddingHorizontal: isNarrow ? 8 : isWide ? 20 : 12,
+    paddingHorizontal,
     paddingTop: isNarrow ? 8 : 12,
-    sectionWidth: '96%' as const,
-    sectionMaxWidth: isTablet ? Math.min(width * 0.7, 640) : isWide ? 560 : 520,
-    goalCardMaxWidth: isTablet ? Math.min(width * 0.68, 600) : 500,
-    sectionPadding: isNarrow ? 8 : isWide ? 16 : 12,
-    headerMarginHorizontal: isNarrow ? 8 : isWide ? 20 : 12,
+    sectionWidth: '100%' as const,
+    sectionMaxWidth,
+    // カードはセクションと同じ幅（狭い柱状レイアウトを防ぐ）
+    goalCardMaxWidth: sectionMaxWidth,
+    sectionPadding: isNarrow ? 12 : isWide ? 16 : 14,
+    headerMarginHorizontal: paddingHorizontal,
     headerMarginVertical: isNarrow ? 8 : 12,
     titleFontSize: isNarrow ? 20 : isWide ? 26 : 24,
     addButtonPaddingVertical: isNarrow ? 10 : 12,
     addButtonPaddingHorizontal: isNarrow ? 16 : isWide ? 24 : 20,
     sectionTitleFontSize: isNarrow ? 18 : isWide ? 22 : 20,
     calendarModalWidth: Math.min(width * 0.9, 400),
+    isNarrow,
+    isWide,
+    progressLabelFontSize: isNarrow ? 12 : 16,
+    addSubGoalButtonFontSize: isNarrow ? 11 : 12,
   };
 }
 
@@ -32,10 +46,11 @@ export const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 4,
+    paddingHorizontal: 0,
     paddingTop: 2,
     paddingBottom: 125, // タブバーの高さ + 広告バナー分
-    alignItems: 'center',
+    alignItems: 'stretch',
+    width: '100%',
   },
   header: {
     flexDirection: 'row',
@@ -43,6 +58,7 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 12,
     marginBottom: 12,
+    width: '100%',
   },
   title: {
     fontSize: 24,
@@ -145,7 +161,7 @@ export const styles = StyleSheet.create({
   goalsList: {
     gap: 4,
     width: '100%',
-    alignItems: 'center',
+    alignItems: 'stretch',
   },
   goalCard: {
     borderRadius: 12,
@@ -162,7 +178,7 @@ export const styles = StyleSheet.create({
     paddingLeft: 10,
     paddingRight: 10,
     width: '100%',
-    maxWidth: 500,
+    alignSelf: 'stretch',
     ...(createShadowStyle({
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 1 },
@@ -196,11 +212,14 @@ export const styles = StyleSheet.create({
     marginBottom: 2,
     lineHeight: 20,
     letterSpacing: -0.2,
+    flexShrink: 1,
+    minWidth: 0,
   },
   goalDescription: {
     fontSize: 13,
     marginBottom: 2,
     lineHeight: 16,
+    flexShrink: 1,
   },
   progressText: {
     fontSize: 14,
@@ -240,32 +259,36 @@ export const styles = StyleSheet.create({
     padding: 8,
     borderRadius: 12,
     elevation: 3,
-    width: '96%',
-    maxWidth: 520,
-    alignSelf: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
   },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 4,
     gap: 12,
+    minWidth: 0,
   },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
+    flex: 1,
+    flexShrink: 1,
+    minWidth: 0,
   },
   goalTypes: {
     gap: 6,
     marginBottom: 0,
-    alignItems: 'center',
+    alignItems: 'stretch',
+    width: '100%',
   },
   goalTypeCard: {
     padding: 8,
     borderWidth: 2,
     borderRadius: 10,
     backgroundColor: '#F8F9FA',
-    width: '95%',
-    maxWidth: 400,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   goalTypeTitle: {
     fontSize: 15,
@@ -285,9 +308,8 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 18,
     borderRadius: 20,
     gap: 8,
-    alignSelf: 'center',
-    width: '95%',
-    maxWidth: 400,
+    alignSelf: 'stretch',
+    width: '100%',
     marginBottom: 0,
     marginTop: 4,
   },
@@ -418,7 +440,8 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 24,
     borderRadius: 6,
     gap: 2,
-    minWidth: 120,
+    minWidth: 96,
+    maxWidth: '100%',
     ...(createShadowStyle({
       shadowColor: '#4CAF50',
       shadowOffset: { width: 0, height: 2 },
@@ -459,9 +482,8 @@ export const styles = StyleSheet.create({
     paddingTop: 24,
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
-    width: '96%',
-    maxWidth: 550,
-    alignSelf: 'center',
+    width: '100%',
+    alignSelf: 'stretch',
   },
   completedSectionHeader: {
     flexDirection: 'row',
@@ -665,7 +687,8 @@ export const styles = StyleSheet.create({
     alignItems: 'center',
   },
   calendarModal: {
-    width: 320,
+    width: '90%',
+    maxWidth: 400,
     borderRadius: 16,
     padding: 20,
     elevation: 10,
@@ -926,12 +949,15 @@ export const styles = StyleSheet.create({
   progressSliderContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
     marginBottom: 12,
     marginTop: 4,
+    minWidth: 0,
+    width: '100%',
   },
   progressSliderTrack: {
     flex: 1,
+    minWidth: 0,
     height: 12,
     borderRadius: 8,
     backgroundColor: '#E5E5E5',
@@ -958,7 +984,9 @@ export const styles = StyleSheet.create({
   progressPercentageLabel: {
     fontSize: 16,
     fontWeight: '700',
-    minWidth: 50,
+    minWidth: 40,
+    maxWidth: '42%',
+    flexShrink: 1,
     textAlign: 'right',
     letterSpacing: 0.5,
   },
@@ -1058,12 +1086,15 @@ export const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 2,
+    minWidth: 0,
+    flexWrap: 'wrap',
   },
   goalDateText: {
     fontSize: 11,
     marginLeft: 6,
     fontWeight: '500',
     letterSpacing: 0.1,
+    flexShrink: 1,
   },
   progressSection: {
     marginTop: 4,
@@ -1201,16 +1232,21 @@ export const styles = StyleSheet.create({
     padding: 6,
     borderRadius: 8,
     borderWidth: 1,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   subGoalsHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     marginBottom: 4,
+    minWidth: 0,
+    width: '100%',
   },
   subGoalsTitle: {
     fontSize: 12,
     fontWeight: '600',
+    flexShrink: 1,
   },
   subGoalItem: {
     flexDirection: 'row',
@@ -1220,12 +1256,15 @@ export const styles = StyleSheet.create({
     paddingHorizontal: 4,
     marginTop: 1,
     borderBottomWidth: 1,
+    width: '100%',
+    minWidth: 0,
   },
   subGoalItemContent: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    minWidth: 0,
   },
   subGoalDeleteButton: {
     padding: 8,
@@ -1253,10 +1292,14 @@ export const styles = StyleSheet.create({
     borderRadius: 6,
     borderWidth: 1,
     marginTop: 8,
+    minWidth: 0,
+    width: '100%',
   },
   addSubGoalButtonText: {
     fontSize: 12,
     fontWeight: '600',
+    flexShrink: 1,
+    textAlign: 'center',
   },
   subGoalInputContainer: {
     marginTop: 8,

@@ -101,7 +101,6 @@ export default function PricingPlansScreen() {
                 '楽器データ（2個まで使用可能）',
                 'マイライブラリ（10曲まで）',
                 '目標設定（2つまで）',
-                '広告削除',
               ].map((f) => (
                 <View key={f} style={[styles.featureItem, { gap: 6 }]}>
                   <CheckCircle2 size={16} color={currentTheme.primary} />
@@ -121,6 +120,7 @@ export default function PricingPlansScreen() {
               {[
                 '全ての機能が無制限で利用可能',
                 '演奏録音機能（一日に2個、60分まで）',
+                '広告削除',
               ].map((f) => (
                 <View key={f} style={styles.featureItem}>
                   <CheckCircle2 size={16} color={currentTheme.primary} />
@@ -150,6 +150,7 @@ export default function PricingPlansScreen() {
             {[
               '全ての機能が無制限で利用可能',
               '演奏録音機能（一日に2個、60分まで）',
+              '広告削除',
             ].map((f) => (
               <View key={f} style={styles.featureItem}>
                 <CheckCircle2 size={16} color={currentTheme.primary} />
