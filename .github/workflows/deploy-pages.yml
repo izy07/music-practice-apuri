@@ -39,6 +39,17 @@ jobs:
             exit 1
           }
 
+      - name: Secrets の存在確認
+        run: |
+          if [ -z "$EXPO_PUBLIC_SUPABASE_URL" ] || [ -z "$EXPO_PUBLIC_SUPABASE_ANON_KEY" ]; then
+            echo "❌ GitHub Actions Secrets に EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY を設定してください"
+            exit 1
+          fi
+          echo "✅ Supabase Secrets を確認しました"
+        env:
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+
       - name: Webビルド（GitHub Pages用）
         run: |
           echo "🔧 ビルドを開始します..."
@@ -58,8 +69,8 @@ jobs:
         env:
           EXPO_PUBLIC_WEB_BASE: /music-practice-apuri
           GITHUB_PAGES_BASE: /music-practice-apuri
-          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL || 'https://uteeqkpsezbabdmritkn.supabase.co' }}
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0ZWVxa3BzZXpiYWJkbXJpdGtuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDQyNDUsImV4cCI6MjA3MDcyMDI0NX0.3wITO5E53yW2spDHi99ngaA0SRqnsJbAYzdT7DDa1tM' }}
+          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
           NODE_ENV: production
 
       - name: 404.htmlの作成（SPAルーティング用）

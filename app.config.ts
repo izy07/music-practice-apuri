@@ -91,8 +91,9 @@ const config: ExpoConfig = {
     eas: {
       projectId: 'fe3ac800-458f-47ac-a51f-264b5a49c45f',
     },
-    supabaseUrl: 'https://uteeqkpsezbabdmritkn.supabase.co',
-    supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0ZWVxa3BzZXpiYWJkbXJpdGtuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDQyNDUsImV4cCI6MjA3MDcyMDI0NX0.3wITO5E53yW2spDHi99ngaA0SRqnsJbAYzdT7DDa1tM',
+    // 本番キーはリポジトリに直書きしない。.env / EAS Secrets / GitHub Actions Secrets から注入する
+    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
+    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
     // Web環境用のリダイレクトURI
     // GitHub Pagesデプロイ時は自動的にGitHub PagesのURLを使用
     webRedirectUrl: process.env.EXPO_PUBLIC_WEB_REDIRECT_URL || 

@@ -32,6 +32,11 @@ yarn-error.*
 # local env files
 .env*.local
 .env
+.env.backup
+.env.*.backup
+
+# accidental build artifacts
+docs/_expo/
 
 # typescript
 *.tsbuildinfo
