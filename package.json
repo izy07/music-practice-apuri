@@ -18,7 +18,8 @@
     "build:web": "node scripts/ensure-supabase-public-env.js && npx expo export --platform web --output-dir dist --clear",
     "build:web:github": "npm run build:web && node scripts/copy-web-build-to-dist.js && node scripts/fix-github-pages-paths.js && node scripts/create-robust-404.js",
     "android": "expo run:android",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "generate:note-chart": "node scripts/generate-note-name-chart.mjs"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -76,6 +77,7 @@
     "babel-plugin-module-resolver": "^5.0.2",
     "buffer": "^6.0.3",
     "crypto-browserify": "^3.12.1",
+    "exceljs": "^4.4.0",
     "jest": "^29.7.0",
     "jest-expo": "~54.0.16",
     "react-test-renderer": "19.1.0",

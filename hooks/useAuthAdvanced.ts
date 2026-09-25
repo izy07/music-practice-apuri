@@ -23,6 +23,7 @@ import { getBasePath, redirectToLogin } from '@/lib/navigationUtils';
 import {
   isNetworkAuthError,
   readPersistedAuthSession,
+  readPersistedAuthSessionAsync,
   refreshPersistedSession,
 } from '@/lib/authUtils';
 import {
@@ -434,7 +435,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
 
           const persistedSession = sessionData?.session?.user
             ? sessionData.session
-            : readPersistedAuthSession();
+            : await readPersistedAuthSessionAsync();
 
           if (persistedSession?.user) {
             sessionData = { session: persistedSession };
@@ -487,42 +488,43 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             session = refreshedSession;
             sessionData = { session: refreshedSession };
           } else {
-            logger.warn('[useAuthAdvanced] セッションリフレッシュに失敗 - ログアウト');
-            await supabase.auth.signOut();
+            const offlineSession = await readPersistedAuthSessionAsync();
+            if (offlineSession?.user) {
+              logger.warn('[useAuthAdvanced] リフレッシュ失敗 — 永続セッションを維持');
+              session = offlineSession;
+              sessionData = { session: offlineSession };
+            } else {
+              logger.warn('[useAuthAdvanced] セッションリフレッシュに失敗 - ログアウト');
+              await supabase.auth.signOut();
 
-            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-              try {
-                window.localStorage.removeItem(LAST_ACTIVITY_KEY);
-              } catch {
-                // エラーは無視
+              if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
+                try {
+                  window.localStorage.removeItem(LAST_ACTIVITY_KEY);
+                } catch {
+                  // エラーは無視
+                }
               }
-            }
 
-            updateAuthState({
-              isAuthenticated: false,
-              isLoading: false,
-              isInitialized: true,
-              error: null,
-            });
-            return;
+              updateAuthState({
+                isAuthenticated: false,
+                isLoading: false,
+                isInitialized: true,
+                error: null,
+              });
+              return;
+            }
           }
         }
         
-        // セッションが有効な場合、handleAuthenticatedUserを呼び出して認証状態を更新
-        // ただし、ログイン画面にいる場合は、ユーザーがログインボタンを押すまで待機する
-        // これにより、ログイン画面で入力中に突然チュートリアル画面に遷移する問題を防ぐ
+        // ログイン/新規登録フォーム入力中のみ復元を遅延（コールドスタートの永続ログインは復元する）
         if (sessionData.session?.user) {
-          // 現在の画面を確認（ログイン画面または新規登録画面の場合はスキップ）
-          // segmentsを使用してログイン画面かどうかを確認
           const isInAuthGroup = segments.length > 0 && segments[0] === 'auth';
           const authChild = segments.length > 1 ? (segments as readonly string[])[1] : undefined;
           const isInLoginScreen = isInAuthGroup && authChild === 'login';
           const isInSignupScreen = isInAuthGroup && authChild === 'signup';
+          const isAuthFormInProgress = isLoginInProgress || isSignupInProgress;
           
-          if (isInLoginScreen || isInSignupScreen) {
-            // ログイン画面または新規登録画面にいる場合は、handleAuthenticatedUserを呼ばない
-            // ユーザーがログインボタンを押した時に、SIGNED_INイベントで処理される
-            // ログ出力は削減（頻繁に出力されるため）
+          if ((isInLoginScreen || isInSignupScreen) && isAuthFormInProgress) {
             updateAuthState({
               isLoading: false,
               isInitialized: true,
@@ -1333,9 +1335,9 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       const isInLoginScreen = isInAuthGroup && authChild === 'login';
       const isInSignupScreen = isInAuthGroup && authChild === 'signup';
       
-      // ログイン画面または新規登録画面にいる場合は、セッション再処理をスキップ
-      if (isInLoginScreen || isInSignupScreen) {
-        sessionCheckDoneRef.current = true; // フラグを設定して、再実行を防ぐ
+      // フォーム入力中のみ再処理をスキップ（永続セッションのコールドスタート復元は許可）
+      if ((isInLoginScreen || isInSignupScreen) && (isLoginInProgress || isSignupInProgress)) {
+        sessionCheckDoneRef.current = true;
         return;
       }
       

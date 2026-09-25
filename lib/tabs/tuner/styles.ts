@@ -949,36 +949,104 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
   },
-  proModeToggle: {
-    flexDirection: 'row',
-    width: '100%',
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 4,
-    marginBottom: 8,
-    gap: 4,
-  },
-  proModeButton: {
-    flex: 1,
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  proModeButtonText: {
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  proModeDescription: {
-    fontSize: 11,
-    lineHeight: 16,
-    marginBottom: 8,
-    paddingHorizontal: 4,
+  tunerDiagText: {
+    marginTop: 10,
+    fontSize: 10,
+    lineHeight: 14,
     textAlign: 'center',
   },
-  proAverageFrequency: {
-    fontSize: 12,
-    fontFamily: 'monospace',
+  noteNameChartPanel: {
+    marginTop: 16,
+    marginHorizontal: 16,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    elevation: 4,
+    ...createShadowStyle({
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 4,
+    }),
+  },
+  noteNameChartTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 12,
+    letterSpacing: 0.3,
+  },
+  noteNameChartSection: {
     marginBottom: 4,
+  },
+  noteNameChartSectionSpaced: {
+    marginTop: 12,
+  },
+  noteNameChartSectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+    marginBottom: 6,
+  },
+  noteNameChartScrollContent: {
+    flexGrow: 1,
+  },
+  noteNameChartTable: {
+    borderWidth: 1,
+    borderRadius: 6,
+    overflow: 'hidden',
+  },
+  noteNameChartRow: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+  },
+  noteNameChartRowLast: {
+    borderBottomWidth: 0,
+  },
+  noteNameChartLabelCell: {
+    width: 88,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    borderRightWidth: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.03)',
+  },
+  noteNameChartLabelText: {
+    fontSize: 9,
+    fontWeight: '700',
+    lineHeight: 12,
+  },
+  noteNameChartDataCell: {
+    width: 34,
+    minHeight: 34,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRightWidth: 1,
+  },
+  noteNameChartDataCellLast: {
+    borderRightWidth: 0,
+  },
+  noteNameChartValueText: {
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  noteNameChartValueTextCompact: {
+    fontSize: 10,
+    lineHeight: 12,
+  },
+  noteNameChartSubText: {
+    fontSize: 7,
+    lineHeight: 9,
+    textAlign: 'center',
+    marginTop: 1,
+  },
+  noteNameChartLegend: {
+    fontSize: 10,
+    lineHeight: 15,
+    marginTop: 12,
   },
 });

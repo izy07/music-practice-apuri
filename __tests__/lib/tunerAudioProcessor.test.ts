@@ -99,6 +99,17 @@ describe('tunerAudioProcessor', () => {
       const cents = 1200 * Math.log2(detected / 82.41);
       expect(Math.abs(cents)).toBeLessThan(2);
     });
+
+    it('ノイズの長窓でも100ms以内に戻る', () => {
+      const sampleRate = 44100;
+      const buf = new Float32Array(16384);
+      for (let i = 0; i < buf.length; i++) {
+        buf[i] = (Math.random() - 0.5) * 0.2;
+      }
+      const started = performance.now();
+      combineAlgorithms(buf, sampleRate);
+      expect(performance.now() - started).toBeLessThan(100);
+    });
   });
 
   describe('stabilizeDetectedFrequency / applyCentsDeadZone', () => {

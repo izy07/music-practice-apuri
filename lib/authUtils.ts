@@ -2,11 +2,28 @@
  * 認証ユーティリティ関数
  * データ保存処理前に認証セッションを確認・リフレッシュする
  */
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from './supabase';
 import logger from './logger';
+import { SUPABASE_AUTH_STORAGE_KEY } from './supabaseAuthStorage';
 import type { Session } from '@supabase/supabase-js';
 
-const AUTH_STORAGE_KEY = 'music-practice-auth';
+const AUTH_STORAGE_KEY = SUPABASE_AUTH_STORAGE_KEY;
+
+const parsePersistedSession = (raw: string | null): Session | null => {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    const session = parsed?.currentSession ?? parsed?.session ?? null;
+    if (session?.refresh_token && session?.user) {
+      return session as Session;
+    }
+  } catch (error) {
+    logger.debug('永続化セッションの解析に失敗:', error);
+  }
+  return null;
+};
 
 export function isNetworkAuthError(error: { message?: string } | null | undefined): boolean {
   if (!error?.message) return false;
@@ -36,19 +53,29 @@ export function isInvalidRefreshTokenError(error: { message?: string } | null | 
  */
 export function readPersistedAuthSession(): Session | null {
   try {
-    if (typeof window === 'undefined' || !window.localStorage) {
-      return null;
-    }
-    const raw = window.localStorage.getItem(AUTH_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    const session = parsed?.currentSession ?? parsed?.session ?? null;
-    if (session?.refresh_token && session?.user) {
-      return session as Session;
+    if (Platform.OS === 'web') {
+      if (typeof window === 'undefined' || !window.localStorage) {
+        return null;
+      }
+      return parsePersistedSession(window.localStorage.getItem(AUTH_STORAGE_KEY));
     }
     return null;
   } catch (error) {
     logger.debug('永続化セッションの読み取りに失敗:', error);
+    return null;
+  }
+}
+
+/** Native 含む全プラットフォーム向け（非同期） */
+export async function readPersistedAuthSessionAsync(): Promise<Session | null> {
+  try {
+    if (Platform.OS === 'web') {
+      return readPersistedAuthSession();
+    }
+    const raw = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+    return parsePersistedSession(raw);
+  } catch (error) {
+    logger.debug('永続化セッションの非同期読み取りに失敗:', error);
     return null;
   }
 }
@@ -73,7 +100,7 @@ export async function refreshPersistedSession(): Promise<Session | null> {
     }
 
     if (refreshError && !isInvalidRefreshTokenError(refreshError)) {
-      const persisted = readPersistedAuthSession();
+      const persisted = await readPersistedAuthSessionAsync();
       if (persisted?.refresh_token) {
         const { data: { session: restoredSession }, error: restoreError } = await supabase.auth.setSession({
           access_token: persisted.access_token,
@@ -95,7 +122,7 @@ export async function refreshPersistedSession(): Promise<Session | null> {
     return null;
   } catch (error) {
     logger.error('refreshPersistedSessionでエラー:', error);
-    return readPersistedAuthSession();
+    return readPersistedAuthSessionAsync();
   }
 }
 

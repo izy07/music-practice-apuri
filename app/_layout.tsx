@@ -2,7 +2,7 @@
 // Expo Routerのサーバーサイドレンダリングを無効化（開発環境でのエラーを回避）
 export const unstable_serverRendering = false;
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { View, LogBox, AppState, Alert, Platform } from 'react-native';
 import { Stack } from 'expo-router'; // 画面遷移のスタックナビゲーター
 import { useRouter, useSegments, useRootNavigationState, useGlobalSearchParams } from 'expo-router'; // ルーティング関連のフック
@@ -138,6 +138,9 @@ function RootLayoutContent() {
     signOut,
     user
   } = useAuthAdvanced();
+
+  // オンボーディング pending が長引いた場合のフォールバック（無限ローディング防止）
+  const [onboardingPendingTimedOut, setOnboardingPendingTimedOut] = useState(false);
 
   // segmentsをrefで保持（Web環境での強制遷移を防ぐため）
   const segmentsRef = useRef(segments);
@@ -761,10 +764,36 @@ function RootLayoutContent() {
   // 新規登録画面用のuseEffectは削除（シンプル化のため不要）
   // 認証状態が更新されると、メインのuseEffectが自動的に実行される
 
+  const onboardingRoute = isAuthenticated ? getOnboardingRoute() : null;
+  const isOnboardingPending = onboardingRoute === 'pending';
+
+  useEffect(() => {
+    if (!isOnboardingPending) {
+      setOnboardingPendingTimedOut(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      logger.warn('オンボーディング状態が長時間未確定のためフォールバック遷移します');
+      setOnboardingPendingTimedOut(true);
+    }, TIMEOUT.INITIALIZATION_MS + 4000);
+    return () => clearTimeout(timer);
+  }, [isOnboardingPending]);
+
+  useEffect(() => {
+    if (!isInitialized || !isAuthenticated || !onboardingPendingTimedOut) return;
+    if (getOnboardingRoute() !== 'pending') return;
+    router.replace('/(tabs)/tutorial');
+  }, [isInitialized, isAuthenticated, onboardingPendingTimedOut, getOnboardingRoute, router]);
+
   // 初回起動の認証初期化が終わるまでローディング（白い空 Stack を出さない）
-  // isLoading はトークン更新中も立つことがあるので、初回完了フラグのみ見る
   const defaultBackgroundColor = '#FFFFFF';
-  const showBootLoading = !isReady || !isRouterReady || !isInitialized;
+  const isAwaitingInitialRoute = isInitialized && segments.length === 0;
+  const showBootLoading =
+    !isReady ||
+    !isRouterReady ||
+    !isInitialized ||
+    (isOnboardingPending && !onboardingPendingTimedOut) ||
+    isAwaitingInitialRoute;
 
   if (showBootLoading) {
     return (
@@ -783,6 +812,9 @@ function RootLayoutContent() {
         contentStyle: { backgroundColor: defaultBackgroundColor }, // デフォルト背景色を設定（黒い画面を防ぐ）
       }}
     >
+      {/* 起動エントリ（白画面防止） */}
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+
       {/* 認証関連の画面 - app/auth/_layout.tsx で子ルートを管理 */}
       <Stack.Screen name="auth" options={{ headerShown: false }} />
       

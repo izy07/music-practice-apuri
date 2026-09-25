@@ -4,6 +4,7 @@ import { Platform } from 'react-native'; // プラットフォーム判定（iOS
 import Constants from 'expo-constants'; // Expo設定から値を取得
 import logger from './logger';
 import { ErrorHandler } from './errorHandler';
+import { createSupabaseAuthStorage } from './supabaseAuthStorage';
 
 // ローカルSupabase設定（開発用フォールバック）
 // プラットフォームに応じたデフォルト: iOS/Web → 127.0.0.1, Android エミュ → 10.0.2.2
@@ -149,15 +150,7 @@ const getSupabaseClient = () => {
   if (!supabaseInstance) {
     logger.debug('新しいSupabaseクライアントインスタンスを作成中...');
     
-    // Web環境でのストレージ設定
-    let authStorage: any = undefined;
-    if (typeof window !== 'undefined') {
-      authStorage = {
-        getItem: (key: string) => window.localStorage.getItem(key),
-        setItem: (key: string, value: string) => window.localStorage.setItem(key, value),
-        removeItem: (key: string) => window.localStorage.removeItem(key),
-      };
-    }
+    const authStorage = createSupabaseAuthStorage();
     
     // カスタムfetch関数：ネットワークエラーを適切にハンドリング
     const customFetch = async (url: string, options?: RequestInit): Promise<Response> => {

@@ -405,35 +405,31 @@ export const autoCorrelate = (
 
   if (SIZE < 100) return -1; // バッファが小さすぎる場合
 
-  const c = new Array<number>(SIZE).fill(0);
-  const step = 1; // より細かいステップで精度向上
+  const step = 1;
+  // 検出対象は 40–2000Hz だけ。窓全体（最大 16384）まで自己相関すると O(N²) になり、
+  // マイクのノイズで MPM が外れた瞬間に JS スレッドが固まる。
+  const minPeriod = Math.floor(sampleRate / 2000);
+  const maxPeriod = Math.floor(sampleRate / 40);
+  const lagLimit = Math.min(SIZE - 1, maxPeriod);
+  const c = new Array<number>(lagLimit + 1).fill(0);
 
-  // 正規化自己相関計算（一般的なチューナーの標準的な周波数検出方法）
-  // 自己相関は、信号とその時間シフト版の類似度を測定
-  // 正規化により、信号の強度に依存しない相関値を得る
-  for (let i = 0; i < SIZE; i += step) {
+  for (let i = 0; i <= lagLimit; i += step) {
     let sum = 0;
     let norm1 = 0;
     let norm2 = 0;
-    for (let j = 0; j < SIZE - i; j += step) {
+    const corrLen = SIZE - i;
+    for (let j = 0; j < corrLen; j += step) {
       sum += trimmedBuffer[j] * trimmedBuffer[j + i];
       norm1 += trimmedBuffer[j] * trimmedBuffer[j];
       norm2 += trimmedBuffer[j + i] * trimmedBuffer[j + i];
     }
     if (norm1 > 0 && norm2 > 0) {
-      c[i] = sum / Math.sqrt(norm1 * norm2); // 正規化自己相関（-1から1の範囲）
+      c[i] = sum / Math.sqrt(norm1 * norm2);
     }
   }
 
-  // ゼロクロッシング点を探す
   let d = 0;
-  while (d < SIZE - 1 && c[d] > c[d + 1]) d++;
-
-  // 周波数範囲制限（拡張版）
-  // コントラバスのE1 (41.20Hz)を検出するため、最低周波数を40Hzに下げる
-  // フルートなどの高音域楽器に対応するため、最高周波数を6000Hzに拡張
-  const minPeriod = Math.floor(sampleRate / 2000); // 最高周波数2000Hz（実用的な上限）
-  const maxPeriod = Math.floor(sampleRate / 40);   // 最低周波数40Hz（コントラバス対応）
+  while (d < lagLimit && c[d] > c[d + 1]) d++;
 
   // 候補となるピークを複数見つける（ハーモニクス除去のため）
   const candidates: Array<{ period: number; correlation: number }> = [];
@@ -1110,6 +1106,40 @@ const isOctaveRelation = (a: number, b: number): boolean => {
   return (ratio > 1.94 && ratio < 2.06) || (ratio > 3.85 && ratio < 4.15);
 };
 
+/** リアルタイム検出の上限サンプル数。これを超える窓は間引いて JS スレッドを空けておく。 */
+const MAX_REALTIME_SAMPLES = 4096;
+let pitchScratch: Float32Array | null = null;
+
+/**
+ * 長い解析窓を箱型平均で間引く。
+ * 16384 サンプルの NSDF / 自己相関を毎ホップ回すと、無音でないフレームで UI が固まる。
+ */
+const preparePitchBuffer = (
+  buffer: Float32Array,
+  sampleRate: number
+): { samples: Float32Array; sampleRate: number } => {
+  let factor = 1;
+  while (buffer.length / factor > MAX_REALTIME_SAMPLES && factor < 8) {
+    factor *= 2;
+  }
+  if (factor === 1) {
+    return { samples: buffer, sampleRate };
+  }
+
+  const n = Math.floor(buffer.length / factor);
+  if (!pitchScratch || pitchScratch.length !== n) {
+    pitchScratch = new Float32Array(n);
+  }
+  const out = pitchScratch;
+  for (let i = 0; i < n; i++) {
+    const base = i * factor;
+    let sum = 0;
+    for (let k = 0; k < factor; k++) sum += buffer[base + k];
+    out[i] = sum / factor;
+  }
+  return { samples: out, sampleRate: sampleRate / factor };
+};
+
 export const combineAlgorithms = (
   buffer: Float32Array,
   sampleRate: number
@@ -1119,14 +1149,15 @@ export const combineAlgorithms = (
   const adaptiveThresholds = calculateAdaptiveThresholds(rms, 0, true);
   if (rms < adaptiveThresholds.rmsThreshold) return -1;
 
-  const mpmFreq = mpmPitchDetection(buffer, sampleRate, adaptiveThresholds);
+  const prepared = preparePitchBuffer(buffer, sampleRate);
+  const mpmFreq = mpmPitchDetection(prepared.samples, prepared.sampleRate, adaptiveThresholds);
   if (mpmFreq > MIN_HZ && mpmFreq <= MAX_HZ) {
     return mpmFreq;
   }
 
-  // MPM 失敗時のみ補助を実行
-  const yinFreq = yinPitchDetection(buffer, sampleRate, adaptiveThresholds);
-  const autocorrFreq = autoCorrelate(buffer, sampleRate, adaptiveThresholds);
+  // MPM 失敗時のみ補助。同じ間引き済み窓を使い、元の 16384 サンプルには戻さない。
+  const yinFreq = yinPitchDetection(prepared.samples, prepared.sampleRate, adaptiveThresholds);
+  const autocorrFreq = autoCorrelate(prepared.samples, prepared.sampleRate, adaptiveThresholds);
 
   if (yinFreq > MIN_HZ && yinFreq <= MAX_HZ && autocorrFreq > MIN_HZ && autocorrFreq <= MAX_HZ) {
     if (isNearFreq(yinFreq, autocorrFreq)) {
