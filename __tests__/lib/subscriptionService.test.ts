@@ -4,6 +4,7 @@
  */
 
 import { computeEntitlement } from '@/lib/subscriptionService';
+import type { UserSubscription } from '@/lib/subscriptionService';
 
 describe('サブスクリプションデータのバリデーション', () => {
   it('サブスクリプションの必須フィールドを検証する', () => {
@@ -61,6 +62,42 @@ describe('サブスクリプションステータスの検証', () => {
         expect(canAccess).toBe(false);
       }
     });
+  });
+});
+
+describe('computeEntitlement', () => {
+  it('無料プラン（is_active=false）ではプレミアム権限が付与されない', async () => {
+    const sub: UserSubscription = {
+      id: 'sub-1',
+      user_id: 'user-1',
+      plan: 'free',
+      is_active: false,
+      current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      canceled_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const entitlement = await computeEntitlement(sub);
+    expect(entitlement.isEntitled).toBe(false);
+    expect(entitlement.isPremiumActive).toBe(false);
+  });
+
+  it('有効なプレミアム期間中はプレミアム権限が付与される', async () => {
+    const sub: UserSubscription = {
+      id: 'sub-2',
+      user_id: 'user-2',
+      plan: 'premium_monthly',
+      is_active: true,
+      current_period_end: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      canceled_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    const entitlement = await computeEntitlement(sub);
+    expect(entitlement.isEntitled).toBe(true);
+    expect(entitlement.isPremiumActive).toBe(true);
   });
 });
 

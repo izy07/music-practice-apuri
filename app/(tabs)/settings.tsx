@@ -128,7 +128,7 @@ export default function SettingsScreen() {
         subtitle: '楽器の選択',
         icon: Zap,
         color: '#FF6B35',
-        onPress: () => router.push(asSafeRoutePath('/(tabs)/main-settings')),
+        onPress: () => router.push(asSafeRoutePath('/(tabs)/instrument-selection')),
         requiresPremium: false,
       },
       {

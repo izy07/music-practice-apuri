@@ -7,8 +7,8 @@ import InstrumentHeader from '@/components/InstrumentHeader';
 import QuickRecordModal from '@/components/QuickRecordModal';
 import PracticeRecordModal from '@/components/PracticeRecordModal';
 import EventModal from '@/components/EventModal';
-import CalendarDayCell from './components/calendar/CalendarDayCell';
-import EventManagementSection from './components/calendar/EventManagementSection';
+import CalendarDayCell from '@/components/calendar/CalendarDayCell';
+import EventManagementSection from '@/components/calendar/EventManagementSection';
 import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { useCalendarData } from '@/hooks/tabs/useCalendarData';
@@ -122,7 +122,7 @@ export default function CalendarScreen() {
   
   // 現在のルートを記録（マウント時）
   useEffect(() => {
-    setCurrentRoute('/(tabs)/index');
+    setCurrentRoute('/(tabs)');
     return () => {
       // アンマウント時はクリアしない（他の画面に遷移する際に使用するため）
     };

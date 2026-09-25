@@ -124,7 +124,7 @@ export default function LoginScreen() {
       const tutorialDone = !!user?.tutorial_completed;
 
       const targetPath = hasInstrument || canAccess
-        ? '/(tabs)/index'
+        ? '/(tabs)'
         : tutorialDone
           ? '/(tabs)/instrument-selection'
           : '/(tabs)/tutorial';

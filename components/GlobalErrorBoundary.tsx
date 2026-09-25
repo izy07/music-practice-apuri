@@ -41,7 +41,7 @@ export class GlobalErrorBoundary extends Component<Props, State> {
   private handleGoHome = () => {
     this.setState({ hasError: false, error: undefined });
     try {
-      this.props.router?.replace('/(tabs)/index' as never);
+      this.props.router?.replace('/(tabs)' as never);
     } catch (navError) {
       logger.error('GlobalErrorBoundary: ホーム遷移に失敗:', navError);
     }

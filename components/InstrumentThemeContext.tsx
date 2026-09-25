@@ -16,9 +16,14 @@ interface PracticeSettings {
 
 export type SyncStatus = 'idle' | 'syncing' | 'success' | 'error';
 
+export type SetSelectedInstrumentOptions = {
+  /** instrument-selection 等で DB 保存済みのとき true（二重同期・UI ブロックを防ぐ） */
+  skipServerSync?: boolean;
+};
+
 interface InstrumentThemeContextType {
   selectedInstrument: string;
-  setSelectedInstrument: (instrumentId: string) => Promise<void>;
+  setSelectedInstrument: (instrumentId: string, options?: SetSelectedInstrumentOptions) => Promise<void>;
   currentTheme: Instrument;
   practiceSettings: PracticeSettings;
   updatePracticeSettings: (settings: Partial<PracticeSettings>) => Promise<void>;
@@ -98,6 +103,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
   const [isInitializing, setIsInitializing] = useState<boolean>(true);
   const isSettingCustomThemeRef = useRef<boolean>(false); // カスタムテーマ設定中のフラグ
+  const serverSyncGenerationRef = useRef(0);
   const [currentTheme, setCurrentThemeState] = useState<Instrument>(() => {
     const instruments = instrumentService.getDefaultInstruments();
     return instruments.length > 0 ? instruments[0] : defaultTheme;
@@ -544,134 +550,118 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     }
   }, [getKey, currentUserId, dbInstruments, defaultInstruments]);
 
-  const setSelectedInstrument = useCallback(async (instrumentId: string) => {
-    // ユーザーIDを取得（保存時に使用）
-    const { user: currentUser } = await getCurrentUser();
-    const uid = currentUser?.id || currentUserId || '';
-    
-    if (isSyncing) {
-      logger.debug('サーバー同期中です。少し待ってから再試行してください。');
-      await new Promise(resolve => setTimeout(resolve, 100));
-      if (isSyncing) {
-        setSelectedInstrumentState(instrumentId);
-        await AsyncStorage.setItem(getKey(STORAGE_KEYS.selectedInstrument, uid), instrumentId);
-        // 楽器が変更されたので、その楽器のカスタムテーマを読み込む
-        await loadInstrumentCustomTheme(instrumentId);
+  const syncInstrumentToServer = useCallback(async (userId: string, instrumentId: string) => {
+    if (!isOnline()) {
+      logger.debug('オフライン状態: サーバー同期をスキップします（ローカル保存は済）');
+      setSyncStatus('idle');
+      return;
+    }
+
+    const generation = ++serverSyncGenerationRef.current;
+    setSyncStatus('syncing');
+    setLastSyncError(null);
+
+    const maxRetries = ERROR.MAX_RETRIES;
+    const timeoutMs = TIMEOUT.INSTRUMENT_SYNC_MS * 3;
+    let retryCount = 0;
+    let lastError: Error | null = null;
+    let cancelled = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const isStale = () => generation !== serverSyncGenerationRef.current;
+
+    const finish = (status: SyncStatus, error: Error | null = null) => {
+      if (isStale()) {
         return;
       }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      setSyncStatus(status);
+      if (error) {
+        setLastSyncError(error);
+      } else {
+        setLastSyncError(null);
+      }
+      if (status === 'success') {
+        setLastSyncTime(new Date());
+      }
+    };
+
+    timeoutId = setTimeout(() => {
+      cancelled = true;
+      logger.warn('サーバー同期タイムアウト（ローカル保存は成功）');
+      finish('idle');
+    }, timeoutMs);
+
+    try {
+      while (retryCount < maxRetries && !cancelled && !isStale()) {
+        const result = await updateSelectedInstrument(userId, instrumentId);
+        if (cancelled || isStale()) {
+          return;
+        }
+        if (!result.error) {
+          finish('success');
+          return;
+        }
+        lastError = result.error instanceof Error ? result.error : new Error(String(result.error));
+        retryCount += 1;
+        if (retryCount < maxRetries && !cancelled && !isStale()) {
+          const delay = Math.min(
+            ERROR.RETRY_BASE_DELAY_MS * Math.pow(2, retryCount - 1),
+            ERROR.RETRY_MAX_DELAY_MS
+          );
+          logger.debug(`サーバー同期失敗、${delay}ms後にリトライ (${retryCount}/${maxRetries})`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+      if (!cancelled && !isStale() && lastError) {
+        logger.warn('サーバー同期失敗（ローカル保存は成功）:', lastError);
+        finish('error', lastError);
+      }
+    } catch (error) {
+      if (!cancelled && !isStale()) {
+        logger.warn('サーバー同期エラー（ローカル保存は成功）:', error);
+        finish('error', error instanceof Error ? error : new Error(String(error)));
+      }
+    } finally {
+      if (!isStale()) {
+        setSyncStatus((prev) => (prev === 'syncing' ? 'idle' : prev));
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }
+  }, []);
+
+  const setSelectedInstrument = useCallback(async (
+    instrumentId: string,
+    options?: SetSelectedInstrumentOptions
+  ) => {
+    let uid = user?.id || currentUserId || '';
+    let syncUserId = user?.id;
+
+    if (!uid) {
+      const { user: currentUser } = await getCurrentUser();
+      uid = currentUser?.id || '';
+      syncUserId = currentUser?.id;
     }
 
     try {
       setIsSyncing(true);
-      
-      // 1. ローカル状態を即座に更新
+
       setSelectedInstrumentState(instrumentId);
-      await AsyncStorage.setItem(getKey(STORAGE_KEYS.selectedInstrument, uid), instrumentId);
-      
-      // 2. その楽器のカスタムテーマを読み込む
+      if (uid) {
+        await AsyncStorage.setItem(getKey(STORAGE_KEYS.selectedInstrument, uid), instrumentId);
+      }
       await loadInstrumentCustomTheme(instrumentId);
 
-      // 3. サーバーに同期（認証済みの場合のみ、タイムアウト付き）
-      if (currentUser) {
-        const online = isOnline();
-        if (!online) {
-          logger.debug('オフライン状態: サーバー同期を試みますが、失敗する可能性があります。');
-        }
-        
-        setSyncStatus('syncing');
-        setLastSyncError(null);
-        
-        let retryCount = 0;
-        const maxRetries = ERROR.MAX_RETRIES;
-        let lastError: Error | null = null;
-        let isCancelled = false; // タイムアウト時にsyncPromiseの処理をキャンセルするフラグ
-
-        // タイムアウト時間を設定（リトライを含むので少し長めに）
-        const timeoutMs = TIMEOUT.INSTRUMENT_SYNC_MS * 3;
-        let timeoutId: NodeJS.Timeout | null = null;
-
-        // タイムアウト付きでサーバー同期を実行
-        const syncPromise = (async () => {
-          while (retryCount < maxRetries && !isCancelled) {
-            const result = await updateSelectedInstrument(currentUser.id, instrumentId);
-            if (isCancelled) {
-              return; // タイムアウトが発生した場合は処理を中断
-            }
-            
-            if (!result.error) {
-              setSyncStatus('success');
-              setLastSyncTime(new Date());
-              setLastSyncError(null);
-              if (timeoutId) {
-                clearTimeout(timeoutId);
-              }
-              return;
-            }
-
-            lastError = result.error instanceof Error ? result.error : new Error(String(result.error));
-            retryCount++;
-
-            if (retryCount < maxRetries && !isCancelled) {
-              const delay = Math.min(
-                ERROR.RETRY_BASE_DELAY_MS * Math.pow(2, retryCount - 1),
-                ERROR.RETRY_MAX_DELAY_MS
-              );
-              logger.debug(`サーバー同期失敗、${delay}ms後にリトライ (${retryCount}/${maxRetries})`);
-              await new Promise(resolve => setTimeout(resolve, delay));
-            }
-          }
-
-          if (!isCancelled) {
-            if (lastError && retryCount >= maxRetries) {
-              logger.warn('サーバー同期失敗（ローカル保存は成功）:', lastError);
-              setLastSyncError(lastError);
-              setSyncStatus('error');
-            }
-          }
-        })();
-
-        const timeoutPromise = new Promise<void>((_, reject) => {
-          timeoutId = setTimeout(() => {
-            isCancelled = true;
-            // タイムアウト時は即座にsyncStatusを更新
-            setSyncStatus('idle');
-            setLastSyncError(null);
-            logger.warn('サーバー同期タイムアウト（ローカル保存は成功）');
-            reject(new Error('タイムアウト: サーバー同期に時間がかかりすぎました'));
-          }, timeoutMs);
-        });
-
-        try {
-            await Promise.race([syncPromise, timeoutPromise]);
-          } catch (syncError) {
-            // タイムアウトやエラーが発生した場合でも、ローカル保存は成功しているので続行
-            const errorMessage = syncError instanceof Error ? syncError.message : String(syncError);
-            if (isCancelled || errorMessage.includes('タイムアウト')) {
-              // タイムアウト時は既に'idle'に設定されている
-              logger.debug('サーバー同期タイムアウト処理完了');
-            } else {
-              logger.warn('サーバー同期エラー（ローカル保存は成功）:', syncError);
-              setSyncStatus('error');
-              setLastSyncError(syncError instanceof Error ? syncError : new Error(String(syncError)));
-            }
-          } finally {
-            // タイムアウトタイマーをクリア
-            if (timeoutId) {
-              clearTimeout(timeoutId);
-            }
-            // 念のため、syncStatusが'syncing'のままの場合、'idle'に戻す（セーフティネット）
-            setTimeout(() => {
-              setSyncStatus((prev) => {
-                if (prev === 'syncing') {
-                  logger.warn('syncStatusがsyncingのまま残っていたため、idleに戻します');
-                  return 'idle';
-                }
-                return prev;
-              });
-            }, timeoutMs + 2000); // タイムアウト時間 + 2秒後に確認
-          }
+      if (syncUserId && !options?.skipServerSync) {
+        void syncInstrumentToServer(syncUserId, instrumentId);
       } else {
         setSyncStatus('idle');
+        setLastSyncError(null);
       }
     } catch (error) {
       logger.error('楽器選択保存エラー:', error);
@@ -681,7 +671,7 @@ export const InstrumentThemeProvider: React.FC<InstrumentThemeProviderProps> = (
     } finally {
       setIsSyncing(false);
     }
-  }, [getKey, isSyncing, dbInstruments, defaultInstruments, loadInstrumentCustomTheme]);
+  }, [user?.id, getKey, currentUserId, loadInstrumentCustomTheme, syncInstrumentToServer]);
 
   // selectedInstrumentまたはuser.selected_instrument_idが変更されたら、その楽器のカスタムテーマを自動的に読み込む
   // 楽器が変更されたときは常にその楽器のテーマ（カスタムテーマがあればそれ、なければデフォルト）を適用

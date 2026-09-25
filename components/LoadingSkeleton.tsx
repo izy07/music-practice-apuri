@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, Animated, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Animated, ActivityIndicator, Platform } from 'react-native';
 import { useInstrumentTheme } from './InstrumentThemeContext';
 
 interface LoadingSkeletonProps {
@@ -38,12 +38,12 @@ export default function LoadingSkeleton({
         Animated.timing(animatedValue, {
           toValue: 1,
           duration: 1000,
-          useNativeDriver: true, // opacityアニメーションはネイティブドライバーで処理可能
+          useNativeDriver: Platform.OS !== 'web',
         }),
         Animated.timing(animatedValue, {
           toValue: 0,
           duration: 1000,
-          useNativeDriver: true, // opacityアニメーションはネイティブドライバーで処理可能
+          useNativeDriver: Platform.OS !== 'web',
         }),
       ])
     );

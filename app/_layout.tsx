@@ -144,7 +144,6 @@ function RootLayoutContent() {
 
   // segmentsをrefで保持（Web環境での強制遷移を防ぐため）
   const segmentsRef = useRef(segments);
-
   // segmentsが変更されたらrefを更新（重複を削除）
   React.useEffect(() => {
     segmentsRef.current = segments;
@@ -705,7 +704,7 @@ function RootLayoutContent() {
       if (isInitialized && !isLoading) {
         // index は楽器必須なので、未選択時は tutorial / instrument-selection のみ
         const safeTarget =
-          onboardingTarget === '/(tabs)/index'
+          onboardingTarget === '/(tabs)'
             ? '/(tabs)/instrument-selection'
             : onboardingTarget;
         logger.debug('楽器未選択のため、オンボーディング画面にリダイレクト', {
@@ -725,7 +724,7 @@ function RootLayoutContent() {
         return;
       }
       logger.debug('楽器選択済みのため、チュートリアル画面からカレンダー画面にリダイレクト');
-      router.replace('/(tabs)/index');
+      router.replace('/(tabs)');
       return;
     }
     
@@ -734,9 +733,20 @@ function RootLayoutContent() {
       return;
     }
     
-    // ルートパスの場合はカレンダー画面に遷移
+    // +not-found を `/` に戻すと segments が空になり Stack が不安定になる。
+    // 認証状態に応じた画面へ直接 replace（Redirect と二重に走らせない）。
+    // +not-found の復帰は +not-found.tsx に任せる（二重 replace でループするため）
+    if (isNotFoundScreen) {
+      return;
+    }
+
     if (isAtRoot) {
-      router.replace('/(tabs)/index');
+      const target = isAuthenticated ? getOnboardingRoute() : '/auth/login';
+      if (target === 'pending') {
+        return;
+      }
+      logger.debug('ルートから本来の画面へ遷移します', { target });
+      router.replace(target as RoutePath);
       return;
     }
     
@@ -748,12 +758,12 @@ function RootLayoutContent() {
           return;
         }
         router.replace(
-          route === '/(tabs)/instrument-selection' || route === '/(tabs)/index'
+          route === '/(tabs)/instrument-selection' || route === '/(tabs)'
             ? '/(tabs)/instrument-selection'
             : '/(tabs)/tutorial'
         );
       } else {
-        router.replace('/(tabs)/index');
+        router.replace('/(tabs)');
       }
       return;
     }
@@ -785,26 +795,17 @@ function RootLayoutContent() {
     router.replace('/(tabs)/tutorial');
   }, [isInitialized, isAuthenticated, onboardingPendingTimedOut, getOnboardingRoute, router]);
 
-  // 初回起動の認証初期化が終わるまでローディング（白い空 Stack を出さない）
+  // 起動中も Stack は描画したまま、上にローディングを重ねる。
+  // Stack を外すと子ルートが消え、最初の URL が +not-found に固定される。
   const defaultBackgroundColor = '#FFFFFF';
-  const isAwaitingInitialRoute = isInitialized && segments.length === 0;
   const showBootLoading =
     !isReady ||
     !isRouterReady ||
     !isInitialized ||
-    (isOnboardingPending && !onboardingPendingTimedOut) ||
-    isAwaitingInitialRoute;
+    (isOnboardingPending && !onboardingPendingTimedOut);
 
-  if (showBootLoading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: defaultBackgroundColor }}>
-        <LoadingSkeleton fullScreen />
-      </View>
-    );
-  }
-  
   return (
-    <>
+    <View style={{ flex: 1, backgroundColor: defaultBackgroundColor }}>
     <FeatureUsageTracker />
     <Stack 
       screenOptions={{ 
@@ -812,9 +813,6 @@ function RootLayoutContent() {
         contentStyle: { backgroundColor: defaultBackgroundColor }, // デフォルト背景色を設定（黒い画面を防ぐ）
       }}
     >
-      {/* 起動エントリ（白画面防止） */}
-      <Stack.Screen name="index" options={{ headerShown: false }} />
-
       {/* 認証関連の画面 - app/auth/_layout.tsx で子ルートを管理 */}
       <Stack.Screen name="auth" options={{ headerShown: false }} />
       
@@ -835,7 +833,22 @@ function RootLayoutContent() {
       {/* エラー画面 */}
       <Stack.Screen name="+not-found" options={{ headerShown: false }} />
     </Stack>
-    </>
+    {showBootLoading ? (
+      <View
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          zIndex: 100,
+          backgroundColor: defaultBackgroundColor,
+        }}
+      >
+        <LoadingSkeleton fullScreen />
+      </View>
+    ) : null}
+    </View>
   );
 }
 

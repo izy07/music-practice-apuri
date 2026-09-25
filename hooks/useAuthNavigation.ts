@@ -84,7 +84,7 @@ export function decideNavigationTarget(
     if (currentTab === 'tutorial') {
       return {
         shouldNavigate: true,
-        targetPath: '/(tabs)/index',
+        targetPath: '/(tabs)',
         reason: '楽器選択済みのため、チュートリアル画面からカレンダー画面にリダイレクト',
       };
     }
@@ -98,7 +98,7 @@ export function decideNavigationTarget(
     if (isAtRoot) {
       return {
         shouldNavigate: true,
-        targetPath: '/(tabs)/index',
+        targetPath: '/(tabs)',
         reason: 'ルートパスのため、カレンダー画面に遷移',
       };
     }
@@ -106,7 +106,7 @@ export function decideNavigationTarget(
     // その他の認証画面（callback、reset-passwordなど）の処理
     if (isInAuthGroup) {
       const targetPath = hasInstrumentSelected()
-        ? '/(tabs)/index'
+        ? '/(tabs)'
         : '/(tabs)/tutorial';
       return {
         shouldNavigate: true,

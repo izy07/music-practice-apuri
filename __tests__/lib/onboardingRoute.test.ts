@@ -7,7 +7,7 @@ describe('resolveOnboardingTarget', () => {
   it('楽器ありはメイン', () => {
     expect(
       resolveOnboardingTarget({ tutorial_completed: false, selected_instrument_id: 'guitar' }, true)
-    ).toBe('/(tabs)/index');
+    ).toBe('/(tabs)');
   });
 
   it('チュートリアル完了・楽器なしは楽器選択', () => {

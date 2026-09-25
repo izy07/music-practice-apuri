@@ -6,7 +6,8 @@
 export type OnboardingRoute =
   | '/(tabs)/tutorial'
   | '/(tabs)/instrument-selection'
-  | '/(tabs)/index'
+  /** カレンダー（tabs の index）。/(tabs)/index ではなく /(tabs) が正しい href */
+  | '/(tabs)'
   /** プロフィール／ローカルキャッシュ未確定 — チュートリアルへ飛ばさない */
   | 'pending';
 
@@ -27,7 +28,7 @@ export function resolveOnboardingTarget(
   hasInstrument: boolean
 ): OnboardingRoute {
   if (hasInstrument || user?.selected_instrument_id) {
-    return '/(tabs)/index';
+    return '/(tabs)';
   }
   if (user?.tutorial_completed === true) {
     return '/(tabs)/instrument-selection';

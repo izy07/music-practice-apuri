@@ -60,7 +60,7 @@ export const navigateToAppropriateScreen = (
         hasSelectedInstrument,
         selectedInstrumentId: options?.user?.selected_instrument_id
       });
-      router.push('/(tabs)/index');
+      router.push('/(tabs)');
     } else {
       // 楽器未選択の場合は必ずチュートリアルから開始
       logger.debug('[navigateToAppropriateScreen] チュートリアル画面に遷移');
@@ -70,7 +70,7 @@ export const navigateToAppropriateScreen = (
     logger.error('[navigateToAppropriateScreen] 画面遷移エラー:', error);
     // エラー時は安全にカレンダー画面に遷移
     try {
-      router.push('/(tabs)/index');
+      router.push('/(tabs)');
     } catch (fallbackError) {
       logger.error('[navigateToAppropriateScreen] フォールバック画面遷移も失敗:', fallbackError);
     }
@@ -86,7 +86,7 @@ export const navigateToAppropriateScreen = (
  */
 export const safeGoBack = (
   router: ReturnType<typeof useRouter>,
-  fallbackPath: string = '/(tabs)/index',
+  fallbackPath: string = '/(tabs)',
   forceReplace: boolean = false
 ): void => {
   try {
@@ -159,7 +159,7 @@ export const navigateToCalendarScreen = (
   usePush: boolean = false
 ): void => {
   try {
-    const calendarPath = '/(tabs)/index';
+    const calendarPath = '/(tabs)';
     
     if (usePush) {
       router.push(calendarPath as any);
@@ -175,7 +175,7 @@ export const navigateToCalendarScreen = (
     logger.error('[navigateToCalendarScreen] カレンダー画面への遷移エラー:', error);
     // エラー時はpushで再試行
     try {
-      router.push('/(tabs)/index' as any);
+      router.push('/(tabs)' as any);
     } catch (fallbackError) {
       logger.error('[navigateToCalendarScreen] フォールバック遷移も失敗:', fallbackError);
     }

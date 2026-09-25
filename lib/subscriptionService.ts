@@ -228,20 +228,43 @@ export const purchaseSubscription = async (
   */
 };
 
-export const cancelSubscription = async (userId: string) => {
+/**
+ * プレミアムを解約し、無料プランへ即時切り替え（開発用 mock 購入の巻き戻し含む）
+ *
+ * 将来 IAP 連携時は、ストア側の解約フローとサーバー同期を分離する想定。
+ */
+export const switchToFreePlan = async (userId: string): Promise<UserSubscription> => {
   const now = new Date();
   const { data, error } = await supabase
     .from('user_subscriptions')
-    .upsert({
-      user_id: userId,
-      is_active: false,
-      canceled_at: now.toISOString(),
-    }, { onConflict: 'user_id' })
+    .upsert(
+      {
+        user_id: userId,
+        plan: 'free',
+        is_active: false,
+        current_period_end: null,
+        canceled_at: now.toISOString(),
+      },
+      { onConflict: 'user_id' }
+    )
     .select('*')
     .single();
-  if (error) throw error;
+
+  if (error) {
+    logger.error('無料プランへの切り替えに失敗しました:', error);
+    throw error;
+  }
+
+  if (!data) {
+    throw new Error('無料プランへの切り替えが完了しましたが、サブスクリプション情報が取得できませんでした');
+  }
+
+  logger.debug('無料プランへ切り替えました:', { userId });
   return data as UserSubscription;
 };
+
+/** @deprecated switchToFreePlan を使用してください */
+export const cancelSubscription = switchToFreePlan;
 
 /**
  * エンタイトルメントを計算

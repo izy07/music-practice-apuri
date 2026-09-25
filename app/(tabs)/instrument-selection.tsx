@@ -30,7 +30,7 @@ interface Instrument {
 
 export default function InstrumentSelectionScreen() {
   const router = useRouter();
-  const { setSelectedInstrument, currentTheme, selectedInstrument, syncStatus } = useInstrumentTheme();
+  const { setSelectedInstrument, currentTheme, selectedInstrument } = useInstrumentTheme();
   const { user, fetchUserProfile, patchAuthUser } = useAuthAdvanced();
   const { entitlement } = useSubscription();
   const scrollRef = useRef<ScrollView>(null);
@@ -40,6 +40,7 @@ export default function InstrumentSelectionScreen() {
   const [customInstrumentName, setCustomInstrumentName] = useState<string>('');
   const [activeInstrumentIds, setActiveInstrumentIds] = useState<string[]>([]);
   const [canSaveNewInstrument, setCanSaveNewInstrument] = useState<{ canSave: boolean; reason?: string } | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // 「その他」の登録名をローカルから復元（DBカラム未作成/反映遅延でも表示を安定させる）
   useEffect(() => {
@@ -181,6 +182,7 @@ export default function InstrumentSelectionScreen() {
       }
     }
 
+    setIsSaving(true);
     try {
       // カスタム楽器名を取得（その他楽器の場合のみ）
       const customName = selectedInstrumentId === OTHER_INSTRUMENT_ID 
@@ -237,8 +239,8 @@ export default function InstrumentSelectionScreen() {
         }
       }
       
-      // ContextのsetSelectedInstrumentを使用（唯一のエントリーポイント）
-      await setSelectedInstrument(selectedInstrumentId);
+      // DB 保存済みのためサーバー同期はスキップ（二重リクエストで UI が固まるのを防ぐ）
+      await setSelectedInstrument(selectedInstrumentId, { skipServerSync: true });
       
       // 認証状態を即パッチ（fetch 完了前に _layout がオンボーディングへ戻すのを防ぐ）
       patchAuthUser({ selected_instrument_id: selectedInstrumentId });
@@ -255,6 +257,8 @@ export default function InstrumentSelectionScreen() {
     } catch (error) {
       logger.error('楽器保存エラー:', error);
       Alert.alert('エラー', '楽器の保存に失敗しました');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -301,19 +305,28 @@ export default function InstrumentSelectionScreen() {
                           key={instrumentId}
                           style={[styles.activeInstrumentItem, { backgroundColor: currentTheme.secondary + '20' }]}
                           onPress={async () => {
+                            if (isSaving) return;
+                            setIsSaving(true);
                             try {
-                              // 楽器を選択してカレンダー画面に遷移
-                              await setSelectedInstrument(instrumentId);
+                              if (user) {
+                                const result = await updateSelectedInstrument(user.id, instrumentId);
+                                if (result.error) {
+                                  logger.error('使用中楽器保存エラー:', result.error);
+                                  Alert.alert('エラー', '楽器の選択に失敗しました');
+                                  return;
+                                }
+                              }
+                              await setSelectedInstrument(instrumentId, { skipServerSync: true });
                               patchAuthUser({ selected_instrument_id: instrumentId });
                               void fetchUserProfile().catch((profileError) => {
                                 logger.warn('認証状態の更新に失敗しましたが、続行します:', profileError);
                               });
-                              
-                              // カレンダー画面に遷移（一元化された関数を使用）
                               navigateToCalendarScreen(router, `使用中楽器「${instrument.name}」を選択してカレンダー画面に遷移`);
                             } catch (error) {
                               logger.error('使用中楽器選択エラー:', error);
                               Alert.alert('エラー', '楽器の選択に失敗しました');
+                            } finally {
+                              setIsSaving(false);
                             }
                           }}
                           activeOpacity={0.7}
@@ -424,7 +437,7 @@ export default function InstrumentSelectionScreen() {
           <View style={styles.completionSection}>
             {(() => {
               const isSameInstrument = currentInstrumentId && currentInstrumentId !== '' && selectedInstrumentId === currentInstrumentId;
-              const isLoading = syncStatus === 'syncing';
+              const isLoading = isSaving;
               const isNewInstrument = selectedInstrumentId !== currentInstrumentId;
               const isDisabled = isLoading || (isNewInstrument && canSaveNewInstrument !== null && !canSaveNewInstrument.canSave);
 

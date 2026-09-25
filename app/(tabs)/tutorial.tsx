@@ -214,7 +214,7 @@ export default function TutorialScreen() {
       await markTutorialCompleted();
 
       if (hasInstrumentSelected?.()) {
-        router.replace('/(tabs)/index');
+        router.replace('/(tabs)');
       } else {
         router.replace('/(tabs)/instrument-selection');
       }

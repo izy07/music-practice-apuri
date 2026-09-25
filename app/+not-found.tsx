@@ -1,39 +1,63 @@
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useRouter, useSegments } from 'expo-router';
-import { useEffect, useRef } from 'react';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import logger from '@/lib/logger';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
 
+const RECOVERY_TARGETS = ['/(tabs)', '/auth/login'] as const;
+
+/**
+ * 一致しない URL 用。_layout のガードと協調して1回だけ復帰を試みる。
+ */
 export default function NotFoundScreen() {
   const router = useRouter();
   const segments = useSegments();
-  const hasRedirectedRef = useRef(false);
-  
+  const { isAuthenticated, isInitialized, getOnboardingRoute } = useAuthAdvanced();
+  const attemptedRef = useRef(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
+
   useEffect(() => {
-    // 既にリダイレクト済みの場合は何もしない
-    if (hasRedirectedRef.current) {
-      return;
-    }
-    
-    hasRedirectedRef.current = true;
-    
-    // _layout.tsxが自動的に認証チェックとリダイレクトを行うため、ここではルートパスに遷移するだけ
-    // 認証画面へのアクセスやルートパスの場合は、_layout.tsxが適切に処理する
-    
-    // その他の場合はルートパスに遷移（_layout.tsxが適切に処理する）
-    logger.debug('NotFoundScreen: ルートパスに遷移', { segments });
-    setTimeout(() => {
-      try {
-        router.replace('/' as any);
-      } catch (error) {
-        logger.error('NotFoundScreen: ルートパスへの遷移エラー', error);
+    if (!isInitialized || attemptedRef.current) return;
+
+    const primary = isAuthenticated ? getOnboardingRoute() : '/auth/login';
+    if (primary === 'pending') return;
+
+    attemptedRef.current = true;
+    const targets = [primary, ...RECOVERY_TARGETS.filter((t) => t !== primary)];
+
+    logger.warn('+not-found: 画面復帰を試行します', { segments, targets });
+
+    let cancelled = false;
+    (async () => {
+      for (const target of targets) {
+        if (cancelled) return;
+        try {
+          router.replace(target as never);
+          return;
+        } catch (error) {
+          logger.error('+not-found: replace 失敗', { target, error });
+        }
       }
-    }, 50);
-  }, [router, segments]);
-  
-  // リダイレクト中はローディング表示
+      if (!cancelled) {
+        setRecoveryError(
+          '画面を開けませんでした。開発サーバーを npx expo start --web --clear で再起動してください。'
+        );
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, isInitialized, getOnboardingRoute, router, segments]);
+
   return (
     <View style={styles.container}>
       <ActivityIndicator size="large" color="#007AFF" />
+      {recoveryError ? (
+        <Text style={styles.errorText}>{recoveryError}</Text>
+      ) : (
+        <Text style={styles.hintText}>画面を読み込んでいます…</Text>
+      )}
     </View>
   );
 }
@@ -43,5 +67,19 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 24,
+    gap: 16,
+  },
+  hintText: {
+    fontSize: 14,
+    color: '#666666',
+    textAlign: 'center',
+  },
+  errorText: {
+    fontSize: 14,
+    color: '#B00020',
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });
