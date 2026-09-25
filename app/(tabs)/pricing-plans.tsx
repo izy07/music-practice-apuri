@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { CheckCircle2, Crown, ChevronRight } from 'lucide-react-native';
@@ -8,10 +8,13 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { purchaseSubscription } from '@/lib/subscriptionService';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
+import { trackFeatureAction } from '@/lib/featureUsageService';
+import { FEATURE_IDS } from '@/lib/featureUsageEvents';
+import { getInstrumentId } from '@/lib/instrumentUtils';
 
 export default function PricingPlansScreen() {
   const router = useRouter();
-  const { currentTheme } = useInstrumentTheme();
+  const { currentTheme, selectedInstrument } = useInstrumentTheme();
   const { entitlement, refresh } = useSubscription();
   
   const handlePurchase = async (plan: 'premium_monthly' | 'premium_yearly') => {
@@ -26,14 +29,21 @@ export default function PricingPlansScreen() {
       logger.debug('購入処理開始:', { plan, userId: user.id });
       await purchaseSubscription(user.id, plan);
       logger.debug('購入処理成功');
-      
-      // サブスクリプション状態を即座にリフレッシュ
+
+      void trackFeatureAction(
+        user.id,
+        FEATURE_IDS.pricingPlans,
+        'purchase',
+        { platform: Platform.OS, plan },
+        getInstrumentId(selectedInstrument)
+      );
+
       try {
         await refresh();
-        logger.debug('サブスクリプション状態をリフレッシュしました');
       } catch (refreshError) {
         logger.warn('サブスクリプション状態のリフレッシュに失敗しました（続行）:', refreshError);
       }
+      Alert.alert('プレミアムに切り替わりました', '制限が解除されました。');
     } catch (e) {
       // エラーを適切に記録
       const errorMessage = e instanceof Error ? e.message : String(e);

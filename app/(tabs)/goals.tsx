@@ -21,7 +21,7 @@ import { getUserProfile } from '@/repositories/userRepository';
 import { OfflineStorage, isOnline } from '@/lib/offlineStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ErrorHandler } from '@/lib/errorHandler';
-import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
+import { getEffectiveInstrumentId, getInstrumentId } from '@/lib/instrumentUtils';
 import { setCurrentRoute } from '@/lib/navigationHistory';
 import { useSubscription } from '@/hooks/useSubscription';
 import { checkGoalLimit, canSaveDataForInstrument } from '@/lib/subscriptionLimits';
@@ -29,6 +29,8 @@ import { isErrorWithCode, getErrorMessage } from '@/lib/errorHandlingHelpers';
 import { Goal, SubGoal, GoalFromDB, UserProfile, Event, NewGoalData } from '@/lib/tabs/goals/types';
 import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 import { shouldUsePersistentCache } from '@/lib/cache/cachePolicy';
+import { trackFeatureAction } from '@/lib/featureUsageService';
+import { FEATURE_IDS } from '@/lib/featureUsageEvents';
 import {
   getGoalsFromCache,
   saveGoalsToCache,
@@ -765,7 +767,7 @@ export default function GoalsScreen() {
           : nickname;
         setUserProfile({
           nickname: resolvedNickname,
-          organization: profile.organization || undefined
+          organization: profile.current_organization || profile.organization || undefined
         });
       } else {
         setUserProfile({
@@ -1100,6 +1102,13 @@ export default function GoalsScreen() {
       });
 
       if (result.success) {
+        void trackFeatureAction(
+          user.id,
+          FEATURE_IDS.goals,
+          editingGoalId ? 'update' : 'create',
+          { platform: Platform.OS, goal_type: newGoal.goal_type },
+          getInstrumentId(selectedInstrument)
+        );
         resetGoalForm(setNewGoal, setEditingGoalId, setShowAddGoalForm);
       } else {
         ErrorHandler.handle(new Error(result.error || '目標の保存に失敗しました'), '目標保存', true);
@@ -1293,6 +1302,14 @@ export default function GoalsScreen() {
       const goalInstrumentId = currentGoal?.instrument_id || null;
 
       await goalRepository.completeGoal(goalId, user.id);
+
+      void trackFeatureAction(
+        user.id,
+        FEATURE_IDS.goals,
+        'complete',
+        { platform: Platform.OS, goalId },
+        getInstrumentId(selectedInstrument)
+      );
 
       // サーバーから再読み込みして状態を同期
       await Promise.all([

@@ -23,8 +23,12 @@ export const TIMEOUT = {
   INSTRUMENT_FETCH_MS: 10000,
   /** 楽器同期タイムアウト（ミリ秒） */
   INSTRUMENT_SYNC_MS: 5000,
-  /** 初期化タイムアウト（ミリ秒） */
+  /** 初期化タイムアウト（ミリ秒）— ネイティブ/Web 共通の起動フォールバック */
   INITIALIZATION_MS: 3000,
+  /** 起動時プロフィールenrichの上限（これ以上UIをブロックしない） */
+  PROFILE_ENRICH_MS: 3000,
+  /** handleAuthenticatedUser 重複待機の上限 */
+  AUTH_USER_DEDUP_MS: 4000,
 } as const;
 
 /**

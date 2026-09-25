@@ -5,7 +5,7 @@ export const unstable_serverRendering = false;
 import React, { useRef, useEffect } from 'react';
 import { View, LogBox, AppState, Alert, Platform } from 'react-native';
 import { Stack } from 'expo-router'; // 画面遷移のスタックナビゲーター
-import { useRouter, useSegments, useRootNavigationState } from 'expo-router'; // ルーティング関連のフック
+import { useRouter, useSegments, useRootNavigationState, useGlobalSearchParams } from 'expo-router'; // ルーティング関連のフック
 import { useFrameworkReady } from '@/hooks/useFrameworkReady'; // フレームワーク準備状態の管理
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced'; // 認証フック（統一版）
 import { LanguageProvider } from '@/components/LanguageContext'; // 多言語対応の管理
@@ -24,6 +24,7 @@ import audioResourceManager from '@/lib/audioResourceManager'; // オーディ�
 import { isOnline } from '@/lib/offlineStorage'; // ネットワーク状態確認
 import Constants from 'expo-constants'; // 設定値取得用
 import { GlobalErrorBoundary } from '@/components/GlobalErrorBoundary'; // グローバルエラーバウンダリー
+import FeatureUsageTracker from '@/components/FeatureUsageTracker';
 
 // Web環境ではexpo-status-barをインポートしない
 type StatusBarComponent = React.ComponentType<{ style: 'dark' | 'light' | 'auto' }>;
@@ -122,6 +123,7 @@ function RootLayoutContent() {
   // ルーティング関連のフック
   const router = useRouter(); // 画面遷移を実行するためのルーター
   const segments = useSegments() as readonly string[]; // 現在のURLパスを配列で取得
+  const globalParams = useGlobalSearchParams<{ from?: string }>();
   const rootNavigationState = useRootNavigationState();
   const isRouterReady = !!rootNavigationState?.key;
   
@@ -131,7 +133,7 @@ function RootLayoutContent() {
     isLoading, 
     isInitialized,
     hasInstrumentSelected,
-    needsTutorial,
+    getOnboardingRoute,
     canAccessMainApp,
     signOut,
     user
@@ -633,7 +635,7 @@ function RootLayoutContent() {
       isLoading,
       currentSegments,
       hasInstrumentSelected: hasInstrumentSelected(),
-      needsTutorial: needsTutorial(),
+      onboardingRoute: getOnboardingRoute(),
     });
 
     // Web環境: 認証確認完了後の処理
@@ -668,35 +670,57 @@ function RootLayoutContent() {
     // その他の認証画面（callback、reset-passwordなど）は後続処理で対応
     
     // 楽器未選択の場合の処理
-    // 楽器未選択の状態でメイン画面に留まらないように、必ずチュートリアルへ誘導する
+    const ONBOARDING_TABS = new Set(['tutorial', 'instrument-selection']);
     const instrumentSelected = hasInstrumentSelected();
     if (!instrumentSelected) {
-      // チュートリアル画面にいる場合は許可（遷移をブロックしない）
-      if (currentTab === 'tutorial') {
+      const onboardingTarget = getOnboardingRoute();
+
+      // プロフィール／ローカルキャッシュ未確定の間はチュートリアルへ飛ばさない（再ログイン誤表示の根因）
+      if (onboardingTarget === 'pending') {
+        logger.debug('オンボーディング状態未確定のため遷移待機', { currentTab });
         return;
       }
-      // 楽器選択画面にいる場合は許可（チュートリアルから遷移した先）
-      if (currentTab === 'instrument-selection') {
+
+      // オンボーディング画面はそのまま許可（誤ったステップだけ補正）
+      if (currentTab && ONBOARDING_TABS.has(currentTab)) {
+        if (
+          (currentTab === 'tutorial' && onboardingTarget === '/(tabs)/instrument-selection') ||
+          (currentTab === 'instrument-selection' && onboardingTarget === '/(tabs)/tutorial')
+        ) {
+          logger.debug('オンボーディング画面を正しいステップへ補正', {
+            currentTab,
+            onboardingTarget,
+          });
+          router.replace(onboardingTarget);
+        }
         return;
       }
-      // 初期化完了かつローディング完了時は、チュートリアルへリダイレクト
-      // メイン画面（index等）に楽器未選択のまま留まらないようにする
+      // replace 遷移中は segments が ['(tabs)'] のみになることがある → リダイレクトしない
+      if (isInTabsGroup && currentSegments.length <= 1) {
+        return;
+      }
       if (isInitialized && !isLoading) {
-        logger.debug('楽器未選択のため、チュートリアル画面にリダイレクト', {
+        // index は楽器必須なので、未選択時は tutorial / instrument-selection のみ
+        const safeTarget =
+          onboardingTarget === '/(tabs)/index'
+            ? '/(tabs)/instrument-selection'
+            : onboardingTarget;
+        logger.debug('楽器未選択のため、オンボーディング画面にリダイレクト', {
           currentTab,
-          isAtRoot,
-          isInAuthGroup
+          onboardingTarget: safeTarget,
         });
-        router.replace('/(tabs)/tutorial');
+        router.replace(safeTarget);
         return;
       }
-      // 初期化中・ローディング中は画面を維持（チラつき防止）
       return;
     }
 
     // 認証済み + 楽器選択済み
-    // チュートリアル画面にいる場合はカレンダー画面に遷移
-    if (currentTab === 'tutorial' && hasInstrumentSelected()) {
+    // 設定から見返す場合（from=settings）はチュートリアル滞在を許可
+    if (currentTab === 'tutorial' && instrumentSelected) {
+      if (globalParams.from === 'settings') {
+        return;
+      }
       logger.debug('楽器選択済みのため、チュートリアル画面からカレンダー画面にリダイレクト');
       router.replace('/(tabs)/index');
       return;
@@ -715,32 +739,44 @@ function RootLayoutContent() {
     
     // その他の認証画面（callback、reset-passwordなど）の処理
     if (isInAuthGroup) {
-      if (!hasInstrumentSelected()) {
-        router.replace('/(tabs)/tutorial');
+      if (!instrumentSelected) {
+        const route = getOnboardingRoute();
+        if (route === 'pending') {
+          return;
+        }
+        router.replace(
+          route === '/(tabs)/instrument-selection' || route === '/(tabs)/index'
+            ? '/(tabs)/instrument-selection'
+            : '/(tabs)/tutorial'
+        );
       } else {
         router.replace('/(tabs)/index');
       }
       return;
     }
-  }, [isReady, isRouterReady, isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, router, segments]);
+  }, [isReady, isRouterReady, isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, getOnboardingRoute, user?.tutorial_completed, user?.selected_instrument_id, router, segments, globalParams.from]);
 
   // checkUserProgressAndNavigate関数は削除（シンプル化のため不要）
 
   // 新規登録画面用のuseEffectは削除（シンプル化のため不要）
   // 認証状態が更新されると、メインのuseEffectが自動的に実行される
 
-  // フレームワーク準備中または認証状態読み込み中はローディング画面を表示
-  // Web環境では、完全に初期化を待たずに即座にコンテンツを表示
-  // 読み込みが完了しない問題を根本的に解決するため、Web環境では常にコンテンツを表示
-  // ネイティブ環境でも、読み込み中でもコンテンツを表示（リロード時も現在の画面を維持）
-  // 重要: 読み込み中でもコンテンツを表示（リロード時も現在の画面を維持）
-  // LoadingSkeletonは表示しない（リロード時も現在の画面を維持）
+  // 初回起動の認証初期化が終わるまでローディング（白い空 Stack を出さない）
+  // isLoading はトークン更新中も立つことがあるので、初回完了フラグのみ見る
+  const defaultBackgroundColor = '#FFFFFF';
+  const showBootLoading = !isReady || !isRouterReady || !isInitialized;
 
-  // メインの画面構成を定義
-  // デフォルトテーマの背景色を取得（黒い画面を防ぐため）
-  const defaultBackgroundColor = '#FFFFFF'; // defaultThemeのbackground色
+  if (showBootLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: defaultBackgroundColor }}>
+        <LoadingSkeleton fullScreen />
+      </View>
+    );
+  }
   
   return (
+    <>
+    <FeatureUsageTracker />
     <Stack 
       screenOptions={{ 
         headerShown: false, // ヘッダーを非表示（カスタムヘッダーを使用）
@@ -767,6 +803,7 @@ function RootLayoutContent() {
       {/* エラー画面 */}
       <Stack.Screen name="+not-found" options={{ headerShown: false }} />
     </Stack>
+    </>
   );
 }
 

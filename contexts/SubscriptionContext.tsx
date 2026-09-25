@@ -1,34 +1,19 @@
 /**
  * サブスクリプション状態の一元管理
- * 
- * 特徴:
- * - サブスクリプション状態を一元管理
- * - 各画面での重複取得を削減
- * - パフォーマンス向上（状態の共有）
- * - テスト容易性の向上（Contextをモック可能）
- * 
- * 使用方法:
- * ```typescript
- * import { useSubscriptionContext } from '@/contexts/SubscriptionContext';
- * 
- * const { entitlement, loading, refresh } = useSubscriptionContext();
- * ```
+ *
+ * - 状態取得は Provider 内の useSubscriptionState のみ
+ * - 各画面は useSubscription / useSubscriptionContext で同じ状態を参照
+ * - 購入後の refresh は全画面に同時反映（画面ごとの二重取得なし）
  */
 
-import React, { createContext, useContext } from 'react';
-import { useSubscription } from '@/hooks/useSubscription';
+import React, { createContext, useContext, useMemo } from 'react';
+import {
+  useSubscriptionState,
+  type SubscriptionEntitlement,
+} from '@/hooks/useSubscriptionState';
 import { UserSubscription } from '@/lib/subscriptionService';
 
-/**
- * エンタイトルメントの型定義
- * useSubscriptionフックが返すentitlementの実際の構造に合わせています
- */
-export interface EntitlementType {
-  isEntitled: boolean;
-  isTrial: boolean;
-  isPremiumActive: boolean;
-  daysLeftOnTrial: number;
-}
+export type EntitlementType = SubscriptionEntitlement;
 
 export interface SubscriptionContextType {
   subscription: UserSubscription | null;
@@ -41,23 +26,28 @@ export interface SubscriptionContextType {
 
 const SubscriptionContext = createContext<SubscriptionContextType | null>(null);
 
-/**
- * サブスクリプション状態を提供するプロバイダー
- * 
- * アプリのルートレイアウト（app/_layout.tsx）で使用してください。
- */
 export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const subscriptionData = useSubscription();
-  
-  const value: SubscriptionContextType = {
-    subscription: subscriptionData.subscription,
-    entitlement: subscriptionData.entitlement,
-    loading: subscriptionData.loading,
-    error: subscriptionData.error,
-    errorMessage: subscriptionData.errorMessage,
-    refresh: subscriptionData.refresh,
-  };
-  
+  const subscriptionData = useSubscriptionState();
+
+  const value = useMemo<SubscriptionContextType>(
+    () => ({
+      subscription: subscriptionData.subscription,
+      entitlement: subscriptionData.entitlement,
+      loading: subscriptionData.loading,
+      error: subscriptionData.error,
+      errorMessage: subscriptionData.errorMessage,
+      refresh: subscriptionData.refresh,
+    }),
+    [
+      subscriptionData.subscription,
+      subscriptionData.entitlement,
+      subscriptionData.loading,
+      subscriptionData.error,
+      subscriptionData.errorMessage,
+      subscriptionData.refresh,
+    ]
+  );
+
   return (
     <SubscriptionContext.Provider value={value}>
       {children}
@@ -65,21 +55,6 @@ export const SubscriptionProvider: React.FC<{ children: React.ReactNode }> = ({ 
   );
 };
 
-/**
- * サブスクリプション状態を取得するカスタムフック
- * 
- * @throws {Error} SubscriptionProviderの外で使用された場合
- * @returns サブスクリプション状態と操作関数
- * 
- * 使用例:
- * ```typescript
- * const { entitlement, loading, refresh } = useSubscriptionContext();
- * 
- * if (entitlement.isEntitled) {
- *   // プレミアム機能にアクセス可能
- * }
- * ```
- */
 export const useSubscriptionContext = (): SubscriptionContextType => {
   const context = useContext(SubscriptionContext);
   if (!context) {

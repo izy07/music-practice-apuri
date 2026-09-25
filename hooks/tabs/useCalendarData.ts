@@ -450,8 +450,24 @@ export function useCalendarData(currentDate: Date) {
         });
 
         if (rpcError) {
-          // RPC関数が存在しない場合、フォールバックとして直接クエリを使用
-          if (rpcError.code === '42883' || rpcError.message?.includes('function') || rpcError.message?.includes('does not exist')) {
+          // RPC関数が存在しない場合のみフォールバック。認証/権限エラーはサイレントにしない
+          const isMissingFunction =
+            rpcError.code === '42883' ||
+            rpcError.message?.includes('function') ||
+            rpcError.message?.includes('does not exist');
+          const isAuthOrPermissionError =
+            rpcError.code === '42501' ||
+            rpcError.code === 'PGRST301' ||
+            rpcError.code === 'PGRST302' ||
+            /permission|jwt|auth|not authorized|row-level security/i.test(rpcError.message || '');
+
+          if (isAuthOrPermissionError) {
+            ErrorHandler.handle(rpcError, '総練習時間の読み込み（認証）', true);
+            logger.error('総練習時間RPCの認証/権限エラー:', rpcError);
+            return;
+          }
+
+          if (isMissingFunction) {
             logger.debug('RPC関数が存在しないため、フォールバック方式を使用');
       
       // 注意: 直接Supabase呼び出し（リポジトリ層への移行を検討）
@@ -471,17 +487,16 @@ export function useCalendarData(currentDate: Date) {
             const { data: sessions, error: queryError } = await query;
 
             if (queryError) {
-              if (queryError.code === 'PGRST205' || queryError.code === 'PGRST116' || queryError.message?.includes('Could not find the table')) {
-          return;
-        }
-        return;
-      }
+              ErrorHandler.handle(queryError, '総練習時間のフォールバック取得', true);
+              return;
+            }
 
       if (sessions) {
               const total = sessions.reduce((sum: number, session: { duration_minutes: number }) => sum + (session.duration_minutes || 0), 0);
               setTotalPracticeTime(total);
             }
           } else {
+            ErrorHandler.handle(rpcError, '総練習時間の読み込み', true);
             logger.error('RPC関数実行エラー:', rpcError);
           }
           return;
@@ -514,7 +529,7 @@ export function useCalendarData(currentDate: Date) {
         }
       }
     } catch (error) {
-      ErrorHandler.handle(error, '総練習時間の読み込み', false);
+      ErrorHandler.handle(error, '総練習時間の読み込み', true);
       logger.error('総練習時間の読み込みエラー:', error);
     }
   }, [selectedInstrument]);

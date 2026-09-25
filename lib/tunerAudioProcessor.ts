@@ -17,6 +17,124 @@ export const TUNING_PRECISION = {
   POOR: 10,       // ±10セント以内: 調整必要
 } as const;
 
+/**
+ * 解析窓の共通定数（Web AnalyserNode.fftSize と Native リングバッファを揃える）
+ * 低音（E2≈82Hz）では複数周期分のサンプルが精度の根因になる。
+ */
+export const TUNER_ANALYSIS = {
+  SAMPLE_RATE: 44100,
+  /** ≈371ms @ 44.1kHz — Web の fftSize=16384 と一致 */
+  WINDOW_SAMPLES: 16384,
+  /** ネイティブの取り込みホップ（≈93ms）。重なり窓で応答性を保つ */
+  HOP_SAMPLES: 4096,
+  MIN_HZ: 40,
+  MAX_HZ: 2000,
+} as const;
+
+/** 表示・平滑化（市販クロマチック相当） */
+export const TUNER_DISPLAY = {
+  /** ±この値以内は針を中央（0）に。1.0 だとサブセント精度が潰れる */
+  CENTS_DEAD_ZONE: 0.3,
+  HISTORY_SIZE: 7,
+  UI_INTERVAL_MS: 33,
+} as const;
+
+export type FrequencyStabilizerState = {
+  history: number[];
+  smoothed: number;
+};
+
+export const createFrequencyStabilizerState = (): FrequencyStabilizerState => ({
+  history: [],
+  smoothed: 0,
+});
+
+const isOctaveRelationHz = (a: number, b: number): boolean => {
+  if (a <= 0 || b <= 0) return false;
+  const ratio = a > b ? a / b : b / a;
+  return (ratio > 1.9 && ratio < 2.1) || (ratio > 3.8 && ratio < 4.2);
+};
+
+/**
+ * 検出周波数の安定化（オクターブ棄却 → 中央値 → 適応 EMA）
+ * UI から切り出し、テスト可能にする。
+ */
+export const stabilizeDetectedFrequency = (
+  state: FrequencyStabilizerState,
+  detectedFrequency: number,
+  historySize: number = TUNER_DISPLAY.HISTORY_SIZE
+): { accepted: false; state: FrequencyStabilizerState } | {
+  accepted: true;
+  frequency: number;
+  state: FrequencyStabilizerState;
+} => {
+  const { MIN_HZ, MAX_HZ } = TUNER_ANALYSIS;
+  if (!(detectedFrequency > MIN_HZ && detectedFrequency < MAX_HZ)) {
+    return { accepted: false, state };
+  }
+
+  let history = state.history;
+  let smoothed = state.smoothed;
+
+  if (smoothed > 0) {
+    const changeRatio = Math.abs(detectedFrequency - smoothed) / smoothed;
+    if (!isOctaveRelationHz(detectedFrequency, smoothed) && changeRatio > 0.5) {
+      return { accepted: false, state };
+    }
+  }
+
+  if (smoothed > 0 && isOctaveRelationHz(detectedFrequency, smoothed)) {
+    const fundamental = Math.min(detectedFrequency, smoothed);
+    if (detectedFrequency < smoothed * 0.75) {
+      history = [detectedFrequency];
+      smoothed = detectedFrequency;
+    } else if (
+      Math.abs(detectedFrequency - fundamental) < Math.abs(smoothed - fundamental)
+    ) {
+      history = [fundamental];
+      smoothed = fundamental;
+    }
+  }
+
+  history = [...history, detectedFrequency];
+  if (history.length > historySize) {
+    history = history.slice(history.length - historySize);
+  }
+
+  let medianFreq = detectedFrequency;
+  if (history.length >= 3) {
+    const sorted = [...history].sort((a, b) => a - b);
+    medianFreq = sorted[Math.floor(sorted.length / 2)];
+  } else if (history.length === 2) {
+    medianFreq = (history[0] + history[1]) / 2;
+  }
+
+  const freqDiff = Math.abs(medianFreq - smoothed);
+  let nextSmoothed: number;
+  if (smoothed === 0) {
+    nextSmoothed = medianFreq;
+  } else if (freqDiff < 0.5) {
+    nextSmoothed = smoothed * 0.7 + medianFreq * 0.3;
+  } else if (freqDiff < 3) {
+    nextSmoothed = smoothed * 0.45 + medianFreq * 0.55;
+  } else if (freqDiff < 15) {
+    nextSmoothed = smoothValue(smoothed, medianFreq, 0.55, 25);
+  } else {
+    nextSmoothed = smoothValue(smoothed, medianFreq, 0.35, 20);
+  }
+
+  return {
+    accepted: true,
+    frequency: nextSmoothed,
+    state: { history, smoothed: nextSmoothed },
+  };
+};
+
+export const applyCentsDeadZone = (
+  cents: number,
+  deadZone: number = TUNER_DISPLAY.CENTS_DEAD_ZONE
+): number => (Math.abs(cents) <= deadZone ? 0 : cents);
+
 export interface NoteInfo {
   note: string;
   noteJa: string;
@@ -222,7 +340,8 @@ export const getNoteFromFrequency = (
  */
 export const autoCorrelate = (
   buffer: Float32Array,
-  sampleRate: number
+  sampleRate: number,
+  precomputedThresholds?: AdaptiveThresholds
 ): number => {
   let SIZE = buffer.length;
 
@@ -242,8 +361,7 @@ export const autoCorrelate = (
   }
   rms = Math.sqrt(rms / SIZE);
   
-  // 環境適応型のRMS閾値を計算（一度だけ計算して再利用）
-  const adaptiveThresholds = calculateAdaptiveThresholds(rms, 0);
+  const adaptiveThresholds = precomputedThresholds ?? calculateAdaptiveThresholds(rms, 0);
   if (rms < adaptiveThresholds.rmsThreshold) return -1; // 無音検出（環境適応型閾値）
 
   // クリッピング検出：音が大きすぎる場合（RMS > 0.5）は処理を調整
@@ -578,7 +696,8 @@ const getSessionId = (): string => {
 
 export const calculateAdaptiveThresholds = (
   currentRMS: number,
-  currentCorrelation: number
+  _currentCorrelation: number,
+  updateHistory: boolean = true
 ): AdaptiveThresholds => {
   // セッションIDを取得
   const sessionId = getSessionId();
@@ -595,10 +714,12 @@ export const calculateAdaptiveThresholds = (
   
   const environmentHistory = environmentHistoryMap.get(sessionId)!;
   
-  // 環境ノイズの履歴を更新
-  environmentHistory.push(currentRMS);
-  if (environmentHistory.length > ENVIRONMENT_HISTORY_SIZE) {
-    environmentHistory.shift();
+  // 環境ノイズの履歴を更新（1フレーム1回のみ更新する）
+  if (updateHistory) {
+    environmentHistory.push(currentRMS);
+    if (environmentHistory.length > ENVIRONMENT_HISTORY_SIZE) {
+      environmentHistory.shift();
+    }
   }
   
   // 環境ノイズの中央値を計算
@@ -678,7 +799,8 @@ export const smoothValue = (
  */
 export const yinPitchDetection = (
   buffer: Float32Array,
-  sampleRate: number
+  sampleRate: number,
+  precomputedThresholds?: AdaptiveThresholds
 ): number => {
   const SIZE = buffer.length;
   
@@ -698,8 +820,7 @@ export const yinPitchDetection = (
   }
   rms = Math.sqrt(rms / SIZE);
   
-  // 環境適応型のRMS閾値を使用
-  const adaptiveThresholds = calculateAdaptiveThresholds(rms, 0);
+  const adaptiveThresholds = precomputedThresholds ?? calculateAdaptiveThresholds(rms, 0, false);
   if (rms < adaptiveThresholds.rmsThreshold) return -1;
   
   // 差関数（difference function）を計算
@@ -858,7 +979,8 @@ export const yinPitchDetection = (
  */
 export const mpmPitchDetection = (
   buffer: Float32Array,
-  sampleRate: number
+  sampleRate: number,
+  precomputedThresholds?: AdaptiveThresholds
 ): number => {
   const SIZE = buffer.length;
   if (SIZE < 256) return -1;
@@ -869,7 +991,7 @@ export const mpmPitchDetection = (
     rms += buffer[i] * buffer[i];
   }
   rms = Math.sqrt(rms / SIZE);
-  const adaptiveThresholds = calculateAdaptiveThresholds(rms, 0);
+  const adaptiveThresholds = precomputedThresholds ?? calculateAdaptiveThresholds(rms, 0, false);
   if (rms < adaptiveThresholds.rmsThreshold) return -1;
 
   // ハン窓
@@ -963,55 +1085,61 @@ export const mpmPitchDetection = (
 };
 
 /**
- * 複数アルゴリズムの結果を統合（MPM主・YIN/自己相関補助）
- * MPMはオクターブ誤検出に強いため主結果とし、近傍一致時のみ平均で安定化
+ * 複数アルゴリズムの結果を統合（MPM主・失敗時のみ YIN/自己相関）
+ *
+ * 根本: 毎回3アルゴ全実行は CPU 増だけで精度は上がらない。
+ * MPM 成功時はそれを採用（低音でも補助のオクターブ誤検出を混ぜない）。
+ * 補助は MPM が失敗したときだけ。
  */
+const computeBufferRMS = (buffer: Float32Array): number => {
+  let rms = 0;
+  for (let i = 0; i < buffer.length; i++) {
+    rms += buffer[i] * buffer[i];
+  }
+  return Math.sqrt(rms / buffer.length);
+};
+
+const isNearFreq = (a: number, b: number, rel = 0.02): boolean => {
+  if (a <= 0 || b <= 0) return false;
+  return Math.abs(a - b) / Math.max(a, b) < rel;
+};
+
+const isOctaveRelation = (a: number, b: number): boolean => {
+  if (a <= 0 || b <= 0) return false;
+  const ratio = a > b ? a / b : b / a;
+  return (ratio > 1.94 && ratio < 2.06) || (ratio > 3.85 && ratio < 4.15);
+};
+
 export const combineAlgorithms = (
   buffer: Float32Array,
   sampleRate: number
 ): number => {
-  const mpmFreq = mpmPitchDetection(buffer, sampleRate);
-  const yinFreq = yinPitchDetection(buffer, sampleRate);
-  const autocorrFreq = autoCorrelate(buffer, sampleRate);
+  const { MIN_HZ, MAX_HZ } = TUNER_ANALYSIS;
+  const rms = computeBufferRMS(buffer);
+  const adaptiveThresholds = calculateAdaptiveThresholds(rms, 0, true);
+  if (rms < adaptiveThresholds.rmsThreshold) return -1;
 
-  const isNear = (a: number, b: number, rel = 0.02): boolean => {
-    if (a <= 0 || b <= 0) return false;
-    return Math.abs(a - b) / Math.max(a, b) < rel;
-  };
-
-  const isOctaveRelation = (a: number, b: number): boolean => {
-    if (a <= 0 || b <= 0) return false;
-    const ratio = a > b ? a / b : b / a;
-    return (ratio > 1.94 && ratio < 2.06) || (ratio > 3.85 && ratio < 4.15);
-  };
-
-  // MPMが主。近傍で一致する補助結果があれば加重平均
-  if (mpmFreq > 40 && mpmFreq <= 2000) {
-    const near: number[] = [mpmFreq];
-    if (isNear(yinFreq, mpmFreq)) near.push(yinFreq);
-    if (isNear(autocorrFreq, mpmFreq)) near.push(autocorrFreq);
-    if (near.length >= 2) {
-      // MPMを2票分として平均
-      return (mpmFreq + near.reduce((s, f) => s + f, 0)) / (near.length + 1);
-    }
-    // 補助がオクターブずれでも MPM を採用（基音選択は MPM の clarity に任せる）
+  const mpmFreq = mpmPitchDetection(buffer, sampleRate, adaptiveThresholds);
+  if (mpmFreq > MIN_HZ && mpmFreq <= MAX_HZ) {
     return mpmFreq;
   }
 
-  // MPM失敗時: YIN と自己相関が近ければ平均、オクターブなら低い方（基音）
-  if (yinFreq > 40 && yinFreq <= 2000 && autocorrFreq > 40 && autocorrFreq <= 2000) {
-    if (isNear(yinFreq, autocorrFreq)) {
+  // MPM 失敗時のみ補助を実行
+  const yinFreq = yinPitchDetection(buffer, sampleRate, adaptiveThresholds);
+  const autocorrFreq = autoCorrelate(buffer, sampleRate, adaptiveThresholds);
+
+  if (yinFreq > MIN_HZ && yinFreq <= MAX_HZ && autocorrFreq > MIN_HZ && autocorrFreq <= MAX_HZ) {
+    if (isNearFreq(yinFreq, autocorrFreq)) {
       return (yinFreq + autocorrFreq) / 2;
     }
     if (isOctaveRelation(yinFreq, autocorrFreq)) {
       return Math.min(yinFreq, autocorrFreq);
     }
-    // 低域は YIN、それ以外は相関の中央寄り
     return yinFreq < 200 ? yinFreq : (yinFreq + autocorrFreq) / 2;
   }
 
-  if (yinFreq > 40 && yinFreq <= 2000) return yinFreq;
-  if (autocorrFreq > 40 && autocorrFreq <= 2000) return autocorrFreq;
+  if (yinFreq > MIN_HZ && yinFreq <= MAX_HZ) return yinFreq;
+  if (autocorrFreq > MIN_HZ && autocorrFreq <= MAX_HZ) return autocorrFreq;
   return -1;
 };
 

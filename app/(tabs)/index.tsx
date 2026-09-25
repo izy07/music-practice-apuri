@@ -19,12 +19,15 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
 import { formatLocalDate, formatMinutesToHours } from '@/lib/dateUtils';
 import { OfflineStorage, isOnline } from '../../lib/offlineStorage';
+import { syncOfflinePracticeRecords } from '@/lib/syncOfflinePracticeRecords';
 import { COMMON_STYLES } from '@/lib/appStyles';
 import logger from '@/lib/logger';
 import { savePracticeSessionWithIntegration } from '@/repositories/practiceSessionRepository';
 import { setCurrentRoute } from '@/lib/navigationHistory';
 import { useSubscription } from '@/hooks/useSubscription';
 import { canSaveDataForInstrument } from '@/lib/subscriptionLimits';
+import { subscribeCalendarGoalUpdated } from '@/lib/appEvents';
+import { deleteEvent } from '@/repositories/eventRepository';
 
 // テーマの型定義
 interface InstrumentTheme {
@@ -550,6 +553,43 @@ export default function CalendarScreen() {
     }
   }, [loadPracticeData, loadTotalPracticeTime, loadRecordingsData]);
 
+  // オンライン復帰時にオフライン練習記録を同期
+  useEffect(() => {
+    const syncWhenOnline = async () => {
+      setIsOffline(!isOnline());
+      if (!isOnline() || !isAuthenticated || !user?.id) {
+        return;
+      }
+      ErrorHandler.resetErrorCount();
+      try {
+        const result = await syncOfflinePracticeRecords(user.id);
+        if (result.synced > 0) {
+          setSuccessMessage(`${result.synced}件のオフライン練習記録を同期しました`);
+          setTimeout(() => setSuccessMessage(''), 3000);
+          await refreshPracticeData(false);
+        }
+        if (result.failed > 0) {
+          Alert.alert(
+            '同期エラー',
+            `${result.failed}件のオフライン練習記録をサーバーへ同期できませんでした。後でもう一度お試しください。`
+          );
+        }
+      } catch (error) {
+        ErrorHandler.handle(error, 'オフライン練習記録の同期', true);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', syncWhenOnline);
+      void syncWhenOnline();
+      return () => {
+        window.removeEventListener('online', syncWhenOnline);
+      };
+    }
+
+    void syncWhenOnline();
+  }, [isAuthenticated, user?.id, refreshPracticeData]);
+
   // 目標表示更新関数（直接呼び出し用）
   const refreshGoalDisplay = useCallback(async (immediate: boolean = false) => {
     try {
@@ -585,24 +625,13 @@ export default function CalendarScreen() {
     }
   }, [loadShortTermGoal]);
 
-  // 目標画面からのカレンダー表示更新イベントをリッスン
+  // 目標画面からのカレンダー表示更新イベントをリッスン（iOS/Android/Web）
   useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const handleCalendarGoalUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      logger.debug('📅 カレンダー目標更新イベントを受信、目標を再読み込みします', customEvent?.detail);
-      // ボタン押下時は即座に反映（ラグを解消）
+    const unsubscribe = subscribeCalendarGoalUpdated((detail) => {
+      logger.debug('📅 カレンダー目標更新イベントを受信、目標を再読み込みします', detail);
       refreshGoalDisplay(true);
-    };
-
-    window.addEventListener('calendarGoalUpdated', handleCalendarGoalUpdated as EventListener);
-
-    return () => {
-      window.removeEventListener('calendarGoalUpdated', handleCalendarGoalUpdated);
-    };
+    });
+    return unsubscribe;
   }, [refreshGoalDisplay]);
 
   // 練習記録更新イベントをリッスン（タイマー記録など）
@@ -733,11 +762,7 @@ export default function CalendarScreen() {
       // 録音や動画URLがある場合は録音ライブラリにも保存
       if (audioUrl || videoUrl) {
         try {
-          // Freeプランの場合、選択された日付が今月であることを確認
-          const { useSubscription } = await import('@/hooks/useSubscription');
-          const { isCurrentMonth } = await import('@/lib/subscriptionLimits');
-          // 注意: フックはコンポーネント内でのみ使用可能なため、ここでは直接チェック
-          // 実際のチェックはAudioRecorderコンポーネントで行われるため、ここでは保存のみ実行
+          // 録音可否の制限チェックは AudioRecorder 側で実施済み
           await saveRecording({
             user_id: user.id,
             instrument_id: currentInstrumentId || null, // 現在の楽器IDを追加
@@ -751,9 +776,12 @@ export default function CalendarScreen() {
           });
           logger.info('録音/動画を録音ライブラリに保存しました');
         } catch (recordingError) {
-          // 録音ライブラリへの保存エラーは無視
           logger.error('録音ライブラリへの保存エラー:', recordingError);
-          // 録音ライブラリ保存に失敗してもメインの練習記録は保存する
+          ErrorHandler.handle(recordingError, '練習記録に紐づく録音の保存', true);
+          Alert.alert(
+            '録音の保存に失敗',
+            '練習時間の記録は続けますが、録音/動画のライブラリ保存に失敗しました。'
+          );
         }
       }
 
@@ -911,14 +939,14 @@ export default function CalendarScreen() {
           
           return;
         } catch (error) {
-          Alert.alert('エラー', 'サーバーへの保存に失敗しました');
           logger.error('サーバー保存エラー:', error);
-          
-          // エラーメッセージを表示
-          const errorMessage = error instanceof Error ? error.message : '練習記録の保存に失敗しました';
-          Alert.alert('保存エラー', errorMessage);
-          
-          // サーバー保存エラー、ローカルに保存を試みる
+          // 二重Alertを避け、ローカル保存へフォールバックする前に1回だけ状況を伝える
+          const errorMessage = error instanceof Error ? error.message : '練習記録のサーバー保存に失敗しました';
+          // サーバー保存エラー → ローカルに保存を試みる（下のオフライン分岐へ）
+          Alert.alert(
+            'サーバー保存に失敗',
+            `${errorMessage}\n\n端末への一時保存を試みます。オンライン復帰時に自動同期します。`
+          );
         }
       }
 
@@ -926,9 +954,12 @@ export default function CalendarScreen() {
       const result = await OfflineStorage.savePracticeRecord(practiceRecord);
       if (result.success) {
         const hasMedia = !!(audioUrl || videoUrl);
-        const mediaMessage = hasMedia ? '録音・動画ライブラリにも保存されました！' : '';
-        setSuccessMessage(`${minutes}分の練習記録をローカルに保存しました！${mediaMessage}（オフライン）`);
-        setTimeout(() => setSuccessMessage(''), 3000);
+        const mediaMessage = hasMedia ? '（メディアは別途アップロードが必要な場合があります）' : '';
+        const offlineNote = isOnline()
+          ? '端末に一時保存しました。オンライン復帰時に同期します。'
+          : 'オフラインのため端末に保存しました。接続復帰後に同期します。';
+        setSuccessMessage(`${minutes}分の練習記録を保存しました。${offlineNote}${mediaMessage}`);
+        setTimeout(() => setSuccessMessage(''), 4000);
         
         // 保存完了後にlocalStorageにタイムスタンプを保存
         if (typeof window !== 'undefined') {
@@ -945,12 +976,20 @@ export default function CalendarScreen() {
         // オフライン時も直接データを更新
         await refreshPracticeData(false);
       } else {
+        Alert.alert('保存エラー', '練習記録の保存に失敗しました（サーバー・端末の両方）');
         throw new Error('ローカル保存に失敗しました');
       }
     } catch (error) {
-      Alert.alert('エラー', '練習記録の保存に失敗しました');
       logger.error('練習記録保存エラー:', error);
-      Alert.alert('エラー', '練習記録の保存に失敗しました');
+      ErrorHandler.handle(error, '練習記録の保存', true);
+      // 上位で未表示の場合のみ最終アラート（二重表示を避けるためメッセージは簡潔に）
+      const alreadyAlerted = error instanceof Error && (
+        error.message.includes('練習記録機能は準備中') ||
+        error.message.includes('ローカル保存に失敗')
+      );
+      if (!alreadyAlerted) {
+        Alert.alert('エラー', '練習記録の保存に失敗しました');
+      }
     }
   };
 
@@ -1315,13 +1354,10 @@ export default function CalendarScreen() {
         onEventEdit={openEventModalFromPracticeRecord}
         onEventPress={openEventModalFromPracticeRecord}
         onEventDelete={async (event) => {
-          // イベント削除
+          // イベント削除（共通リポジトリ経由）
           try {
             logger.debug('カレンダー画面: イベント削除開始', { eventId: event.id, eventTitle: event.title });
-            const { error } = await supabase
-              .from('events')
-              .delete()
-              .eq('id', event.id);
+            const { error } = await deleteEvent(event.id);
 
             if (error) {
               logger.error('カレンダー画面: イベント削除エラー:', error);

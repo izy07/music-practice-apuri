@@ -7,15 +7,18 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "environment": "development",
       "ios": {
         "resourceClass": "m-medium"
       },
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "credentialsSource": "local"
       }
     },
     "preview": {
       "distribution": "internal",
+      "environment": "preview",
       "ios": {
         "resourceClass": "m-medium"
       },
@@ -25,14 +28,25 @@
     },
     "internal-testing": {
       "distribution": "internal",
+      "environment": "production",
       "ios": {
         "resourceClass": "m-medium"
       },
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "app-bundle",
+        "credentialsSource": "local"
+      }
+    },
+    "adi-verification": {
+      "distribution": "internal",
+      "environment": "production",
+      "android": {
+        "buildType": "apk",
+        "credentialsSource": "local"
       }
     },
     "production": {
+      "environment": "production",
       "ios": {
         "resourceClass": "m-medium"
       },

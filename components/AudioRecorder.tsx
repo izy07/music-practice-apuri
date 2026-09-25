@@ -25,8 +25,38 @@ import { RewardedAdModal } from './ads/RewardedAdModal';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import logger from '@/lib/logger';
 import audioResourceManager from '@/lib/audioResourceManager';
+import { emitRequestReleaseMic, subscribeRequestReleaseMic } from '@/lib/appEvents';
 import { showFeatureLimitAlert, normalizeLimitResult, getDefaultAlertConfig } from '@/lib/featureAccessHelpers';
 import { isErrorWithCode } from '@/lib/errorHandlingHelpers';
+import { trackFeatureAction } from '@/lib/featureUsageService';
+import { FEATURE_IDS } from '@/lib/featureUsageEvents';
+import { uriToBlob, configureNativeRecordingMode, requestNativeRecordingPermission } from '@/lib/nativeExpoRecording';
+
+// expo-audio（ネイティブ録音・再生）
+let useAudioRecorder: ((options: Record<string, unknown>) => {
+  uri: string | null;
+  prepareToRecordAsync: () => Promise<void>;
+  record: () => void;
+  stop: () => Promise<void>;
+}) | null = null;
+let useAudioPlayer: (() => {
+  play: () => void;
+  pause: () => void;
+  seekTo: (seconds: number) => Promise<void>;
+  replace: (source: string) => void;
+}) | null = null;
+let RecordingPresets: { HIGH_QUALITY: Record<string, unknown> } | null = null;
+
+if (Platform.OS !== 'web') {
+  try {
+    const audioModule = require('expo-audio');
+    useAudioRecorder = audioModule.useAudioRecorder;
+    useAudioPlayer = audioModule.useAudioPlayer;
+    RecordingPresets = audioModule.RecordingPresets;
+  } catch (error) {
+    logger.warn('expo-audio を読み込めません', error);
+  }
+}
 
 const { width } = Dimensions.get('window');
 
@@ -76,11 +106,20 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
+  const playbackCleanupRef = useRef<(() => void) | null>(null);
   const recordingIntervalRef = useRef<number | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioBlobRef = useRef<Blob | null>(null);
   const microphoneStreamRef = useRef<MediaStream | null>(null);
   const isRecordingRef = useRef(false); // 最新のisRecording状態を保持
+  const nativeRecordingStartRef = useRef(0);
+  const isNativeRecordingRef = useRef(false);
+
+  const expoNativeRecorder =
+    useAudioRecorder && Platform.OS !== 'web' && RecordingPresets
+      ? useAudioRecorder(RecordingPresets.HIGH_QUALITY)
+      : null;
+  const expoNativePlayer = useAudioPlayer && Platform.OS !== 'web' ? useAudioPlayer() : null;
 
   // 録音時間の制限（プランに応じて動的に設定）
   const MAX_RECORDING_TIME = useMemo(() => {
@@ -92,11 +131,30 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
     isRecordingRef.current = isRecording;
   }, [isRecording]);
 
+  // チューナー開始時は録音を停止（マイク排他）
+  useEffect(() => {
+    return subscribeRequestReleaseMic((detail) => {
+      if (detail.requester !== 'tuner') return;
+      if (!isRecordingRef.current && !isNativeRecordingRef.current) return;
+      logger.debug('チューナー開始のため録音を停止します');
+      stopRecording('auto');
+    });
+  }, []);
+
   // コンポーネントのクリーンアップ（アンマウント時のみ実行）
   useEffect(() => {
     return () => {
       logger.debug('AudioRecorderコンポーネントがアンマウントされます');
       
+      if (isNativeRecordingRef.current && expoNativeRecorder) {
+        void expoNativeRecorder.stop().catch((error: unknown) => {
+          logger.warn('Native recorder stop error during cleanup:', error);
+        });
+        isNativeRecordingRef.current = false;
+        isRecordingRef.current = false;
+        setIsRecording(false);
+      }
+
       // 録音を停止（refを使用して最新の状態を確認）
       if (isRecordingRef.current && mediaRecorderRef.current) {
         logger.debug('コンポーネントアンマウント時に録音を停止します');
@@ -223,22 +281,20 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   // 楽曲リストを読み込む
   const loadSongs = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data, error } = await supabase
-          .from('my_songs')
-          .select('id, title, artist')
-          .eq('user_id', user.id)
-          .order('title', { ascending: true });
+      if (!user?.id) return;
+      const { data, error } = await supabase
+        .from('my_songs')
+        .select('id, title, artist')
+        .eq('user_id', user.id)
+        .order('title', { ascending: true });
 
-        if (error) {
-          // Error loading songs
-        } else {
-          setSongs(data || []);
-        }
+      if (error) {
+        logger.warn('楽曲リストの読み込みに失敗', error);
+      } else {
+        setSongs(data || []);
       }
     } catch (error) {
-      // Error loading songs
+      logger.warn('楽曲リストの読み込み例外', error);
     }
   };
 
@@ -246,6 +302,9 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const startRecording = async () => {
     try {
       logger.debug('録音開始ボタンが押されました');
+
+      // チューナー等のマイク利用を解放してから録音開始
+      emitRequestReleaseMic({ requester: 'recorder' });
       
       // entitlementが古い値の場合、最新のentitlementを再取得
       // これは、entitlementが非同期で更新されるため、古い値が渡される可能性があるため
@@ -350,7 +409,40 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       }
       
       if (Platform.OS !== 'web') {
-        Alert.alert('録音機能', '録音機能はWeb環境でのみ利用できます');
+        if (!expoNativeRecorder) {
+          Alert.alert('エラー', 'この端末では録音機能を利用できません');
+          return;
+        }
+        const granted = await requestNativeRecordingPermission();
+        if (!granted) {
+          Alert.alert('マイク権限が必要', '設定アプリでマイクの使用を許可してください');
+          return;
+        }
+        await configureNativeRecordingMode();
+        await expoNativeRecorder.prepareToRecordAsync();
+        nativeRecordingStartRef.current = Date.now();
+        isNativeRecordingRef.current = true;
+        expoNativeRecorder.record();
+        setIsRecording(true);
+        isRecordingRef.current = true;
+        setRecordingTime(0);
+        setRecordingDuration(0);
+        audioBlobRef.current = null;
+        setAudioUrl(null);
+
+        recordingIntervalRef.current = setInterval(() => {
+          const elapsedTime = Math.round((Date.now() - nativeRecordingStartRef.current) / 1000);
+          setRecordingTime(elapsedTime);
+          if (elapsedTime >= MAX_RECORDING_TIME - 1) {
+            if (recordingIntervalRef.current) {
+              clearInterval(recordingIntervalRef.current);
+              recordingIntervalRef.current = null;
+            }
+            stopRecording('auto');
+          }
+        }, 250) as unknown as number;
+
+        logger.debug('ネイティブ録音を開始しました');
         return;
       }
 
@@ -395,7 +487,7 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         const errorCode = isErrorWithCode(error) ? error.code : '';
         
         if (errorMessage.includes('既に') || errorName === 'NotAllowedError') {
-          Alert.alert('マイク使用中', errorMessage + '\n\n他の機能（チューナー、クイック記録など）がマイクを使用している可能性があります。');
+          Alert.alert('マイク使用中', errorMessage + '\n\n他の機能（チューナーなど）がマイクを使用している可能性があります。');
         } else if (errorName === 'NotAllowedError' || errorCode === 'NotAllowedError') {
           Alert.alert('マイク権限が拒否されました', 'ブラウザの設定でマイクの使用を許可してください。\n\n設定方法:\n1. ブラウザのアドレスバーのアイコンをクリック\n2. マイクの許可を選択\n3. ページを再読み込みしてください。');
         } else if (errorName === 'NotFoundError' || errorCode === 'NotFoundError') {
@@ -407,11 +499,12 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       }
       
       // サポートされているMIMEタイプを確認
-      let mimeType = 'audio/webm;codecs=opus';
+      // ブラウザ互換性優先: mp4(m4a) → webm → 既定
+      let mimeType = 'audio/mp4';
       if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'audio/webm';
+        mimeType = 'audio/webm;codecs=opus';
         if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = 'audio/mp4';
+          mimeType = 'audio/webm';
           if (!MediaRecorder.isTypeSupported(mimeType)) {
             mimeType = '';
           }
@@ -708,8 +801,49 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
     }
   };
 
+  const finalizeNativeRecording = async (cause: 'auto' | 'manual' = 'manual') => {
+    if (!expoNativeRecorder || !isNativeRecordingRef.current) return;
+
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+
+    try {
+      await expoNativeRecorder.stop();
+      const uri = expoNativeRecorder.uri;
+      if (!uri) {
+        Alert.alert('エラー', '録音データを取得できませんでした');
+        return;
+      }
+      const blob = await uriToBlob(uri);
+      audioBlobRef.current = blob;
+      setAudioUrl(uri);
+      const elapsed = Math.round((Date.now() - nativeRecordingStartRef.current) / 1000);
+      setRecordingDuration(elapsed);
+      setRecordingTime(elapsed);
+      logger.debug('ネイティブ録音が完了しました', { uri, elapsed, blobSize: blob.size });
+    } catch (error) {
+      ErrorHandler.handle(error, 'ネイティブ録音停止', true);
+      Alert.alert('エラー', '録音の停止に失敗しました');
+    } finally {
+      setIsRecording(false);
+      isNativeRecordingRef.current = false;
+      isRecordingRef.current = false;
+      if (cause === 'auto') {
+        const maxMinutes = Math.floor(MAX_RECORDING_TIME / 60);
+        Alert.alert('録音停止', `最大${maxMinutes}分に達したため自動停止しました`);
+      }
+    }
+  };
+
   // 録音停止
   const stopRecording = (cause: 'auto' | 'manual' = 'manual') => {
+    if (Platform.OS !== 'web' && isNativeRecordingRef.current) {
+      void finalizeNativeRecording(cause);
+      return;
+    }
+
     logger.debug('🛑 stopRecordingが呼ばれました:', { 
       cause,
       isRecordingRef: isRecordingRef.current,
@@ -804,13 +938,23 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       return;
     }
 
-    if (Platform.OS !== 'web') {
-      Alert.alert('再生機能', '再生機能はWeb環境でのみ利用できます');
-      return;
-    }
-
     try {
+      if (Platform.OS !== 'web') {
+        if (!expoNativePlayer) {
+          Alert.alert('エラー', 'この端末では再生機能を利用できません');
+          return;
+        }
+        expoNativePlayer.replace(audioUrl);
+        expoNativePlayer.play();
+        setIsPlaying(true);
+        return;
+      }
+
       // 既存のAudio要素がある場合は削除
+      if (playbackCleanupRef.current) {
+        playbackCleanupRef.current();
+        playbackCleanupRef.current = null;
+      }
       if (audioElementRef.current) {
         audioElementRef.current.pause();
         audioElementRef.current.src = '';
@@ -824,68 +968,53 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         return;
       }
 
-      // audioUrlがSupabase Storageのパスの場合は、publicUrlを取得
-      let playbackUrl = audioUrl;
-      if (audioUrl && !audioUrl.startsWith('http') && !audioUrl.startsWith('blob:') && !audioUrl.startsWith('data:')) {
-        // Supabase Storageのパスの場合
-        logger.debug('Supabase Storageから録音URLを取得します', { filePath: audioUrl });
-        const { data: { publicUrl } } = supabase.storage
-          .from('recordings')
-          .getPublicUrl(audioUrl);
-        playbackUrl = publicUrl;
-        logger.debug('録音URLを取得しました', { publicUrl });
-      }
-
-      // publicUrlの検証
-      if (!playbackUrl || playbackUrl.trim() === '') {
-        logger.error('再生エラー: playbackUrlが空です', { audioUrl, playbackUrl });
-        Alert.alert('再生エラー', '録音ファイルのURLを取得できませんでした');
-        return;
-      }
-
-      logger.debug('Audio要素を作成します', { playbackUrl: playbackUrl.substring(0, 50) + '...' });
-      const audioElement = new Audio(playbackUrl);
-      // src属性を明示的に設定（念のため）
-      audioElement.src = playbackUrl;
+      const { prepareWebRecordingAudio, alertRecordingPlaybackError } = await import('@/lib/recordingPlayback');
+      const { audio: audioElement, cleanup } = await prepareWebRecordingAudio(audioUrl, {
+        onEnded: () => {
+          setIsPlaying(false);
+          audioElementRef.current = null;
+          playbackCleanupRef.current = null;
+        },
+        onError: () => {
+          setIsPlaying(false);
+          audioElementRef.current = null;
+          playbackCleanupRef.current = null;
+        },
+      });
       audioElementRef.current = audioElement;
+      playbackCleanupRef.current = cleanup;
 
-      // エラーハンドリング
-      audioElement.onerror = (error) => {
-        logger.error('Audio再生エラー:', error);
-        Alert.alert('再生エラー', '音声の再生に失敗しました');
-        setIsPlaying(false);
-        audioElementRef.current = null;
-      };
-
-      // 再生終了時の処理
-      audioElement.onended = () => {
-        logger.debug('再生が終了しました');
-        setIsPlaying(false);
-      };
-
-      // 再生開始
       logger.debug('音声再生を開始します');
       await audioElement.play();
       setIsPlaying(true);
       logger.debug('音声再生を開始しました');
     } catch (error: unknown) {
       logger.error('再生開始エラー:', error);
-      const errorMessage = error instanceof Error ? error.message : '不明なエラー';
-      Alert.alert('再生エラー', `音声の再生に失敗しました: ${errorMessage}`);
+      const { alertRecordingPlaybackError } = await import('@/lib/recordingPlayback');
+      alertRecordingPlaybackError(error);
       setIsPlaying(false);
-      if (audioElementRef.current) {
-        audioElementRef.current = null;
-      }
+      audioElementRef.current = null;
+      playbackCleanupRef.current = null;
     }
   };
 
   // 再生停止
   const stopPlayback = () => {
-    if (audioElementRef.current) {
+    if (Platform.OS !== 'web' && expoNativePlayer) {
+      expoNativePlayer.pause();
+      void expoNativePlayer.seekTo(0);
+      setIsPlaying(false);
+      return;
+    }
+    if (playbackCleanupRef.current) {
+      playbackCleanupRef.current();
+      playbackCleanupRef.current = null;
+    } else if (audioElementRef.current) {
       audioElementRef.current.pause();
       audioElementRef.current.currentTime = 0;
-      setIsPlaying(false);
     }
+    audioElementRef.current = null;
+    setIsPlaying(false);
   };
 
   // 録音保存（データベースに保存）
@@ -909,62 +1038,28 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
     isSavingRef.current = true;
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      // getUser() は Auth サーバ往復になるので使わない。既存の認証状態を使う。
+      if (!user?.id) {
         Alert.alert('エラー', 'ログインが必要です');
-        setIsSaving(false);
-        isSavingRef.current = false;
         return;
       }
+      const userId = user.id;
 
-      // 録音時間を確実に設定
       const finalDuration = recordingDuration > 0 ? recordingDuration : recordingTime;
+      const recordingTitle = title.trim() || '録音';
+      const instrumentId =
+        getInstrumentId(selectedInstrument) || user.selected_instrument_id || null;
+      const recordedAt = selectedDate ? new Date(selectedDate) : new Date();
 
-      // 1. 音声ファイルをSupabase Storageにアップロード
-      let filePath = null;
-      try {
-        const { path, error: uploadError } = await uploadRecordingBlob(
-          user.id,
-          audioBlobRef.current,
-          'wav'
-        );
-
-        if (uploadError) {
-          // ファイルアップロードに失敗した場合でも録音データは保存する
-          filePath = null;
-        } else {
-          filePath = path;
-        }
-      } catch (uploadError) {
-        // ファイルアップロードエラーでも続行
-        filePath = null;
-      }
-
-      // 2. 録音レコードをデータベースに保存（ファイルパスなしでも保存）
-      const recordingTitle = title.trim() || '録音'; // タイトルが空の場合はデフォルトを使用
-      // 現在選択されている楽器IDを取得
-      const { data: profile } = await supabase
-        .from('user_profiles')
-        .select('selected_instrument_id')
-        .eq('user_id', user.id)
-        .maybeSingle();
-      
-      const instrumentId = profile?.selected_instrument_id || null;
-      
-      // Freeプランの場合、新しい楽器でデータを保存できるかチェック
-      const canSaveCheck = await canSaveDataForInstrument(user.id, instrumentId, entitlement);
+      // --- 制限チェックをアップロードより先に（失敗時の孤児ファイル／無駄な待ちを防ぐ） ---
+      const canSaveCheck = await canSaveDataForInstrument(userId, instrumentId, entitlement);
       if (!canSaveCheck.canSave) {
         Alert.alert(
           'アップグレードが必要です',
           canSaveCheck.reason || '新しい楽器で録音を追加するには、プレミアムへアップグレードしてください。',
           [
-            { text: 'キャンセル', style: 'cancel', onPress: () => {
-              setIsSaving(false);
-              isSavingRef.current = false;
-            }},
+            { text: 'キャンセル', style: 'cancel' },
             { text: 'プレミアムを見る', onPress: () => {
-              setIsSaving(false);
-              isSavingRef.current = false;
               onClose();
               router.push('/(tabs)/pricing-plans');
             }}
@@ -972,11 +1067,8 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         );
         return;
       }
-      
-      const recordedAt = selectedDate ? new Date(selectedDate) : new Date();
-      
-      // 1日の録音数制限をチェック（全プランでチェック、念のため）
-      const dailyLimitCheck = await checkDailyRecordingLimit(user.id, entitlement, recordedAt);
+
+      const dailyLimitCheck = await checkDailyRecordingLimit(userId, entitlement, recordedAt);
       if (!dailyLimitCheck.canRecord) {
         const normalizedResult = normalizeLimitResult(dailyLimitCheck, 'record_daily');
         const alertConfig = getDefaultAlertConfig('record_daily');
@@ -993,13 +1085,8 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
           router,
           isPremium: entitlement?.isEntitled,
           premiumButtonText: '了解',
-          onCancel: () => {
-            setIsSaving(false);
-            isSavingRef.current = false;
-          },
+          onCancel: () => {},
           onUpgrade: () => {
-            setIsSaving(false);
-            isSavingRef.current = false;
             if (!entitlement?.isEntitled) {
               onClose();
               router.push('/(tabs)/pricing-plans');
@@ -1009,7 +1096,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         return;
       }
       
-      // Freeプランの場合、選択された日付が今月であることを確認
       if (!entitlement?.isEntitled && !isCurrentMonth(recordedAt)) {
         const alertConfig = getDefaultAlertConfig('record_date_limit');
         
@@ -1023,13 +1109,8 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
           defaultMessage: 'Freeプランでは当月のみ録音できます。\n\n過去の月や未来の月に録音するには、プレミアムへアップグレードしてください。',
           upgradeButtonText: alertConfig.upgradeButtonText,
           router,
-          onCancel: () => {
-              setIsSaving(false);
-              isSavingRef.current = false;
-          },
+          onCancel: () => {},
           onUpgrade: () => {
-              setIsSaving(false);
-              isSavingRef.current = false;
               onClose();
               router.push('/(tabs)/pricing-plans');
           },
@@ -1037,13 +1118,9 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         return;
       }
       
-      // Freeプランの場合、月間録音回数をチェック（今月の日付のみ、楽器ごと）
-      // 再録音の場合は月間録音制限のチェックをスキップ
-      // 楽器IDを取得（selectedInstrumentから取得、プロファイルの値とは異なる可能性がある）
-      const currentInstrumentId = getInstrumentId(selectedInstrument);
-      let limitCheck = { canRecord: true, currentCount: 0, limit: 0 };
+      let limitCheck = { canRecord: true, currentCount: 0, limit: 0, canWatchAd: false as boolean | undefined };
       if (!isRerecording) {
-        limitCheck = await checkMonthlyRecordingLimit(user.id, entitlement, recordedAt, currentInstrumentId);
+        limitCheck = await checkMonthlyRecordingLimit(userId, entitlement, recordedAt, instrumentId);
       } else {
         logger.debug('再録音のため、月間録音制限のチェックをスキップします', {
           existingRecordingId,
@@ -1052,29 +1129,22 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       }
       
       if (!limitCheck.canRecord) {
-        // リワード広告による追加録音が可能な場合
         if (limitCheck.canWatchAd) {
           Alert.alert(
             '基本録音上限に達しました',
             `Freeプランでは各楽器ごとに月に3回まで録音できます。\n現在の録音数: ${limitCheck.currentCount}/${limitCheck.limit}\n\n広告を視聴すると、追加で録音できます（最大3回まで）。`,
             [
-              { text: 'キャンセル', style: 'cancel', onPress: () => {
-                setIsSaving(false);
-                isSavingRef.current = false;
-              }},
+              { text: 'キャンセル', style: 'cancel' },
               { text: '広告を視聴する', onPress: () => {
                 setShowRewardedAd(true);
               }},
               { text: 'プレミアムを見る', onPress: () => {
-                setIsSaving(false);
-                isSavingRef.current = false;
                 onClose();
                 router.push('/(tabs)/pricing-plans');
               }}
             ]
           );
         } else {
-          // 完全に上限に達している場合
           const normalizedResult = normalizeLimitResult(limitCheck, 'record_monthly');
           const alertConfig = getDefaultAlertConfig('record_monthly');
           
@@ -1088,13 +1158,8 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
             defaultMessage: normalizedResult.reason || `Freeプランでは各楽器ごとに月に6回まで録音できます（基本3回 + 広告3回）。\n現在の使用回数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
             upgradeButtonText: alertConfig.upgradeButtonText,
             router,
-            onCancel: () => {
-                setIsSaving(false);
-                isSavingRef.current = false;
-            },
+            onCancel: () => {},
             onUpgrade: () => {
-                setIsSaving(false);
-                isSavingRef.current = false;
                 onClose();
                 router.push('/(tabs)/pricing-plans');
             },
@@ -1102,6 +1167,30 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         }
         return;
       }
+
+      // --- アップロード（認証 cascade なし） ---
+      const { path: filePath, error: uploadError } = await uploadRecordingBlob(
+        userId,
+        audioBlobRef.current
+      );
+
+      if (uploadError || !filePath) {
+        logger.error('録音ファイルのアップロードに失敗', uploadError);
+        const detail =
+          uploadError instanceof Error
+            ? uploadError.message
+            : typeof uploadError === 'object' &&
+                uploadError &&
+                'message' in uploadError
+              ? String((uploadError as { message?: unknown }).message)
+              : '詳細不明';
+        Alert.alert(
+          '保存エラー',
+          `音声ファイルのアップロードに失敗したため、録音を保存できませんでした。\n\n${detail}`
+        );
+        return;
+      }
+
       logger.debug('録音保存開始:', {
         title: recordingTitle,
         instrumentId,
@@ -1113,29 +1202,33 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         existingRecordingId
       });
       
-      // 再録音の場合は、既存の録音を削除してから新しい録音を保存
+      // 再録音の場合は、既存の録音を先に削除（失敗したら新規保存しない＝孤児防止）
       if (isRerecording && existingRecordingId) {
         logger.debug('再録音: 既存の録音を削除します', { existingRecordingId });
         const { deleteRecording } = await import('@/lib/database');
         const deleteResult = await deleteRecording(existingRecordingId);
         if (deleteResult.error) {
           logger.error('再録音: 既存の録音削除エラー', deleteResult.error);
-          // 削除エラーでも続行（新しい録音は保存する）
-        } else {
-          logger.debug('再録音: 既存の録音を削除しました', { existingRecordingId });
+          ErrorHandler.handle(deleteResult.error, '再録音（旧録音の削除）', true);
+          Alert.alert(
+            '再録音できません',
+            '既存の録音を削除できなかったため、新しい録音は保存しませんでした。通信状態を確認して再度お試しください。'
+          );
+          return;
         }
+        logger.debug('再録音: 既存の録音を削除しました', { existingRecordingId });
       }
       
       const { data: savedRecording, error: saveError } = await saveRecording({
-        user_id: user.id,
-        instrument_id: instrumentId, // 現在の楽器IDを追加
-        song_id: selectedSongId, // 選択された楽曲IDを追加
+        user_id: userId,
+        instrument_id: instrumentId,
+        song_id: selectedSongId,
         title: recordingTitle,
-        file_path: filePath || '', // ファイルパスがnullの場合は空文字列を使用
+        file_path: filePath,
         duration_seconds: finalDuration,
         is_favorite: isFavorite,
         recorded_at: recordedAt.toISOString(),
-        recording_type: recordingType, // 録音種類を追加
+        recording_type: recordingType,
       });
 
       if (saveError) {
@@ -1144,6 +1237,14 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       }
 
       logger.debug('録音保存成功:', savedRecording);
+
+      void trackFeatureAction(
+        userId,
+        FEATURE_IDS.calendar,
+        'save_recording',
+        { platform: Platform.OS, recordingType },
+        instrumentId
+      );
 
       // 3. カレンダーデータ更新のためのカスタムイベントを発火
       if (typeof window !== 'undefined') {
@@ -1161,16 +1262,13 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         title: recordingTitle,
         isFavorite: isFavorite,
         duration: finalDuration,
-        audioUrl: filePath || audioUrl || '', // 保存されたファイルパスまたは元のURL
-        recordingId: savedRecording?.id, // 保存された録音ID
-        recordingType: recordingType // 録音種類を追加
+        audioUrl: filePath || audioUrl || '',
+        recordingId: savedRecording?.id,
+        recordingType: recordingType
       };
       
-      // onSaveコールバックを呼び出して録音データを渡す
       onSave(audioData);
 
-      // 5. 録音動画ライブラリに保存（ローカル状態の更新）
-      // 録音データをローカル状態に追加（必要に応じて）
       if (onRecordingSaved) {
         try {
           await onRecordingSaved();
@@ -1179,12 +1277,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         }
       }
 
-      // 成功メッセージ（ファイルアップロードの状況に応じて）
-      const successMessage = filePath 
-        ? '録音データが録音ライブラリとSupabaseに保存されました' 
-        : '録音記録が録音ライブラリとSupabaseに保存されました（音声ファイルのアップロードは失敗）';
-      
-      // 録音モーダルを閉じる（親モーダルは開いたまま）
       onClose();
 
     } catch (error) {

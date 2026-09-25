@@ -483,16 +483,18 @@ describe('uploadRecordingBlob', () => {
   it('録音Blobをアップロードできる', async () => {
     const mockBlob = new Blob(['test'], { type: 'audio/wav' });
     const mockPath = 'user-1/recording-123.wav';
-    
-    (supabase.storage.from as jest.Mock).mockReturnValue({
-      upload: jest.fn().mockResolvedValue({ data: { path: mockPath }, error: null }),
-    });
+    const upload = jest.fn().mockResolvedValue({ data: { path: mockPath }, error: null });
+
+    (supabase as any).storage = {
+      from: jest.fn().mockReturnValue({ upload }),
+    };
 
     const { uploadRecordingBlob } = require('@/lib/database');
     const result = await uploadRecordingBlob('user-1', mockBlob, 'wav');
 
     expect(result.path).toBe(mockPath);
     expect(result.error).toBeNull();
+    expect(upload).toHaveBeenCalled();
   });
 });
 

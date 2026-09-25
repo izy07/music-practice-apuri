@@ -25,9 +25,127 @@ import {
   readPersistedAuthSession,
   refreshPersistedSession,
 } from '@/lib/authUtils';
+import {
+  needsOnboardingTutorial,
+  resolveOnboardingTarget,
+  type OnboardingRoute,
+} from '@/lib/onboardingRoute';
+import {
+  readOnboardingSnapshot,
+  writeOnboardingSnapshot,
+} from '@/lib/onboardingCache';
+import { STORAGE_KEYS, userScopedKey } from '@/lib/storageKeys';
 
 // Web環境での最後のアクティビティ時刻を保存するキー（useIdleTimeoutと同じキー）
 const LAST_ACTIVITY_KEY = 'music-practice-last-activity';
+
+/** user_profiles 取得時に必要な最小カラム（tutorial_completed を必ず含める） */
+const USER_PROFILE_SELECT =
+  'id, user_id, display_name, selected_instrument_id, custom_instrument_name, tutorial_completed, onboarding_completed, profile_image_url';
+
+type SessionLikeUser = {
+  id: string;
+  email?: string | null;
+  created_at?: string;
+  last_sign_in_at?: string;
+  user_metadata?: Record<string, unknown>;
+};
+
+/** セッションだけで AuthUser を組み立てる（ネットワーク待ちなし） */
+function buildSessionAuthUser(
+  user: SessionLikeUser,
+  overrides: Partial<AuthUser> = {}
+): AuthUser {
+  const meta = user.user_metadata || {};
+  const displayName =
+    (typeof meta.display_name === 'string' && meta.display_name) ||
+    (typeof meta.name === 'string' && meta.name) ||
+    user.email?.split('@')[0] ||
+    'ユーザー';
+
+  return {
+    id: user.id,
+    email: user.email || '',
+    name: overrides.name ?? displayName,
+    avatar_url:
+      overrides.avatar_url ??
+      (typeof meta.avatar_url === 'string' ? meta.avatar_url : undefined),
+    created_at: user.created_at || new Date().toISOString(),
+    last_sign_in_at: user.last_sign_in_at,
+    selected_instrument_id: overrides.selected_instrument_id ?? null,
+    custom_instrument_name: overrides.custom_instrument_name ?? null,
+    // 未取得時は undefined（推測で true にしない — オンボーディングループの根因）
+    tutorial_completed: overrides.tutorial_completed,
+    onboarding_completed: overrides.onboarding_completed ?? false,
+    user_metadata: meta,
+  };
+}
+
+function profileRowToAuthUser(user: SessionLikeUser, profile: Record<string, unknown>): AuthUser {
+  return buildSessionAuthUser(user, {
+    name:
+      (typeof profile.display_name === 'string' && profile.display_name) ||
+      undefined,
+    avatar_url:
+      (typeof profile.profile_image_url === 'string' && profile.profile_image_url) ||
+      (typeof profile.avatar_url === 'string' && profile.avatar_url) ||
+      undefined,
+    selected_instrument_id:
+      (typeof profile.selected_instrument_id === 'string'
+        ? profile.selected_instrument_id
+        : null) ?? null,
+    custom_instrument_name:
+      (typeof profile.custom_instrument_name === 'string'
+        ? profile.custom_instrument_name
+        : null) ?? null,
+    tutorial_completed:
+      typeof profile.tutorial_completed === 'boolean'
+        ? profile.tutorial_completed
+        : false,
+    onboarding_completed:
+      typeof profile.onboarding_completed === 'boolean'
+        ? profile.onboarding_completed
+        : false,
+  });
+}
+
+/** ローカルの楽器・オンボーディングスナップショットをセッションユーザーに反映 */
+async function hydrateAuthUserFromLocal(
+  user: SessionLikeUser,
+  base: AuthUser
+): Promise<AuthUser> {
+  let next = { ...base };
+  try {
+    const [storedInstrument, snapshot] = await Promise.all([
+      AsyncStorage.getItem(userScopedKey(STORAGE_KEYS.selectedInstrument, user.id)),
+      readOnboardingSnapshot(user.id),
+    ]);
+
+    if (storedInstrument && storedInstrument.trim() !== '' && !next.selected_instrument_id) {
+      next = { ...next, selected_instrument_id: storedInstrument };
+    }
+
+    if (snapshot) {
+      if (next.tutorial_completed === undefined) {
+        next = { ...next, tutorial_completed: snapshot.tutorial_completed };
+      }
+      if (!next.selected_instrument_id && snapshot.selected_instrument_id) {
+        next = { ...next, selected_instrument_id: snapshot.selected_instrument_id };
+      }
+    }
+  } catch {
+    // 無視
+  }
+  return next;
+}
+
+async function persistOnboardingSnapshotFromUser(authUser: AuthUser): Promise<void> {
+  if (typeof authUser.tutorial_completed !== 'boolean') return;
+  await writeOnboardingSnapshot(authUser.id, {
+    tutorial_completed: authUser.tutorial_completed,
+    selected_instrument_id: authUser.selected_instrument_id ?? null,
+  });
+}
 
 // 認証ユーザーの型定義
 export interface AuthUser {
@@ -84,6 +202,9 @@ export interface AuthHookReturn extends AuthState {
   hasInstrumentSelected: () => boolean;
   needsTutorial: () => boolean;
   canAccessMainApp: () => boolean;
+  getOnboardingRoute: () => OnboardingRoute;
+  /** ローカル認証ユーザーを即時パッチ（チュートリアル完了・楽器選択後のループ防止） */
+  patchAuthUser: (patch: Partial<AuthUser>) => void;
 }
 
 // グローバル認証状態（複数コンポーネント間での状態共有）
@@ -412,20 +533,36 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           
           // handleAuthenticatedUserRef.currentを使用（useEffectで設定される）
           // まだ設定されていない場合は、認証状態のみ更新
+          // 根本: セッション確定時点で UI を解放（プロフィール取得で 10s+ ブロックしない）
+          // ただしローカルの楽器・チュートリアル完了キャッシュは先に載せる（再ログイン誤表示防止）
+          const existingSameUser =
+            globalAuthState.user?.id === sessionData.session.user.id
+              ? globalAuthState.user
+              : null;
+          const baseSessionUser = buildSessionAuthUser(sessionData.session.user, {
+            selected_instrument_id: existingSameUser?.selected_instrument_id ?? null,
+            tutorial_completed: existingSameUser?.tutorial_completed,
+            custom_instrument_name: existingSameUser?.custom_instrument_name ?? null,
+            name: existingSameUser?.name,
+          });
+          const sessionUser = await hydrateAuthUserFromLocal(
+            sessionData.session.user,
+            baseSessionUser
+          );
+          updateAuthState({
+            user: sessionUser,
+            isAuthenticated: true,
+            isLoading: false,
+            isInitialized: true,
+            error: null,
+          });
+
+          // プロフィール enrich はバックグラウンド（起動を待たせない）
           const handleAuth = handleAuthenticatedUserRef.current;
           if (handleAuth) {
-            await handleAuth(sessionData.session.user);
-          } else {
-            // handleAuthenticatedUserがまだ初期化されていない場合は、認証状態のみ更新
-            // 後でonAuthStateChangeのSIGNED_INイベントで処理されることを期待する
-            // ただし、INITIAL_SESSIONでは処理しないため、セッションが有効な場合は認証状態を更新する
-            updateAuthState({
-              isLoading: false,
-              isInitialized: true,
-              error: null,
+            void handleAuth(sessionData.session.user).catch((err) => {
+              logger.warn('バックグラウンドのプロフィール enrich に失敗（セッションは維持）:', err);
             });
-            // handleAuthenticatedUserが初期化されたら、再度呼び出す
-            // これはuseEffectで処理される
           }
         } else {
           // セッションがない場合は未認証状態として処理
@@ -471,36 +608,25 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     };
   }, []);
 
-  // 初期化処理
+  // 初期化処理（ネイティブ/Web 共通でフォールバック — window 限定だと AAB で白画面が残る）
   useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    
-    // 読み込み中表示を防ぐため、即座に初期化を完了（非ブロッキング）
-    // Web環境では、初期化が完了しない場合に備えてタイムアウトを設定
-    // ただし、タイムアウトを長めに設定して、認証状態の確認を確実に行う
-    if (typeof window !== 'undefined') {
-      timeoutId = setTimeout(() => {
-        if (globalAuthState.isLoading) {
-          // タイムアウト警告は開発環境のみ表示（本番環境では警告を出さない）
-          if (__DEV__) {
-            logger.debug('[useAuthAdvanced] 認証初期化がタイムアウトしました。強制的に初期化を完了します。');
-          }
-          updateAuthState({
-            ...globalAuthState,
-            isLoading: false,
-            isInitialized: true,
-          });
+    const timeoutId = setTimeout(() => {
+      if (globalAuthState.isLoading || !globalAuthState.isInitialized) {
+        if (__DEV__) {
+          logger.debug('[useAuthAdvanced] 認証初期化がタイムアウトしました。強制的に初期化を完了します。');
         }
-      }, 3000); // 1000ms → 3000msに延長（認証状態の確認を確実に行う）
-    }
-    
-    // 初期化を非ブロッキングで実行
-    initializeAuth();
-    
-    return () => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
+        updateAuthState({
+          ...globalAuthState,
+          isLoading: false,
+          isInitialized: true,
+        });
       }
+    }, TIMEOUT.INITIALIZATION_MS);
+
+    initializeAuth();
+
+    return () => {
+      clearTimeout(timeoutId);
     };
   }, [initializeAuth]);
 
@@ -654,91 +780,104 @@ export const useAuthAdvanced = (): AuthHookReturn => {
   const handleAuthenticatedUserRef = useRef<((user: { id: string; email?: string; user_metadata?: Record<string, unknown> }) => Promise<AuthUser | null>) | null>(null);
   
   // 内部用の認証済みユーザー処理
-  const handleAuthenticatedUser = useCallback(async (user: { id: string; email?: string; user_metadata?: Record<string, unknown> }): Promise<AuthUser | null> => {
+  // 根本: ①セッションで即 isInitialized ②プロフィールは短時間 enrich（推測で tutorial_completed を立てない）
+  const handleAuthenticatedUser = useCallback(async (user: { id: string; email?: string; user_metadata?: Record<string, unknown>; created_at?: string; last_sign_in_at?: string }): Promise<AuthUser | null> => {
     const userId = user.id;
     
-    // 既に処理中の場合は、そのPromiseを返す（同じユーザーIDに対する処理を共有）
-    // ただし、タイムアウトしている可能性があるため、一定時間（12秒）以内に完了しない場合は新しい処理を開始
     const existingPromise = globalProcessingPromises.get(userId);
     if (existingPromise) {
       logger.debug('handleAuthenticatedUser: 既に処理中のため、既存のPromiseを待機します', { userId, email: user.email });
       try {
-        // タイムアウトチェック付きで待機（12秒以内に完了しない場合は新しい処理を開始）
-        // プロフィール取得のタイムアウト（10秒）より長く設定して、正常な処理を優先
         const timeoutPromise = new Promise<null>((resolve) => {
-          setTimeout(() => resolve(null), 12000);
+          setTimeout(() => resolve(null), TIMEOUT.AUTH_USER_DEDUP_MS);
         });
         const result = await Promise.race([existingPromise, timeoutPromise]);
         if (result) {
           return result;
         }
-        // タイムアウトした場合は、既存のPromiseを削除して新しい処理を開始
         logger.warn('既存のhandleAuthenticatedUserがタイムアウトしました。新しい処理を開始します。', { userId });
         globalProcessingPromises.delete(userId);
       } catch (error) {
-        // 既存のPromiseでエラーが発生した場合は、新しい処理を開始
         logger.warn('既存のhandleAuthenticatedUserでエラーが発生しました。新しい処理を開始します。', { userId, error });
         globalProcessingPromises.delete(userId);
       }
     }
     
-    // 新しいPromiseを作成（IIFEパターンで即座に実行開始）
     const processPromise = (async () => {
       try {
         logger.debug('handleAuthenticatedUser開始:', { userId, email: user.email });
-      
-      // ユーザープロフィールを取得（最小限のカラムのみで取得してパフォーマンスを最適化）
-      // タイムアウトを10秒に短縮して、ログイン処理を高速化
-      // ネットワークが遅い場合でも、タイムアウト後はフォールバック処理でログインを完了できる
-      type ProfileData = { id: string; user_id: string; display_name: string | null; selected_instrument_id: string | null } | null;
-      type ProfileError = { code: string; message: string; status?: number } | null;
-      let profile: ProfileData = null;
-      let profileError: ProfileError = null;
-      
-      // profilePromiseをtryブロックの外で定義（タイムアウト後のバックグラウンド処理で使用するため）
-      const profilePromise = supabase
-        .from('user_profiles')
-        .select('id, user_id, display_name, selected_instrument_id')
-        .eq('user_id', userId)
-        .maybeSingle();
-      
-      try {
-        // Promise.raceを使用してタイムアウトを実装
-        // 注意: SupabaseクエリはAbortControllerを直接サポートしていないため、
-        // タイムアウトが発火してもクエリ自体は継続しますが、少なくともタイムアウトを検出できます
-        const timeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
-          setTimeout(() => {
-            resolve({
-              data: null,
-              error: {
-                code: 'TIMEOUT',
-                message: 'プロフィール取得がタイムアウトしました',
-              },
-            });
-          }, 10000); // 10秒でタイムアウト（ログイン処理を高速化）
+
+        // ① セッションだけで即アンロック（既存の同一ユーザー情報は維持）
+        // ローカル楽器キー・オンボーディングスナップショットを先に載せる
+        const existingSameUser =
+          globalAuthState.user?.id === userId ? globalAuthState.user : null;
+        const baseSessionUser = buildSessionAuthUser(user, {
+          selected_instrument_id: existingSameUser?.selected_instrument_id ?? null,
+          tutorial_completed: existingSameUser?.tutorial_completed,
+          custom_instrument_name: existingSameUser?.custom_instrument_name ?? null,
+          name: existingSameUser?.name,
         });
+        const sessionUser = await hydrateAuthUserFromLocal(user, baseSessionUser);
+
+        updateAuthState({
+          user: sessionUser,
+          isAuthenticated: true,
+          isLoading: false,
+          isInitialized: true,
+          error: null,
+        });
+      
+        type ProfileData = {
+          id: string;
+          user_id: string;
+          display_name: string | null;
+          selected_instrument_id: string | null;
+          custom_instrument_name?: string | null;
+          tutorial_completed?: boolean | null;
+          onboarding_completed?: boolean | null;
+          avatar_url?: string | null;
+        } | null;
+        type ProfileError = { code: string; message: string; status?: number } | null;
+        let profile: ProfileData = null;
+        let profileError: ProfileError = null;
+      
+        const profilePromise = supabase
+          .from('user_profiles')
+          .select(USER_PROFILE_SELECT)
+          .eq('user_id', userId)
+          .maybeSingle();
+      
+        try {
+          const timeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
+            setTimeout(() => {
+              resolve({
+                data: null,
+                error: {
+                  code: 'TIMEOUT',
+                  message: 'プロフィール取得がタイムアウトしました',
+                },
+              });
+            }, TIMEOUT.PROFILE_ENRICH_MS);
+          });
         
-        const result = await Promise.race([profilePromise, timeoutPromise]);
-        profile = result.data;
-        profileError = result.error;
-      } catch (error: unknown) {
-        // Promise.raceでエラーが発生した場合（通常は発生しないはず）
-        logger.error('プロフィール取得で予期しないエラーが発生しました:', error);
-        const errorObj = error as { code?: string; message?: string; status?: number };
-        profileError = { 
-          code: errorObj?.code || 'UNKNOWN_ERROR', 
-          message: errorObj?.message || 'プロフィール取得でエラーが発生しました',
-          status: errorObj?.status,
-        };
-      }
+          const result = await Promise.race([profilePromise, timeoutPromise]);
+          profile = result.data as ProfileData;
+          profileError = result.error as ProfileError;
+        } catch (error: unknown) {
+          logger.error('プロフィール取得で予期しないエラーが発生しました:', error);
+          const errorObj = error as { code?: string; message?: string; status?: number };
+          profileError = { 
+            code: errorObj?.code || 'UNKNOWN_ERROR', 
+            message: errorObj?.message || 'プロフィール取得でエラーが発生しました',
+            status: errorObj?.status,
+          };
+        }
       
       if (profileError) {
         logger.warn('プロフィール取得エラー:', { error: profileError, code: profileError.code });
         
-        // 認証エラーの場合は認証状態をクリア（_layout.tsxのロジックで自動的にログイン画面にリダイレクト）
         if (profileError.code === '401' || profileError.code === 'PGRST301' || profileError.message?.includes('JWT') || profileError.message?.includes('expired')) {
           logger.warn('ユーザー取得エラー: 認証が無効です。認証状態をクリアします。', { error: profileError });
-          // 認証状態をクリア（_layout.tsxが自動的にログイン画面にリダイレクト）
           await supabase.auth.signOut();
           updateAuthState({
             user: null,
@@ -747,224 +886,53 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             isInitialized: true,
             error: null,
           });
-          // ルーティングは_layout.tsxの既存ロジックに任せる（直接リダイレクトしない）
           return null;
         }
         
-        // タイムアウトエラーの場合は、セッションをクリアせず、デフォルト値で処理を続行
-        // ネットワークが遅い場合でも、ログインは成功している可能性があるため
-        // タイムアウト時には、すぐにフォールバックユーザーを作成して認証状態を更新し、
-        // その後バックグラウンドでプロフィール取得を試みる
+        // タイムアウト: 推測で tutorial_completed=true にしない。セッションユーザーを維持し、バックグラウンドで再取得
         if (profileError.code === 'TIMEOUT') {
-          logger.warn('プロフィール取得がタイムアウトしました。フォールバックユーザーを作成して認証状態を更新します。', { userId });
-          
-          // user_instrument_profilesから最新の楽器を確認（短いタイムアウト付きで同期的に実行）
-          // これにより、チュートリアル画面への誤った遷移を防ぐ
-          let fallbackInstrumentId: string | null = null;
-          try {
-            const instrumentQueryPromise = supabase
-              .from('user_instrument_profiles')
-              .select('instrument_id, updated_at, created_at')
-              .eq('user_id', userId)
-              .order('updated_at', { ascending: false })
-              .limit(1);
-            
-            // 10秒でタイムアウト（プロフィール取得と同じ時間を設定）
-            // 既存ユーザーの楽器情報を確実に取得するため、タイムアウト時間を延長
-            const instrumentTimeoutPromise = new Promise<{ data: null; error: { code: string; message: string } }>((resolve) => {
-              setTimeout(() => {
-                resolve({
-                  data: null,
-                  error: {
-                    code: 'TIMEOUT',
-                    message: '楽器取得がタイムアウトしました',
-                  },
+          logger.warn('プロフィール取得がタイムアウトしました。セッションユーザーを維持しバックグラウンドで再取得します。', { userId });
+
+          profilePromise
+            .then((result: { data: ProfileData; error: ProfileError }) => {
+              if (result.data && !result.error) {
+                const authUser = profileRowToAuthUser(user, result.data as unknown as Record<string, unknown>);
+                logger.debug('タイムアウト後のプロフィール取得に成功しました。認証状態を更新します。', {
+                  userId,
+                  tutorial_completed: authUser.tutorial_completed,
+                  selected_instrument_id: authUser.selected_instrument_id,
                 });
-              }, 10000); // 10秒に延長（プロフィール取得と同じ）
-            });
-            
-            const instrumentResult = await Promise.race([instrumentQueryPromise, instrumentTimeoutPromise]);
-            
-            if (instrumentResult.data && !instrumentResult.error && Array.isArray(instrumentResult.data) && instrumentResult.data.length > 0) {
-              fallbackInstrumentId = instrumentResult.data[0].instrument_id;
-              logger.debug('user_instrument_profilesから最新の楽器を取得しました（タイムアウト時）:', { instrumentId: fallbackInstrumentId });
-            } else if (instrumentResult.error && instrumentResult.error.code === 'TIMEOUT') {
-              logger.debug('楽器取得がタイムアウトしました。selected_instrument_idはnullのまま続行します。');
-            } else {
-              logger.debug('楽器取得でエラーが発生しました（続行）:', instrumentResult.error);
-            }
-          } catch (instrumentProfileError) {
-            logger.debug('user_instrument_profilesからの楽器取得エラー（続行）:', instrumentProfileError);
-          }
-          
-          // すぐにフォールバックユーザーを作成して認証状態を更新
-          // プロフィール取得がタイムアウトした場合でも、ログインは成功している可能性があるため
-          // フォールバックユーザーを作成して認証状態を更新し、後でプロフィールを取得する
-          const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
-          
-          // 既存ユーザーかどうかを判定（user.created_atとlast_sign_in_atを使用）
-          // 1. last_sign_in_atが存在し、created_atと異なる場合 → 既存ユーザー（以前にログインしたことがある）
-          // 2. ユーザーが24時間以上前に作成された場合 → 既存ユーザー
-          // これにより、ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ
-          let isNewSignup = false;
-          const userCreatedAt = user.created_at ? new Date(user.created_at) : null;
-          const lastSignInAt = user.last_sign_in_at ? new Date(user.last_sign_in_at) : null;
-          const now = new Date();
-          const hoursSinceCreation = userCreatedAt 
-            ? (now.getTime() - userCreatedAt.getTime()) / (1000 * 60 * 60)
-            : Infinity;
-          
-          // last_sign_in_atが存在し、created_atと異なる場合、既存ユーザーとみなす
-          // これは最も確実な既存ユーザーの判定方法
-          const isExistingUserBySignIn = lastSignInAt && userCreatedAt && 
-            lastSignInAt.getTime() > userCreatedAt.getTime() + (1000 * 60); // 作成から1分以上経過後にログインしている場合
-          
-          if (isExistingUserBySignIn) {
-            // 以前にログインしたことがある場合は、既存ユーザーとみなす
-            isNewSignup = false;
-            logger.debug('既存ユーザーと判定（以前にログインしたことがある）:', { 
-              created_at: user.created_at,
-              last_sign_in_at: user.last_sign_in_at
-            });
-          } else if (hoursSinceCreation > 24) {
-            // 24時間以上前に作成されたユーザーは既存ユーザーとみなす
-            isNewSignup = false;
-            logger.debug('既存ユーザーと判定（作成日時から24時間以上経過）:', { 
-              hoursSinceCreation: Math.floor(hoursSinceCreation) 
-            });
-          } else {
-            // 24時間以内に作成されたユーザーのみ、新規登録フラグをチェック
-            // これにより、既存ユーザーが誤ってチュートリアル画面に遷移するのを防ぐ
-            try {
-              if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-                isNewSignup = localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
-              } else {
-                const flag = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
-                isNewSignup = flag === 'true';
+                updateAuthState({
+                  user: authUser,
+                  isAuthenticated: true,
+                  isLoading: false,
+                  isInitialized: true,
+                  error: null,
+                });
+                void persistOnboardingSnapshotFromUser(authUser);
               }
-            } catch (error) {
-              // エラー時は既存ユーザーとみなす
-              isNewSignup = false;
-            }
-          }
-          
-          // 既存ユーザーの場合、チュートリアル完了とみなす
-          // これにより、ネットワークエラー時にチュートリアル画面に誤って遷移するのを防ぐ
-          // 特に、last_sign_in_atとcreated_atを比較して既存ユーザーと判定した場合は確実にtrueにする
-          // 楽器が選択されている場合も既存ユーザーとみなしてチュートリアル完了にする
-          const fallbackTutorialCompleted = !isNewSignup || isExistingUserBySignIn || (hoursSinceCreation > 24) || (fallbackInstrumentId !== null);
-          
-          // プロフィール取得タイムアウト時は、newSignupFlagStateも更新する
-          // 既存ユーザーの場合、フラグを確実にfalseに設定
-          // これにより、needsTutorial()が正しくfalseを返すようになる
-          // 楽器が選択されている場合、以前にログインしたことがある場合、24時間以上前に作成された場合は既存ユーザーとみなす
-          const isExistingUser = fallbackInstrumentId !== null || isExistingUserBySignIn || hoursSinceCreation > 24;
-          if (isExistingUser) {
-            newSignupFlagState = false;
-            // ストレージからもフラグを削除（確実性を高める）
-            try {
-              if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-                localStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
-              } else {
-                await AsyncStorage.removeItem(NEW_SIGNUP_FLAG_KEY);
-              }
-              logger.debug('既存ユーザーと判定したため、新規登録フラグを削除しました（タイムアウト時）');
-            } catch (flagError) {
-              logger.warn('新規登録フラグの削除エラー（無視）:', flagError);
-            }
-          } else {
-            newSignupFlagState = isNewSignup;
-          }
-          
-          logger.debug('プロフィール取得タイムアウト時フォールバックユーザーを作成しました:', {
-            userId,
-            email: user.email,
-            selected_instrument_id: fallbackInstrumentId,
-            tutorial_completed: fallbackTutorialCompleted,
-            isNewSignup,
-            newSignupFlagState,
-            hoursSinceCreation: userCreatedAt ? Math.floor(hoursSinceCreation) : null,
-          });
-          
-          const fallbackUser: AuthUser = {
-            id: userId,
-            email: user.email || '',
-            name: fallbackName,
-            avatar_url: user?.user_metadata?.avatar_url,
-            created_at: user.created_at || new Date().toISOString(),
-            last_sign_in_at: user.last_sign_in_at,
-            selected_instrument_id: fallbackInstrumentId,
-            tutorial_completed: fallbackTutorialCompleted, // 新規登録フラグが存在しない場合はtrue（既存ユーザーとみなす）
-            onboarding_completed: false,
-          };
-          
-          // セッションが有効な場合は、isAuthenticated: trueを設定する
-          updateAuthState({
-            user: fallbackUser,
-            isAuthenticated: true,
-            isLoading: false,
-            isInitialized: true,
-            error: null,
-          });
-          
-          // タイムアウト後も、バックグラウンドでプロフィール取得を試みる（非同期）
-          profilePromise.then((result: any) => {
-            if (result.data && !result.error) {
-              logger.debug('タイムアウト後のプロフィール取得に成功しました。認証状態を更新します。', { userId });
-              // プロフィールが取得できた場合は、認証状態を更新
-              const profileName = result.data.display_name || user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
-              
-              // user_instrument_profilesから最新の楽器を確認
-              let selectedInstrumentId = result.data.selected_instrument_id || null;
-              if (!selectedInstrumentId) {
-                (async () => {
-                  try {
-                    const { data: instrumentProfiles, error: instrumentProfilesError } = await supabase
-                      .from('user_instrument_profiles')
-                      .select('instrument_id, updated_at, created_at')
-                      .eq('user_id', userId)
-                      .order('updated_at', { ascending: false })
-                      .limit(1);
-                    
-                    if (!instrumentProfilesError && instrumentProfiles && instrumentProfiles.length > 0) {
-                      selectedInstrumentId = instrumentProfiles[0].instrument_id;
-                    }
-                  } catch (error) {
-                    logger.debug('user_instrument_profilesからの楽器取得エラー（無視）:', error);
-                  }
-                })();
-              }
-              
-              const authUser: AuthUser = {
-                id: userId,
-                email: user.email || '',
-                name: profileName,
-                avatar_url: (result.data as any).avatar_url || user?.user_metadata?.avatar_url,
-                created_at: user.created_at || new Date().toISOString(),
-                last_sign_in_at: user.last_sign_in_at,
-                selected_instrument_id: selectedInstrumentId,
-                tutorial_completed: (result.data as any).tutorial_completed ?? false,
-                onboarding_completed: (result.data as any).onboarding_completed ?? false,
-              };
-              updateAuthState({
-                user: authUser,
-                isAuthenticated: true,
-                isLoading: false,
-                isInitialized: true,
-                error: null,
-              });
-            }
-          }).catch((error: any) => {
-            logger.debug('タイムアウト後のプロフィール取得エラー（無視）:', error);
-          });
-          
-          // フォールバックユーザーを返して処理を完了
-          return fallbackUser;
+            })
+            .catch((error: unknown) => {
+              logger.debug('タイムアウト後のプロフィール取得エラー（無視）:', error);
+            });
+
+          return sessionUser;
         }
+
         // 400エラー（カラムが存在しない）の場合は、カラムが存在しないものとして処理
-        if (profileError.status === 400 || profileError.code === 'PGRST116' || profileError.code === 'PGRST205') {
+        if (
+          profileError.status === 400 ||
+          profileError.code === 'PGRST116' ||
+          profileError.code === 'PGRST205' ||
+          profileError.code === '42703'
+        ) {
           // カラムが存在しないエラーの場合は、デフォルト値を使用して処理を続行
-          if (profileError.message?.includes('column') || profileError.message?.includes('does not exist') || profileError.message?.includes('tutorial_completed') || profileError.message?.includes('onboarding_completed')) {
+          if (
+            profileError.message?.includes('column') ||
+            profileError.message?.includes('does not exist') ||
+            profileError.message?.includes('tutorial_completed') ||
+            profileError.message?.includes('onboarding_completed')
+          ) {
             logger.warn('user_profilesテーブルにtutorial_completedまたはonboarding_completedカラムが存在しません。デフォルト値を使用します。', { error: profileError });
             // プロフィールが存在しないものとして処理を続行（新規作成を試みる）
           }
@@ -992,7 +960,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
               },
               { onConflict: 'user_id' }
             )
-            .select('id, user_id, display_name, selected_instrument_id')
+            .select(USER_PROFILE_SELECT)
             .single();
           
           if (createError) {
@@ -1002,7 +970,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
               // 再度取得を試みる
               const { data: retryProfile, error: retryError } = await supabase
                 .from('user_profiles')
-                .select('id, user_id, display_name, selected_instrument_id')
+                .select(USER_PROFILE_SELECT)
                 .eq('user_id', userId)
                 .maybeSingle();
               
@@ -1027,18 +995,10 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                 }
                 
                 // プロフィール取得に失敗した場合は基本情報のみで処理
-                const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
-                const authUser: AuthUser = {
-                  id: userId,
-                  email: user?.email || '',
-                  name: fallbackName,
-                  avatar_url: user?.user_metadata?.avatar_url,
-                  created_at: user?.created_at || new Date().toISOString(),
-                  last_sign_in_at: user?.last_sign_in_at,
+                const authUser = buildSessionAuthUser(user, {
                   selected_instrument_id: fallbackInstrumentId,
                   tutorial_completed: false,
-                  onboarding_completed: false,
-                };
+                });
                 
                 updateAuthState({
                   user: authUser,
@@ -1051,17 +1011,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
               }
               
               // 取得したプロフィールを使用
-              const authUser: AuthUser = {
-                id: userId,
-                email: user?.email || '',
-                name: retryProfile.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー',
-                avatar_url: (retryProfile as any).avatar_url || user?.user_metadata?.avatar_url,
-                created_at: user?.created_at || new Date().toISOString(),
-                last_sign_in_at: user?.last_sign_in_at,
-                selected_instrument_id: retryProfile.selected_instrument_id || null,
-                tutorial_completed: (retryProfile as any).tutorial_completed ?? false,
-                onboarding_completed: (retryProfile as any).onboarding_completed ?? false,
-              };
+              const authUser = profileRowToAuthUser(user, retryProfile as unknown as Record<string, unknown>);
               
               updateAuthState({
                 user: authUser,
@@ -1093,18 +1043,10 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             }
             
             // プロフィール作成に失敗した場合は基本情報のみで処理
-            const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
-            const authUser: AuthUser = {
-              id: userId,
-              email: user?.email || '',
-              name: fallbackName,
-              avatar_url: user?.user_metadata?.avatar_url,
-              created_at: user?.created_at || new Date().toISOString(),
-              last_sign_in_at: user?.last_sign_in_at,
+            const authUser = buildSessionAuthUser(user, {
               selected_instrument_id: fallbackInstrumentId,
               tutorial_completed: false,
-              onboarding_completed: false,
-            };
+            });
             
             updateAuthState({
               user: authUser,
@@ -1118,17 +1060,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           
           // 新規作成されたプロフィールを使用
           if (newProfile) {
-            const authUser: AuthUser = {
-                id: userId,
-              email: user.email || '',
-              name: newProfile.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー',
-              avatar_url: (newProfile as any).avatar_url || user?.user_metadata?.avatar_url,
-              created_at: user.created_at,
-              last_sign_in_at: user.last_sign_in_at,
-              selected_instrument_id: newProfile.selected_instrument_id || null,
-              tutorial_completed: (newProfile as any).tutorial_completed ?? false,
-              onboarding_completed: (newProfile as any).onboarding_completed ?? false,
-            };
+            const authUser = profileRowToAuthUser(user, newProfile as unknown as Record<string, unknown>);
             
             updateAuthState({
               user: authUser,
@@ -1158,19 +1090,14 @@ export const useAuthAdvanced = (): AuthHookReturn => {
               logger.debug('user_instrument_profilesから最新の楽器を取得しました:', { instrumentId: latestInstrumentId });
               
               // フォールバックユーザーを作成（最新の楽器を使用）
-              const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
-              // 楽器が選択されている場合は既存ユーザーとみなしてチュートリアル完了にする
-              const authUser: AuthUser = {
-                id: userId,
-                email: user?.email || '',
-                name: fallbackName,
-                avatar_url: user.user_metadata?.avatar_url,
-                created_at: user.created_at,
-                last_sign_in_at: user.last_sign_in_at,
+              // 楽器があればメインへ。tutorial_completed は推測で true にしない
+              const authUser = buildSessionAuthUser(user, {
                 selected_instrument_id: latestInstrumentId,
-                tutorial_completed: true, // 楽器が選択されている場合は既存ユーザーとみなす
-                onboarding_completed: false,
-              };
+                tutorial_completed:
+                  globalAuthState.user?.id === userId
+                    ? globalAuthState.user.tutorial_completed
+                    : undefined,
+              });
               
               updateAuthState({
                 user: authUser,
@@ -1198,7 +1125,6 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       // プロフィールが存在する場合
       if (profile) {
         // プロフィール情報をAuthUser形式に変換
-        const profileName = profile.display_name || user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
         let selectedInstrumentId = profile.selected_instrument_id || null;
         
         // selected_instrument_idがnullの場合、user_instrument_profilesから最新の楽器を確認
@@ -1220,18 +1146,10 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           }
         }
         
-        const authUser: AuthUser = {
-                id: userId,
-          email: user.email || '',
-          name: profileName,
-          avatar_url: (profile as any).avatar_url,
-          created_at: user.created_at,
-          last_sign_in_at: user.last_sign_in_at,
+        const authUser = profileRowToAuthUser(user, {
+          ...(profile as unknown as Record<string, unknown>),
           selected_instrument_id: selectedInstrumentId,
-          custom_instrument_name: (profile as any).custom_instrument_name || null,
-          tutorial_completed: (profile as any).tutorial_completed ?? false,
-          onboarding_completed: (profile as any).onboarding_completed ?? false,
-        };
+        });
         
         logger.debug('ユーザー情報取得完了:', {
           email: authUser.email,
@@ -1246,6 +1164,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           isInitialized: true,
           error: null,
         });
+        void persistOnboardingSnapshotFromUser(authUser);
         
         logger.debug('認証状態更新完了:', {
           hasInstrument: !!authUser.selected_instrument_id,
@@ -1276,7 +1195,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         // ネットワークエラー時はローカルストレージから楽器IDを取得
         try {
           const { STORAGE_KEYS, withUser } = await import('@/lib/storageKeys');
-          const storedInstrument = await AsyncStorage.getItem(withUser(STORAGE_KEYS.selectedInstrument, userId));
+          const storedInstrument = await AsyncStorage.getItem(userScopedKey(STORAGE_KEYS.selectedInstrument, userId));
           if (storedInstrument && storedInstrument.trim() !== '') {
             fallbackInstrumentId = storedInstrument;
             logger.debug('ローカルストレージから楽器IDを取得しました:', { instrumentId: fallbackInstrumentId });
@@ -1287,36 +1206,15 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       }
       
       const fallbackName = user.user_metadata?.display_name || user.user_metadata?.name || user.email?.split('@')[0] || 'ユーザー';
-      // ネットワークエラー時でも既存ユーザーとみなす（新規登録フラグがない場合）
-      let fallbackTutorialCompleted = fallbackInstrumentId !== null;
-      if (!fallbackTutorialCompleted) {
-        // 新規登録フラグがない場合は既存ユーザーとみなす
-        try {
-          if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-            const isNewSignup = localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
-            fallbackTutorialCompleted = !isNewSignup;
-          } else {
-            const flag = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
-            fallbackTutorialCompleted = flag !== 'true';
-          }
-        } catch (flagError) {
-          // エラー時は既存ユーザーとみなす（安全側に倒す）
-          fallbackTutorialCompleted = true;
-        }
-      }
-      
-      const authUser: AuthUser = {
-                id: userId,
-        email: user.email || '',
-        name: fallbackName,
-        avatar_url: user.user_metadata?.avatar_url,
-        created_at: user.created_at,
-        last_sign_in_at: user.last_sign_in_at,
+      // 推測で tutorial_completed=true にしない（楽器があればメインへ行ける）
+      const authUser = buildSessionAuthUser(user, {
+        name: typeof fallbackName === 'string' ? fallbackName : undefined,
         selected_instrument_id: fallbackInstrumentId,
-        // ネットワークエラー時でも既存ユーザーとみなしてチュートリアル完了にする
-        tutorial_completed: fallbackTutorialCompleted,
-        onboarding_completed: false,
-      };
+        tutorial_completed:
+          globalAuthState.user?.id === userId
+            ? globalAuthState.user.tutorial_completed
+            : undefined,
+      });
       
       updateAuthState({
         user: authUser,
@@ -1375,36 +1273,15 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         }
         
         const fallbackName = user?.user_metadata?.display_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'ユーザー';
-        // ネットワークエラー時でも既存ユーザーとみなす（新規登録フラグがない場合）
-        let fallbackTutorialCompleted = fallbackInstrumentId !== null;
-        if (!fallbackTutorialCompleted) {
-          // 新規登録フラグがない場合は既存ユーザーとみなす
-          try {
-            if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-              const isNewSignup = localStorage.getItem(NEW_SIGNUP_FLAG_KEY) === 'true';
-              fallbackTutorialCompleted = !isNewSignup;
-            } else {
-              const flag = await AsyncStorage.getItem(NEW_SIGNUP_FLAG_KEY);
-              fallbackTutorialCompleted = flag !== 'true';
-            }
-          } catch (flagError) {
-            // エラー時は既存ユーザーとみなす（安全側に倒す）
-            fallbackTutorialCompleted = true;
-          }
-        }
-        
-        const fallbackUser: AuthUser = {
-          id: userId,
-          email: user?.email || '',
-          name: fallbackName,
-          avatar_url: user?.user_metadata?.avatar_url,
-          created_at: user?.created_at || new Date().toISOString(),
-          last_sign_in_at: user?.last_sign_in_at,
+        // 推測で tutorial_completed=true にしない
+        const fallbackUser = buildSessionAuthUser(user, {
+          name: typeof fallbackName === 'string' ? fallbackName : undefined,
           selected_instrument_id: fallbackInstrumentId,
-          // ネットワークエラー時でも既存ユーザーとみなしてチュートリアル完了にする
-          tutorial_completed: fallbackTutorialCompleted,
-          onboarding_completed: false,
-        };
+          tutorial_completed:
+            globalAuthState.user?.id === userId
+              ? globalAuthState.user.tutorial_completed
+              : undefined,
+        });
         
         updateAuthState({
           user: fallbackUser,
@@ -1533,7 +1410,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             logger.debug('onAuthStateChange: 既に処理中のため、タイムアウトチェックを実行します', { userId, email: session.user.email, event });
             try {
               const timeoutPromise = new Promise<null>((resolve) => {
-                setTimeout(() => resolve(null), 12000);
+                setTimeout(() => resolve(null), TIMEOUT.AUTH_USER_DEDUP_MS);
               });
               const result = await Promise.race([existingPromise, timeoutPromise]);
               if (result) {
@@ -1787,15 +1664,12 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           (error as any).message?.includes('Failed to fetch');
         
         if (isNetworkError) {
-          logger.warn('ネットワークエラーが発生しました。onAuthStateChangeで認証状態が更新されることを期待します。');
-          // ネットワークエラーの場合も、onAuthStateChangeで処理されることを期待
-          updateAuthState({ isLoading: false, error: null });
-          // ネットワークエラーの場合、onAuthStateChangeで認証状態が更新されるまでフラグを保持
-          // ただし、タイムアウトを設定して、一定時間後にフラグをリセット
-          setTimeout(() => {
-            isLoginInProgress = false;
-          }, 5000); // 5秒後にフラグをリセット
-          return true; // ネットワークエラーでもtrueを返して、onAuthStateChangeに任せる
+          // ネットワーク不通時に成功扱いすると、未ログインのまま「ログインできた」と誤解される
+          logger.warn('ログイン中にネットワークエラーが発生しました。失敗としてユーザーに表示します。');
+          const networkMessage = 'ネットワークに接続できません。接続を確認してから再度ログインしてください。';
+          updateAuthState({ isLoading: false, error: networkMessage });
+          isLoginInProgress = false;
+          return false;
         }
         
         // その他のエラー
@@ -2262,70 +2136,35 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     }
   }, [authState.isInitialized]);
   
-  // チュートリアル必要状態のチェック（データベースの状態を最優先）
-  // フラグベースの判定を削除し、データベースの状態（tutorial_completed、selected_instrument_id）と
-  // ユーザーの作成・ログイン履歴のみに依存することで、タイムアウト時でも確実に動作する
+  // チュートリアル必要判定（DB の tutorial_completed / 楽器のみ。推測フラグは使わない）
   const needsTutorial = useCallback((): boolean => {
-    // 未認証の場合はチュートリアル不要
     if (!authState.isAuthenticated || !authState.user) {
       return false;
     }
-    
-    // 【最優先】チュートリアルが既に完了している場合は、必ずスキップ
-    if (authState.user.tutorial_completed === true) {
-      return false;
+    return needsOnboardingTutorial(authState.user, hasInstrumentSelected());
+  }, [authState.isAuthenticated, authState.user, hasInstrumentSelected]);
+
+  const getOnboardingRoute = useCallback((): OnboardingRoute => {
+    return resolveOnboardingTarget(authState.user, hasInstrumentSelected());
+  }, [authState.user, hasInstrumentSelected]);
+
+  const patchAuthUser = useCallback((patch: Partial<AuthUser>) => {
+    if (!globalAuthState.user) {
+      logger.warn('patchAuthUser: 認証ユーザーが存在しません', patch);
+      return;
     }
-    
-    // 【最優先】楽器が選択されている場合は、既存ユーザーとみなして必ずスキップ
-    // これにより、タイムアウト時に楽器が選択されていてもチュートリアルに遷移しない
-    if (hasInstrumentSelected()) {
-      return false;
+    const nextUser = { ...globalAuthState.user, ...patch };
+    updateAuthState({
+      user: nextUser,
+    });
+    void persistOnboardingSnapshotFromUser(nextUser);
+    if (patch.selected_instrument_id) {
+      void AsyncStorage.setItem(
+        userScopedKey(STORAGE_KEYS.selectedInstrument, nextUser.id),
+        patch.selected_instrument_id
+      ).catch(() => {});
     }
-    
-    // 【安全性チェック1】last_sign_in_atが存在し、created_atと異なる場合、既存ユーザーとみなす
-    // 以前にログインしたことがあるユーザーは既存ユーザー
-    if (authState.user.last_sign_in_at && authState.user.created_at) {
-      const userCreatedAt = new Date(authState.user.created_at);
-      const lastSignInAt = new Date(authState.user.last_sign_in_at);
-      // 作成から1分以上経過後にログインしている場合は既存ユーザー（タイムアウト時でも確実）
-      if (lastSignInAt.getTime() > userCreatedAt.getTime() + (1000 * 60)) {
-        return false;
-      }
-    }
-    
-    // 【安全性チェック2】ユーザーが24時間以上前に作成された場合、既存ユーザーとみなす
-    // これにより、タイムアウト時に既存ユーザーが誤ってチュートリアルに遷移するのを防ぐ
-    if (authState.user.created_at) {
-      const userCreatedAt = new Date(authState.user.created_at);
-      const hoursSinceCreation = (Date.now() - userCreatedAt.getTime()) / (1000 * 60 * 60);
-      if (hoursSinceCreation > 24) {
-        return false; // 24時間以上前に作成されたユーザーは既存ユーザーとみなす
-      }
-    }
-    
-    // 上記の条件をすべて満たさない場合のみ、新規登録ユーザーとみなしてチュートリアルを表示
-    // ただし、新規登録フラグもチェック（二重の安全性確保）
-    // フラグが存在しない場合、またはエラー時は既存ユーザーとみなす（安全側に倒す）
-    try {
-      if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
-        const flag = localStorage.getItem(NEW_SIGNUP_FLAG_KEY);
-        if (flag !== 'true') {
-          return false; // フラグが存在しない場合は既存ユーザーとみなす
-        }
-      } else {
-        // 非同期チェックは避け、メモリ上の状態を参照
-        if (!newSignupFlagState) {
-          return false; // メモリ上のフラグがfalseの場合は既存ユーザーとみなす
-        }
-      }
-    } catch (error) {
-      // エラー時は既存ユーザーとみなす（安全側に倒す）
-      return false;
-    }
-    
-    // すべての安全性チェックを通過し、新規登録フラグも存在する場合のみ、チュートリアルを表示
-    return true;
-  }, [authState.isAuthenticated, authState.user?.tutorial_completed, authState.user?.selected_instrument_id, authState.user?.created_at, authState.user?.last_sign_in_at, hasInstrumentSelected]);
+  }, []);
 
   // メインアプリアクセス可能状態のチェック
   const canAccessMainApp = useCallback((): boolean => {
@@ -2344,6 +2183,8 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     hasInstrumentSelected,
     needsTutorial,
     canAccessMainApp,
+    getOnboardingRoute,
+    patchAuthUser,
     fetchUserProfile,
     clearNewSignupFlag, // チュートリアル完了時に呼び出す
   };

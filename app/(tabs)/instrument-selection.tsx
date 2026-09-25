@@ -31,7 +31,7 @@ interface Instrument {
 export default function InstrumentSelectionScreen() {
   const router = useRouter();
   const { setSelectedInstrument, currentTheme, selectedInstrument, syncStatus } = useInstrumentTheme();
-  const { user, fetchUserProfile } = useAuthAdvanced();
+  const { user, fetchUserProfile, patchAuthUser } = useAuthAdvanced();
   const { entitlement } = useSubscription();
   const scrollRef = useRef<ScrollView>(null);
   useScrollToTopOnFocus(scrollRef);
@@ -240,18 +240,11 @@ export default function InstrumentSelectionScreen() {
       // ContextのsetSelectedInstrumentを使用（唯一のエントリーポイント）
       await setSelectedInstrument(selectedInstrumentId);
       
-      // 楽器の更新が完了するまで少し待つ（Contextの更新を待つ）
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // 認証状態を更新（user.selected_instrument_idを最新の状態に更新）
-      // これにより、_layout.tsxのhasInstrumentSelected()が正しく動作する
-      try {
-        await fetchUserProfile();
-        logger.debug('認証状態を更新しました（楽器選択後）');
-      } catch (profileError) {
+      // 認証状態を即パッチ（fetch 完了前に _layout がオンボーディングへ戻すのを防ぐ）
+      patchAuthUser({ selected_instrument_id: selectedInstrumentId });
+      void fetchUserProfile().catch((profileError) => {
         logger.warn('認証状態の更新に失敗しましたが、続行します:', profileError);
-        // エラーが発生しても続行（楽器は既に保存されている）
-      }
+      });
       
       // 成功メッセージを表示せず、直接カレンダー画面に遷移
       const instrumentName = customName || instruments.find(i => i.id === selectedInstrumentId)?.name || '楽器';
@@ -276,11 +269,16 @@ export default function InstrumentSelectionScreen() {
           <ArrowLeft size={24} color={currentTheme.text} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: currentTheme.text }]}>
-          {getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id) ? '楽器変更' : '楽器選択'}
+          {getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id) ? '楽器変更' : '楽器を選ぶ'}
         </Text>
         <View style={styles.placeholder} />
       </View>
       <ScrollView ref={scrollRef} style={styles.content} showsVerticalScrollIndicator={false}>
+        {!getEffectiveInstrumentId(selectedInstrument, user?.selected_instrument_id) && (
+          <Text style={[styles.onboardingHint, { color: currentTheme.textSecondary }]}>
+            最初に使う楽器を1つ選んでください。あとから設定で変更・追加できます。
+          </Text>
+        )}
         {/* フリープラン用の楽器数制限メッセージ（既存の楽器がある場合のみ表示） */}
         {!entitlement.isEntitled && user && currentInstrumentId && currentInstrumentId !== '' && activeInstrumentIds.length > 0 && (
           <View style={[styles.freePlanInfoBanner, { backgroundColor: currentTheme.surface, borderColor: currentTheme.primary }]}>
@@ -306,17 +304,10 @@ export default function InstrumentSelectionScreen() {
                             try {
                               // 楽器を選択してカレンダー画面に遷移
                               await setSelectedInstrument(instrumentId);
-                              
-                              // 楽器の更新が完了するまで少し待つ
-                              await new Promise(resolve => setTimeout(resolve, 100));
-                              
-                              // 認証状態を更新
-                              try {
-                                await fetchUserProfile();
-                                logger.debug('認証状態を更新しました（使用中楽器選択後）');
-                              } catch (profileError) {
+                              patchAuthUser({ selected_instrument_id: instrumentId });
+                              void fetchUserProfile().catch((profileError) => {
                                 logger.warn('認証状態の更新に失敗しましたが、続行します:', profileError);
-                              }
+                              });
                               
                               // カレンダー画面に遷移（一元化された関数を使用）
                               navigateToCalendarScreen(router, `使用中楽器「${instrument.name}」を選択してカレンダー画面に遷移`);
@@ -510,6 +501,12 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 16,
     paddingTop: 20,
+  },
+  onboardingHint: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+    paddingHorizontal: 4,
   },
   instrumentGrid: {
     flexDirection: 'row',

@@ -1,4 +1,11 @@
-import { getNoteFromFrequency, mpmPitchDetection, combineAlgorithms } from '@/lib/tunerAudioProcessor';
+import {
+  getNoteFromFrequency,
+  mpmPitchDetection,
+  combineAlgorithms,
+  createFrequencyStabilizerState,
+  stabilizeDetectedFrequency,
+  applyCentsDeadZone,
+} from '@/lib/tunerAudioProcessor';
 
 describe('tunerAudioProcessor', () => {
   describe('getNoteFromFrequency', () => {
@@ -82,6 +89,37 @@ describe('tunerAudioProcessor', () => {
       expect(detected).toBeGreaterThan(0);
       const cents = 1200 * Math.log2(detected / 440);
       expect(Math.abs(cents)).toBeLessThan(1);
+    });
+
+    it('低音E2でも長窓なら±2セント以内（ネイティブ高精度窓）', () => {
+      const sampleRate = 44100;
+      const buf = makeSine(82.41, sampleRate, 16384);
+      const detected = combineAlgorithms(buf, sampleRate);
+      expect(detected).toBeGreaterThan(0);
+      const cents = 1200 * Math.log2(detected / 82.41);
+      expect(Math.abs(cents)).toBeLessThan(2);
+    });
+  });
+
+  describe('stabilizeDetectedFrequency / applyCentsDeadZone', () => {
+    it('連続した近い周波数を平滑化する', () => {
+      let state = createFrequencyStabilizerState();
+      const inputs = [440, 440.2, 439.8, 440.1, 440.05];
+      let last = 0;
+      for (const f of inputs) {
+        const result = stabilizeDetectedFrequency(state, f);
+        expect(result.accepted).toBe(true);
+        if (result.accepted) {
+          state = result.state;
+          last = result.frequency;
+        }
+      }
+      expect(Math.abs(last - 440)).toBeLessThan(1);
+    });
+
+    it('デッドゾーン内のセントは0', () => {
+      expect(applyCentsDeadZone(0.2)).toBe(0);
+      expect(applyCentsDeadZone(0.5)).not.toBe(0);
     });
   });
 });

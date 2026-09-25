@@ -23,25 +23,28 @@ import { styles } from '@/lib/tabs/tuner/styles';
 import audioResourceManager from '@/lib/audioResourceManager';
 import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { getNoteFromFrequency, smoothValue, getTuningColor, combineAlgorithms } from '@/lib/tunerAudioProcessor';
+import { getNoteFromFrequency, smoothValue, getTuningColor, combineAlgorithms, TUNER_ANALYSIS, TUNER_DISPLAY, createFrequencyStabilizerState, stabilizeDetectedFrequency, applyCentsDeadZone, type FrequencyStabilizerState } from '@/lib/tunerAudioProcessor';
+import { emitRequestReleaseMic, subscribeRequestReleaseMic } from '@/lib/appEvents';
 import { getUserSettings } from '@/repositories/userSettingsRepository';
 import { getCurrentUser } from '@/lib/authService';
 import { DEFAULT_A4_FREQUENCY, getFrequency, NOTE_NAMES, NOTE_NAMES_JA } from '@/lib/tunerUtils';
 import { saveTunerSettings } from '@/lib/database';
 import { setCurrentRoute } from '@/lib/navigationHistory';
+import { NativeTunerEngine } from '@/lib/nativeTunerEngine';
+import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import { trackFeatureAction } from '@/lib/featureUsageService';
+import { FEATURE_IDS } from '@/lib/featureUsageEvents';
+import { getInstrumentId } from '@/lib/instrumentUtils';
 
 // プロ仕様の音名と周波数対応（tunerUtilsからインポート）
 
-// プロ仕様の周波数検出精度設定
+// プロ仕様の周波数検出精度設定（色判定）
 const TUNING_PRECISION = {
-  EXCELLENT: 0.1, // ±0.1セント以内: 超高精度レベル（Peterson Strobo相当）
-  GOOD: 1,        // ±1セント以内: 高精度レベル
-  ACCEPTABLE: 5,  // ±5セント以内: プロレベル
-  POOR: 10,       // ±10セント以内: 調整必要
-};
-
-// セント表示のデッドゾーン: この範囲内は「0」と表示して針を中央に（市販チューナー相当の±1セント）
-const CENTS_DISPLAY_DEAD_ZONE = 1.0;
+  EXCELLENT: 0.1,
+  GOOD: 1,
+  ACCEPTABLE: 5,
+  POOR: 10,
+} as const;
 
 // 楽器別チューニング設定
 const INSTRUMENT_TUNINGS = {
@@ -385,6 +388,7 @@ export default function TunerScreen() {
   const router = useRouter();
   const { currentTheme, selectedInstrument: contextSelectedInstrument } = useInstrumentTheme();
   const { t } = useLanguage();
+  const { user } = useAuthAdvanced();
   const [mode, setMode] = useState<'tuner' | 'metronome'>('tuner');
   
   // 現在のルートを記録（マウント時）
@@ -407,10 +411,14 @@ export default function TunerScreen() {
   
   // 音程検出用の参照
   const microphoneStreamRef = useRef<MediaStream | null>(null);
+  const mediaStreamSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserNodeRef = useRef<AnalyserNode | null>(null);
+  const nativeTunerEngineRef = useRef<NativeTunerEngine | null>(null);
+  const nativeLatestFreqRef = useRef<number>(0);
   const audioProcessingIntervalRef = useRef<number | null>(null);
-  const smoothedFrequencyRef = useRef<number>(0);
-  const frequencyHistoryRef = useRef<number[]>([]); // 周波数履歴をrefで保持
+  const stabilizerStateRef = useRef<FrequencyStabilizerState>(createFrequencyStabilizerState());
+  const isListeningRef = useRef(false);
+  const stopListeningRef = useRef<() => void>(() => {});
   
   // 音名表示モード（CDEかドレミか）- 開放弦の音を聞く機能で使用
   const [noteDisplayMode, setNoteDisplayMode] = useState<'en' | 'ja'>('en');
@@ -542,6 +550,16 @@ export default function TunerScreen() {
     loadSettings();
   }, []);
 
+  // 録音開始時はチューナーを停止（マイク排他）
+  useEffect(() => {
+    return subscribeRequestReleaseMic((detail) => {
+      if (detail.requester === 'recorder' && isListeningRef.current) {
+        logger.debug('録音開始のためチューナーを停止します');
+        stopListeningRef.current();
+      }
+    });
+  }, []);
+
   // 音名表示モードを保存する（useCallbackでメモ化）
   const saveNoteDisplayMode = useCallback(async (mode: 'en' | 'ja') => {
     try {
@@ -573,8 +591,108 @@ export default function TunerScreen() {
   // チューナー機能：音程検出を開始
   const startListening = async () => {
     try {
+      a4FrequencyRef.current = a4Frequency;
+      stabilizerStateRef.current = createFrequencyStabilizerState();
+
+      // 録音など他のマイク利用を解放してから開始（ネイティブ衝突の根因対策）
+      emitRequestReleaseMic({ requester: 'tuner' });
+
+      const processAudio = () => {
+        let detectedFrequency = -1;
+        if (Platform.OS === 'web') {
+          if (!analyserNodeRef.current || !audioContextRef.current) return;
+          const bufferLength = analyserNodeRef.current.fftSize;
+          const dataArray = new Float32Array(bufferLength);
+          analyserNodeRef.current.getFloatTimeDomainData(dataArray);
+          detectedFrequency = combineAlgorithms(dataArray, audioContextRef.current.sampleRate);
+        } else {
+          detectedFrequency = nativeLatestFreqRef.current;
+        }
+
+        if (detectedFrequency > 0) {
+          const result = stabilizeDetectedFrequency(
+            stabilizerStateRef.current,
+            detectedFrequency
+          );
+          if (!result.accepted) return;
+          stabilizerStateRef.current = result.state;
+
+          const noteInfo = getNoteFromFrequency(result.frequency, a4FrequencyRef.current);
+          const displayCents = applyCentsDeadZone(noteInfo.cents);
+
+          setCurrentFrequency(result.frequency);
+          setCurrentNote(noteInfo.note);
+          setCurrentNoteJa(noteInfo.noteJa);
+          setCurrentOctave(noteInfo.octave);
+          setCurrentCents(displayCents);
+
+          const { color } = getTuningColor(Math.abs(displayCents));
+          setIndicatorColor(color);
+
+          Animated.timing(tuningBarAnimation, {
+            toValue: displayCents,
+            duration: 160,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: false,
+          }).start();
+        } else {
+          // 無音: 平滑値を徐々に減衰
+          const prev = stabilizerStateRef.current.smoothed;
+          if (prev > 0) {
+            const decayed = smoothValue(prev, 0, 0.08, 8);
+            stabilizerStateRef.current = {
+              history: [],
+              smoothed: decayed < 1 ? 0 : decayed,
+            };
+            if (decayed >= 1) {
+              const noteInfo = getNoteFromFrequency(decayed, a4FrequencyRef.current);
+              const displayCents = applyCentsDeadZone(noteInfo.cents);
+              setCurrentFrequency(decayed);
+              setCurrentNote(noteInfo.note);
+              setCurrentNoteJa(noteInfo.noteJa);
+              setCurrentOctave(noteInfo.octave);
+              setCurrentCents(displayCents);
+              const { color } = getTuningColor(Math.abs(displayCents));
+              setIndicatorColor(color);
+              Animated.timing(tuningBarAnimation, {
+                toValue: displayCents,
+                duration: 200,
+                easing: Easing.out(Easing.cubic),
+                useNativeDriver: false,
+              }).start();
+            } else {
+              setCurrentFrequency(0);
+              setCurrentNote('--');
+              setCurrentNoteJa('--');
+              setCurrentOctave(0);
+              setCurrentCents(0);
+              setIndicatorColor('#9E9E9E');
+            }
+          }
+        }
+      };
+
       if (Platform.OS !== 'web') {
-        Alert.alert(t('notSupported'), 'チューナー機能はWeb環境でのみ利用できます');
+        const engine = new NativeTunerEngine();
+        nativeTunerEngineRef.current = engine;
+        nativeLatestFreqRef.current = 0;
+        await engine.start((frequency) => {
+          nativeLatestFreqRef.current = frequency;
+        });
+        setIsListening(true);
+        isListeningRef.current = true;
+        audioProcessingIntervalRef.current = setInterval(
+          processAudio,
+          TUNER_DISPLAY.UI_INTERVAL_MS
+        ) as unknown as number;
+        void trackFeatureAction(
+          user?.id,
+          FEATURE_IDS.tuner,
+          'start_listening',
+          { platform: Platform.OS },
+          getInstrumentId(contextSelectedInstrument)
+        );
+        logger.debug('ネイティブチューナー機能を開始しました');
         return;
       }
 
@@ -591,14 +709,14 @@ export default function TunerScreen() {
             echoCancellation: false, // チューナーではエコーキャンセルを無効化（精度向上のため）
             noiseSuppression: false,  // ノイズサプレッションも無効化
             autoGainControl: false,   // 自動ゲインコントロールも無効化
-            sampleRate: 44100,
+            sampleRate: TUNER_ANALYSIS.SAMPLE_RATE,
           }
         });
         microphoneStreamRef.current = stream;
       } catch (error: any) {
         const errorMessage = error?.message || 'マイクアクセスの取得に失敗しました';
         if (errorMessage.includes('既に')) {
-          Alert.alert('マイク使用中', errorMessage + '\n\n他の機能（録音、クイック記録など）がマイクを使用している可能性があります。');
+          Alert.alert('マイク使用中', errorMessage + '\n\n他の機能（録音など）がマイクを使用している可能性があります。');
         } else {
           Alert.alert('エラー', errorMessage);
         }
@@ -607,200 +725,48 @@ export default function TunerScreen() {
 
       // AudioContextを取得
       const audioCtx = await audioResourceManager.acquireAudioContext(OWNER_NAME);
-      if (!audioCtx) {
+      if (!audioCtx || audioCtx.state === 'closed') {
         Alert.alert('エラー', 'オーディオリソースを取得できませんでした');
         audioResourceManager.releaseMicrophone(OWNER_NAME);
         return;
       }
       audioContextRef.current = audioCtx;
 
+      // ブラウザの自動再生ポリシー対策: ユーザー操作（開始ボタン）内で resume する
+      if (audioCtx.state === 'suspended') {
+        try {
+          await audioCtx.resume();
+          logger.debug('AudioContext resumed for tuner');
+        } catch (resumeError) {
+          ErrorHandler.handle(resumeError, 'AudioContextの再開', false);
+          Alert.alert('エラー', 'オーディオの開始に失敗しました。もう一度「開始」を押してください。');
+          audioResourceManager.releaseMicrophone(OWNER_NAME);
+          return;
+        }
+      }
+
       // マイク入力をAudioContextに接続
       const source = audioCtx.createMediaStreamSource(stream);
+      mediaStreamSourceRef.current = source;
       const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = 16384; // 市販チューナー級の周波数分解能（低音域の精度向上）
+      analyser.fftSize = TUNER_ANALYSIS.WINDOW_SAMPLES; // Native リング窓と同一（低音精度の根因）
       analyser.smoothingTimeConstant = 0; // 時間領域ピッチ検出では平滑化不要（最新サンプルを使う）
       source.connect(analyser);
       analyserNodeRef.current = analyser;
 
-      // 音程検出を開始（A4基準周波数を確実に反映）
-      a4FrequencyRef.current = a4Frequency;
       setIsListening(true);
-      smoothedFrequencyRef.current = 0;
-
-      // 定期的に音程を検出（約30fps: 精度と応答性のバランス、市販チューナー相当）
-      // 短めの履歴で中央値を取り、ジッターを抑えつつ追従遅れを最小化
-      const HISTORY_SIZE = 5;
-      frequencyHistoryRef.current = []; // 履歴をリセット
-
-
-  
-  
-const processAudio = () => {
-        // オクターブ関係をチェックする関数（±5%の誤差を許容）
-        const isOctaveRelation = (freq1: number, freq2: number): boolean => {
-          if (freq1 <= 0 || freq2 <= 0) return false;
-          const ratio = freq1 > freq2 ? freq1 / freq2 : freq2 / freq1;
-          // 2倍（オクターブ）、4倍（2オクターブ）
-          return (ratio > 1.9 && ratio < 2.1) || (ratio > 3.8 && ratio < 4.2);
-        };
-        
-        if (!analyserNodeRef.current || !audioContextRef.current) return;
-
-        // 時間領域データは fftSize 長が必要（frequencyBinCount は FFT 周波数ビン数で半分）
-        const bufferLength = analyserNodeRef.current.fftSize;
-        const dataArray = new Float32Array(bufferLength);
-        analyserNodeRef.current.getFloatTimeDomainData(dataArray);
-
-        // 周波数を検出（MPM主の複数アルゴリズム統合）
-        const detectedFrequency = combineAlgorithms(dataArray, audioContextRef.current.sampleRate);
-
-        if (detectedFrequency > 0 && detectedFrequency < 2000) {
-          // 異常値の検出：前回と比較して急変かつオクターブでない場合は無視
-          if (smoothedFrequencyRef.current > 0) {
-            const changeRatio = Math.abs(detectedFrequency - smoothedFrequencyRef.current) / smoothedFrequencyRef.current;
-            if (!isOctaveRelation(detectedFrequency, smoothedFrequencyRef.current) && changeRatio > 0.5) {
-              return;
-            }
-          }
-
-          // オクターブジャンプ時は履歴をリセットして基音側へ素早く収束
-          if (
-            smoothedFrequencyRef.current > 0 &&
-            isOctaveRelation(detectedFrequency, smoothedFrequencyRef.current)
-          ) {
-            const fundamental = Math.min(detectedFrequency, smoothedFrequencyRef.current);
-            // 高い方（倍音）を検出していた場合は基音へ寄せる
-            if (detectedFrequency < smoothedFrequencyRef.current * 0.75) {
-              frequencyHistoryRef.current = [detectedFrequency];
-              smoothedFrequencyRef.current = detectedFrequency;
-            } else if (Math.abs(detectedFrequency - fundamental) < Math.abs(smoothedFrequencyRef.current - fundamental)) {
-              frequencyHistoryRef.current = [fundamental];
-              smoothedFrequencyRef.current = fundamental;
-            }
-          }
-
-          frequencyHistoryRef.current.push(detectedFrequency);
-          if (frequencyHistoryRef.current.length > HISTORY_SIZE) {
-            frequencyHistoryRef.current.shift();
-          }
-
-          // 中央値で外れ値を除去（市販チューナー相当の安定化）
-          let medianFreq = detectedFrequency;
-          if (frequencyHistoryRef.current.length >= 3) {
-            const sortedFreqs = [...frequencyHistoryRef.current].sort((a, b) => a - b);
-            medianFreq = sortedFreqs[Math.floor(sortedFreqs.length / 2)];
-          } else if (frequencyHistoryRef.current.length === 2) {
-            medianFreq =
-              (frequencyHistoryRef.current[0] + frequencyHistoryRef.current[1]) / 2;
-          }
-
-          // 軽いEMA: 追従遅れを抑えつつジッターを低減
-          const freqDiff = Math.abs(medianFreq - smoothedFrequencyRef.current);
-          let smoothedFreq: number;
-
-          if (smoothedFrequencyRef.current === 0) {
-            smoothedFreq = medianFreq;
-          } else if (freqDiff < 0.5) {
-            // 0.5Hz未満: ほぼ確定 → 強めの平滑化で針を安定
-            smoothedFreq = smoothedFrequencyRef.current * 0.65 + medianFreq * 0.35;
-          } else if (freqDiff < 3) {
-            // 微調整域: 半分ずつ
-            smoothedFreq = smoothedFrequencyRef.current * 0.45 + medianFreq * 0.55;
-          } else if (freqDiff < 15) {
-            // チューニング操作中: 素早く追従
-            smoothedFreq = smoothValue(smoothedFrequencyRef.current, medianFreq, 0.55, 25);
-          } else {
-            // 大きな変化: やや慎重
-            smoothedFreq = smoothValue(smoothedFrequencyRef.current, medianFreq, 0.35, 20);
-          }
-
-          smoothedFrequencyRef.current = smoothedFreq;
-
-          // 音名を取得（設定されたA4周波数を使用）
-          const noteInfo = getNoteFromFrequency(smoothedFreq, a4FrequencyRef.current);
-          
-          // デバッグ情報（開発時のみ）
-          if (__DEV__) {
-            logger.debug('チューナー検出', {
-              detectedFreq: detectedFrequency.toFixed(2),
-              medianFreq: medianFreq.toFixed(2),
-              smoothedFreq: smoothedFreq.toFixed(2),
-              note: noteInfo.note,
-              noteJa: noteInfo.noteJa,
-              octave: noteInfo.octave,
-              cents: noteInfo.cents.toFixed(1),
-              a4Freq: a4Frequency,
-              tuningQuality: noteInfo.tuningQuality,
-              isInTune: noteInfo.isInTune
-            });
-          }
-          
-          // UIを更新
-          setCurrentFrequency(smoothedFreq);
-          setCurrentNote(noteInfo.note);
-          setCurrentNoteJa(noteInfo.noteJa);
-          setCurrentOctave(noteInfo.octave);
-          const displayCents = Math.abs(noteInfo.cents) <= CENTS_DISPLAY_DEAD_ZONE ? 0 : noteInfo.cents;
-          setCurrentCents(displayCents);
-
-          // チューニングバーの位置を更新（応答性重視）
-          Animated.timing(tuningBarAnimation, {
-            toValue: displayCents,
-            duration: 80,
-            easing: Easing.out(Easing.cubic),
-            useNativeDriver: false,
-          }).start();
-
-          // インジケーターの色を更新（デッドゾーン内は0として緑表示）
-          const { color } = getTuningColor(Math.abs(displayCents));
-          setIndicatorColor(color);
-        } else {
-          // 音が検出されない場合、履歴をクリア
-          frequencyHistoryRef.current = [];
-          
-          if (smoothedFrequencyRef.current > 0) {
-            // より滑らかなフェードアウト
-            smoothedFrequencyRef.current = smoothValue(smoothedFrequencyRef.current, 0, 0.08, 8);
-            if (smoothedFrequencyRef.current < 1) {
-              smoothedFrequencyRef.current = 0;
-              setCurrentFrequency(0);
-              setCurrentNote('--');
-              setCurrentNoteJa('--');
-              setCurrentOctave(0);
-              setCurrentCents(0);
-              setIndicatorColor('#9E9E9E');
-              
-              // チューニングバーも滑らかにリセット
-              Animated.timing(tuningBarAnimation, {
-                toValue: 0,
-                duration: 300,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: false,
-              }).start();
-            } else {
-              // フェードアウト中もUI更新（デッドゾーン適用）
-              const noteInfo = getNoteFromFrequency(smoothedFrequencyRef.current, a4FrequencyRef.current);
-              const displayCents = Math.abs(noteInfo.cents) <= CENTS_DISPLAY_DEAD_ZONE ? 0 : noteInfo.cents;
-              setCurrentFrequency(smoothedFrequencyRef.current);
-              setCurrentNote(noteInfo.note);
-              setCurrentNoteJa(noteInfo.noteJa);
-              setCurrentOctave(noteInfo.octave);
-              setCurrentCents(displayCents);
-              
-              Animated.timing(tuningBarAnimation, {
-                toValue: displayCents,
-                duration: 200,
-                easing: Easing.out(Easing.cubic),
-                useNativeDriver: false,
-              }).start();
-            }
-          }
-        }
-      };
-
-      // 約30fpsで処理（大きなバッファ解析とCPU負荷のバランス）
-      audioProcessingIntervalRef.current = window.setInterval(processAudio, 33);
-
+      isListeningRef.current = true;
+      audioProcessingIntervalRef.current = window.setInterval(
+        processAudio,
+        TUNER_DISPLAY.UI_INTERVAL_MS
+      );
+      void trackFeatureAction(
+        user?.id,
+        FEATURE_IDS.tuner,
+        'start_listening',
+        { platform: Platform.OS },
+        getInstrumentId(contextSelectedInstrument)
+      );
       logger.debug('チューナー機能を開始しました');
     } catch (error: any) {
       ErrorHandler.handle(error, 'チューナー開始', true);
@@ -812,6 +778,7 @@ const processAudio = () => {
           : `チューナー機能を開始できませんでした。${message ? `\n${message}` : ''}`
       );
       setIsListening(false);
+      isListeningRef.current = false;
     }
   };
 
@@ -821,6 +788,30 @@ const processAudio = () => {
     if (audioProcessingIntervalRef.current) {
       clearInterval(audioProcessingIntervalRef.current);
       audioProcessingIntervalRef.current = null;
+    }
+
+    if (nativeTunerEngineRef.current) {
+      void nativeTunerEngineRef.current.stop();
+      nativeTunerEngineRef.current = null;
+      nativeLatestFreqRef.current = 0;
+    }
+
+    // マイク入力ノードを切断
+    if (mediaStreamSourceRef.current) {
+      try {
+        mediaStreamSourceRef.current.disconnect();
+      } catch (e) {
+        logger.debug('MediaStreamSource disconnect error:', e);
+      }
+      mediaStreamSourceRef.current = null;
+    }
+
+    if (analyserNodeRef.current) {
+      try {
+        analyserNodeRef.current.disconnect();
+      } catch (e) {
+        logger.debug('Analyser disconnect error:', e);
+      }
     }
 
     // マイクストリームを解放
@@ -837,17 +828,19 @@ const processAudio = () => {
 
     // 状態をリセット
     setIsListening(false);
+    isListeningRef.current = false;
     setCurrentFrequency(0);
     setCurrentNote('--');
     setCurrentNoteJa('--');
     setCurrentOctave(0);
     setCurrentCents(0);
     setIndicatorColor('#9E9E9E');
-    smoothedFrequencyRef.current = 0;
+    stabilizerStateRef.current = createFrequencyStabilizerState();
     analyserNodeRef.current = null;
 
     logger.debug('チューナー機能を停止しました');
   };
+  stopListeningRef.current = stopListening;
 
 
   // 開放弦の音を連続再生する関数
@@ -1257,7 +1250,7 @@ const processAudio = () => {
 
                 {/* 周波数表示 */}
                 <Text style={[styles.simpleFrequency, { color: currentTheme.textSecondary }]}>
-                  {currentFrequency > 0 ? currentFrequency.toFixed(1) : '--'} Hz
+                  {currentFrequency > 0 ? currentFrequency.toFixed(2) : '--'} Hz
                 </Text>
 
                 {/* シンプルなチューニングバー */}

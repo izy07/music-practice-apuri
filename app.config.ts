@@ -1,4 +1,59 @@
 import type { ExpoConfig } from 'expo/config';
+import fs from 'fs';
+import path from 'path';
+
+// app.config 評価時点では Expo の .env 読み込みが未完了なことがあるため、先に読み込む
+function loadEnvFilesForConfig() {
+  for (const envFile of ['.env.local', '.env']) {
+    const envPath = path.join(__dirname, envFile);
+    if (!fs.existsSync(envPath)) continue;
+
+    for (const rawLine of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+
+      const eq = line.indexOf('=');
+      if (eq <= 0) continue;
+
+      const key = line.slice(0, eq).trim();
+      let value = line.slice(eq + 1).trim();
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
+        value = value.slice(1, -1);
+      }
+
+      if (process.env[key] === undefined) {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
+loadEnvFilesForConfig();
+
+const supabaseUrl = (process.env.EXPO_PUBLIC_SUPABASE_URL ?? '').trim();
+const supabaseAnonKey = (process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
+
+const argv = process.argv;
+const isExpoStart = argv.some((arg) => arg === 'start' || arg.endsWith('/start'));
+const isExpoExport = argv.some((arg) => arg === 'export' || arg.endsWith('/export'));
+const isEasBuild = process.env.EAS_BUILD === 'true';
+const isTest = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+
+// EXPO_PUBLIC_* はビルド時にバンドルへ焼き込まれる。未設定のまま export すると実行時クラッシュの原因になる。
+const mustHaveSupabaseEnv =
+  !isTest &&
+  !isExpoStart &&
+  (isExpoExport || isEasBuild || process.env.NODE_ENV === 'production');
+
+if (mustHaveSupabaseEnv && (!supabaseUrl || !supabaseAnonKey)) {
+  throw new Error(
+    'EXPO_PUBLIC_SUPABASE_URL / EXPO_PUBLIC_SUPABASE_ANON_KEY が未設定です。\n' +
+      'ローカルは .env を用意し、CI/EAS では Secrets に登録してから再ビルドしてください。'
+  );
+}
 
 // Minimal, env-driven config to set EAS projectId and keep current app.json values.
 const config: ExpoConfig = {
@@ -13,6 +68,8 @@ const config: ExpoConfig = {
     displayName: '楽器練習アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
     icon: './assets/images/icon.png', // アイコン画像
     infoPlist: {
+      NSMicrophoneUsageDescription:
+        '演奏の録音およびチューナー機能で音程を検出するためにマイクを使用します。',
       // 年齢制限: 4+（教育的な目的の音楽練習アプリのため）
       // 録音機能はユーザー自身の練習記録を保存・再生するための教育的な目的のみで使用
       // 実際の設定はApp Store Connectで行う必要がありますが、ここでも明示
@@ -28,14 +85,16 @@ const config: ExpoConfig = {
     label: '楽器練習アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
     versionCode: 1, // Google Play Consoleで必要なビルド番号（初回リリース）
     versionName: '1.0.0', // ユーザーに表示されるバージョン番号
-    // 年齢制限: 4+（教育的な目的の音楽練習アプリのため）
-    // 録音機能はユーザー自身の練習記録を保存・再生するための教育的な目的のみで使用
-    // 実際の設定はGoogle Play Consoleで行う必要がありますが、ここでも明示
-    // プライバシーポリシーURL（Google Play Consoleで必要）
-    // 注意: GitHub Pagesで公開されている場合は、実際のURLに置き換えてください
-    // 例: https://izy07.github.io/music-practice/privacy-policy
-    // 現在はアプリ内に表示されているため、一時的にアプリ内URLを設定
-    // Google Play Consoleでは、アプリ内に表示されている場合でも公開URLが必要な場合があります
+    // 必要な権限のみ明示。録音はアプリ内ストレージへ保存するため外部ストレージ権限は不要
+    permissions: ['RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS'],
+    // 旧 API: 依存ライブラリの誤宣言を最終マニフェストから除外（アプリは scoped storage のみ使用）
+    blockedPermissions: [
+      'android.permission.READ_EXTERNAL_STORAGE',
+      'android.permission.WRITE_EXTERNAL_STORAGE',
+      'android.permission.READ_MEDIA_IMAGES',
+      'android.permission.READ_MEDIA_VIDEO',
+      'android.permission.READ_MEDIA_AUDIO',
+    ],
   },
   web: {
     bundler: 'metro', // WebプラットフォームでもMetroを使用（Webpackとの競合を避ける）
@@ -54,15 +113,22 @@ const config: ExpoConfig = {
     'expo-dev-client',
     'expo-asset',
     'expo-audio',
+    'react-native-audio-api',
     'expo-web-browser',
+    // Google Play パッケージ所有権確認用（adi-registration.properties を native assets へ）
+    './plugins/withAdiRegistration',
+    // expo-file-system 等のレガシー外部ストレージ宣言を最終マニフェストから除去
+    './plugins/withStripLegacyStoragePermissions',
     // AdMob (Google Mobile Ads) - Android/iOS App ID はネイティブに必須
     [
       'react-native-google-mobile-ads',
       {
         androidAppId: 'ca-app-pub-4701955364298598~7135719486',
-        // iOSは後で本番IDに差し替え（未設定だとiOSでクラッシュするため暫定でテストID）
-        iosAppId: process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID || 'ca-app-pub-3940256099942544~1458002511',
-        // 計測開始を遅らせる（同意/年齢設定を先に適用したい場合）
+        // iOS 本番 App ID は EAS Secret / .env の EXPO_PUBLIC_ADMOB_IOS_APP_ID で注入する
+        // 未設定時は Google テスト ID（ストア提出前に必ず本番 ID を入れること）
+        iosAppId:
+          process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID ||
+          'ca-app-pub-3940256099942544~1458002511',
         delayAppMeasurementInit: true,
         optimizeInitialization: true,
         optimizeAdLoading: true,
@@ -92,8 +158,11 @@ const config: ExpoConfig = {
       projectId: 'fe3ac800-458f-47ac-a51f-264b5a49c45f',
     },
     // 本番キーはリポジトリに直書きしない。.env / EAS Secrets / GitHub Actions Secrets から注入する
-    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? '',
-    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '',
+    supabaseUrl,
+    supabaseAnonKey,
+    // Play / App Store の Data safety・審査用。公開ページの URL を必ず設定する
+    // 現状 GitHub Pages（private リポ）は 404。docs/public/privacy-policy.html を公開ホストへ上げて URL を入れる
+    privacyPolicyUrl: process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL || '',
     // Web環境用のリダイレクトURI
     // GitHub Pagesデプロイ時は自動的にGitHub PagesのURLを使用
     webRedirectUrl: process.env.EXPO_PUBLIC_WEB_REDIRECT_URL || 

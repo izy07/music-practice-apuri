@@ -24,12 +24,17 @@ import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import InstrumentHeader from '@/components/InstrumentHeader';
 import { safeGoBack } from '@/lib/navigationUtils';
 import { createShadowStyle } from '@/lib/shadowStyles';
-import { supabase } from '@/lib/supabase';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import logger from '@/lib/logger';
 import { getActiveInstrumentIds } from '@/lib/subscriptionLimits';
 import { instrumentService } from '@/services/instrumentService';
 import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
+import {
+  deleteInstrumentScopedData,
+  deleteUserAccount,
+  reportDeletionError,
+} from '@/repositories/deletionRepository';
+import { emitCalendarGoalUpdated } from '@/lib/appEvents';
 
 export default function PrivacySettingsScreen() {
   const router = useRouter();
@@ -151,287 +156,56 @@ export default function PrivacySettingsScreen() {
        * - instrument_id が null の「レガシー/未紐付け」データは、複数楽器があると他楽器分まで消える危険があるため削除しない
        *   ただし、使用中楽器が1つしかない場合は、その1つに紐付く可能性が高いため null も削除対象に含める
        */
-      const shouldIncludeLegacyNull = activeInstrumentIds.length === 1 && activeInstrumentIds[0] === instrumentId;
+      const shouldIncludeLegacyNull =
+        activeInstrumentIds.length === 1 && activeInstrumentIds[0] === instrumentId;
 
-      const tableNames = ['recordings', 'goals', 'my_songs', 'practice_sessions', 'events'] as const;
-      const results: Array<{ table: typeof tableNames[number]; error: any | null }> = [];
-
-      const isIgnorableDeleteError = (error: any): boolean => {
-        const code = error?.code;
-        const message = error?.message || '';
-        // テーブル未作成/存在しない、または行が見つからない系はスキップして続行
-        if (code === 'PGRST205' || code === 'PGRST116') return true;
-        // カラム未作成（環境差分）もスキップして続行
-        if (typeof message === 'string' && message.toLowerCase().includes('column') && message.toLowerCase().includes('does not exist')) return true;
-        return false;
-      };
-
-      const deleteByTable = async (table: typeof tableNames[number]) => {
-        try {
-          logger.debug(`[PrivacySettings] ${table}の削除処理を開始:`, {
-            table,
-            instrumentId,
-            userId: user.id,
-            shouldIncludeLegacyNull
-          });
-
-          // 削除前にカウントを取得
-          let beforeCount = 0;
-          try {
-            const { count: instrumentCount } = await supabase
-              .from(table)
-              .select('*', { count: 'exact', head: true })
-              .eq('user_id', user.id)
-              .eq('instrument_id', instrumentId);
-            
-            beforeCount = instrumentCount || 0;
-            logger.debug(`[PrivacySettings] ${table}の削除前カウント（instrument_id指定）:`, beforeCount);
-
-            if (shouldIncludeLegacyNull) {
-              const { count: nullCount } = await supabase
-                .from(table)
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', user.id)
-                .is('instrument_id', null);
-              const nullCountValue = nullCount || 0;
-              beforeCount += nullCountValue;
-              logger.debug(`[PrivacySettings] ${table}の削除前カウント（null）:`, nullCountValue);
-            }
-          } catch (countError) {
-            logger.warn(`[PrivacySettings] ${table}の削除前カウント取得エラー（無視）:`, countError);
-          }
-
-          // 1. 指定楽器IDのデータを削除（削除された行を取得して確認）
-          const { data: deletedData1, error: deleteError1 } = await supabase
-            .from(table)
-            .delete()
-            .eq('user_id', user.id)
-            .eq('instrument_id', instrumentId)
-            .select();
-          
-          if (deleteError1 && !isIgnorableDeleteError(deleteError1)) {
-            logger.error(`[PrivacySettings] ${table}の削除エラー（instrument_id指定）:`, {
-              error: deleteError1,
-              table,
-              instrumentId,
-              userId: user.id,
-              errorCode: deleteError1.code,
-              errorMessage: deleteError1.message
-            });
-            results.push({ table, error: deleteError1 });
-            return;
-          }
-
-          const deletedCount1 = deletedData1?.length || 0;
-          logger.debug(`[PrivacySettings] ${table}の削除（instrument_id指定）完了:`, {
-            deletedCount: deletedCount1,
-            table,
-            instrumentId
-          });
-
-          // 2. レガシーデータ（null）も削除する場合
-          let deletedCount2 = 0;
-          if (shouldIncludeLegacyNull) {
-            const { data: deletedData2, error: deleteError2 } = await supabase
-              .from(table)
-              .delete()
-              .eq('user_id', user.id)
-              .is('instrument_id', null)
-              .select();
-            
-            if (deleteError2 && !isIgnorableDeleteError(deleteError2)) {
-              logger.error(`[PrivacySettings] ${table}の削除エラー（null指定）:`, {
-                error: deleteError2,
-                table,
-                instrumentId,
-                userId: user.id,
-                errorCode: deleteError2.code,
-                errorMessage: deleteError2.message
-              });
-              results.push({ table, error: deleteError2 });
-              return;
-            }
-
-            deletedCount2 = deletedData2?.length || 0;
-            logger.debug(`[PrivacySettings] ${table}の削除（null指定）完了:`, {
-              deletedCount: deletedCount2,
-              table,
-              instrumentId
-            });
-          }
-
-          // 削除後にカウントを再取得して確認
-          let afterCount = 0;
-          try {
-            const { count: instrumentCount } = await supabase
-              .from(table)
-              .select('*', { count: 'exact', head: true })
-              .eq('user_id', user.id)
-              .eq('instrument_id', instrumentId);
-            
-            afterCount = instrumentCount || 0;
-
-            if (shouldIncludeLegacyNull) {
-              const { count: nullCount } = await supabase
-                .from(table)
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', user.id)
-                .is('instrument_id', null);
-              afterCount += (nullCount || 0);
-            }
-          } catch (countError) {
-            logger.warn(`[PrivacySettings] ${table}の削除後カウント取得エラー（無視）:`, countError);
-          }
-
-          const totalDeleted = deletedCount1 + deletedCount2;
-          const verifiedDeleted = beforeCount - afterCount;
-
-          // 削除結果をログ出力
-          logger.info(`[PrivacySettings] ${table}の削除成功:`, {
-            table,
-            deletedCount: totalDeleted,
-            verifiedDeleted,
-            beforeCount,
-            afterCount,
-            instrumentId,
-            shouldIncludeLegacyNull,
-            deletedByInstrumentId: deletedCount1,
-            deletedByNull: deletedCount2
-          });
-
-          // 削除が実行されなかった場合の警告
-          if (beforeCount > 0 && totalDeleted === 0) {
-            const errorMsg = `${table}テーブルに${beforeCount}件のデータが存在しますが、削除が実行されませんでした。RLSポリシーまたはデータベースの設定を確認してください。`;
-            logger.error(`[PrivacySettings] ${table}の削除が実行されませんでした:`, {
-              table,
-              beforeCount,
-              instrumentId,
-              userId: user.id,
-              deletedCount1,
-              deletedCount2,
-              afterCount,
-              verifiedDeleted
-            });
-            results.push({ 
-              table, 
-              error: { 
-                code: 'DELETE_FAILED', 
-                message: errorMsg 
-              } 
-            });
-            return;
-          }
-
-          // 削除が部分的にしか実行されなかった場合の警告
-          if (beforeCount > 0 && verifiedDeleted < beforeCount) {
-            logger.warn(`[PrivacySettings] ${table}の削除が部分的にしか実行されませんでした:`, {
-              table,
-              beforeCount,
-              afterCount,
-              verifiedDeleted,
-              totalDeleted,
-              instrumentId,
-              userId: user.id
-            });
-          }
-
-          results.push({ table, error: null });
-        } catch (err) {
-          logger.error(`[PrivacySettings] ${table}の削除例外:`, {
-            error: err,
-            table,
-            instrumentId,
-            userId: user.id,
-            errorMessage: err instanceof Error ? err.message : String(err),
-            errorStack: err instanceof Error ? err.stack : undefined
-          });
-          results.push({ 
-            table, 
-            error: err instanceof Error 
-              ? { code: 'UNKNOWN_ERROR', message: err.message } 
-              : { code: 'UNKNOWN_ERROR', message: '不明なエラー' }
-          });
-        }
-      };
-
-      // 直列で削除（問題が起きたテーブルをログで特定しやすくする）
-      logger.info('[PrivacySettings] 楽器データ削除処理を開始（テーブル単位）:', {
-        tableCount: tableNames.length,
-        tables: tableNames,
-        instrumentId,
-        userId: user.id
+      const result = await deleteInstrumentScopedData(user.id, instrumentId, {
+        includeLegacyNull: shouldIncludeLegacyNull,
       });
-      
-      for (const table of tableNames) {
-        logger.debug(`[PrivacySettings] ${table}の削除処理を開始します`);
-        // eslint-disable-next-line no-await-in-loop
-        await deleteByTable(table);
-        logger.debug(`[PrivacySettings] ${table}の削除処理が完了しました`);
-      }
-      
-      logger.info('[PrivacySettings] すべてのテーブルの削除処理が完了しました');
 
-      const hardErrors = results.filter((r) => r.error);
-      if (hardErrors.length > 0) {
-        const errorMessages = hardErrors
-          .map((r) => `${r.table}: ${r.error?.message || '不明なエラー'}`)
-          .join('\n');
+      if (result.error) {
         logger.error('[PrivacySettings] 楽器データ削除エラー:', {
-          errors: hardErrors,
+          error: result.error,
           instrumentId,
-          userId: user.id
+          userId: user.id,
         });
+        reportDeletionError(result.error, '楽器データの削除');
         Alert.alert(
           'エラー',
-          `楽器データの削除中にエラーが発生しました。\n\n${errorMessages}\n\nお問い合わせ先までご連絡ください。`,
+          `楽器データの削除中にエラーが発生しました。\n\n${result.error.message}\n\nお問い合わせ先までご連絡ください。`,
           [{ text: 'OK' }]
         );
         setIsDeletingInstrument(null);
         return;
       }
 
-      // 削除結果のサマリーをログ出力
-      const successCount = results.filter(r => !r.error).length;
-      logger.info('[PrivacySettings] 楽器データの削除が完了:', { 
+      logger.info('[PrivacySettings] 楽器データの削除が完了:', {
         instrumentId,
         shouldIncludeLegacyNull,
-        successTables: successCount,
-        totalTables: tableNames.length,
-        results: results.map(r => ({ table: r.table, success: !r.error }))
       });
 
-      // 削除された楽器IDをリストから即座に除外（UI更新を早める）
-      setActiveInstrumentIds(prevIds => prevIds.filter(id => id !== instrumentId));
+      setActiveInstrumentIds((prevIds) => prevIds.filter((id) => id !== instrumentId));
 
-      // データベースの変更が完全に反映されるまで少し待ってから、使用中楽器リストを再取得
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
       const activeIds = await getActiveInstrumentIds(user.id);
       setActiveInstrumentIds(activeIds);
 
-      // 楽器名を取得（デフォルト楽器リストから）
       const defaultInstruments = instrumentService.getDefaultInstruments();
-      const instrument = defaultInstruments.find(i => i.id === instrumentId);
+      const instrument = defaultInstruments.find((i) => i.id === instrumentId);
       const instrumentName = instrument?.name || '楽器';
 
-      // カレンダー画面の目標データを更新するためのカスタムイベントを発火
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('calendarGoalUpdated', { detail: { reason: 'instrumentDataDeleted' } }));
-        logger.debug('[PrivacySettings] カレンダー目標更新イベントを発火しました');
-      }
+      emitCalendarGoalUpdated({ reason: 'instrumentDataDeleted' });
+      logger.debug('[PrivacySettings] カレンダー目標更新イベントを発火しました');
 
-      Alert.alert(
-        '削除完了',
-        `「${instrumentName}」のデータを削除しました。`,
-        [{ text: 'OK' }]
-      );
+      Alert.alert('削除完了', `「${instrumentName}」のデータを削除しました。`, [{ text: 'OK' }]);
     } catch (error: unknown) {
       logger.error('[PrivacySettings] 楽器データ削除例外:', {
         error,
         instrumentId,
         userId: user.id,
         errorMessage: error instanceof Error ? error.message : String(error),
-        errorStack: error instanceof Error ? error.stack : undefined
       });
+      reportDeletionError(error, '楽器データの削除');
       Alert.alert(
         'エラー',
         `楽器データの削除中にエラーが発生しました。\n\n${error instanceof Error ? error.message : '不明なエラー'}\n\nお問い合わせ先までご連絡ください。`,
@@ -462,8 +236,8 @@ export default function PrivacySettingsScreen() {
   const handleDeleteAccount = () => {
     logger.info('[PrivacySettings] アカウント削除ボタンが押されました');
     
-    // Web環境ではconfirmを使用
-    if (typeof window !== 'undefined' && window.confirm) {
+    // Web のみ window.confirm（Expo の iOS/Android では window があっても confirm は使えない）
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
       const firstConfirm = window.confirm(
         'アカウントを削除すると、すべてのデータが永久に削除されます。\n\nこの操作は取り消せません。本当に削除しますか？'
       );
@@ -535,55 +309,41 @@ export default function PrivacySettingsScreen() {
 
   const performAccountDeletion = async () => {
     if (isDeleting) return;
-    
+
     setIsDeleting(true);
-    
+
     try {
       logger.info('[PrivacySettings] アカウント削除処理を開始');
-      
-      // データベース関数を呼び出してユーザーデータを削除
-      const { error: deleteError } = await supabase.rpc('delete_user_account');
-      
-      if (deleteError) {
-        logger.error('[PrivacySettings] アカウント削除エラー:', deleteError);
+
+      const result = await deleteUserAccount();
+      if (result.error) {
+        logger.error('[PrivacySettings] アカウント削除エラー:', result.error);
+        reportDeletionError(result.error, 'アカウント削除');
         Alert.alert(
           'エラー',
           'アカウント削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。',
-          [
-            { text: 'OK', onPress: () => handleContactPrivacyManager() }
-          ]
+          [{ text: 'OK', onPress: () => handleContactPrivacyManager() }]
         );
         setIsDeleting(false);
         return;
       }
-      
+
       logger.info('[PrivacySettings] ユーザーデータの削除が完了');
-      
-      // ログアウト処理
+
       await signOut();
-      
-      // 成功メッセージを表示（ログアウト後は表示されない可能性があるため、先に表示）
+
       Alert.alert(
         'アカウント削除完了',
         'アカウントとすべてのデータが削除されました。\n\nご利用ありがとうございました。',
-        [
-          { 
-            text: 'OK', 
-            onPress: () => {
-              // ログアウト後は自動的に認証画面に遷移する
-            }
-          }
-        ]
+        [{ text: 'OK' }]
       );
-      
     } catch (error: unknown) {
       logger.error('[PrivacySettings] アカウント削除例外:', error);
+      reportDeletionError(error, 'アカウント削除');
       Alert.alert(
         'エラー',
         'アカウント削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。',
-        [
-          { text: 'OK', onPress: () => handleContactPrivacyManager() }
-        ]
+        [{ text: 'OK', onPress: () => handleContactPrivacyManager() }]
       );
       setIsDeleting(false);
     }

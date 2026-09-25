@@ -25,6 +25,8 @@ import Stopwatch from '@/components/timer/Stopwatch';
 import { styles } from '@/lib/tabs/timer/styles';
 import { setCurrentRoute } from '@/lib/navigationHistory';
 import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
+import { trackFeatureAction } from '@/lib/featureUsageService';
+import { FEATURE_IDS } from '@/lib/featureUsageEvents';
 
 const { width } = Dimensions.get('window');
 
@@ -891,6 +893,13 @@ export default function TimerScreen() {
       const result = await savePracticeRecordWithIntegration(minutes);
       
       if (result) {
+        void trackFeatureAction(
+          user?.id,
+          FEATURE_IDS.timer,
+          'save',
+          { platform: Platform.OS, minutes, autoSave: settings.autoSave },
+          getInstrumentId(selectedInstrument)
+        );
         // 成功メッセージ（自動記録の場合は表示しない）
         if (!settings.autoSave) {
           Alert.alert(

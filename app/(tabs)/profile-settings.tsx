@@ -10,14 +10,21 @@ import { safeGoBack } from '@/lib/navigationUtils';
 import SafeView from '@/components/SafeView';
 import logger from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
-import { getUserProfile, upsertUserProfile, getCurrentUser, deleteBreakPeriod, deletePastOrganization, deleteAward, deletePerformance, getInstrumentSpecificProfileData, saveInstrumentSpecificProfileData } from '@/repositories/userRepository';
+import { getUserProfile, upsertUserProfile, updateUserProfile, getCurrentUser, getInstrumentSpecificProfileData, saveInstrumentSpecificProfileData } from '@/repositories/userRepository';
+import {
+  clearUserProfile,
+  deleteInstrumentScopedData,
+  deleteUserAccount,
+  persistInstrumentCareerData,
+  reportDeletionError,
+} from '@/repositories/deletionRepository';
 import type { UserProfile } from '@/types/models';
-import { supabase } from '@/lib/supabase';
 import PastOrgEditorModal from '@/components/profile-settings/PastOrgEditorModal';
 import AwardEditorModal from '@/components/profile-settings/AwardEditorModal';
 import PerformanceEditorModal from '@/components/profile-settings/PerformanceEditorModal';
 import EventCalendar from '@/components/EventCalendar';
 import { formatLocalDate } from '@/lib/dateUtils';
+import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
 import { styles } from '@/lib/tabs/profile-settings/styles';
 // DateTimePickerは環境によって未導入の場合があるため動的ロード
 type DateTimePickerComponent = React.ComponentType<{
@@ -34,10 +41,17 @@ try {
   DateTimePicker = require('@react-native-community/datetimepicker').default as DateTimePickerComponent;
 } catch {}
 
+const PROFILE_DELETE_CONFIRM_MESSAGE =
+  'プロフィール情報をクリアしますか？\n\nクリアされる情報：\n• ニックネーム\n• 誕生日\n• 所属団体\n• 音楽開始年齢・経験年数\n• 楽器別情報（経歴・実績・休止期間含む）\n\n残る情報：\n• アカウント本体\n• 選択中の楽器設定\n• 録音・目標・練習記録・イベント\n\nこの操作は取り消せません。';
+
 export default function ProfileSettingsScreen() {
   const router = useRouter();
   const { isAuthenticated, isLoading, fetchUserProfile, signOut, user } = useAuthAdvanced();
   const { currentTheme, selectedInstrument } = useInstrumentTheme();
+  const effectiveInstrumentId = getEffectiveInstrumentId(
+    selectedInstrument,
+    user?.selected_instrument_id
+  );
   const [isDeleting, setIsDeleting] = useState(false);
   
   // 全てのuseStateフックを最初に呼び出す
@@ -132,15 +146,38 @@ export default function ProfileSettingsScreen() {
         // ユーザープロフィールを取得
         const profileResult = await getUserProfile(user.id);
         
-        // ニックネーム: プロフィールで削除済み(null/空)の場合は「ユーザー」、未設定時は user_metadata 等を使用
+        // ニックネーム解決:
+        // - profile.display_name が意味のある値ならそれを使う
+        // - null/空/プレースホルダ「ユーザー」のときは signup 時の user_metadata を優先
         const profile = profileResult.data;
-        const hasDisplayName = profile != null && profile.display_name != null && String(profile.display_name).trim() !== '';
-        const displayNameCleared = profile != null && (profile.display_name === null || profile.display_name === '');
-        const resolvedNickname = hasDisplayName
-          ? String(profile!.display_name).trim()
-          : displayNameCleared
-            ? 'ユーザー'
-            : (user.user_metadata?.display_name?.trim() || user.user_metadata?.name?.trim() || user.email?.split('@')[0] || 'ユーザー');
+        const fromProfile = profile?.display_name != null ? String(profile.display_name).trim() : '';
+        const fromMeta = (
+          user.user_metadata?.display_name?.trim() ||
+          user.user_metadata?.name?.trim() ||
+          ''
+        );
+        const fromEmail = user.email?.split('@')[0] || '';
+        const isPlaceholder = !fromProfile || fromProfile === 'ユーザー';
+        const resolvedNickname =
+          !isPlaceholder
+            ? fromProfile
+            : (fromMeta || fromProfile || fromEmail || 'ユーザー');
+
+        // 過去データ修復: プレースホルダのままなら metadata の本名を1回だけ反映（認証 cascade なし）
+        if (
+          profile &&
+          isPlaceholder &&
+          fromMeta &&
+          fromMeta !== fromProfile
+        ) {
+          void updateUserProfile(user.id, { display_name: fromMeta }).then((ok) => {
+            if (!ok) {
+              logger.warn('ニックネームの自動修復に失敗');
+            } else {
+              logger.debug('ニックネームを metadata から修復しました', { fromMeta });
+            }
+          });
+        }
         
         if (profileResult.error) {
           logger.error('プロフィール取得エラー:', profileResult.error);
@@ -151,7 +188,7 @@ export default function ProfileSettingsScreen() {
         }
         if (profile) {
           setDisplayName(resolvedNickname);
-          setNickname(resolvedNickname); // 新規登録時のニックネームを表示
+          setNickname(resolvedNickname);
           
           // ニックネーム、現在の所属団体、年齢は楽器に関係なく共通データとして読み込む
           setCurrentAge(profile.current_age ? profile.current_age.toString() : '');
@@ -181,17 +218,23 @@ export default function ProfileSettingsScreen() {
           }
           
           // 楽器ごとのデータを読み込む（現在選択されている楽器がある場合のみ）
-          if (selectedInstrument) {
-            const instrumentDataResult = await getInstrumentSpecificProfileData(user.id, selectedInstrument);
+          if (effectiveInstrumentId) {
+            const instrumentDataResult = await getInstrumentSpecificProfileData(user.id, effectiveInstrumentId);
             if (instrumentDataResult.data) {
               const instrumentData = instrumentDataResult.data;
               
-              // 楽器ごとのデータを設定
-              if (instrumentData.music_start_age !== undefined) {
+              // 楽器ごとのデータを設定（なければ共通カラムへフォールバック）
+              if (instrumentData.music_start_age !== undefined && instrumentData.music_start_age !== null) {
                 setMusicStartAge(instrumentData.music_start_age.toString());
+              } else if (profile.music_start_age != null) {
+                setMusicStartAge(profile.music_start_age.toString());
+              } else {
+                setMusicStartAge('');
               }
               if (instrumentData.music_experience_years !== undefined) {
                 setMusicExperienceYears(instrumentData.music_experience_years);
+              } else if (profile.music_experience_years != null) {
+                setMusicExperienceYears(profile.music_experience_years);
               }
               // 楽器情報の読み込み（既存データとの互換性維持）
               if (instrumentData.custom_instrument_name) {
@@ -459,7 +502,7 @@ export default function ProfileSettingsScreen() {
     if (isLoading) return;
     if (!isAuthenticated) return; // 認証されていない場合は早期リターン
     loadCurrentUser();
-  }, [isLoading, selectedInstrument]);
+  }, [isLoading, selectedInstrument, effectiveInstrumentId, user?.selected_instrument_id]);
 
   // 誕生日が変更された時の処理
   useEffect(() => {
@@ -538,7 +581,7 @@ export default function ProfileSettingsScreen() {
 
   // 楽器情報のみを保存する関数
   const saveInstrumentInfoOnly = async (instrumentsToSave: Array<InstrumentInfo>) => {
-    if (!currentUser || !selectedInstrument) {
+    if (!currentUser || !effectiveInstrumentId) {
       return;
     }
 
@@ -546,7 +589,7 @@ export default function ProfileSettingsScreen() {
       // 既存の楽器ごとのデータを取得
       const existingInstrumentDataResult = await getInstrumentSpecificProfileData(
         currentUser.id,
-        selectedInstrument
+        effectiveInstrumentId
       );
       const existingInstrumentData = existingInstrumentDataResult.data || {};
       
@@ -603,7 +646,7 @@ export default function ProfileSettingsScreen() {
       
       const instrumentDataResult = await saveInstrumentSpecificProfileData(
         currentUser.id,
-        selectedInstrument,
+        effectiveInstrumentId,
         instrumentSpecificData
       );
       
@@ -617,7 +660,7 @@ export default function ProfileSettingsScreen() {
     }
   };
 
-  // 楽器情報の削除関数
+  // 楽器情報の削除関数（正式実装: deletionRepository）
   const handleDeleteInstrument = async (instrumentId: string) => {
     if (!currentUser?.id) {
       Alert.alert('エラー', 'ユーザー情報が取得できませんでした');
@@ -633,76 +676,40 @@ export default function ProfileSettingsScreen() {
     try {
       logger.info('[ProfileSettings] 楽器データ削除処理を開始:', { instrumentId, userId: currentUser.id });
 
-      // instrumentIdがUUID形式かどうかを確認
-      // UUID形式の正規表現: 8-4-4-4-12の16進数
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const isUuid = uuidRegex.test(instrumentId);
 
-      // UUID形式の場合のみ、データベースの各テーブルから削除を試みる
-      // ローカルID（"1", "2"など）の場合は、楽器情報リストからのみ削除
-      if (isUuid && selectedInstrument) {
-        // 選択中の楽器のIDと一致する場合のみ削除
-        if (instrumentId === selectedInstrument) {
-          const deletePromises = [
-            supabase
-              .from('recordings')
-              .delete()
-              .eq('user_id', currentUser.id)
-              .eq('instrument_id', instrumentId),
-            supabase
-              .from('goals')
-              .delete()
-              .eq('user_id', currentUser.id)
-              .eq('instrument_id', instrumentId),
-            supabase
-              .from('my_songs')
-              .delete()
-              .eq('user_id', currentUser.id)
-              .eq('instrument_id', instrumentId),
-            supabase
-              .from('practice_sessions')
-              .delete()
-              .eq('user_id', currentUser.id)
-              .eq('instrument_id', instrumentId),
-            supabase
-              .from('events')
-              .delete()
-              .eq('user_id', currentUser.id)
-              .eq('instrument_id', instrumentId),
-          ];
-
-          const results = await Promise.all(deletePromises);
-          const errors = results.filter(r => r.error);
-
-          if (errors.length > 0) {
-            logger.error('[ProfileSettings] 楽器データ削除エラー:', errors);
-            // エラーがあっても、楽器情報リストからの削除は続行
-          }
+      if (isUuid) {
+        const includeLegacyNull = instrumentTypes.length === 1;
+        const result = await deleteInstrumentScopedData(currentUser.id, instrumentId, {
+          includeLegacyNull,
+        });
+        if (result.error) {
+          logger.error('[ProfileSettings] 楽器データ削除エラー:', result.error);
+          reportDeletionError(result.error, '楽器関連データの削除');
+          Alert.alert(
+            '一部削除に失敗',
+            '楽器情報リストからは削除しますが、関連データ（録音・目標など）の一部削除に失敗しました。'
+          );
         }
       } else {
-        // ローカルIDの場合は、データベースからの削除はスキップ
         logger.info('[ProfileSettings] ローカルIDのため、データベースからの削除をスキップ:', { instrumentId });
       }
 
       logger.info('[ProfileSettings] 楽器データの削除が完了:', { instrumentId });
 
-      // 楽器情報リストから削除
       const filtered = instrumentTypes.filter(i => i.id !== instrumentId);
       const updatedInstruments = filtered.length === 0 ? [] : filtered;
-      
-      // 状態を更新
+
       if (updatedInstruments.length === 0) {
-        // 全て削除した場合は、楽器情報欄を非表示にする
         setInstrumentTypes([]);
         setShowInstrumentInfo(false);
       } else {
         setInstrumentTypes(updatedInstruments);
       }
-      
-      // 削除後、楽器情報を自動保存（更新後の値を渡す）
+
       await saveInstrumentInfoOnly(updatedInstruments);
 
-      // 削除成功のアラートを表示
       const instrument = instrumentTypes.find(i => i.id === instrumentId);
       const instrumentName = instrument?.name || '楽器';
       Alert.alert(
@@ -712,6 +719,7 @@ export default function ProfileSettingsScreen() {
       );
     } catch (error: unknown) {
       logger.error('[ProfileSettings] 楽器データ削除例外:', error);
+      reportDeletionError(error, '楽器データの削除');
       Alert.alert(
         'エラー',
         '楽器データの削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。',
@@ -720,106 +728,71 @@ export default function ProfileSettingsScreen() {
     }
   };
 
-  // 削除関数
+  // 経歴・実績を instrument_specific_data に永続化（マイナス削除でも即保存）
+  const persistCareerData = useCallback(async (overrides?: {
+    pastOrgs?: typeof pastOrgs;
+    awardsEdit?: typeof awardsEdit;
+    performancesEdit?: typeof performancesEdit;
+    breakPeriods?: typeof breakPeriods;
+  }): Promise<boolean> => {
+    const uid = currentUser?.id;
+    if (!uid) {
+      Alert.alert('エラー', 'ログインが必要です');
+      return false;
+    }
+    if (!effectiveInstrumentId) {
+      Alert.alert('エラー', '楽器が選択されていません');
+      return false;
+    }
+
+    const nextPastOrgs = overrides?.pastOrgs ?? pastOrgs;
+    const nextAwards = overrides?.awardsEdit ?? awardsEdit;
+    const nextPerformances = overrides?.performancesEdit ?? performancesEdit;
+    const nextBreakPeriods = overrides?.breakPeriods ?? breakPeriods;
+
+    const result = await persistInstrumentCareerData(uid, effectiveInstrumentId, {
+      pastOrganizationsUi: nextPastOrgs,
+      awardsUi: nextAwards,
+      performancesUi: nextPerformances,
+      breakPeriodsUi: nextBreakPeriods.map((bp) => ({
+        id: bp.id,
+        startDate: bp.startDate,
+        endDate: bp.endDate,
+        reason: bp.reason,
+      })),
+    });
+
+    if (result.error) {
+      reportDeletionError(result.error, '経歴・実績の保存');
+      return false;
+    }
+    return true;
+  }, [
+    currentUser?.id,
+    effectiveInstrumentId,
+    pastOrgs,
+    awardsEdit,
+    performancesEdit,
+    breakPeriods,
+  ]);
+
+  // 経歴項目の削除（JSONB 一本化）
   const handleDeleteBreakPeriod = async (id: string) => {
-    if (!currentUser || !selectedInstrument) {
+    if (!currentUser || !effectiveInstrumentId) {
       Alert.alert('エラー', '楽器が選択されていません');
       return;
     }
-    
-    try {
-      // 楽器ごとのデータから削除
-      const updatedBreakPeriods = breakPeriods.filter(item => item.id !== id);
-      setBreakPeriods(updatedBreakPeriods);
-      
-      // 既存の楽器ごとのデータを取得
-      const existingInstrumentDataResult = await getInstrumentSpecificProfileData(
-        currentUser.id,
-        selectedInstrument
-      );
-      const existingData = existingInstrumentDataResult.data || {};
-      
-      // 楽器ごとのデータを更新
-      const updatedInstrumentData = {
-        ...existingData,
-        career_data: {
-          ...(existingData.career_data || {}),
-          breakPeriodsUi: updatedBreakPeriods.map(bp => ({
-            id: bp.id,
-            startDate: bp.startDate,
-            endDate: bp.endDate,
-            reason: bp.reason
-          })),
-        },
-      };
-      
-      const saveResult = await saveInstrumentSpecificProfileData(
-        currentUser.id,
-        selectedInstrument,
-        updatedInstrumentData
-      );
-      
-      if (saveResult.error) {
-        // エラーが発生した場合は元に戻す
-        setBreakPeriods(breakPeriods);
-        ErrorHandler.handle(saveResult.error, '休止期間の削除', true);
-      }
-    } catch (error) {
-      // エラーが発生した場合は元に戻す
-      setBreakPeriods(breakPeriods);
-      ErrorHandler.handle(error, '休止期間の削除', true);
+
+    const previous = breakPeriods;
+    const updatedBreakPeriods = breakPeriods.filter((item) => item.id !== id);
+    setBreakPeriods(updatedBreakPeriods);
+
+    const ok = await persistCareerData({ breakPeriods: updatedBreakPeriods });
+    if (!ok) {
+      setBreakPeriods(previous);
     }
   };
 
-  const handleDeletePastOrganization = async (id: string) => {
-    try {
-      const result = await deletePastOrganization(id);
-      if (result.error) {
-        ErrorHandler.handle(result.error, '過去の所属団体の削除', false);
-        return;
-      }
-      setPastOrganizations(prev => prev.filter(item => item.id !== id));
-    } catch (error) {
-      ErrorHandler.handle(error, '過去の所属団体の削除', false);
-    }
-  };
-
-  const handleDeleteAward = async (id: string) => {
-    try {
-      const result = await deleteAward(id);
-      if (result.error) {
-        ErrorHandler.handle(result.error, '受賞の削除', false);
-        return;
-      }
-      setAwards(prev => prev.filter(item => item.id !== id));
-    } catch (error) {
-      ErrorHandler.handle(error, '受賞の削除', false);
-    }
-  };
-
-  // 追加保存関数（経歴・実績）
-  const addPastOrganization = async () => {
-    if (!currentUser) return;
-    if (!pastOrgForm.name.trim() || !pastOrgForm.role.trim()) {
-      Alert.alert('エラー', '所属名と役割を入力してください');
-      return;
-    }
-    try {
-      await supabase
-        .from('user_past_organizations')
-        .insert({
-          user_id: currentUser.id,
-          name: pastOrgForm.name.trim(),
-          role: pastOrgForm.role.trim(),
-          startDate: null,
-          endDate: null,
-        });
-      setPastOrgForm({ name: '', role: '' });
-      await loadCareerData();
-    } catch (e) {
-      ErrorHandler.handle(e, '過去の所属団体の保存', true);
-    }
-  };
   // 可変行の追加/削除
   const addPastOrgRow = () => setPastOrgs((rows) => [...rows, { name: '', startYm: '', endYm: '' }]);
   const removePastOrgRow = (index: number) => setPastOrgs((rows) => rows.filter((_, i) => i !== index));
@@ -845,67 +818,6 @@ export default function ProfileSettingsScreen() {
     setPerformancesEdit((rows) => rows.map((r, i) => (i === index ? { title: value } : r)));
   };
 
-
-  const addAward = async () => {
-    if (!currentUser) return;
-    if (!awardForm.title.trim()) {
-      Alert.alert('エラー', '受賞タイトルを入力してください');
-      return;
-    }
-    try {
-      await supabase
-        .from('user_awards')
-        .insert({
-          user_id: currentUser.id,
-          title: awardForm.title.trim(),
-          organization: awardForm.organization.trim() || null,
-          date: awardForm.date || null,
-          description: awardForm.description.trim() || null,
-        });
-      setAwardForm({ title: '', organization: '', date: '', description: '' });
-      await loadCareerData();
-    } catch (e) {
-      ErrorHandler.handle(e, '受賞履歴の保存', true);
-    }
-  };
-
-  const addPerformance = async () => {
-    if (!currentUser) return;
-    if (!perfForm.title.trim()) {
-      Alert.alert('エラー', '演奏のタイトルを入力してください');
-      return;
-    }
-    try {
-      await supabase
-        .from('user_performances')
-        .insert({
-          user_id: currentUser.id,
-          title: perfForm.title.trim(),
-          venue: perfForm.venue.trim() || null,
-          date: perfForm.date || null,
-          role: perfForm.role.trim() || null,
-          description: perfForm.description.trim() || null,
-        });
-      setPerfForm({ title: '', venue: '', date: '', role: '', description: '' });
-      await loadCareerData();
-    } catch (e) {
-      ErrorHandler.handle(e, '演奏経験の保存', true);
-    }
-  };
-
-  const handleDeletePerformance = async (id: string) => {
-    try {
-      const result = await deletePerformance(id);
-      if (result.error) {
-        ErrorHandler.handle(result.error, '演奏経験の削除', false);
-        return;
-      }
-      setPerformances(prev => prev.filter(item => item.id !== id));
-    } catch (error) {
-      ErrorHandler.handle(error, '演奏経験の削除', false);
-    }
-  };
-
   const saveProfile = async () => {
     if (!currentUser) {
       Alert.alert('エラー', 'ユーザー情報がありません');
@@ -922,29 +834,38 @@ export default function ProfileSettingsScreen() {
       setLoading(true);
       logger.debug('プロフィール保存開始:', { userId: currentUser.id, nickname: nickname.trim() });
       
-      // 所属団体をカンマ区切りの文字列として保存
+      // 所属団体をカンマ区切りの文字列として保存（空でも明示的に送ってクリア可能にする）
       const organizationsString = currentOrganizations
         .filter(org => org.name.trim() !== '')
         .map(org => org.name.trim())
         .join(',');
 
-      // 基本カラムのみを含める（ニックネーム、現在の所属団体、年齢は共通データ）
-      const upsertRow: Partial<UserProfile> = {
+      // 基本情報（共通カラム）。nickname / 所属 / 誕生日 / 年齢 / 開始年齢 をトップレベルに保存する
+      const upsertRow: Partial<UserProfile> & Record<string, unknown> = {
         user_id: currentUser.id,
         display_name: nickname.trim(),
         updated_at: new Date().toISOString(),
+        organization: organizationsString || null,
+        current_organization: organizationsString || null,
       };
-      
-      // オプショナルカラム（存在する場合のみ追加）
-      // カラムが存在しない場合はエラーを無視して続行
-      try {
-        if (currentAge) upsertRow.current_age = parseInt(currentAge);
-        if (birthday) upsertRow.birthday = birthday.toISOString().split('T')[0];
-        if (organizationsString) upsertRow.organization = organizationsString;
-        if (organizationsString) (upsertRow as any).current_organization = organizationsString;
-      } catch (optionalColumnError) {
-        // カラムが存在しない場合のエラーは無視（基本情報は保存される）
-        logger.debug('オプショナルカラムの設定をスキップ（カラムが存在しない可能性）:', optionalColumnError);
+
+      if (currentAge && currentAge.trim() !== '') {
+        const parsedAge = parseInt(currentAge, 10);
+        if (!Number.isNaN(parsedAge)) {
+          upsertRow.current_age = parsedAge;
+        }
+      }
+      if (birthday) {
+        upsertRow.birthday = birthday.toISOString().split('T')[0];
+      }
+
+      // 楽器開始年齢は共通カラムにも保存（楽器未選択時や instrument_specific_data 欠落時のフォールバック）
+      if (musicStartAge && musicStartAge.trim() !== '') {
+        const parsedStartAge = parseInt(musicStartAge, 10);
+        if (!Number.isNaN(parsedStartAge)) {
+          upsertRow.music_start_age = parsedStartAge;
+          upsertRow.music_experience_years = musicExperienceYears || 0;
+        }
       }
 
       logger.debug('保存データ（共通）:', upsertRow);
@@ -953,11 +874,11 @@ export default function ProfileSettingsScreen() {
       const result = await upsertUserProfile(upsertRow);
       
       // 楽器ごとのデータを保存（現在選択されている楽器がある場合のみ）
-      if (selectedInstrument) {
+      if (effectiveInstrumentId) {
         // 既存の楽器ごとのデータを取得して、空の場合は既存の値を保持
         const existingInstrumentDataResult = await getInstrumentSpecificProfileData(
           currentUser.id,
-          selectedInstrument
+          effectiveInstrumentId
         );
         const existingInstrumentData = existingInstrumentDataResult.data || {};
         
@@ -999,29 +920,27 @@ export default function ProfileSettingsScreen() {
         
         const instrumentDataResult = await saveInstrumentSpecificProfileData(
           currentUser.id,
-          selectedInstrument,
+          effectiveInstrumentId,
           instrumentSpecificData
         );
         
         if (instrumentDataResult.error) {
           logger.warn('楽器ごとのデータ保存エラー:', instrumentDataResult.error);
-          // エラーは警告として扱う（共通データは保存済み）
+          ErrorHandler.handle(instrumentDataResult.error, '楽器別プロフィールの保存', true);
+          Alert.alert(
+            '一部保存に失敗',
+            '共通の基本情報は保存できましたが、楽器ごとの詳細（開始年齢の楽器別データ等）の保存に失敗しました。'
+          );
         } else {
           logger.info('楽器ごとのデータ保存成功');
         }
       }
 
       if (result.error) {
-        // カラムが存在しないエラーの場合は警告として処理（基本情報は保存済みの可能性）
-        const errorCode = (result.error as any).code || (result.error as any).originalError?.code;
-        const errorMessage = result.error.message || (result.error as any).originalError?.message || '';
-        if (errorCode === '42703' || errorCode === 'PGRST204' || errorMessage.includes('column') || errorMessage.includes('does not exist') || errorMessage.includes('Could not find')) {
-          logger.warn('一部のカラムが存在しないため、オプショナル情報は保存されませんでした:', result.error);
-          // 基本情報は保存されている可能性があるため、成功として扱う
-        } else {
-          logger.error('Supabase upsert エラー:', result.error);
-          throw result.error;
-        }
+        logger.error('Supabase upsert エラー:', result.error);
+        ErrorHandler.handle(result.error, '基本情報の保存', true);
+        Alert.alert('保存エラー', result.error.message || '基本情報の保存に失敗しました');
+        return;
       }
 
       logger.info('保存成功:', result.data);
@@ -1048,11 +967,9 @@ export default function ProfileSettingsScreen() {
     
     logger.info('[ProfileSettings] プロフィール削除ボタンが押されました');
     
-    // Web環境ではconfirmを使用
-    if (typeof window !== 'undefined' && window.confirm) {
-      const confirm = window.confirm(
-        'プロフィール情報を削除しますか？\n\n削除される情報：\n• ニックネーム\n• 誕生日\n• 楽器情報\n• 経歴・実績\n• 休止期間\n\nこの操作は取り消せません。アカウントは削除されません。'
-      );
+    // Web のみ window.confirm（iOS/Android は Alert）
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
+      const confirm = window.confirm(PROFILE_DELETE_CONFIRM_MESSAGE);
       
       if (!confirm) {
         logger.info('[ProfileSettings] プロフィール削除がキャンセルされました');
@@ -1066,7 +983,7 @@ export default function ProfileSettingsScreen() {
     // ネイティブ環境ではAlertを使用
     Alert.alert(
       'プロフィール削除の確認',
-      'プロフィール情報を削除しますか？\n\n削除される情報：\n• ニックネーム\n• 誕生日\n• 楽器情報\n• 経歴・実績\n• 休止期間\n\nこの操作は取り消せません。アカウントは削除されません。',
+      PROFILE_DELETE_CONFIRM_MESSAGE,
       [
         { 
           text: 'キャンセル', 
@@ -1088,52 +1005,22 @@ export default function ProfileSettingsScreen() {
 
   const performProfileDeletion = async () => {
     if (isDeleting || !user) return;
-    
+
     setIsDeleting(true);
-    
+
     try {
       logger.info('[ProfileSettings] プロフィール削除処理を開始');
 
-      // プロフィール情報をクリア（display_name, 所属団体, 誕生日, 楽器別データ）
-      const basePayload = {
-        display_name: null,
-        instrument_specific_data: {} as Record<string, unknown>,
-        updated_at: new Date().toISOString(),
-      };
-      // スキーマに存在する場合のみ有効なカラム（birthday, organization 等）
-      const fullPayload = {
-        ...basePayload,
-        birthday: null as string | null,
-        organization: null as string | null,
-        current_organization: null as string | null,
-      };
-
-      let profileError: { message?: string; code?: string } | null = null;
-      const { error: err1 } = await supabase
-        .from('user_profiles')
-        .update(fullPayload)
-        .eq('user_id', user.id);
-      profileError = err1;
-
-      // 存在しないカラムでエラーになった場合は、基本カラムのみで再試行
-      if (profileError && (profileError.code === 'PGRST204' || (profileError.message && profileError.message.includes('column')))) {
-        const { error: err2 } = await supabase
-          .from('user_profiles')
-          .update(basePayload)
-          .eq('user_id', user.id);
-        profileError = err2;
-      }
-
-      if (profileError) {
-        logger.error('[ProfileSettings] プロフィール削除エラー:', profileError);
-        ErrorHandler.handle(profileError, 'プロフィール情報削除', true);
+      const result = await clearUserProfile(user.id);
+      if (result.error) {
+        logger.error('[ProfileSettings] プロフィール削除エラー:', result.error);
+        reportDeletionError(result.error, 'プロフィール情報削除');
         setIsDeleting(false);
         return;
       }
-      
+
       logger.info('[ProfileSettings] プロフィール削除が完了');
-      
-      // 3. 画面の状態をリセット
+
       setDisplayName('ユーザー');
       setNickname('');
       setBirthday(null);
@@ -1143,7 +1030,9 @@ export default function ProfileSettingsScreen() {
       setMusicStartAge('');
       setMusicExperienceYears(0);
       setCurrentAge('');
+      setCurrentOrganizations([{ id: '1', name: '' }]);
       setInstrumentTypes([]);
+      setShowInstrumentInfo(false);
       setBreakPeriods([]);
       setPastOrganizations([]);
       setAwards([]);
@@ -1151,18 +1040,17 @@ export default function ProfileSettingsScreen() {
       setPastOrgs([{ id: undefined, name: '', startYm: '', endYm: '' }]);
       setAwardsEdit([{ id: undefined, title: '', dateYm: '', result: '' }]);
       setPerformancesEdit([{ id: undefined, title: '' }]);
-      
-      // 4. プロフィール情報を再読み込み
+
       await loadCurrentUser();
-      
+
       Alert.alert(
         'プロフィール削除完了',
         'プロフィール情報を削除しました。\n\nアカウントは削除されていません。',
         [{ text: 'OK' }]
       );
-      
     } catch (error: unknown) {
       logger.error('[ProfileSettings] プロフィール削除例外:', error);
+      reportDeletionError(error, 'プロフィール情報削除');
       Alert.alert(
         'エラー',
         'プロフィール情報の削除中にエラーが発生しました。'
@@ -1176,8 +1064,8 @@ export default function ProfileSettingsScreen() {
   const handleDeleteAccount = () => {
     logger.info('[ProfileSettings] アカウント削除ボタンが押されました');
     
-    // Web環境ではconfirmを使用
-    if (typeof window !== 'undefined' && window.confirm) {
+    // Web のみ window.confirm（iOS/Android は Alert）
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
       const firstConfirm = window.confirm(
         'アカウントを削除すると、すべてのデータが永久に削除されます。\n\nこの操作は取り消せません。本当に削除しますか？'
       );
@@ -1248,17 +1136,16 @@ export default function ProfileSettingsScreen() {
 
   const performAccountDeletion = async () => {
     if (isDeleting) return;
-    
+
     setIsDeleting(true);
-    
+
     try {
       logger.info('[ProfileSettings] アカウント削除処理を開始');
-      
-      // データベース関数を呼び出してユーザーデータを削除
-      const { error: deleteError } = await supabase.rpc('delete_user_account');
-      
-      if (deleteError) {
-        logger.error('[ProfileSettings] アカウント削除エラー:', deleteError);
+
+      const result = await deleteUserAccount();
+      if (result.error) {
+        logger.error('[ProfileSettings] アカウント削除エラー:', result.error);
+        reportDeletionError(result.error, 'アカウント削除');
         Alert.alert(
           'エラー',
           'アカウント削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。'
@@ -1266,28 +1153,19 @@ export default function ProfileSettingsScreen() {
         setIsDeleting(false);
         return;
       }
-      
+
       logger.info('[ProfileSettings] ユーザーデータの削除が完了');
-      
-      // ログアウト処理
+
       await signOut();
-      
-      // 成功メッセージを表示（ログアウト後は表示されない可能性があるため、先に表示）
+
       Alert.alert(
         'アカウント削除完了',
         'アカウントとすべてのデータが削除されました。\n\nご利用ありがとうございました。',
-        [
-          { 
-            text: 'OK', 
-            onPress: () => {
-              // ログアウト後は自動的に認証画面に遷移する
-            }
-          }
-        ]
+        [{ text: 'OK' }]
       );
-      
     } catch (error: unknown) {
       logger.error('[ProfileSettings] アカウント削除例外:', error);
+      reportDeletionError(error, 'アカウント削除');
       Alert.alert(
         'エラー',
         'アカウント削除中にエラーが発生しました。\n\nお問い合わせ先までご連絡ください。'
@@ -2212,9 +2090,15 @@ export default function ProfileSettingsScreen() {
                 </View>
                 <TouchableOpacity 
                   style={[styles.addButton, { backgroundColor: '#FF4444' }]} 
-                  onPress={() => {
+                  onPress={async () => {
                     const updated = pastOrgs.filter((_, i) => i !== index);
-                    setPastOrgs(updated.length > 0 ? updated : [{ id: Date.now().toString(), name: '', startYm: '', endYm: '' }]);
+                    const next = updated.length > 0 ? updated : [{ id: Date.now().toString(), name: '', startYm: '', endYm: '' }];
+                    setPastOrgs(next);
+                    const ok = await persistCareerData({ pastOrgs: next });
+                    if (!ok) {
+                      setPastOrgs(pastOrgs);
+                      Alert.alert('削除エラー', '過去の所属団体の削除を保存できませんでした');
+                    }
                   }}
                 >
                   <Minus size={16} color="#FFFFFF" />
@@ -2255,9 +2139,15 @@ export default function ProfileSettingsScreen() {
                 </View>
                 <TouchableOpacity 
                   style={[styles.addButton, { backgroundColor: '#FF4444' }]} 
-                  onPress={() => {
+                  onPress={async () => {
                     const updated = awardsEdit.filter((_, i) => i !== index);
-                    setAwardsEdit(updated.length > 0 ? updated : [{ id: Date.now().toString(), title: '', dateYm: '', result: '' }]);
+                    const next = updated.length > 0 ? updated : [{ id: Date.now().toString(), title: '', dateYm: '', result: '' }];
+                    setAwardsEdit(next);
+                    const ok = await persistCareerData({ awardsEdit: next });
+                    if (!ok) {
+                      setAwardsEdit(awardsEdit);
+                      Alert.alert('削除エラー', '受賞履歴の削除を保存できませんでした');
+                    }
                   }}
                 >
                   <Minus size={16} color="#FFFFFF" />
@@ -2298,9 +2188,15 @@ export default function ProfileSettingsScreen() {
                 </View>
                 <TouchableOpacity 
                   style={[styles.addButton, { backgroundColor: '#FF4444' }]} 
-                  onPress={() => {
+                  onPress={async () => {
                     const updated = performancesEdit.filter((_, i) => i !== index);
-                    setPerformancesEdit(updated.length > 0 ? updated : [{ id: Date.now().toString(), title: '' }]);
+                    const next = updated.length > 0 ? updated : [{ id: Date.now().toString(), title: '' }];
+                    setPerformancesEdit(next);
+                    const ok = await persistCareerData({ performancesEdit: next });
+                    if (!ok) {
+                      setPerformancesEdit(performancesEdit);
+                      Alert.alert('削除エラー', '演奏経験の削除を保存できませんでした');
+                    }
                   }}
                 >
                   <Minus size={16} color="#FFFFFF" />
@@ -2314,50 +2210,7 @@ export default function ProfileSettingsScreen() {
             style={[styles.saveAllButton, { backgroundColor: currentTheme.primary }]}
             onPress={async () => {
               try {
-                const uid = currentUser?.id;
-                if (!uid) {
-                  Alert.alert('エラー', 'ログインが必要です');
-                  return;
-                }
-                
-                if (!selectedInstrument) {
-                  Alert.alert('エラー', '楽器が選択されていません');
-                  return;
-                }
-                
-                // 楽器ごとのデータを取得して、経歴・実績を更新
-                const instrumentDataResult = await getInstrumentSpecificProfileData(uid, selectedInstrument);
-                const existingData = instrumentDataResult.data || {};
-                
-                // 空の行を除外して保存
-                const filteredPastOrgs = pastOrgs.filter(org => org.name.trim() !== '');
-                const filteredAwards = awardsEdit.filter(award => award.title.trim() !== '');
-                const filteredPerformances = performancesEdit.filter(perf => perf.title.trim() !== '');
-                
-                const updatedInstrumentData = {
-                  ...existingData,
-                  career_data: {
-                    pastOrganizationsUi: filteredPastOrgs.length > 0 ? filteredPastOrgs : [],
-                    awardsUi: filteredAwards.length > 0 ? filteredAwards : [],
-                    performancesUi: filteredPerformances.length > 0 ? filteredPerformances : [],
-                    breakPeriodsUi: breakPeriods.map(bp => ({
-                      id: bp.id,
-                      startDate: bp.startDate,
-                      endDate: bp.endDate,
-                      reason: bp.reason
-                    })),
-                  },
-                };
-                
-                const saveResult = await saveInstrumentSpecificProfileData(
-                  uid,
-                  selectedInstrument,
-                  updatedInstrumentData
-                );
-                
-                if (saveResult.error) {
-                  throw saveResult.error;
-                }
+                await persistCareerData();
               } catch (e) {
                 logger.error('経歴・実績の保存エラー:', e);
                 ErrorHandler.handle(e, '経歴・実績の保存', true);
@@ -2379,7 +2232,7 @@ export default function ProfileSettingsScreen() {
             </View>
             <View style={[styles.formGroup, { marginTop: 4 }]}>
               <Text style={[styles.sectionDescription, { color: currentTheme.textSecondary, marginBottom: 8, fontSize: 11 }]}>
-                プロフィール情報を削除します。この操作は取り消せません。
+                プロフィール情報（ニックネーム・誕生日・所属・楽器別経歴など）をクリアします。録音・目標・練習記録は残ります。この操作は取り消せません。
               </Text>
               <TouchableOpacity
                 style={[styles.deleteButton, { 

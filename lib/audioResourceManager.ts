@@ -35,6 +35,12 @@ class AudioResourceManager {
    * AudioContextを取得（排他制御）
    */
   async acquireAudioContext(owner: string): Promise<AudioContext | null> {
+    // ブラウザのスリープ等で閉じられた AudioContext を再利用しない
+    if (this.audioContext?.state === 'closed') {
+      this.audioContext = null;
+      this.audioContextOwner = null;
+    }
+
     // 同じオーナーが既にAudioContextを使用している場合は、既存のものを返す
     if (this.audioContextOwner === owner && this.audioContext) {
       return this.audioContext;
@@ -63,7 +69,7 @@ class AudioResourceManager {
    */
   async acquireMicrophone(owner: string, options: MicrophoneOptions): Promise<MediaStream> {
     if (this.microphoneOwner && this.microphoneOwner !== owner) {
-      throw new Error(`マイクは既に${this.microphoneOwner}によって使用されています。他の機能（チューナー、録音、クイック記録など）がマイクを使用している可能性があります。`);
+      throw new Error(`マイクは既に${this.microphoneOwner}によって使用されています。他の機能（チューナー、録音など）がマイクを使用している可能性があります。`);
     }
 
     if (!this.microphoneStream) {

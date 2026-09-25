@@ -22,7 +22,7 @@ export const useUserProfile = () => {
 
       const { data: profile, error } = await supabase
         .from('user_profiles')
-        .select('display_name')
+        .select('display_name, organization, current_organization')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -42,9 +42,13 @@ export const useUserProfile = () => {
         const resolvedNickname = (profile.display_name && String(profile.display_name).trim().length > 0)
           ? profile.display_name
           : 'ユーザー';
+        const organizationValue =
+          (profile.current_organization && String(profile.current_organization).trim()) ||
+          (profile.organization && String(profile.organization).trim()) ||
+          undefined;
         setUserProfile({
           nickname: resolvedNickname,
-          organization: undefined
+          organization: organizationValue || undefined,
         });
       } else {
         setUserProfile({ nickname: 'ユーザー', organization: undefined });

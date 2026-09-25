@@ -12,6 +12,7 @@ android/
 ios/
 *.orig.*
 *.jks
+credentials.json
 *.p8
 *.p12
 *.key

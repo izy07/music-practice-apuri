@@ -29,18 +29,31 @@ const localUrl = `http://${resolvedLocalHost}:${localPort}`;
 // ローカル用の匿名キー（環境変数から取得、デフォルトはローカルSupabaseの標準キー）
 const localKey = process.env.EXPO_PUBLIC_SUPABASE_LOCAL_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
 
-// クラウドSupabase設定（本番用）- 環境変数またはapp.config.tsのextraから取得（必須）
-// 優先順位: 環境変数 > app.config.tsのextra
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || Constants.expoConfig?.extra?.supabaseUrl;
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || Constants.expoConfig?.extra?.supabaseAnonKey;
+// クラウドSupabase設定（本番用）- 環境変数または app.config.ts の extra から取得（ビルド時に焼き込み）
+// 優先順位: 環境変数 > app.config.ts の extra（空文字は未設定扱い）
+const readCloudSupabaseValue = (envKey: 'EXPO_PUBLIC_SUPABASE_URL' | 'EXPO_PUBLIC_SUPABASE_ANON_KEY') => {
+  const fromEnv = (process.env[envKey] || '').trim();
+  if (fromEnv) return fromEnv;
 
-// 本番環境では環境変数が必須
+  const extraKey = envKey === 'EXPO_PUBLIC_SUPABASE_URL' ? 'supabaseUrl' : 'supabaseAnonKey';
+  const fromExtra = (Constants.expoConfig?.extra?.[extraKey] as string | undefined)?.trim();
+  return fromExtra || undefined;
+};
+
+const supabaseUrl = readCloudSupabaseValue('EXPO_PUBLIC_SUPABASE_URL');
+const supabaseAnonKey = readCloudSupabaseValue('EXPO_PUBLIC_SUPABASE_ANON_KEY');
+
+const missingSupabaseEnvMessage = (name: string) =>
+  `${name}が設定されていません。本番 Web ビルド時に環境変数が注入されていない可能性があります。` +
+  ' .env または CI/EAS Secrets を設定し、npm run build:web で再ビルドしてください。';
+
+// 本番環境ではクラウド Supabase 設定が必須
 if (process.env.NODE_ENV === 'production') {
   if (!supabaseUrl) {
-    throw new Error('EXPO_PUBLIC_SUPABASE_URL環境変数が設定されていません');
+    throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_URL環境変数'));
   }
   if (!supabaseAnonKey) {
-    throw new Error('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数が設定されていません');
+    throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数'));
   }
 }
 
@@ -60,13 +73,13 @@ const useLocalOnWeb = process.env.EXPO_PUBLIC_USE_LOCAL_SUPABASE_WEB === 'true';
 const finalUrl = isWeb
   ? (isDev && useLocalOnWeb
       ? localUrl
-      : (supabaseUrl || (isDev ? localUrl : (() => { throw new Error('EXPO_PUBLIC_SUPABASE_URL環境変数が設定されていません'); })())))
-  : (isDev ? (useLocalOnNative ? localUrl : (supabaseUrl || localUrl)) : (supabaseUrl || (() => { throw new Error('EXPO_PUBLIC_SUPABASE_URL環境変数が設定されていません'); })()));
+      : (supabaseUrl || (isDev ? localUrl : (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_URL環境変数')); })())))
+  : (isDev ? (useLocalOnNative ? localUrl : (supabaseUrl || localUrl)) : (supabaseUrl || (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_URL環境変数')); })()));
 const finalKey = isWeb
   ? (isDev && useLocalOnWeb
       ? localKey
-      : (supabaseAnonKey || (isDev ? localKey : (() => { throw new Error('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数が設定されていません'); })())))
-  : (isDev ? (useLocalOnNative ? localKey : (supabaseAnonKey || localKey)) : (supabaseAnonKey || (() => { throw new Error('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数が設定されていません'); })()));
+      : (supabaseAnonKey || (isDev ? localKey : (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数')); })())))
+  : (isDev ? (useLocalOnNative ? localKey : (supabaseAnonKey || localKey)) : (supabaseAnonKey || (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数')); })()));
 
 // 開発環境でのみ接続情報をログ出力（本番では機密情報を隠す）
 if (isDev) {

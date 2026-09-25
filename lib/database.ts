@@ -3,6 +3,7 @@ import { Database } from './supabase';
 import logger from './logger';
 import { ErrorHandler } from './errorHandler';
 import { isColumnNotFoundError, handleColumnError } from './columnErrorHandler';
+import { mimeFromBlobType } from './recordingPlayback';
 
 type UserSettings = Database['public']['Tables']['user_settings']['Row'];
 type TutorialProgress = Database['public']['Tables']['tutorial_progress']['Row'];
@@ -381,20 +382,11 @@ export const deletePracticeSession = async (sessionId: string) => {
   }
 };
 
-// 録音データの削除
+// 録音データの削除（正式実装は deletionRepository に集約）
 export const deleteRecording = async (recordingId: string) => {
-  try {
-    const { error } = await supabase
-      .from('recordings')
-      .delete()
-      .eq('id', recordingId);
-
-    if (error) throw error;
-    return { error: null };
-  } catch (error) {
-    ErrorHandler.handle(error, '録音削除', false);
-    return { error };
-  }
+  const { deleteRecordingComplete } = await import('@/repositories/deletionRepository');
+  const result = await deleteRecordingComplete(recordingId);
+  return { error: result.error };
 };
 
 // 特定の日付の録音データを取得（タイムゾーン対応）
@@ -541,25 +533,83 @@ export const updateGoal = async (goalId: string, updates: Partial<{
 
 // ====== 録音・動画ライブラリ関連 ======
 
-// 音声BlobをSupabase Storageにアップロード
+/**
+ * 録音 Blob を Storage へアップロード（副作用なし）
+ * - refreshSession / getUser は呼ばない（TOKEN_REFRESHED cascade 防止）
+ * - UI Alert は呼び出し側に任せる（二重表示防止）。ここではログのみ。
+ */
 export const uploadRecordingBlob = async (
   userId: string,
   blob: Blob,
-  fileExtension: string = 'wav'
+  _fileExtension?: string
 ) => {
   try {
-    const randomId = (typeof crypto !== 'undefined' && (crypto as any).randomUUID)
-      ? (crypto as any).randomUUID()
-      : `${Date.now()}_${Math.random().toString(36).slice(2,10)}`;
-    const fileName = `${userId}/${randomId}.${fileExtension}`;
+    if (!userId) {
+      const error = new Error('ユーザー情報がありません。再ログインしてから保存してください');
+      ErrorHandler.handle(error, '録音Blobアップロード', false);
+      return { path: null, error };
+    }
+    if (!blob || blob.size <= 0) {
+      const error = new Error('録音データが空のためアップロードできません');
+      ErrorHandler.handle(error, '録音Blobアップロード', false);
+      return { path: null, error };
+    }
+
+    const detected = mimeFromBlobType(blob.type);
+    const extension = detected.extension;
+    const contentType =
+      blob.type && blob.type.startsWith('audio/')
+        ? blob.type.split(';')[0] || detected.contentType
+        : detected.contentType;
+
+    const randomId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const fileName = `${userId}/${randomId}.${extension}`;
+
+    logger.debug('録音Blobアップロード開始', {
+      fileName,
+      contentType,
+      blobType: blob.type || '(empty)',
+      blobSize: blob.size,
+    });
+
     const { data, error } = await supabase.storage
       .from('recordings')
-      .upload(fileName, blob, { upsert: false, contentType: `audio/${fileExtension}` });
-    if (error) throw error;
+      .upload(fileName, blob, {
+        upsert: false,
+        contentType,
+        cacheControl: '3600',
+      });
+
+    if (error) {
+      const status = String((error as { statusCode?: string | number }).statusCode ?? '');
+      const isAuthError = /401|403|jwt|unauthorized|not.?authenticated/i.test(
+        `${error.message || ''} ${status}`
+      );
+      const detail = new Error(
+        isAuthError
+          ? 'ログインの有効期限が切れている可能性があります。再ログインしてから保存してください'
+          : `音声アップロードに失敗しました: ${error.message || '不明なエラー'}`
+      );
+      (detail as Error & { cause?: unknown }).cause = error;
+      ErrorHandler.handle(detail, '録音Blobアップロード', false);
+      return { path: null, error: detail };
+    }
+
     return { path: data.path, error: null };
   } catch (error) {
-    ErrorHandler.handle(error, '録音Blobアップロード', false);
-    return { path: null, error };
+    const message =
+      error instanceof Error
+        ? error.message
+        : typeof error === 'object' && error && 'message' in error
+          ? String((error as { message?: unknown }).message)
+          : String(error);
+    const wrapped = new Error(`音声アップロードに失敗しました: ${message}`);
+    (wrapped as Error & { cause?: unknown }).cause = error;
+    ErrorHandler.handle(wrapped, '録音Blobアップロード', false);
+    return { path: null, error: wrapped };
   }
 };
 

@@ -21,6 +21,8 @@ import { supabase } from '@/lib/supabase';
 import { useRouter } from 'expo-router';
 import { disableBackgroundFocus, enableBackgroundFocus, blurActiveElement } from '@/lib/modalFocusManager';
 import { formatLocalDate } from '@/lib/dateUtils';
+import { trackFeatureAction } from '@/lib/featureUsageService';
+import { FEATURE_IDS } from '@/lib/featureUsageEvents';
 
 export interface PracticeDetailModalProps {
   visible: boolean;
@@ -158,6 +160,13 @@ export function PracticeDetailModal({
           sessionId: updatedSession.id,
           content: updatedSession.content
         });
+        void trackFeatureAction(
+          authUser.id,
+          FEATURE_IDS.basicPractice,
+          'mark_done',
+          { platform: Platform.OS, mode: 'update', menuTitle },
+          instrumentId
+        );
       } else {
         // 新規記録を作成（基礎練は時間を追加しないため、duration_minutes: 0）
         const { data: createdSession, error: createError } = await createPracticeSession({
@@ -173,6 +182,13 @@ export function PracticeDetailModal({
           Alert.alert('エラー', '練習記録の作成に失敗しました');
           return;
         }
+        void trackFeatureAction(
+          authUser.id,
+          FEATURE_IDS.basicPractice,
+          'mark_done',
+          { platform: Platform.OS, mode: 'create', menuTitle: selectedMenu.title },
+          instrumentId
+        );
       }
 
       // 即時反映: カレンダー画面への通知イベントを発火（楽観的更新）

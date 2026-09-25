@@ -116,15 +116,24 @@ export default function LoginScreen() {
         }
       }
 
-      // 楽器未選択の場合は必ずチュートリアルから開始（新規登録後クラッシュした場合の再ログイン時も同様）
+      // 楽器未選択:
+      // - チュートリアル未完了 → チュートリアル
+      // - チュートリアル完了済み → 楽器選択（チラつき防止）
       const hasInstrument = hasInstrumentSelected();
       const canAccess = canAccessMainApp();
+      const tutorialDone = !!user?.tutorial_completed;
 
       const targetPath = hasInstrument || canAccess
         ? '/(tabs)/index'
-        : '/(tabs)/tutorial';
+        : tutorialDone
+          ? '/(tabs)/instrument-selection'
+          : '/(tabs)/tutorial';
 
-      logger.debug('[ログイン画面] 認証成功 → 画面遷移:', targetPath);
+      logger.debug('[ログイン画面] 認証成功 → 画面遷移:', {
+        targetPath,
+        hasInstrument,
+        tutorialDone,
+      });
       // ナビゲーションを次のフレームで実行して、Root Layoutが確実にマウントされるようにする
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {

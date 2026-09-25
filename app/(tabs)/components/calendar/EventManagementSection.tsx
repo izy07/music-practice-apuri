@@ -4,8 +4,8 @@ import { Calendar, Plus, Edit3, Trash2, Filter } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { logger } from '@/lib/logger';
 import { ErrorHandler } from '@/lib/errorHandler';
-import { supabase } from '@/lib/supabase';
 import { EVENT_COLORS, EventColor, getEventColorCode, getEventColorOption, DEFAULT_EVENT_COLOR } from '@/lib/eventColors';
+import { deleteEvent } from '@/repositories/eventRepository';
 
 // テーマの型定義
 interface InstrumentTheme {
@@ -124,10 +124,7 @@ const EventManagementSection = memo(function EventManagementSection({
     
     try {
       logger.debug('イベント管理一覧: イベント削除開始', event.id);
-      const { error } = await supabase
-        .from('events')
-        .delete()
-        .eq('id', event.id);
+      const { error } = await deleteEvent(event.id);
 
       if (error) {
         logger.error('イベント管理一覧: イベント削除エラー:', error);

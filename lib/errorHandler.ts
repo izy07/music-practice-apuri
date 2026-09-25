@@ -1,5 +1,4 @@
 import logger from './logger';
-import { Alert } from 'react-native';
 import { ErrorMessages, showUserFriendlyError } from './errorMessages';
 import { ERROR } from './constants';
 
@@ -22,7 +21,12 @@ export function getUserFriendlyMessage(error: AppError): string {
   if (message.includes('invalid refresh token') || message.includes('session expired')) {
     return 'セッションが期限切れです。再ログインしてください。';
   }
-  if (message.includes('network') || message.includes('fetch')) {
+  if (
+    message.includes('failed to fetch') ||
+    message.includes('network request failed') ||
+    message.includes('networkerror') ||
+    message.includes('err_internet_disconnected')
+  ) {
     return 'ネットワークに問題が発生しました。接続を確認してください。';
   }
   return ERROR.DEFAULT_MESSAGE;
@@ -42,8 +46,6 @@ export function handleError(error: AppError, context?: string): void {
 export class ErrorHandler {
   private static errorCount = 0;
   private static readonly MAX_ERRORS = ERROR.MAX_DISPLAY_COUNT;
-  private static networkErrorCount = 0;
-  private static readonly MAX_NETWORK_ERRORS = 3; // ネットワークエラーは3回まで表示
   private static lastNetworkErrorTime = 0;
   private static readonly NETWORK_ERROR_THROTTLE_MS = 5000; // 5秒間は同じネットワークエラーを表示しない
   
@@ -61,10 +63,9 @@ export class ErrorHandler {
     return (
       message.includes('failed to fetch') ||
       message.includes('networkerror') ||
-      message.includes('network error') ||
+      message.includes('network request failed') ||
       message.includes('err_internet_disconnected') ||
-      message.includes('internet disconnected') ||
-      message.includes('network request failed')
+      message.includes('internet disconnected')
     );
   }
   
@@ -78,35 +79,23 @@ export class ErrorHandler {
     const isNetwork = this.isNetworkError(error);
     const now = Date.now();
     
-    // ネットワークエラーの場合、スロットリング処理
+    // ネットワークエラーもログに残す（サイレント破棄しない）
     if (isNetwork) {
-      // 5秒以内に同じネットワークエラーが発生した場合はログのみ（表示しない）
+      logger.warn(`[ErrorHandler] ネットワークエラー: ${context || 'Unknown context'}`, error);
+
+      // 5秒以内の連発はユーザー表示のみ抑制（ログは出す）
       if (now - this.lastNetworkErrorTime < this.NETWORK_ERROR_THROTTLE_MS) {
-        // ログも抑制（開発環境でのみ表示）
         if (__DEV__) {
-          logger.debug(`[ErrorHandler] ネットワークエラー（スロットリング）: ${context}`);
+          logger.debug(`[ErrorHandler] ネットワークエラー（表示スロットリング）: ${context}`);
         }
         return;
       }
-      
-      this.networkErrorCount++;
+
       this.lastNetworkErrorTime = now;
-      
-      // ネットワークエラーは3回まで表示
-      if (this.networkErrorCount > this.MAX_NETWORK_ERRORS) {
-        // ログも抑制（開発環境でのみ表示）
-        if (__DEV__) {
-          logger.debug(`[ErrorHandler] ネットワークエラー（表示上限）: ${context}`);
-        }
-        return;
+
+      if (showToUser) {
+        showUserFriendlyError(error, context || 'network');
       }
-      
-      // ネットワークエラーはログのみ（開発環境でのみ）
-      if (__DEV__) {
-        logger.debug(`[ErrorHandler] ネットワークエラー: ${context}`, error);
-      }
-      
-      // ネットワークエラーはユーザーに表示しない（オフライン時は正常な動作）
       return;
     }
     
@@ -118,7 +107,6 @@ export class ErrorHandler {
     if (showToUser && this.errorCount <= this.MAX_ERRORS) {
       showUserFriendlyError(error, context);
     }
-    // エラーが多発している場合のポップアップは削除
   }
   
   /**
@@ -126,6 +114,7 @@ export class ErrorHandler {
    */
   static resetErrorCount(): void {
     this.errorCount = 0;
+    this.lastNetworkErrorTime = 0;
   }
   
   /**

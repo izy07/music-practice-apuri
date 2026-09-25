@@ -84,6 +84,9 @@ export default function PrivacyPolicyScreen() {
           <Text style={styles.text}>
             ログ情報: アクセスログ、エラーログ、使用統計
           </Text>
+          <Text style={styles.text}>
+            機能利用ログ: 画面表示・主要操作（機能名、操作種別、プラットフォーム、セッションID、記録日時）。録音内容や練習内容の詳細は含みません。
+          </Text>
         </View>
 
         <View style={styles.section}>
@@ -107,7 +110,7 @@ export default function PrivacyPolicyScreen() {
             お客様サポート・お問い合わせへの対応
           </Text>
           <Text style={styles.text}>
-            サービスの改善・新機能の開発
+            サービスの改善・新機能の開発（機能利用ログを用いた利用状況の把握・機能改善の検討）
           </Text>
           <Text style={styles.text}>
             広告配信の最適化

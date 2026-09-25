@@ -26,6 +26,33 @@ import { safeGoBack } from '@/lib/navigationUtils';
 import { createShadowStyle } from '@/lib/shadowStyles';
 import { getEffectiveInstrumentId } from '@/lib/instrumentUtils';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import {
+  prepareWebRecordingAudio,
+  alertRecordingPlaybackError,
+  createPlayableRecordingObjectUrl,
+} from '@/lib/recordingPlayback';
+import { trackFeatureAction } from '@/lib/featureUsageService';
+import { FEATURE_IDS } from '@/lib/featureUsageEvents';
+import { getInstrumentId } from '@/lib/instrumentUtils';
+
+// expo-audio（ネイティブ再生）
+let useAudioPlayer: (() => {
+  play: () => void;
+  pause: () => void;
+  seekTo: (seconds: number) => Promise<void>;
+  replace: (source: string) => void;
+  currentTime: number;
+  duration: number;
+  playing: boolean;
+}) | null = null;
+
+if (Platform.OS !== 'web') {
+  try {
+    useAudioPlayer = require('expo-audio').useAudioPlayer;
+  } catch (error) {
+    logger.warn('expo-audio を読み込めません', error);
+  }
+}
 
 const { width } = Dimensions.get('window');
 
@@ -62,6 +89,8 @@ export default function RecordingsLibraryScreen() {
   const [recordingTypeFilter, setRecordingTypeFilter] = useState<'all' | 'performance' | 'lesson'>('all'); // 録音種類フィルター
   const scrollViewRef = useRef<ScrollView>(null);
   const progressSliderRefs = useRef<{ [key: string]: HTMLInputElement | null }>({}); // プログレスバーのinput要素の参照
+  const mobileAudioPlayer = useAudioPlayer && Platform.OS !== 'web' ? useAudioPlayer() : null;
+  const mobileTimePollRef = useRef<NodeJS.Timeout | null>(null);
 
   // 録音種類フィルターはクライアント側でフィルタリングするため、再読み込み不要
   // 初回読み込みと楽器変更時のみデータを読み込む
@@ -75,12 +104,47 @@ export default function RecordingsLibraryScreen() {
         setAudioElement(null);
         logger.debug('Audioオブジェクトをクリーンアップ');
       }
+      if (mobileAudioPlayer) {
+        mobileAudioPlayer.pause();
+        void mobileAudioPlayer.seekTo(0);
+      }
       if (timeUpdateIntervalRef.current) {
         clearInterval(timeUpdateIntervalRef.current);
         timeUpdateIntervalRef.current = null;
       }
+      if (mobileTimePollRef.current) {
+        clearInterval(mobileTimePollRef.current);
+        mobileTimePollRef.current = null;
+      }
     };
-  }, [audioElement]);
+  }, [audioElement, mobileAudioPlayer]);
+
+  // ネイティブ再生位置のポーリング
+  useEffect(() => {
+    if (Platform.OS === 'web' || !mobileAudioPlayer || !playingRecording) {
+      if (mobileTimePollRef.current) {
+        clearInterval(mobileTimePollRef.current);
+        mobileTimePollRef.current = null;
+      }
+      return;
+    }
+
+    mobileTimePollRef.current = setInterval(() => {
+      if (!isSeeking && mobileAudioPlayer) {
+        const ct = mobileAudioPlayer.currentTime;
+        if (isFinite(ct) && ct >= 0) setCurrentTime(ct);
+        const dur = mobileAudioPlayer.duration;
+        if (isFinite(dur) && dur > 0) setDuration(dur);
+      }
+    }, 250);
+
+    return () => {
+      if (mobileTimePollRef.current) {
+        clearInterval(mobileTimePollRef.current);
+        mobileTimePollRef.current = null;
+      }
+    };
+  }, [mobileAudioPlayer, playingRecording, isSeeking]);
 
   // 再生位置の更新（timeupdateイベント）
   useEffect(() => {
@@ -146,159 +210,168 @@ export default function RecordingsLibraryScreen() {
     };
   }, [audioElement, playingRecording, isSeeking]);
 
-  // Web環境でのプログレスバーinput要素の作成と更新
+  // Web環境でのプログレスバー: 作成は再生開始時のみ（currentTimeごとに破棄しない＝点滅防止）
   useEffect(() => {
     if (Platform.OS !== 'web' || typeof window === 'undefined') {
       return;
     }
 
     if (!playingRecording) {
-      // 再生が停止したら、すべてのinput要素を削除
       Object.keys(progressSliderRefs.current).forEach((recordingId) => {
         const slider = progressSliderRefs.current[recordingId];
-        if (slider && slider.parentNode) {
-          slider.parentNode.removeChild(slider);
+        if (slider) {
+          const cleanup = (slider as any)._cleanup;
+          if (cleanup) cleanup();
+          if (slider.parentNode) {
+            slider.parentNode.removeChild(slider);
+          }
           progressSliderRefs.current[recordingId] = null;
         }
       });
       return;
     }
 
-    // 現在再生中の録音のプログレスバーを作成/更新
     const containerId = `progress-slider-container-${playingRecording}`;
-    
-    // まず、他の録音のスライダーをクリーンアップ（重複を防ぐ）
-    Object.keys(progressSliderRefs.current).forEach((recordingId) => {
-      if (recordingId !== playingRecording) {
-        const otherSlider = progressSliderRefs.current[recordingId];
-        if (otherSlider && otherSlider.parentNode) {
+    const recordingId = playingRecording;
+
+    Object.keys(progressSliderRefs.current).forEach((id) => {
+      if (id !== recordingId) {
+        const otherSlider = progressSliderRefs.current[id];
+        if (otherSlider) {
           const cleanup = (otherSlider as any)._cleanup;
-          if (cleanup) {
-            cleanup();
+          if (cleanup) cleanup();
+          if (otherSlider.parentNode) {
+            otherSlider.parentNode.removeChild(otherSlider);
           }
-          otherSlider.parentNode.removeChild(otherSlider);
-          progressSliderRefs.current[recordingId] = null;
+          progressSliderRefs.current[id] = null;
         }
       }
     });
-    
-    // 少し待ってからコンテナを取得（Reactのレンダリング完了を待つ）
-    const timeoutId = setTimeout(() => {
-    const container = document.getElementById(containerId);
-    if (!container) {
-          logger.debug('プログレスバーコンテナが見つかりません:', containerId);
-        return;
-    }
 
-      // 既存のスライダーが別のコンテナにある場合は削除
-    let slider = progressSliderRefs.current[playingRecording];
-      if (slider && slider.parentNode && slider.parentNode !== container) {
-        const cleanup = (slider as any)._cleanup;
-        if (cleanup) {
-          cleanup();
-        }
-        slider.parentNode.removeChild(slider);
-        slider = null;
-        progressSliderRefs.current[playingRecording] = null;
+    const timeoutId = setTimeout(() => {
+      const container = document.getElementById(containerId);
+      if (!container) {
+        logger.debug('プログレスバーコンテナが見つかりません:', containerId);
+        return;
       }
 
-    // durationが有効な値であることを確認（InfinityやNaNを除外）
-    const rawDuration = duration || recordings.find(r => r.id === playingRecording)?.duration_seconds || 0;
-    const totalDuration = isFinite(rawDuration) && !isNaN(rawDuration) && rawDuration > 0 ? rawDuration : 0;
+      let slider = progressSliderRefs.current[recordingId];
+      if (slider && slider.parentNode && slider.parentNode !== container) {
+        const cleanup = (slider as any)._cleanup;
+        if (cleanup) cleanup();
+        slider.parentNode.removeChild(slider);
+        slider = null;
+        progressSliderRefs.current[recordingId] = null;
+      }
 
-    if (!slider) {
-      // 新しいinput要素を作成
-      slider = document.createElement('input');
-      slider.type = 'range';
-      slider.min = '0';
-      slider.max = String(totalDuration);
-      slider.step = '0.1';
-      slider.style.width = '100%';
-      slider.style.height = '6px';
-      slider.style.borderRadius = '3px';
-      slider.style.outline = 'none';
-      slider.style.cursor = 'pointer';
-      slider.style.webkitAppearance = 'none';
-      slider.style.appearance = 'none';
+      const rawDuration =
+        duration ||
+        recordings.find((r) => r.id === recordingId)?.duration_seconds ||
+        0;
+      const totalDuration =
+        isFinite(rawDuration) && !isNaN(rawDuration) && rawDuration > 0 ? rawDuration : 1;
+
+      if (!slider) {
+        slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = '0';
+        slider.max = String(totalDuration);
+        slider.step = '0.1';
+        slider.value = '0';
+        slider.style.width = '100%';
+        slider.style.height = '6px';
+        slider.style.borderRadius = '3px';
+        slider.style.outline = 'none';
+        slider.style.cursor = 'pointer';
+        slider.style.webkitAppearance = 'none';
+        slider.style.appearance = 'none';
         slider.style.position = 'relative';
         slider.style.zIndex = '1';
-      container.appendChild(slider);
-      progressSliderRefs.current[playingRecording] = slider;
+        container.appendChild(slider);
+        progressSliderRefs.current[recordingId] = slider;
 
-      // イベントハンドラーを設定
-      const handleInput = (e: Event) => {
-        const target = e.target as HTMLInputElement;
-        const newTime = parseFloat(target.value);
+        const handleInput = (e: Event) => {
+          const target = e.target as HTMLInputElement;
+          const newTime = parseFloat(target.value);
           if (isFinite(newTime) && !isNaN(newTime) && newTime >= 0) {
-        setCurrentTime(newTime);
-        if (audioElement) {
-          audioElement.currentTime = newTime;
+            setCurrentTime(newTime);
+            if (audioElement) {
+              audioElement.currentTime = newTime;
             }
-        }
-      };
+          }
+        };
+        const handleMouseDown = () => setIsSeeking(true);
+        const handleMouseUp = () => setIsSeeking(false);
+        const handleTouchStart = () => setIsSeeking(true);
+        const handleTouchEnd = () => setIsSeeking(false);
 
-      const handleMouseDown = () => {
-        setIsSeeking(true);
-      };
-
-      const handleMouseUp = () => {
-        setIsSeeking(false);
-      };
-
-      const handleTouchStart = () => {
-        setIsSeeking(true);
-      };
-
-      const handleTouchEnd = () => {
-        setIsSeeking(false);
-      };
-
-      slider.addEventListener('input', handleInput);
-      slider.addEventListener('mousedown', handleMouseDown);
-      slider.addEventListener('mouseup', handleMouseUp);
+        slider.addEventListener('input', handleInput);
+        slider.addEventListener('mousedown', handleMouseDown);
+        slider.addEventListener('mouseup', handleMouseUp);
         slider.addEventListener('touchstart', handleTouchStart);
         slider.addEventListener('touchend', handleTouchEnd);
 
-      // クリーンアップ関数を保存
-      (slider as any)._cleanup = () => {
-        slider.removeEventListener('input', handleInput);
-        slider.removeEventListener('mousedown', handleMouseDown);
-        slider.removeEventListener('mouseup', handleMouseUp);
-        slider.removeEventListener('touchstart', handleTouchStart);
-        slider.removeEventListener('touchend', handleTouchEnd);
-      };
-    }
-
-    // 値とスタイルを更新（シーク中でない場合のみ）
-      if (!isSeeking && slider) {
-      // totalDurationが有効な値であることを確認
-      const validDuration = isFinite(totalDuration) && !isNaN(totalDuration) && totalDuration > 0 ? totalDuration : 0;
-      slider.max = String(validDuration);
-      const validCurrentTime = isFinite(currentTime) && !isNaN(currentTime) && currentTime >= 0 ? currentTime : 0;
-      slider.value = String(validCurrentTime);
-        
-    // 進捗率の計算（有効な値であることを確認）
-    const progressPercent = validDuration > 0 ? Math.min(100, Math.max(0, (validCurrentTime / validDuration) * 100)) : 0;
-    slider.style.background = `linear-gradient(to right, ${currentTheme.primary} 0%, ${currentTheme.primary} ${progressPercent}%, rgba(0, 0, 0, 0.1) ${progressPercent}%, rgba(0, 0, 0, 0.1) 100%)`;
+        (slider as any)._cleanup = () => {
+          slider?.removeEventListener('input', handleInput);
+          slider?.removeEventListener('mousedown', handleMouseDown);
+          slider?.removeEventListener('mouseup', handleMouseUp);
+          slider?.removeEventListener('touchstart', handleTouchStart);
+          slider?.removeEventListener('touchend', handleTouchEnd);
+        };
       }
-    }, 50); // レンダリング完了を待つ時間を短縮
+    }, 50);
 
-    // クリーンアップ
     return () => {
       clearTimeout(timeoutId);
-      const slider = progressSliderRefs.current[playingRecording];
-      if (slider) {
-        const cleanup = (slider as any)._cleanup;
-        if (cleanup) {
-          cleanup();
-        }
-        if (slider.parentNode) {
-          slider.parentNode.removeChild(slider);
-          progressSliderRefs.current[playingRecording] = null;
-        }
-      }
+      const slider = progressSliderRefs.current[recordingId];
+      if (!slider) return;
+      // 同じ録音のまま audioElement だけ変わった場合は破棄しない（点滅防止）
+      // playingRecording が変わった／停止したときは次の effect か停止分岐で片付ける
     };
-  }, [playingRecording, currentTime, duration, audioElement, recordings, currentTheme.primary, isSeeking]);
+  }, [playingRecording, audioElement]);
+
+  // 再生停止時にスライダーを全削除
+  useEffect(() => {
+    if (playingRecording) return;
+    Object.keys(progressSliderRefs.current).forEach((id) => {
+      const slider = progressSliderRefs.current[id];
+      if (!slider) return;
+      const cleanup = (slider as any)._cleanup;
+      if (cleanup) cleanup();
+      if (slider.parentNode) {
+        slider.parentNode.removeChild(slider);
+      }
+      progressSliderRefs.current[id] = null;
+    });
+  }, [playingRecording]);
+
+  // プログレスバーの値・見た目だけ更新（要素は破棄しない）
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !playingRecording || isSeeking) {
+      return;
+    }
+    const slider = progressSliderRefs.current[playingRecording];
+    if (!slider) return;
+
+    const rawDuration =
+      duration ||
+      recordings.find((r) => r.id === playingRecording)?.duration_seconds ||
+      0;
+    const validDuration =
+      isFinite(rawDuration) && !isNaN(rawDuration) && rawDuration > 0 ? rawDuration : 0;
+    const validCurrentTime =
+      isFinite(currentTime) && !isNaN(currentTime) && currentTime >= 0 ? currentTime : 0;
+
+    if (validDuration > 0) {
+      slider.max = String(validDuration);
+    }
+    slider.value = String(validCurrentTime);
+    const progressPercent =
+      validDuration > 0
+        ? Math.min(100, Math.max(0, (validCurrentTime / validDuration) * 100))
+        : 0;
+    slider.style.background = `linear-gradient(to right, ${currentTheme.primary} 0%, ${currentTheme.primary} ${progressPercent}%, rgba(0, 0, 0, 0.1) ${progressPercent}%, rgba(0, 0, 0, 0.1) 100%)`;
+  }, [playingRecording, currentTime, duration, recordings, currentTheme.primary, isSeeking]);
 
   // 画面がフォーカスされた時にデータを再読み込み（楽器変更時のみ）
   useFocusEffect(
@@ -402,7 +475,55 @@ export default function RecordingsLibraryScreen() {
 
   const deleteRecordingItem = async (recordingId: string) => {
     logger.debug('削除ボタンがタップされました:', recordingId);
-    
+
+    const runDelete = async () => {
+      try {
+        logger.debug('削除処理開始:', recordingId);
+
+        // 再生中なら停止（iOS/Android/Web 共通）
+        if (playingRecording === recordingId) {
+          try {
+            if (Platform.OS === 'web' && audioElement) {
+              audioElement.pause();
+              audioElement.src = '';
+            } else if (mobileAudioPlayer) {
+              mobileAudioPlayer.pause();
+              void mobileAudioPlayer.seekTo(0);
+            }
+          } catch (stopError) {
+            logger.warn('削除前の再生停止に失敗（続行）:', stopError);
+          }
+          setPlayingRecording(null);
+          setCurrentTime(0);
+        }
+
+        const { error } = await deleteRecording(recordingId);
+        if (error) {
+          ErrorHandler.handle(error, '録音削除', true);
+          Alert.alert('エラー', error instanceof Error ? error.message : '録音の削除に失敗しました');
+          return;
+        }
+
+        setRecordings((prev) => prev.filter((rec) => rec.id !== recordingId));
+        logger.debug('削除完了');
+      } catch (error) {
+        ErrorHandler.handle(error, '録音削除', true);
+        Alert.alert(
+          'エラー',
+          error instanceof Error ? error.message : '録音の削除に失敗しました'
+        );
+      }
+    };
+
+    // Web は confirm、iOS/Android は Alert（Expo では window があっても confirm 不可）
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && window.confirm) {
+      const confirmed = window.confirm('この録音を削除しますか？この操作は取り消せません。');
+      if (confirmed) {
+        await runDelete();
+      }
+      return;
+    }
+
     Alert.alert(
       '録音削除',
       'この録音を削除しますか？この操作は取り消せません。',
@@ -411,24 +532,10 @@ export default function RecordingsLibraryScreen() {
         {
           text: '削除',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              logger.debug('削除処理開始:', recordingId);
-              const { error } = await deleteRecording(recordingId);
-              if (error) {
-                ErrorHandler.handle(error, '録音削除', true);
-                throw error;
-              }
-
-              // ローカル状態から削除
-              setRecordings(prev => prev.filter(rec => rec.id !== recordingId));
-              logger.debug('削除完了');
-            } catch (error) {
-              ErrorHandler.handle(error, '録音削除', true);
-              Alert.alert('エラー', '録音の削除に失敗しました');
-            }
-          }
-        }
+          onPress: () => {
+            void runDelete();
+          },
+        },
       ]
     );
   };
@@ -447,10 +554,12 @@ export default function RecordingsLibraryScreen() {
     }
 
     if (playingRecording === recording.id) {
-      // 現在再生中の録音を停止
-      if (audioElement) {
+      if (Platform.OS === 'web' && audioElement) {
         audioElement.pause();
         audioElement.currentTime = 0;
+      } else if (Platform.OS !== 'web' && mobileAudioPlayer) {
+        mobileAudioPlayer.pause();
+        await mobileAudioPlayer.seekTo(0);
       }
       setPlayingRecording(null);
       setAudioElement(null);
@@ -460,280 +569,87 @@ export default function RecordingsLibraryScreen() {
     }
 
     try {
-      // 他の録音を停止
-      if (audioElement) {
+      if (Platform.OS === 'web' && audioElement) {
         audioElement.pause();
         audioElement.currentTime = 0;
+      } else if (Platform.OS !== 'web' && mobileAudioPlayer) {
+        mobileAudioPlayer.pause();
+        await mobileAudioPlayer.seekTo(0);
       }
 
       logger.debug('録音再生開始:', recording.file_path);
 
-      // ファイルパスの検証
       if (!recording.file_path || recording.file_path.trim() === '') {
         logger.error('録音再生エラー: ファイルパスが空です');
         Alert.alert('エラー', '録音ファイルのパスが無効です');
         return;
       }
 
-      // 新しい録音を再生
-      let publicUrl: string;
-      
-      try {
-        const urlResult = supabase.storage
-          .from('recordings')
-          .getPublicUrl(recording.file_path);
-        
-        publicUrl = urlResult.data.publicUrl;
-        logger.debug('録音URL取得成功:', { 
-          filePath: recording.file_path, 
-          publicUrl,
-          supabaseUrl: (supabase as any).supabaseUrl || 'unknown',
-          isGitHubPages: typeof window !== 'undefined' && window.location.hostname.includes('github.io')
-        });
-      } catch (urlError) {
-        logger.error('録音URL取得エラー:', {
-          error: urlError,
-          filePath: recording.file_path,
-          supabaseUrl: (supabase as any).supabaseUrl || 'unknown'
-        });
-        Alert.alert('エラー', '録音ファイルのURLを取得できませんでした');
-        return;
+      if (recording.duration_seconds && isFinite(recording.duration_seconds)) {
+        setDuration(recording.duration_seconds);
       }
 
-      // publicUrlの検証
-      if (!publicUrl || publicUrl.trim() === '') {
-        logger.error('録音再生エラー: publicUrlが空です', { filePath: recording.file_path, publicUrl });
-        Alert.alert('エラー', '録音ファイルのURLを取得できませんでした');
-        return;
-      }
-
-      // Web環境（特にGitHub Pages）では、常にfetch + Blob URL方式を使用（CORS問題を根本的に回避）
-      const isWeb = typeof window !== 'undefined' && typeof document !== 'undefined';
-      const isGitHubPages = isWeb && window.location.hostname.includes('github.io');
-      
-      if (isWeb) {
-        // Web環境では常にfetch + Blob URL方式を使用（フォールバックなし）
-        let blobUrl: string | null = null;
-        let retryCount = 0;
-        const maxRetries = 3;
-        
-        while (retryCount < maxRetries) {
-          try {
-            logger.debug(`録音データをfetchで取得します (試行 ${retryCount + 1}/${maxRetries}):`, {
-              publicUrl,
-              isGitHubPages,
-              hostname: window.location.hostname,
-              retryCount
-            });
-            
-            // fetchリクエスト（リトライ時は少し待機）
-            if (retryCount > 0) {
-              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-            }
-            
-            const response = await fetch(publicUrl, {
-              method: 'GET',
-              headers: {
-                'Accept': 'audio/*',
-                'Cache-Control': 'no-cache', // キャッシュを無効化
-              },
-              mode: 'cors', // CORSモードを明示的に指定
-              credentials: 'omit', // 認証情報を送信しない
-              cache: 'no-store', // キャッシュを無効化
-            });
-            
-            logger.debug('fetchレスポンス:', {
-              status: response.status,
-              statusText: response.statusText,
-              ok: response.ok,
-              contentType: response.headers.get('content-type'),
-              contentLength: response.headers.get('content-length'),
-              cors: response.headers.get('access-control-allow-origin'),
-            });
-            
-            if (!response.ok) {
-              const errorText = await response.text().catch(() => 'レスポンス本文を取得できませんでした');
-              throw new Error(`HTTP error! status: ${response.status}, statusText: ${response.statusText}, body: ${errorText.substring(0, 200)}`);
-            }
-            
-            // レスポンスが空でないことを確認
-            const contentLength = response.headers.get('content-length');
-            if (contentLength && parseInt(contentLength) === 0) {
-              throw new Error('レスポンスが空です');
-            }
-            
-            const blob = await response.blob();
-            
-            // Blobが空でないことを確認
-            if (blob.size === 0) {
-              throw new Error('Blobが空です');
-            }
-            
-            logger.debug('Blob作成成功:', {
-              blobSize: blob.size,
-              blobType: blob.type || 'application/octet-stream',
-              isGitHubPages
-            });
-            
-            blobUrl = URL.createObjectURL(blob);
-            logger.debug('Blob URLを作成しました:', blobUrl);
-            
-            // Blob URLが確実に作成されていることを確認
-            if (!blobUrl || typeof blobUrl !== 'string' || blobUrl.trim() === '') {
-              throw new Error('Blob URLの作成に失敗しました');
-            }
-            
-            // Audio要素を作成（Blob URLを使用してCSPエラーを回避）
-            const audio = new Audio();
-            // Blob URLを設定（CSPエラーを回避するため、src属性を直接設定）
-            // blobUrlが有効であることを確認してから設定
-            if (blobUrl && typeof blobUrl === 'string' && blobUrl.trim() !== '') {
-            audio.src = blobUrl;
-            audio.preload = 'auto';
-            // crossOriginを設定（念のため）
-            audio.crossOrigin = 'anonymous';
-            
-              // src属性が正しく設定されたことを確認
-              if (!audio.src || audio.src === '' || audio.src === 'null' || audio.src === 'undefined') {
-                throw new Error(`Audio要素のsrc属性の設定に失敗しました: ${audio.src}`);
-              }
-            } else {
-              throw new Error('Blob URLが無効です');
-            }
-            
-            // エラーハンドリングを設定（Blob URL解放を含む）
-            const cleanup = () => {
-              if (blobUrl) {
-                URL.revokeObjectURL(blobUrl);
-                blobUrl = null;
-              }
-            };
-            
-            audio.onended = () => {
-              logger.debug('録音再生終了');
-              cleanup();
-              setPlayingRecording(null);
-              setAudioElement(null);
-              setCurrentTime(0);
-              setDuration(0);
-            };
-            
-            audio.onerror = (e) => {
-              const currentSrc = audio.src;
-              const errorMessage = audio.error 
-                ? `エラーコード: ${audio.error.code}, メッセージ: ${audio.error.message || '不明なエラー'}`
-                : '不明なエラー';
-              
-              // srcが空の場合、再設定を試みる
-              if ((!currentSrc || currentSrc === '' || currentSrc === 'null' || currentSrc === 'undefined') && blobUrl) {
-                logger.warn('audio.srcが空のため、再設定を試みます', { blobUrl, currentSrc });
-                try {
-                  audio.src = blobUrl;
-                  audio.load();
-                  return; // 再設定後はエラーハンドリングをスキップ
-                } catch (retryError) {
-                  logger.error('audio.srcの再設定に失敗しました', { retryError, blobUrl });
-                }
-              }
-              
-              logger.error('録音再生エラー:', {
-                error: errorMessage,
-                filePath: recording.file_path,
-                publicUrl,
-                blobUrl,
-                currentSrc,
-                errorCode: audio.error?.code,
-                errorMessage: audio.error?.message,
-                networkState: audio.networkState,
-                readyState: audio.readyState,
-                isGitHubPages,
-                srcIsEmpty: !currentSrc || currentSrc === '' || currentSrc === 'null' || currentSrc === 'undefined'
-              });
-              
-              cleanup();
-              
-              // エラーメッセージを改善
-              let alertMessage = '録音の再生に失敗しました。';
-              if (audio.error?.code === 4) {
-                alertMessage += '\n\nCORSエラーが発生しました。Supabase StorageのCORS設定を確認してください。';
-              } else if (audio.networkState === 3) {
-                alertMessage += '\n\nネットワークエラーが発生しました。インターネット接続を確認してください。';
-              } else {
-                alertMessage += '\n\nファイルが見つからない可能性があります。';
-              }
-              
-              Alert.alert('再生エラー', alertMessage);
-              setPlayingRecording(null);
-              setAudioElement(null);
-            };
-            
-            // ロードイベントを追加
-            audio.onloadeddata = () => {
-              logger.debug('録音データのロード完了');
-            };
-            
-            audio.onloadstart = () => {
-              logger.debug('録音データのロード開始', {
-                src: audio.src,
-                blobUrl,
-                srcIsEmpty: !audio.src || audio.src === '' || audio.src === 'null' || audio.src === 'undefined'
-              });
-              // srcが空の場合は再設定を試みる
-              if ((!audio.src || audio.src === '' || audio.src === 'null' || audio.src === 'undefined') && blobUrl) {
-                logger.warn('audio.srcが空のため、再設定を試みます', { blobUrl });
-                audio.src = blobUrl;
-              }
-            };
-            
-            audio.oncanplay = () => {
-              logger.debug('録音データの再生準備完了');
-            };
-            
-            // 再生を開始
-            await audio.play();
-            logger.debug('録音再生中（Blob URL使用）', { isGitHubPages });
-            setPlayingRecording(recording.id);
-            setAudioElement(audio);
-            
-            // 成功したらループを抜ける
-            break;
-          } catch (fetchError) {
-            retryCount++;
-            logger.error(`fetchで録音データを取得できませんでした (試行 ${retryCount}/${maxRetries}):`, {
-              error: fetchError,
-              errorMessage: fetchError instanceof Error ? fetchError.message : String(fetchError),
-              errorStack: fetchError instanceof Error ? fetchError.stack : undefined,
-              publicUrl,
-              isGitHubPages,
-              hostname: window.location.hostname,
-              retryCount
-            });
-            
-            // 最後の試行でも失敗した場合
-            if (retryCount >= maxRetries) {
-              logger.error('すべてのリトライが失敗しました', {
-                error: fetchError,
-                blobUrl: null, // エラー時はblobUrlがnullのまま
-                publicUrl,
-                isGitHubPages
-              });
-              Alert.alert(
-                '再生エラー',
-                '録音の再生に失敗しました。\n\n考えられる原因:\n- ネットワーク接続の問題\n- Supabase StorageのCORS設定の問題\n- ファイルが存在しない\n\nインターネット接続とSupabase Storageの設定を確認してください。'
-              );
-              return;
-            }
-          }
+      if (Platform.OS === 'web') {
+        if (typeof window === 'undefined' || typeof document === 'undefined') {
+          Alert.alert('エラー', '録音再生はWeb環境でのみ利用できます');
+          return;
         }
+
+        const { audio, cleanup } = await prepareWebRecordingAudio(recording.file_path, {
+          onEnded: () => {
+            setPlayingRecording(null);
+            setAudioElement(null);
+            setCurrentTime(0);
+            setDuration(0);
+          },
+          onError: (detail) => {
+            Alert.alert('再生エラー', `録音の再生に失敗しました。\n${detail}`);
+            setPlayingRecording(null);
+            setAudioElement(null);
+          },
+        });
+
+        try {
+          await audio.play();
+        } catch (playError) {
+          cleanup();
+          throw playError;
+        }
+        setPlayingRecording(recording.id);
+        setAudioElement(audio);
       } else {
-        // モバイル環境（通常は使用されないが、念のため）
-        logger.warn('モバイル環境での録音再生はサポートされていません');
-        Alert.alert('エラー', '録音再生はWeb環境でのみ利用できます');
+        if (!mobileAudioPlayer) {
+          Alert.alert('エラー', 'この端末では録音再生を利用できません');
+          return;
+        }
+
+        let playUrl: string;
+        try {
+          const prepared = await createPlayableRecordingObjectUrl(recording.file_path);
+          playUrl = prepared.objectUrl;
+        } catch (prepError) {
+          alertRecordingPlaybackError(prepError);
+          return;
+        }
+
+        mobileAudioPlayer.replace(playUrl);
+        mobileAudioPlayer.play();
+        setPlayingRecording(recording.id);
+        setCurrentTime(0);
       }
+
+      void trackFeatureAction(
+        user?.id,
+        FEATURE_IDS.recordingsLibrary,
+        'play',
+        { platform: Platform.OS, recordingId: recording.id },
+        getInstrumentId(selectedInstrument)
+      );
     } catch (error) {
       logger.error('録音再生エラー:', error);
-      ErrorHandler.handle(error, '録音再生', false);
-      Alert.alert('エラー', '録音の再生に失敗しました');
+      alertRecordingPlaybackError(error);
+      setPlayingRecording(null);
+      setAudioElement(null);
     }
   };
 
@@ -951,7 +867,7 @@ export default function RecordingsLibraryScreen() {
             nativeID="recordings-search-input"
             accessibilityLabel="録音検索"
           />
-          {searchQuery.trim() && (
+          {searchQuery.trim() ? (
             <TouchableOpacity
               onPress={() => setSearchQuery('')}
               style={styles.clearButton}
@@ -962,7 +878,7 @@ export default function RecordingsLibraryScreen() {
                 <X size={18} color={currentTheme.textSecondary} />
               )}
             </TouchableOpacity>
-          )}
+          ) : null}
         </View>
 
         {/* 録音種類フィルター */}
@@ -1218,6 +1134,7 @@ export default function RecordingsLibraryScreen() {
                       <TouchableOpacity
                         style={styles.actionButton}
                         onPress={() => toggleFavorite(recording.id, recording.is_favorite)}
+                        accessibilityLabel="お気に入り"
                       >
                         {recording.is_favorite ? (
                           <Star size={20} color="#FFD700" fill="#FFD700" />
@@ -1225,16 +1142,26 @@ export default function RecordingsLibraryScreen() {
                           <StarOff size={20} color={currentTheme.textSecondary} />
                         )}
                       </TouchableOpacity>
-                      
+
                       <TouchableOpacity
                         style={styles.actionButton}
                         onPress={() => playRecording(recording)}
+                        accessibilityLabel="再生"
                       >
                         {playingRecording === recording.id ? (
                           <Pause size={20} color={currentTheme.primary} />
                         ) : (
                           <Play size={20} color={currentTheme.primary} />
                         )}
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={styles.actionButton}
+                        onPress={() => deleteRecordingItem(recording.id)}
+                        accessibilityLabel="削除"
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Trash2 size={20} color="#DC2626" />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1270,17 +1197,18 @@ export default function RecordingsLibraryScreen() {
                           <TouchableOpacity
                             style={[styles.progressBarWrapper, { backgroundColor: currentTheme.secondary }]}
                             onPress={(e) => {
-                              if (audioElement && playingRecording === recording.id) {
-                                const totalDuration = duration || recording.duration_seconds || 0;
-                                if (totalDuration > 0 && e.nativeEvent) {
-                                  const { locationX } = e.nativeEvent;
-                                  const containerWidth = (e.target as any)?.offsetWidth || (e.currentTarget as any)?.offsetWidth || width - 32;
-                                  const newTime = (locationX / containerWidth) * totalDuration;
-                                  const clampedTime = Math.max(0, Math.min(totalDuration, newTime));
-                                  audioElement.currentTime = clampedTime;
-                                  setCurrentTime(clampedTime);
-                                }
+                              const totalDuration = duration || recording.duration_seconds || 0;
+                              if (totalDuration <= 0 || playingRecording !== recording.id || !e.nativeEvent) return;
+                              const { locationX } = e.nativeEvent;
+                              const containerWidth = (e.target as any)?.offsetWidth || (e.currentTarget as any)?.offsetWidth || width - 32;
+                              const newTime = (locationX / containerWidth) * totalDuration;
+                              const clampedTime = Math.max(0, Math.min(totalDuration, newTime));
+                              if (Platform.OS === 'web' && audioElement) {
+                                audioElement.currentTime = clampedTime;
+                              } else if (Platform.OS !== 'web' && mobileAudioPlayer) {
+                                void mobileAudioPlayer.seekTo(clampedTime);
                               }
+                              setCurrentTime(clampedTime);
                             }}
                             activeOpacity={0.8}
                           >

@@ -170,15 +170,15 @@ export async function signUpNew(
       }
       
       // 直接fetchでSupabaseのsignupエンドポイントを呼び出す
+      // GoTrue REST は top-level の `data`（user_metadata）。supabase-js の options.data ではない。
+      const nickname = (displayName?.trim() || normalizedEmail.split('@')[0]).trim();
       const signupUrl = `${supabaseUrl}/auth/v1/signup`;
       const requestBody = {
         email: normalizedEmail,
         password: password,
-        options: {
-          data: {
-            name: displayName?.trim() || normalizedEmail.split('@')[0],
-            display_name: displayName?.trim() || normalizedEmail.split('@')[0],
-          },
+        data: {
+          name: nickname,
+          display_name: nickname,
         },
       };
       
@@ -216,6 +216,8 @@ export async function signUpNew(
         hasAccessToken: !!responseData.access_token,
         hasRefreshToken: !!responseData.refresh_token,
         responseKeys: Object.keys(responseData),
+        metaDisplayName: responseData.user?.user_metadata?.display_name,
+        metaName: responseData.user?.user_metadata?.name,
         elapsed: `${elapsed}ms`
       });
       
@@ -255,6 +257,42 @@ export async function signUpNew(
           hasSessionUser: !!sessionUser,
           accessTokenSource: responseData.access_token ? 'responseData' : (responseData.session?.access_token ? 'session' : 'none'),
         });
+
+        // ニックネームを user_profiles へ即時反映（Bearer 直書き・認証 cascade なし）
+        if (accessToken && sessionUser?.id) {
+          try {
+            const profileRes = await fetch(
+              `${supabaseUrl}/rest/v1/user_profiles?on_conflict=user_id`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  apikey: supabaseKey,
+                  Authorization: `Bearer ${accessToken}`,
+                  Prefer: 'resolution=merge-duplicates,return=minimal',
+                },
+                body: JSON.stringify({
+                  user_id: sessionUser.id,
+                  display_name: nickname,
+                }),
+              }
+            );
+            if (!profileRes.ok) {
+              const profileErrText = await profileRes.text();
+              logger.warn('[signUpNew] プロフィール display_name 保存失敗:', {
+                status: profileRes.status,
+                body: profileErrText,
+              });
+            } else {
+              logger.info('[signUpNew] プロフィール display_name を保存しました', {
+                userId: sessionUser.id,
+                nickname,
+              });
+            }
+          } catch (profileWriteError) {
+            logger.warn('[signUpNew] プロフィール display_name 保存例外:', profileWriteError);
+          }
+        }
         
         // セッション情報が含まれている場合は、localStorageに直接保存（setSessionがタイムアウトする問題を回避）
         if (accessToken && refreshToken && sessionUser) {
@@ -266,13 +304,22 @@ export async function signUpNew(
             const expiresAt = responseData.expires_at || responseData.session?.expires_at || Math.floor(Date.now() / 1000) + 3600;
             
             // Supabaseが期待する形式でセッションデータを構築
+            // user_metadata にニックネームを明示（後続の表示フォールバック用）
+            const userWithMeta = {
+              ...sessionUser,
+              user_metadata: {
+                ...(sessionUser.user_metadata || {}),
+                name: nickname,
+                display_name: nickname,
+              },
+            };
             const sessionData = {
               access_token: accessToken,
               refresh_token: refreshToken,
               expires_at: expiresAt,
               expires_in: responseData.expires_in || responseData.session?.expires_in || 3600,
               token_type: responseData.token_type || responseData.session?.token_type || 'bearer',
-              user: sessionUser,
+              user: userWithMeta,
             };
             
             // Supabaseが期待する形式で保存（currentSessionを含む）
@@ -384,35 +431,14 @@ export async function signUpNew(
     }
 
     const userId = data.user.id;
+    const resolvedNickname = (displayName?.trim() || normalizedEmail.split('@')[0]).trim();
     
     logger.info('[signUpNew] 新規登録成功:', { 
       userId, 
       email: normalizedEmail,
       hasSession: !!data.session,
-      displayName: displayName?.trim() || normalizedEmail.split('@')[0],
+      displayName: resolvedNickname,
     });
-
-    // プロフィールはデータベーストリガーで自動作成されることを前提とする
-    // ただし、トリガーが動作しない場合に備えて、明示的にプロフィール作成を試みる（非同期、エラーは無視）
-    if (displayName) {
-      (async () => {
-        try {
-          const { createUserProfile } = await import('./authHelpers');
-          const profileResult = await createUserProfile(userId, displayName.trim());
-          if (profileResult.success) {
-            logger.debug('[signUpNew] プロフィール作成成功（明示的）');
-          } else {
-            logger.debug('[signUpNew] プロフィール作成結果:', profileResult.error || '不明');
-          }
-        } catch (profileError) {
-          logger.warn('[signUpNew] プロフィール作成エラー（トリガーに任せる）:', profileError);
-          // エラーは無視（トリガーで作成される可能性があるため）
-        }
-      })();
-    }
-    
-    // セッション管理はSupabaseクライアントに完全に任せる
-    // セッションが返されない場合でも、Supabaseクライアントが自動的に処理する
 
     return {
       success: true,

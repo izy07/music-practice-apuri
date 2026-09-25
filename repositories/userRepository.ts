@@ -17,9 +17,9 @@ import { ensureInstrumentExists as staticEnsureInstrumentExists } from '@/lib/in
 const REPOSITORY_CONTEXT = 'userRepository';
 
 /**
- * user_profiles テーブルに実際に存在する書き込み可能カラム（スキーマと一致させる）。
- * avatar_url, nickname, birthday, music_start_age, music_experience_years 等は
- * スキーマにないため含めない（ニックネーム・生年月日等は instrument_specific_data に格納）。
+ * user_profiles に書き込み可能なカラム。
+ * 本番DBに存在する基本情報カラム（organization / music_start_age 等）を含める。
+ * 存在しないカラムを送ると PostgREST が 400 になるため、環境差分がある場合は呼び出し側で省略する。
  */
 const USER_PROFILES_WRITABLE_COLUMNS = [
   'display_name',
@@ -32,6 +32,15 @@ const USER_PROFILES_WRITABLE_COLUMNS = [
   'onboarding_completed',
   'onboarding_completed_at',
   'instrument_specific_data',
+  'organization',
+  'current_organization',
+  'birthday',
+  'current_age',
+  'music_start_age',
+  'music_experience_years',
+  'custom_instrument_name',
+  'profile_image_url',
+  'monthly_rewarded_ad_recordings',
   'updated_at',
 ] as const;
 
@@ -694,102 +703,63 @@ export const getCurrentUser = async () => {
 };
 
 /**
- * ユーザーの休止期間を削除
+ * @deprecated 経歴は user_profiles.instrument_specific_data に保存する。
+ * 削除は deletionRepository.persistInstrumentCareerData を使うこと。
+ * 存在しないテーブルへの直接削除は禁止。
  */
 export const deleteBreakPeriod = async (
-  breakPeriodId: string
+  _breakPeriodId: string
 ): Promise<RepositoryResult<void>> => {
-  return safeExecute(
-    async () => {
-      logger.debug(`[${REPOSITORY_CONTEXT}] deleteBreakPeriod:start`, { breakPeriodId });
-      
-      const { error } = await supabase
-        .from('user_break_periods')
-        .delete()
-        .eq('id', breakPeriodId);
-
-      if (error) {
-        throw error;
-      }
-
-      logger.debug(`[${REPOSITORY_CONTEXT}] deleteBreakPeriod:success`);
-    },
-    `${REPOSITORY_CONTEXT}.deleteBreakPeriod`
+  return createResult(
+    null,
+    new Error(
+      'deleteBreakPeriod は廃止されました。経歴削除は persistInstrumentCareerData を使用してください。'
+    )
   );
 };
 
 /**
- * ユーザーの過去の所属団体を削除
+ * @deprecated 経歴は user_profiles.instrument_specific_data に保存する。
+ * 削除は deletionRepository.persistInstrumentCareerData を使うこと。
  */
 export const deletePastOrganization = async (
-  organizationId: string
+  _organizationId: string
 ): Promise<RepositoryResult<void>> => {
-  return safeExecute(
-    async () => {
-      logger.debug(`[${REPOSITORY_CONTEXT}] deletePastOrganization:start`, { organizationId });
-      
-      const { error } = await supabase
-        .from('user_past_organizations')
-        .delete()
-        .eq('id', organizationId);
-
-      if (error) {
-        throw error;
-      }
-
-      logger.debug(`[${REPOSITORY_CONTEXT}] deletePastOrganization:success`);
-    },
-    `${REPOSITORY_CONTEXT}.deletePastOrganization`
+  return createResult(
+    null,
+    new Error(
+      'deletePastOrganization は廃止されました。経歴削除は persistInstrumentCareerData を使用してください。'
+    )
   );
 };
 
 /**
- * ユーザーの受賞を削除
+ * @deprecated 経歴は user_profiles.instrument_specific_data に保存する。
+ * 削除は deletionRepository.persistInstrumentCareerData を使うこと。
  */
 export const deleteAward = async (
-  awardId: string
+  _awardId: string
 ): Promise<RepositoryResult<void>> => {
-  return safeExecute(
-    async () => {
-      logger.debug(`[${REPOSITORY_CONTEXT}] deleteAward:start`, { awardId });
-      
-      const { error } = await supabase
-        .from('user_awards')
-        .delete()
-        .eq('id', awardId);
-
-      if (error) {
-        throw error;
-      }
-
-      logger.debug(`[${REPOSITORY_CONTEXT}] deleteAward:success`);
-    },
-    `${REPOSITORY_CONTEXT}.deleteAward`
+  return createResult(
+    null,
+    new Error(
+      'deleteAward は廃止されました。経歴削除は persistInstrumentCareerData を使用してください。'
+    )
   );
 };
 
 /**
- * ユーザーの演奏経験を削除
+ * @deprecated 経歴は user_profiles.instrument_specific_data に保存する。
+ * 削除は deletionRepository.persistInstrumentCareerData を使うこと。
  */
 export const deletePerformance = async (
-  performanceId: string
+  _performanceId: string
 ): Promise<RepositoryResult<void>> => {
-  return safeExecute(
-    async () => {
-      logger.debug(`[${REPOSITORY_CONTEXT}] deletePerformance:start`, { performanceId });
-      
-      const { error } = await supabase
-        .from('user_performances')
-        .delete()
-        .eq('id', performanceId);
-
-      if (error) {
-        throw error;
-      }
-
-      logger.debug(`[${REPOSITORY_CONTEXT}] deletePerformance:success`);
-    },
-    `${REPOSITORY_CONTEXT}.deletePerformance`
+  return createResult(
+    null,
+    new Error(
+      'deletePerformance は廃止されました。経歴削除は persistInstrumentCareerData を使用してください。'
+    )
   );
 };
 

@@ -66,9 +66,17 @@ export const showUserFriendlyError = (error: any, context: string = '') => {
   if (error && typeof error === 'object') {
     const errorMsg = error.message?.toLowerCase() || '';
     
-    if (errorMsg.includes('network') || errorMsg.includes('fetch') || errorMsg.includes('connection')) {
+    // 「fetch」単独は Storage/API 失敗でも付くため、本物の通信断のみネットワーク扱いにする
+    if (
+      errorMsg.includes('failed to fetch') ||
+      errorMsg.includes('network request failed') ||
+      errorMsg.includes('networkerror') ||
+      errorMsg.includes('err_internet_disconnected') ||
+      errorMsg.includes('internet disconnected') ||
+      (errorMsg.includes('network') && errorMsg.includes('connection'))
+    ) {
       errorMessage = ErrorMessages.networkError;
-    } else if (errorMsg.includes('auth') || errorMsg.includes('login') || errorMsg.includes('unauthorized')) {
+    } else if (errorMsg.includes('auth') || errorMsg.includes('login') || errorMsg.includes('unauthorized') || errorMsg.includes('ログイン')) {
       errorMessage = ErrorMessages.authError;
     } else if (errorMsg.includes('recording') || errorMsg.includes('audio') || errorMsg.includes('media')) {
       errorMessage = ErrorMessages.recordingError;

@@ -24,6 +24,7 @@ import { disableBackgroundFocus, enableBackgroundFocus, focusFirstElement, blurA
 import { isColumnNotFoundError, handleColumnError } from '@/lib/columnErrorHandler';
 import { EVENT_COLORS, DEFAULT_EVENT_COLOR, EventColor, getEventColorOption } from '@/lib/eventColors';
 import { ensureLocationColumn } from '@/repositories/common/ensureLocationColumn';
+import { deleteEvent } from '@/repositories/eventRepository';
 
 interface Event {
   id: string;
@@ -409,14 +410,10 @@ ${errorMessage}`
     logger.debug('EventModal: 削除を実行します', event.id);
     setLoading(true);
     try {
-      logger.debug('EventModal: Supabase削除クエリを実行します');
-      const { data, error } = await supabase
-        .from('events')
-        .delete()
-        .eq('id', event.id)
-        .select();
+      logger.debug('EventModal: eventRepository.deleteEvent を実行します');
+      const { error } = await deleteEvent(event.id);
 
-      logger.debug('EventModal: 削除結果', { data, error });
+      logger.debug('EventModal: 削除結果', { error });
 
       if (error) {
         logger.error('EventModal: イベント削除エラー', error);
