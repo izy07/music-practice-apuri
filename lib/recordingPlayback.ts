@@ -1,6 +1,7 @@
 import { Alert, Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
+import { assertEncryptedInTransit } from '@/lib/secureTransport';
 
 /**
  * 録音ファイルの拡張子/MIMEを、実データに合わせて扱うためのユーティリティ。
@@ -125,6 +126,8 @@ export async function createPlayableRecordingObjectUrl(
     throw new Error('録音ファイルのURLを取得できませんでした');
   }
 
+  assertEncryptedInTransit(fetchUrl, 'recordingPlayback');
+
   const response = await fetch(fetchUrl, {
     method: 'GET',
     headers: { Accept: 'audio/*,*/*' },
@@ -175,6 +178,25 @@ export type WebAudioPlaybackHandles = {
   cleanup: () => void;
 };
 
+/** 意図的な停止・破棄時に出る偽エラーを無視するか（単体テスト用） */
+export function shouldIgnoreRecordingAudioError(
+  audio: Pick<HTMLAudioElement, 'error' | 'paused' | 'ended' | 'currentTime' | 'duration'>,
+  options: { disposed: boolean; endedNotified: boolean; hasPlayed: boolean }
+): boolean {
+  if (options.disposed || options.endedNotified) return true;
+  if (audio.error?.code === 1) return true; // MEDIA_ERR_ABORTED
+
+  if (options.hasPlayed && audio.paused) return true;
+
+  if (audio.ended) return true;
+  const t = audio.currentTime;
+  const d = audio.duration;
+  if (!isFinite(t) || t <= 0.05) return false;
+  if (isFinite(d) && d > 0 && t >= d - 0.35) return true;
+  if (!isFinite(d) || d <= 0) return t > 0.2;
+  return false;
+}
+
 /**
  * Web 向け: 録音をロードして再生可能な Audio 要素を返す（まだ play しない場合もある）。
  */
@@ -197,6 +219,7 @@ export async function prepareWebRecordingAudio(
   // cleanup / 意図的な破棄で発火する error を無視するためのフラグ
   let disposed = false;
   let endedNotified = false;
+  let hasPlayed = false;
 
   const detachHandlers = () => {
     audio.onerror = null;
@@ -240,41 +263,23 @@ export async function prepareWebRecordingAudio(
     handlers?.onEnded?.();
   };
 
-  /** WebM などでは再生成功後の終端で error が飛ぶことがある */
-  const looksLikeSuccessfulEnd = (): boolean => {
-    if (audio.ended) return true;
-    const t = audio.currentTime;
-    const d = audio.duration;
-    if (!isFinite(t) || t <= 0.05) return false;
-    // duration が取れる場合: 終端付近
-    if (isFinite(d) && d > 0 && t >= d - 0.35) return true;
-    // duration が Infinity/不明（WebM でよくある）: 少しでも再生されていれば終端エラーとみなす
-    if (!isFinite(d) || d <= 0) return t > 0.2;
-    return false;
-  };
+  audio.addEventListener('playing', () => {
+    hasPlayed = true;
+  });
 
   audio.onended = () => {
     notifyEnded();
   };
 
   audio.onerror = () => {
-    if (disposed || endedNotified) return;
-
-    // 再生中断（abort）は無視
-    if (audio.error?.code === 1) {
-      logger.debug('録音 Audio 中断（無視）', { format });
-      return;
-    }
-
-    // 再生できていたのに終了時だけ error が来るケース → 正常終了扱い
-    if (looksLikeSuccessfulEnd()) {
-      logger.debug('再生終端の偽エラーを無視（正常終了扱い）', {
-        format,
-        currentTime: audio.currentTime,
-        duration: audio.duration,
-        ended: audio.ended,
-        errorCode: audio.error?.code,
-      });
+    const ignore = shouldIgnoreRecordingAudioError(audio, {
+      disposed,
+      endedNotified,
+      hasPlayed,
+    });
+    if (ignore) {
+      if (disposed || endedNotified) return;
+      // 再生できていたのに終了/停止時だけ error が来るケース → 正常終了扱い
       notifyEnded();
       return;
     }

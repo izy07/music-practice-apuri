@@ -131,6 +131,8 @@ export const useSubscriptionState = () => {
     try {
       isRefreshingRef.current = true;
       setLoading(true);
+      // 進行中の読み込みを待っただけで再取得されない問題を防ぐ
+      loadInFlightRef.current = null;
       await loadSubscription();
       logger.debug('サブスクリプション状態をリフレッシュしました');
     } catch (e: unknown) {

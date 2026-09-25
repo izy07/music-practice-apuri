@@ -7,11 +7,6 @@
 import { Platform } from 'react-native';
 import { combineAlgorithms, TUNER_ANALYSIS } from '@/lib/tunerAudioProcessor';
 import logger from '@/lib/logger';
-import {
-  emptyTunerDiag,
-  tunerDiagLog,
-  type TunerDiagSnapshot,
-} from '@/lib/tunerDiagnostics';
 
 export type NativeTunerFrequencyCallback = (frequency: number) => void;
 
@@ -71,10 +66,6 @@ export class NativeTunerEngine {
   private filled = 0;
   private analysisWindow = new Float32Array(TUNER_ANALYSIS.WINDOW_SAMPLES);
   private snapshot = new Float32Array(TUNER_ANALYSIS.WINDOW_SAMPLES);
-  private stats = emptyTunerDiag();
-  private heartbeat: ReturnType<typeof setInterval> | null = null;
-  private loggedFirstCallback = false;
-  private loggedWindowReady = false;
 
   configure(options: NativeTunerOptions): void {
     this.sampleRate = options.sampleRate ?? TUNER_ANALYSIS.SAMPLE_RATE;
@@ -113,46 +104,19 @@ export class NativeTunerEngine {
 
     await this.stop();
     this.resetRing();
-    this.stats = emptyTunerDiag();
-    this.loggedFirstCallback = false;
-    this.loggedWindowReady = false;
 
     const recorder = new api.AudioRecorder();
 
     recorder.onAudioReady(
       { sampleRate: this.sampleRate, bufferLength: this.hopSamples, channelCount: 1 },
-      ({ buffer, numFrames }) => {
+      ({ buffer }) => {
         if (!this.running) return;
         const samples =
           buffer instanceof Float32Array ? buffer : new Float32Array(buffer as number[]);
-        this.stats.callbacks += 1;
-        this.stats.lastChunk = samples.length;
-        if (!this.loggedFirstCallback) {
-          this.loggedFirstCallback = true;
-          tunerDiagLog('first-callback', {
-            samples: samples.length,
-            numFrames,
-            hop: this.hopSamples,
-            window: this.windowSamples,
-          });
-        }
         this.appendSamples(samples);
         // 解析中のホップは捨てる。キューに積むと JS が戻りきらず画面が固まる。
-        if (this.busy) {
-          this.stats.droppedBusy += 1;
-          return;
-        }
-        if (!this.copyAnalysisWindow()) {
-          this.stats.waitingWindow += 1;
-          return;
-        }
-        if (!this.loggedWindowReady) {
-          this.loggedWindowReady = true;
-          tunerDiagLog('window-ready', {
-            callbacks: this.stats.callbacks,
-            filled: this.filled,
-          });
-        }
+        if (this.busy) return;
+        if (!this.copyAnalysisWindow()) return;
         this.scheduleAnalysis(onFrequency);
       }
     );
@@ -160,30 +124,9 @@ export class NativeTunerEngine {
     this.recorder = recorder;
     this.running = true;
     recorder.start();
-    this.heartbeat = setInterval(() => {
-      this.stats.busy = this.busy;
-      tunerDiagLog('beat', { ...this.stats });
-    }, 1000);
-    tunerDiagLog('started', {
-      windowSamples: this.windowSamples,
-      hopSamples: this.hopSamples,
-      sampleRate: this.sampleRate,
-      platform: Platform.OS,
-    });
-  }
-
-  getDiagnostics(): TunerDiagSnapshot {
-    return { ...this.stats, busy: this.busy };
   }
 
   async stop(): Promise<void> {
-    if (this.heartbeat) {
-      clearInterval(this.heartbeat);
-      this.heartbeat = null;
-    }
-    if (this.running || this.stats.callbacks > 0) {
-      tunerDiagLog('stopped', { ...this.stats, busy: this.busy });
-    }
     this.generation += 1;
     this.running = false;
     this.busy = false;
@@ -195,8 +138,8 @@ export class NativeTunerEngine {
       this.recorder.stop();
       this.recorder.clearOnAudioReady();
       this.recorder.disconnect();
-    } catch (error) {
-      logger.debug('NativeTunerEngine stop error:', error);
+    } catch {
+      // 既に停止済みの場合は無視
     }
     this.recorder = null;
     this.resetRing();
@@ -222,44 +165,16 @@ export class NativeTunerEngine {
     const sampleRate = this.sampleRate;
     const generation = this.generation;
     this.busy = true;
-    this.stats.scheduled += 1;
-    this.stats.busy = true;
-    const queuedAt = Date.now();
     setTimeout(() => {
-      const startedAt = Date.now();
       try {
         if (!this.running || generation !== this.generation) return;
-        const level = measureLevel(samples);
-        this.stats.lastRms = level.rms;
-        this.stats.lastPeak = level.peak;
         const frequency = combineAlgorithms(samples, sampleRate);
-        const elapsed = Date.now() - startedAt;
-        const queueDelay = startedAt - queuedAt;
-        this.stats.completed += 1;
-        this.stats.lastAnalysisMs = elapsed;
-        if (elapsed > this.stats.maxAnalysisMs) this.stats.maxAnalysisMs = elapsed;
-        this.stats.lastFrequency = frequency > 0 ? frequency : 0;
-        if (this.stats.completed === 1 || elapsed >= 50 || queueDelay >= 200) {
-          tunerDiagLog('analysis', {
-            n: this.stats.completed,
-            ms: elapsed,
-            queueDelay,
-            frequency: Number(frequency.toFixed(2)),
-            rms: Number(level.rms.toFixed(4)),
-            peak: Number(level.peak.toFixed(3)),
-          });
-        }
         if (frequency > 0 && this.running && generation === this.generation) {
           onFrequency(frequency);
         }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        this.stats.lastError = message;
-        tunerDiagLog('analysis-error', { message });
       } finally {
         if (generation === this.generation) {
           this.busy = false;
-          this.stats.busy = false;
         }
       }
     }, 0);
@@ -287,17 +202,3 @@ export class NativeTunerEngine {
     return out;
   }
 }
-
-const measureLevel = (samples: Float32Array): { rms: number; peak: number } => {
-  let sum = 0;
-  let peak = 0;
-  let count = 0;
-  for (let i = 0; i < samples.length; i += 16) {
-    const value = samples[i];
-    sum += value * value;
-    const abs = value < 0 ? -value : value;
-    if (abs > peak) peak = abs;
-    count += 1;
-  }
-  return { rms: count > 0 ? Math.sqrt(sum / count) : 0, peak };
-};

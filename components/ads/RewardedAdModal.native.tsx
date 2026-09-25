@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, View, Text, StyleSheet, ActivityIndicator, TouchableOpacity, Platform } from 'react-native';
-import mobileAds, { RewardedAd, RewardedAdEventType, TestIds, MaxAdContentRating } from 'react-native-google-mobile-ads';
+import mobileAds, { AdEventType, RewardedAd, RewardedAdEventType, TestIds, MaxAdContentRating } from 'react-native-google-mobile-ads';
 import logger from '@/lib/logger';
 
 // リワード広告ユニットID（Android）
@@ -94,12 +94,16 @@ export const RewardedAdModal: React.FC<RewardedAdModalProps> = ({
           setIsLoading(false);
         });
 
-        // 広告エラー
-        rewarded.addAdEventListener(RewardedAdEventType.ERROR, (error) => {
+        // 広告エラー（ERROR は RewardedAdEventType ではなく AdEventType）
+        rewarded.addAdEventListener(AdEventType.ERROR, (error) => {
           logger.error('リワード広告エラー:', error);
           setIsLoading(false);
           if (onError) {
-            onError(new Error(error.message || '広告の読み込みに失敗しました'));
+            const message =
+              error && typeof error === 'object' && 'message' in error
+                ? String((error as { message?: unknown }).message || '広告の読み込みに失敗しました')
+                : '広告の読み込みに失敗しました';
+            onError(new Error(message));
           }
           onClose();
         });

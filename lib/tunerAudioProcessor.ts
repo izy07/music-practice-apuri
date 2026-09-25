@@ -42,11 +42,23 @@ export const TUNER_DISPLAY = {
 export type FrequencyStabilizerState = {
   history: number[];
   smoothed: number;
+  /** 別音への大幅ジャンプ確認（連続フレーム） */
+  jumpCandidateHz: number;
+  jumpCandidateFrames: number;
 };
+
+/** 約完全4度以上の変化を「別音」とみなす */
+const JUMP_RATIO_THRESHOLD = 0.35;
+/** 即リセットする変化（約完全5度超） */
+const JUMP_IMMEDIATE_RATIO = 0.5;
+const JUMP_CONFIRM_FRAMES = 2;
+const JUMP_SIMILARITY = 0.08;
 
 export const createFrequencyStabilizerState = (): FrequencyStabilizerState => ({
   history: [],
   smoothed: 0,
+  jumpCandidateHz: 0,
+  jumpCandidateFrames: 0,
 });
 
 const isOctaveRelationHz = (a: number, b: number): boolean => {
@@ -75,13 +87,53 @@ export const stabilizeDetectedFrequency = (
 
   let history = state.history;
   let smoothed = state.smoothed;
+  let jumpCandidateHz = state.jumpCandidateHz;
+  let jumpCandidateFrames = state.jumpCandidateFrames;
+
+  const resetToNewPitch = (frequency: number) => ({
+    accepted: true as const,
+    frequency,
+    state: {
+      history: [frequency],
+      smoothed: frequency,
+      jumpCandidateHz: 0,
+      jumpCandidateFrames: 0,
+    },
+  });
 
   if (smoothed > 0) {
     const changeRatio = Math.abs(detectedFrequency - smoothed) / smoothed;
-    if (!isOctaveRelationHz(detectedFrequency, smoothed) && changeRatio > 0.5) {
-      return { accepted: false, state };
+    const isOctave = isOctaveRelationHz(detectedFrequency, smoothed);
+
+    if (!isOctave && changeRatio >= JUMP_RATIO_THRESHOLD) {
+      if (changeRatio >= JUMP_IMMEDIATE_RATIO) {
+        return resetToNewPitch(detectedFrequency);
+      }
+
+      const candidateSimilar =
+        jumpCandidateHz > 0 &&
+        Math.abs(detectedFrequency - jumpCandidateHz) / jumpCandidateHz <= JUMP_SIMILARITY;
+
+      if (candidateSimilar) {
+        jumpCandidateFrames += 1;
+      } else {
+        jumpCandidateHz = detectedFrequency;
+        jumpCandidateFrames = 1;
+      }
+
+      if (jumpCandidateFrames >= JUMP_CONFIRM_FRAMES) {
+        return resetToNewPitch(detectedFrequency);
+      }
+
+      return {
+        accepted: false,
+        state: { history, smoothed, jumpCandidateHz, jumpCandidateFrames },
+      };
     }
   }
+
+  jumpCandidateHz = 0;
+  jumpCandidateFrames = 0;
 
   if (smoothed > 0 && isOctaveRelationHz(detectedFrequency, smoothed)) {
     const fundamental = Math.min(detectedFrequency, smoothed);
@@ -126,7 +178,12 @@ export const stabilizeDetectedFrequency = (
   return {
     accepted: true,
     frequency: nextSmoothed,
-    state: { history, smoothed: nextSmoothed },
+    state: {
+      history,
+      smoothed: nextSmoothed,
+      jumpCandidateHz: 0,
+      jumpCandidateFrames: 0,
+    },
   };
 };
 
@@ -290,11 +347,7 @@ export const getNoteFromFrequency = (
   if (Math.abs(cents) > 200) {
     // 計算エラーの可能性を考慮し、以前より緩い制限に変更
     // ±100セントに制限（半音の誤差範囲内）
-    const limitedCents = Math.max(-100, Math.min(100, cents));
-    if (__DEV__) {
-      console.warn(`[Tuner] セント値が異常に大きいため制限しました: ${cents.toFixed(1)} -> ${limitedCents.toFixed(1)} (周波数: ${frequency.toFixed(2)}Hz)`);
-    }
-    cents = limitedCents;
+    cents = Math.max(-100, Math.min(100, cents));
   }
   const absCents = Math.abs(cents);
 

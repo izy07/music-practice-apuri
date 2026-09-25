@@ -22,8 +22,12 @@ describe('resolveOnboardingTarget', () => {
     ).toBe('/(tabs)/tutorial');
   });
 
-  it('未取得は pending（再ログインでチュートリアル誤表示しない）', () => {
-    expect(resolveOnboardingTarget({}, false)).toBe('pending');
+  it('未取得・楽器なしはチュートリアル（pending で止めない）', () => {
+    expect(resolveOnboardingTarget({}, false)).toBe('/(tabs)/tutorial');
+  });
+
+  it('未取得でも hasInstrument ならメイン', () => {
+    expect(resolveOnboardingTarget({}, true)).toBe('/(tabs)');
   });
 });
 

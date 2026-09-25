@@ -89,21 +89,38 @@ export default function RecordingsLibraryScreen() {
   const [recordingTypeFilter, setRecordingTypeFilter] = useState<'all' | 'performance' | 'lesson'>('all'); // 録音種類フィルター
   const scrollViewRef = useRef<ScrollView>(null);
   const progressSliderRefs = useRef<{ [key: string]: HTMLInputElement | null }>({}); // プログレスバーのinput要素の参照
+  const webPlaybackCleanupRef = useRef<(() => void) | null>(null);
   const mobileAudioPlayer = useAudioPlayer && Platform.OS !== 'web' ? useAudioPlayer() : null;
   const mobileTimePollRef = useRef<NodeJS.Timeout | null>(null);
+
+  const releaseWebPlayback = () => {
+    if (webPlaybackCleanupRef.current) {
+      webPlaybackCleanupRef.current();
+      webPlaybackCleanupRef.current = null;
+    }
+    setAudioElement(null);
+    setPlayingRecording(null);
+    setCurrentTime(0);
+    setDuration(0);
+  };
+
+  const stopNativePlayback = async () => {
+    if (!mobileAudioPlayer) return;
+    mobileAudioPlayer.pause();
+    await mobileAudioPlayer.seekTo(0);
+    setPlayingRecording(null);
+    setCurrentTime(0);
+    setDuration(0);
+  };
 
   // 録音種類フィルターはクライアント側でフィルタリングするため、再読み込み不要
   // 初回読み込みと楽器変更時のみデータを読み込む
 
-  // Audioオブジェクトのクリーンアップ（メモリリーク防止）
+  // 画面アンマウント時のクリーンアップ（src 直接操作は偽 error の原因になるため cleanup 経由）
   useEffect(() => {
     return () => {
-      if (audioElement) {
-        audioElement.pause();
-        audioElement.src = ''; // リソースを解放
-        setAudioElement(null);
-        logger.debug('Audioオブジェクトをクリーンアップ');
-      }
+      webPlaybackCleanupRef.current?.();
+      webPlaybackCleanupRef.current = null;
       if (mobileAudioPlayer) {
         mobileAudioPlayer.pause();
         void mobileAudioPlayer.seekTo(0);
@@ -117,7 +134,7 @@ export default function RecordingsLibraryScreen() {
         mobileTimePollRef.current = null;
       }
     };
-  }, [audioElement, mobileAudioPlayer]);
+  }, [mobileAudioPlayer]);
 
   // ネイティブ再生位置のポーリング
   useEffect(() => {
@@ -483,18 +500,14 @@ export default function RecordingsLibraryScreen() {
         // 再生中なら停止（iOS/Android/Web 共通）
         if (playingRecording === recordingId) {
           try {
-            if (Platform.OS === 'web' && audioElement) {
-              audioElement.pause();
-              audioElement.src = '';
-            } else if (mobileAudioPlayer) {
-              mobileAudioPlayer.pause();
-              void mobileAudioPlayer.seekTo(0);
+            if (Platform.OS === 'web') {
+              releaseWebPlayback();
+            } else {
+              await stopNativePlayback();
             }
           } catch (stopError) {
             logger.warn('削除前の再生停止に失敗（続行）:', stopError);
           }
-          setPlayingRecording(null);
-          setCurrentTime(0);
         }
 
         const { error } = await deleteRecording(recordingId);
@@ -554,27 +567,19 @@ export default function RecordingsLibraryScreen() {
     }
 
     if (playingRecording === recording.id) {
-      if (Platform.OS === 'web' && audioElement) {
-        audioElement.pause();
-        audioElement.currentTime = 0;
-      } else if (Platform.OS !== 'web' && mobileAudioPlayer) {
-        mobileAudioPlayer.pause();
-        await mobileAudioPlayer.seekTo(0);
+      if (Platform.OS === 'web') {
+        releaseWebPlayback();
+      } else {
+        await stopNativePlayback();
       }
-      setPlayingRecording(null);
-      setAudioElement(null);
-      setCurrentTime(0);
-      setDuration(0);
       return;
     }
 
     try {
-      if (Platform.OS === 'web' && audioElement) {
-        audioElement.pause();
-        audioElement.currentTime = 0;
-      } else if (Platform.OS !== 'web' && mobileAudioPlayer) {
-        mobileAudioPlayer.pause();
-        await mobileAudioPlayer.seekTo(0);
+      if (Platform.OS === 'web') {
+        releaseWebPlayback();
+      } else if (mobileAudioPlayer) {
+        await stopNativePlayback();
       }
 
       logger.debug('録音再生開始:', recording.file_path);
@@ -597,22 +602,26 @@ export default function RecordingsLibraryScreen() {
 
         const { audio, cleanup } = await prepareWebRecordingAudio(recording.file_path, {
           onEnded: () => {
+            webPlaybackCleanupRef.current = null;
             setPlayingRecording(null);
             setAudioElement(null);
             setCurrentTime(0);
             setDuration(0);
           },
           onError: (detail) => {
+            webPlaybackCleanupRef.current = null;
             Alert.alert('再生エラー', `録音の再生に失敗しました。\n${detail}`);
             setPlayingRecording(null);
             setAudioElement(null);
           },
         });
+        webPlaybackCleanupRef.current = cleanup;
 
         try {
           await audio.play();
         } catch (playError) {
           cleanup();
+          webPlaybackCleanupRef.current = null;
           throw playError;
         }
         setPlayingRecording(recording.id);

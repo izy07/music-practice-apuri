@@ -74,17 +74,26 @@ export default function TabLayout() {
   const { t } = useLanguage();
   const { currentTheme } = useInstrumentTheme();
   const segments = useSegments();
-  const { isAuthenticated, isLoading } = useAuthAdvanced();
+  const { isAuthenticated, isInitialized } = useAuthAdvanced();
 
   // 特定の画面ではタブバーを非表示
   const shouldHideTabBar = segments.some(
     segment => segment === 'tutorial' || segment === 'instrument-selection'
   );
 
-  // 認証チェック
-  if (isLoading || !isAuthenticated) {
+  // 未初期化のみ待機。isLoading で Tabs を潰すと認証済み直後に白スピナーが再発する
+  if (!isInitialized) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color={currentTheme.primary} />
+      </View>
+    );
+  }
+
+  // 未認証は useAppRouteGuard が login へ送る。ここでは描画を止めず遷移を待つ
+  if (!isAuthenticated) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
         <ActivityIndicator size="large" color={currentTheme.primary} />
       </View>
     );

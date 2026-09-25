@@ -36,6 +36,7 @@ import {
   writeOnboardingSnapshot,
 } from '@/lib/onboardingCache';
 import { STORAGE_KEYS, userScopedKey } from '@/lib/storageKeys';
+import { readStoredInstrumentId } from '@/lib/localInstrumentStorage';
 
 // Web環境での最後のアクティビティ時刻を保存するキー（useIdleTimeoutと同じキー）
 const LAST_ACTIVITY_KEY = 'music-practice-last-activity';
@@ -118,11 +119,11 @@ async function hydrateAuthUserFromLocal(
   let next = { ...base };
   try {
     const [storedInstrument, snapshot] = await Promise.all([
-      AsyncStorage.getItem(userScopedKey(STORAGE_KEYS.selectedInstrument, user.id)),
+      readStoredInstrumentId(user.id),
       readOnboardingSnapshot(user.id),
     ]);
 
-    if (storedInstrument && storedInstrument.trim() !== '' && !next.selected_instrument_id) {
+    if (storedInstrument && !next.selected_instrument_id) {
       next = { ...next, selected_instrument_id: storedInstrument };
     }
 
@@ -133,6 +134,11 @@ async function hydrateAuthUserFromLocal(
       if (!next.selected_instrument_id && snapshot.selected_instrument_id) {
         next = { ...next, selected_instrument_id: snapshot.selected_instrument_id };
       }
+    }
+
+    // ローカルに楽器があればオンボーディング済みとみなす（DB 未到着でもメインへ）
+    if (next.selected_instrument_id && next.tutorial_completed === undefined) {
+      next = { ...next, tutorial_completed: true };
     }
   } catch {
     // 無視
@@ -248,6 +254,11 @@ const authStateListeners = new Set<(state: AuthState) => void>();
 let globalAuthStateChangeSubscription: { unsubscribe: () => void } | null = null;
 let globalHandleAuthenticatedUserRef: ((user: any) => Promise<AuthUser | null>) | null = null;
 
+/** initializeAuth の単一飛行（複数マウントで多重実行しない） */
+let authInitPromise: Promise<void> | null = null;
+let authInitCompleted = false;
+let authInitWatchdogStarted = false;
+
 // グローバルな処理中のPromise管理（重複実行を防ぐ）
 const globalProcessingPromises = new Map<string, Promise<AuthUser | null>>();
 
@@ -361,7 +372,19 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       
       while (retryCount < maxRetries) {
         try {
-          const result = await supabase.auth.getSession();
+          // getSession が返らないと起動が永久に止まるため上限付き
+          const result = await Promise.race([
+            supabase.auth.getSession(),
+            new Promise<never>((_, reject) => {
+              setTimeout(() => {
+                reject(
+                  Object.assign(new Error('getSession timeout'), {
+                    name: 'TimeoutError',
+                  })
+                );
+              }, TIMEOUT.PROFILE_ENRICH_MS);
+            }),
+          ]);
           sessionData = result.data;
           sessionError = result.error;
           
@@ -394,30 +417,30 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             break;
           }
         } catch (error) {
-          // 予期しないエラーの場合
-          const isNetworkError = error instanceof Error && (
-            error.message.includes('Failed to fetch') || 
-            error.message.includes('NetworkError') ||
-            error.message.includes('ERR_INTERNET_DISCONNECTED') ||
-            error.message.includes('internet disconnected') ||
-            error.message === 'NETWORK_ERROR'
-          );
+          // 予期しないエラー / getSession タイムアウト
+          const isNetworkError =
+            isNetworkAuthError(error as { message?: string; name?: string }) ||
+            (error instanceof Error && (
+              error.message.includes('Failed to fetch') ||
+              error.message.includes('NetworkError') ||
+              error.message.includes('ERR_INTERNET_DISCONNECTED') ||
+              error.message.includes('internet disconnected') ||
+              error.message === 'NETWORK_ERROR' ||
+              error.message.includes('getSession timeout') ||
+              error.name === 'TimeoutError'
+            ));
           
           if (isNetworkError) {
             retryCount++;
             if (retryCount < maxRetries) {
-              // 開発環境でのみログを出力
               if (__DEV__) {
                 logger.debug(`[useAuthAdvanced] ネットワークエラー（例外） - リトライ ${retryCount}/${maxRetries}`);
               }
               await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
               continue;
             }
-            // リトライ上限に達した場合は、ネットワークエラーとして処理（エラーを投げない）
-            // オフライン時は正常な動作として扱う
             break;
           }
-          // ネットワークエラーでない場合はそのままエラーを投げる
           throw error;
         }
       }
@@ -610,26 +633,45 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     };
   }, []);
 
-  // 初期化処理（ネイティブ/Web 共通でフォールバック — window 限定だと AAB で白画面が残る）
+  // 初期化処理（グローバル単一飛行 — 複数マウントで多重実行しない）
   useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      if (globalAuthState.isLoading || !globalAuthState.isInitialized) {
-        if (__DEV__) {
-          logger.debug('[useAuthAdvanced] 認証初期化がタイムアウトしました。強制的に初期化を完了します。');
+    if (!authInitWatchdogStarted) {
+      authInitWatchdogStarted = true;
+      setTimeout(() => {
+        if (globalAuthState.isLoading || !globalAuthState.isInitialized) {
+          if (__DEV__) {
+            logger.debug('[useAuthAdvanced] 認証初期化がタイムアウトしました。強制的に初期化を完了します。');
+          }
+          updateAuthState({
+            ...globalAuthState,
+            isLoading: false,
+            isInitialized: true,
+          });
         }
-        updateAuthState({
-          ...globalAuthState,
-          isLoading: false,
-          isInitialized: true,
+      }, TIMEOUT.INITIALIZATION_MS);
+    }
+
+    if (authInitCompleted && globalAuthState.isInitialized) {
+      return;
+    }
+    if (!authInitPromise) {
+      authInitPromise = Promise.resolve()
+        .then(() => initializeAuth())
+        .catch((err: unknown) => {
+          logger.warn('[useAuthAdvanced] initializeAuth 失敗:', err);
+          if (!globalAuthState.isInitialized) {
+            updateAuthState({
+              isAuthenticated: false,
+              isLoading: false,
+              isInitialized: true,
+              error: err instanceof Error ? err.message : '認証初期化に失敗しました',
+            });
+          }
+        })
+        .finally(() => {
+          authInitCompleted = true;
         });
-      }
-    }, TIMEOUT.INITIALIZATION_MS);
-
-    initializeAuth();
-
-    return () => {
-      clearTimeout(timeoutId);
-    };
+    }
   }, [initializeAuth]);
 
   // サイレントリフレッシュ（失効前に更新）

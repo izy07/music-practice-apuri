@@ -132,5 +132,33 @@ describe('tunerAudioProcessor', () => {
       expect(applyCentsDeadZone(0.2)).toBe(0);
       expect(applyCentsDeadZone(0.5)).not.toBe(0);
     });
+
+    it('大幅な音程変化（完全5度超）では平滑化をリセットして追従する', () => {
+      let state = createFrequencyStabilizerState();
+      const warm = stabilizeDetectedFrequency(state, 440);
+      expect(warm.accepted).toBe(true);
+      if (!warm.accepted) return;
+      state = warm.state;
+
+      const jump = stabilizeDetectedFrequency(state, 196);
+      expect(jump.accepted).toBe(true);
+      if (!jump.accepted) return;
+      expect(jump.frequency).toBeCloseTo(196, 0);
+    });
+
+    it('中程度の音程変化は2フレーム目で追従する', () => {
+      let state = createFrequencyStabilizerState();
+      const warm = stabilizeDetectedFrequency(state, 440);
+      if (!warm.accepted) throw new Error('warm up failed');
+      state = warm.state;
+
+      const first = stabilizeDetectedFrequency(state, 285);
+      expect(first.accepted).toBe(false);
+
+      const second = stabilizeDetectedFrequency(first.state, 286);
+      expect(second.accepted).toBe(true);
+      if (!second.accepted) return;
+      expect(second.frequency).toBeCloseTo(286, 0);
+    });
   });
 });

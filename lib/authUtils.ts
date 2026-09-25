@@ -25,8 +25,10 @@ const parsePersistedSession = (raw: string | null): Session | null => {
   return null;
 };
 
-export function isNetworkAuthError(error: { message?: string } | null | undefined): boolean {
-  if (!error?.message) return false;
+export function isNetworkAuthError(error: { message?: string; name?: string } | null | undefined): boolean {
+  if (!error) return false;
+  if (error.name === 'TimeoutError') return true;
+  if (!error.message) return false;
   const message = error.message;
   return (
     message.includes('Failed to fetch') ||
@@ -34,7 +36,8 @@ export function isNetworkAuthError(error: { message?: string } | null | undefine
     message.includes('ERR_INTERNET_DISCONNECTED') ||
     message.includes('internet disconnected') ||
     message === 'NETWORK_ERROR' ||
-    message.includes('ERR_NAME_NOT_RESOLVED')
+    message.includes('ERR_NAME_NOT_RESOLVED') ||
+    message.includes('getSession timeout')
   );
 }
 

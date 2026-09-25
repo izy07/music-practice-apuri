@@ -36,8 +36,6 @@ import { trackFeatureAction } from '@/lib/featureUsageService';
 import { FEATURE_IDS } from '@/lib/featureUsageEvents';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import NoteNameChart from '@/components/tuner/NoteNameChart';
-import { emptyTunerDiag, formatTunerDiag, tunerDiagLog } from '@/lib/tunerDiagnostics';
-
 // プロ仕様の音名と周波数対応（tunerUtilsからインポート）
 
 // プロ仕様の周波数検出精度設定（色判定）
@@ -419,9 +417,6 @@ export default function TunerScreen() {
   const nativeLatestFreqRef = useRef<number>(0);
   const audioProcessingIntervalRef = useRef<number | null>(null);
   const webAnalysisBufferRef = useRef<Float32Array | null>(null);
-  const uiDiagRef = useRef({ uiTicks: 0, maxUiGapMs: 0, lastUiAt: 0, lastStallLogAt: 0 });
-  const webDiagRef = useRef(emptyTunerDiag());
-  const [tunerDiagText, setTunerDiagText] = useState('');
   const stabilizerStateRef = useRef<FrequencyStabilizerState>(createFrequencyStabilizerState());
   const isListeningRef = useRef(false);
   const stopListeningRef = useRef<() => void>(() => {});
@@ -520,6 +515,27 @@ export default function TunerScreen() {
 
   // アニメーション用の値（UI表示用）
   const tuningBarAnimation = useRef(new Animated.Value(0)).current;
+
+  // 基準周波数変更時、検出中の音程から音名・針を即再計算
+  useEffect(() => {
+    if (currentFrequency <= 0) return;
+    const noteInfo = getNoteFromFrequency(currentFrequency, a4Frequency);
+    const displayCents = applyCentsDeadZone(noteInfo.cents);
+    setCurrentNote(noteInfo.note);
+    setCurrentNoteJa(noteInfo.noteJa);
+    setCurrentOctave(noteInfo.octave);
+    setCurrentCents(displayCents);
+    const { color } = getTuningColor(Math.abs(noteInfo.cents));
+    setIndicatorColor(color);
+    tuningBarAnimation.stopAnimation();
+    Animated.timing(tuningBarAnimation, {
+      toValue: Math.max(-50, Math.min(50, displayCents)),
+      duration: 80,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [a4Frequency, currentFrequency, tuningBarAnimation]);
+
   const noteChartTheme = useMemo(
     () => ({
       text: currentTheme.text,
@@ -555,7 +571,6 @@ export default function TunerScreen() {
             // 従来の440Hz設定を442Hzにマイグレーション（基準を442に統一）
             if (Math.round(a4Freq) === 440) a4Freq = DEFAULT_A4_FREQUENCY;
             setA4Frequency(Math.round(a4Freq * 10) / 10);
-            logger.debug('A4周波数を設定から読み込みました', { a4Freq });
           }
         }
       } catch (error) {
@@ -569,7 +584,6 @@ export default function TunerScreen() {
   useEffect(() => {
     return subscribeRequestReleaseMic((detail) => {
       if (detail.requester === 'recorder' && isListeningRef.current) {
-        logger.debug('録音開始のためチューナーを停止します');
         stopListeningRef.current();
       }
     });
@@ -596,7 +610,6 @@ export default function TunerScreen() {
           temperament: 'equal',
           volume: 0.5,
         });
-        logger.debug('A4周波数を保存しました', { frequency: freq });
       }
     } catch (error) {
       ErrorHandler.handle(error, 'A4周波数の保存', false);
@@ -612,23 +625,7 @@ export default function TunerScreen() {
       // 録音など他のマイク利用を解放してから開始（ネイティブ衝突の根因対策）
       emitRequestReleaseMic({ requester: 'tuner' });
 
-      uiDiagRef.current = { uiTicks: 0, maxUiGapMs: 0, lastUiAt: 0, lastStallLogAt: 0 };
-      webDiagRef.current = emptyTunerDiag();
-
       const processAudio = () => {
-        const now = Date.now();
-        const ui = uiDiagRef.current;
-        if (ui.lastUiAt > 0) {
-          const gap = now - ui.lastUiAt;
-          if (gap > ui.maxUiGapMs) ui.maxUiGapMs = gap;
-          if (gap >= 250 && now - ui.lastStallLogAt >= 1000) {
-            ui.lastStallLogAt = now;
-            tunerDiagLog('ui-stall', { gapMs: gap, ticks: ui.uiTicks });
-          }
-        }
-        ui.lastUiAt = now;
-        ui.uiTicks += 1;
-
         let detectedFrequency = -1;
         let sampleRate = TUNER_ANALYSIS.SAMPLE_RATE;
         if (Platform.OS === 'web') {
@@ -640,22 +637,7 @@ export default function TunerScreen() {
           const dataArray = webAnalysisBufferRef.current;
           analyserNodeRef.current.getFloatTimeDomainData(dataArray);
           sampleRate = audioContextRef.current.sampleRate;
-          const startedAt = Date.now();
           detectedFrequency = combineAlgorithms(dataArray, sampleRate);
-          const elapsed = Date.now() - startedAt;
-          const webDiag = webDiagRef.current;
-          webDiag.completed += 1;
-          webDiag.scheduled += 1;
-          webDiag.lastAnalysisMs = elapsed;
-          if (elapsed > webDiag.maxAnalysisMs) webDiag.maxAnalysisMs = elapsed;
-          webDiag.lastFrequency = detectedFrequency > 0 ? detectedFrequency : 0;
-          if (webDiag.completed === 1 || elapsed >= 50) {
-            tunerDiagLog('web-analysis', {
-              n: webDiag.completed,
-              ms: elapsed,
-              frequency: detectedFrequency > 0 ? Number(detectedFrequency.toFixed(2)) : -1,
-            });
-          }
         } else {
           detectedFrequency = nativeLatestFreqRef.current;
           sampleRate = TUNER_ANALYSIS.SAMPLE_RATE;
@@ -748,7 +730,6 @@ export default function TunerScreen() {
           { platform: Platform.OS },
           getInstrumentId(contextSelectedInstrument)
         );
-        tunerDiagLog('ui-started', { platform: Platform.OS });
         return;
       }
 
@@ -792,7 +773,6 @@ export default function TunerScreen() {
       if (audioCtx.state === 'suspended') {
         try {
           await audioCtx.resume();
-          logger.debug('AudioContext resumed for tuner');
         } catch (resumeError) {
           ErrorHandler.handle(resumeError, 'AudioContextの再開', false);
           Alert.alert('エラー', 'オーディオの開始に失敗しました。もう一度「開始」を押してください。');
@@ -823,7 +803,6 @@ export default function TunerScreen() {
         { platform: Platform.OS },
         getInstrumentId(contextSelectedInstrument)
       );
-      tunerDiagLog('ui-started', { platform: Platform.OS });
     } catch (error: any) {
       ErrorHandler.handle(error, 'チューナー開始', true);
       const message = error?.message || String(error);
@@ -856,8 +835,8 @@ export default function TunerScreen() {
     if (mediaStreamSourceRef.current) {
       try {
         mediaStreamSourceRef.current.disconnect();
-      } catch (e) {
-        logger.debug('MediaStreamSource disconnect error:', e);
+      } catch {
+        // 既に切断済みの場合は無視
       }
       mediaStreamSourceRef.current = null;
     }
@@ -865,8 +844,8 @@ export default function TunerScreen() {
     if (analyserNodeRef.current) {
       try {
         analyserNodeRef.current.disconnect();
-      } catch (e) {
-        logger.debug('Analyser disconnect error:', e);
+      } catch {
+        // 既に切断済みの場合は無視
       }
     }
 
@@ -893,8 +872,6 @@ export default function TunerScreen() {
     setIndicatorColor('#9E9E9E');
     stabilizerStateRef.current = createFrequencyStabilizerState();
     analyserNodeRef.current = null;
-
-    logger.debug('チューナー機能を停止しました');
   };
   stopListeningRef.current = stopListening;
 
@@ -974,8 +951,6 @@ export default function TunerScreen() {
       
       oscillator.start(audioCtx.currentTime);
       setPlayingOpenString(note);
-      
-      logger.debug(`Playing open string continuously: ${note} at ${frequency}Hz`);
     } catch (error) {
       ErrorHandler.handle(error, '開放弦の音再生', true);
       // エラーメッセージを詳細化
@@ -1005,7 +980,6 @@ export default function TunerScreen() {
             gainNode.gain.linearRampToValueAtTime(baseGain, audioCtx.currentTime + 0.1);
             oscillator.start(audioCtx.currentTime);
             setPlayingOpenString(note);
-            logger.debug(`Playing open string retry: ${note} at ${frequency}Hz`);
             return;
           } catch (retryError) {
             logger.error('再試行も失敗:', retryError);
@@ -1030,8 +1004,8 @@ export default function TunerScreen() {
         // audioResourceManagerからオシレーターを登録解除
         try {
           audioResourceManager.unregisterOscillator(OWNER_NAME, oscillator);
-        } catch (e) {
-          logger.debug('Unregister oscillator error:', e);
+        } catch {
+          // 既に登録解除済みの場合は無視
         }
         
         // 即座に音量を0にして停止
@@ -1046,23 +1020,20 @@ export default function TunerScreen() {
         try {
           oscillator.stop();
           oscillator.disconnect();
-        } catch (e) {
+        } catch {
           // 既に停止している場合は無視
-          logger.debug('Oscillator already stopped:', e);
         }
         
         // GainNodeも切断
         try {
           gainNode.disconnect();
-        } catch (e) {
-          logger.debug('GainNode disconnect error:', e);
+        } catch {
+          // 既に切断済みの場合は無視
         }
         
         // 参照をクリア
         openStringOscillatorRef.current = null;
         openStringGainNodeRef.current = null;
-        
-        logger.debug('Stopped open string immediately');
       }
     } catch (error) {
       ErrorHandler.handle(error, '開放弦の音停止', false);
@@ -1140,8 +1111,6 @@ export default function TunerScreen() {
       
       oscillator.start(audioCtx.currentTime);
       setPlayingScaleNote(noteKey);
-      
-      logger.debug(`Playing scale note continuously: ${noteKey} at ${frequency}Hz`);
     } catch (error) {
       ErrorHandler.handle(error, '音階の音再生', true);
     }
@@ -1159,8 +1128,8 @@ export default function TunerScreen() {
         
         try {
           audioResourceManager.unregisterOscillator(OWNER_NAME, oscillator);
-        } catch (e) {
-          logger.debug('Unregister scale note oscillator error:', e);
+        } catch {
+          // 既に登録解除済みの場合は無視
         }
         
         try {
@@ -1173,20 +1142,18 @@ export default function TunerScreen() {
         try {
           oscillator.stop();
           oscillator.disconnect();
-        } catch (e) {
-          logger.debug('Scale note oscillator already stopped:', e);
+        } catch {
+          // 既に停止している場合は無視
         }
         
         try {
           gainNode.disconnect();
-        } catch (e) {
-          logger.debug('Scale note gainNode disconnect error:', e);
+        } catch {
+          // 既に切断済みの場合は無視
         }
         
         scaleNoteOscillatorRef.current = null;
         scaleNoteGainNodeRef.current = null;
-        
-        logger.debug('Stopped scale note immediately');
       }
     } catch (error) {
       ErrorHandler.handle(error, '音階の音停止', false);
@@ -1224,27 +1191,6 @@ export default function TunerScreen() {
       audioResourceManager.releaseAllResources(OWNER_NAME);
     };
   }, []);
-
-  useEffect(() => {
-    if (!isListening) {
-      setTunerDiagText('');
-      return;
-    }
-    const publish = () => {
-      const ui = uiDiagRef.current;
-      const native = nativeTunerEngineRef.current?.getDiagnostics();
-      const snapshot = native
-        ? { ...native, uiTicks: ui.uiTicks, maxUiGapMs: ui.maxUiGapMs }
-        : { ...webDiagRef.current, uiTicks: ui.uiTicks, maxUiGapMs: ui.maxUiGapMs };
-      setTunerDiagText(formatTunerDiag(snapshot));
-    };
-    publish();
-    const id = setInterval(publish, 500);
-    return () => clearInterval(id);
-  }, [isListening]);
-
-
-
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: currentTheme.background }]}>
@@ -1406,11 +1352,6 @@ export default function TunerScreen() {
                     {isListening ? '停止' : '開始'}
                   </Text>
                 </TouchableOpacity>
-                {isListening && tunerDiagText.length > 0 && (
-                  <Text style={[styles.tunerDiagText, { color: currentTheme.textSecondary }]}>
-                    {tunerDiagText}
-                  </Text>
-                )}
               </View>
 
               {/* 音名表示モードと開放弦の音を聞く（統合） */}

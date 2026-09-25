@@ -6,17 +6,19 @@ declare global {
   }
 }
 
+/**
+ * Expo / Web の frameworkReady 通知用。
+ * 起動ゲートには使わない（人工遅延で白画面を伸ばさない）。
+ */
 export function useFrameworkReady() {
   const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    // フレームワークの準備完了を待つ
-    const timer = setTimeout(() => {
-      setIsReady(true);
-      window.frameworkReady?.();
-    }, 100);
-
-    return () => clearTimeout(timer);
+    setIsReady(true);
+    if (typeof globalThis !== 'undefined') {
+      const g = globalThis as typeof globalThis & { frameworkReady?: () => void };
+      g.frameworkReady?.();
+    }
   }, []);
 
   return { isReady };

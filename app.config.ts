@@ -55,6 +55,14 @@ if (mustHaveSupabaseEnv && (!supabaseUrl || !supabaseAnonKey)) {
   );
 }
 
+// Play / App Store「転送時に暗号化」: 本番ビルドの API は HTTPS 必須
+if (mustHaveSupabaseEnv && supabaseUrl && !supabaseUrl.toLowerCase().startsWith('https://')) {
+  throw new Error(
+    'EXPO_PUBLIC_SUPABASE_URL は https:// で始まる必要があります（転送時暗号化）。\n' +
+      `現在の値: ${supabaseUrl.slice(0, 48)}`
+  );
+}
+
 // Minimal, env-driven config to set EAS projectId and keep current app.json values.
 const config: ExpoConfig = {
   name: '楽器練習アプリ',
@@ -70,6 +78,10 @@ const config: ExpoConfig = {
     infoPlist: {
       NSMicrophoneUsageDescription:
         '演奏の録音およびチューナー機能で音程を検出するためにマイクを使用します。',
+      // 転送時暗号化: 平文 HTTP を許可しない（App Store / Play Data safety 対応）
+      NSAppTransportSecurity: {
+        NSAllowsArbitraryLoads: false,
+      },
       // 年齢制限: 4+（教育的な目的の音楽練習アプリのため）
       // 録音機能はユーザー自身の練習記録を保存・再生するための教育的な目的のみで使用
       // 実際の設定はApp Store Connectで行う必要がありますが、ここでも明示
@@ -85,6 +97,9 @@ const config: ExpoConfig = {
     label: '楽器練習アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
     versionCode: 1, // Google Play Consoleで必要なビルド番号（初回リリース）
     versionName: '1.0.0', // ユーザーに表示されるバージョン番号
+    // ストア配布ビルドでは平文 HTTP 禁止。開発クライアントのみローカル Supabase用に許可
+    usesCleartextTraffic:
+      !isEasBuild || process.env.EAS_BUILD_PROFILE === 'development',
     // 必要な権限のみ明示。録音はアプリ内ストレージへ保存するため外部ストレージ権限は不要
     permissions: ['RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS'],
     // 旧 API: 依存ライブラリの誤宣言を最終マニフェストから除外（アプリは scoped storage のみ使用）
@@ -119,6 +134,7 @@ const config: ExpoConfig = {
     './plugins/withAdiRegistration',
     // expo-file-system 等のレガシー外部ストレージ宣言を最終マニフェストから除去
     './plugins/withStripLegacyStoragePermissions',
+    './plugins/withRemoveNotificationsBootReceiver',
     // AdMob (Google Mobile Ads) - Android/iOS App ID はネイティブに必須
     [
       'react-native-google-mobile-ads',

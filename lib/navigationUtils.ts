@@ -3,7 +3,7 @@
  */
 
 import { useRouter } from 'expo-router';
-import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
+import { resolveOnboardingTarget } from '@/lib/onboardingRoute';
 import logger from '@/lib/logger';
 
 /**
@@ -27,53 +27,17 @@ import logger from '@/lib/logger';
 export const navigateToAppropriateScreen = (
   router: ReturnType<typeof useRouter>,
   options?: {
-    user?: { selected_instrument_id?: string | null; tutorial_completed?: boolean } | null;
+    user?: { selected_instrument_id?: string | null; tutorial_completed?: boolean | null } | null;
     hasInstrumentSelected?: () => boolean;
-    needsTutorial?: () => boolean;
-    canAccessMainApp?: () => boolean;
   }
 ): void => {
   try {
-    logger.debug('[navigateToAppropriateScreen] 画面遷移判定開始', {
-      hasUser: !!options?.user,
-      selectedInstrumentId: options?.user?.selected_instrument_id,
-      tutorialCompleted: options?.user?.tutorial_completed,
-    });
-    
-    // オプションが指定されていない場合は、useAuthAdvanced から取得
-    // 注意: この関数は hook の外で呼ばれる可能性があるため、
-    // オプションで渡された値を使用することを推奨
-    const hasSelectedInstrument = options?.user?.selected_instrument_id != null && options.user.selected_instrument_id !== '';
-    const canAccess = options?.canAccessMainApp?.() ?? false;
-    
-    logger.debug('[navigateToAppropriateScreen] 判定結果', {
-      hasSelectedInstrument,
-      canAccess,
-    });
-    
-    // タイムアウト時のフォールバックユーザーの判定
-    const isTimeoutFallback = options?.user && !options.user.selected_instrument_id && options.user.tutorial_completed === true;
-    
-    if (hasSelectedInstrument || canAccess || isTimeoutFallback) {
-      logger.debug('[navigateToAppropriateScreen] カレンダー画面に遷移（最後に使用していた楽器のメイン画面）', { 
-        isTimeoutFallback,
-        hasSelectedInstrument,
-        selectedInstrumentId: options?.user?.selected_instrument_id
-      });
-      router.push('/(tabs)');
-    } else {
-      // 楽器未選択の場合は必ずチュートリアルから開始
-      logger.debug('[navigateToAppropriateScreen] チュートリアル画面に遷移');
-      router.push('/(tabs)/tutorial');
-    }
+    const hasInstrument = options?.hasInstrumentSelected?.() ?? false;
+    const target = resolveOnboardingTarget(options?.user ?? null, hasInstrument);
+    logger.debug('[navigateToAppropriateScreen] 遷移', { target });
+    router.replace(target as never);
   } catch (error) {
     logger.error('[navigateToAppropriateScreen] 画面遷移エラー:', error);
-    // エラー時は安全にカレンダー画面に遷移
-    try {
-      router.push('/(tabs)');
-    } catch (fallbackError) {
-      logger.error('[navigateToAppropriateScreen] フォールバック画面遷移も失敗:', fallbackError);
-    }
   }
 };
 

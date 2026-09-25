@@ -9,6 +9,7 @@ import PracticeRecordModal from '@/components/PracticeRecordModal';
 import EventModal from '@/components/EventModal';
 import CalendarDayCell from '@/components/calendar/CalendarDayCell';
 import EventManagementSection from '@/components/calendar/EventManagementSection';
+import DailyDiscoverySection from '@/components/home/DailyDiscoverySection';
 import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { useCalendarData } from '@/hooks/tabs/useCalendarData';
@@ -1266,6 +1267,9 @@ export default function CalendarScreen() {
           </View>
         )}
         </View>
+
+        {/* 本日の曲 / 過去の自分から通知 */}
+        <DailyDiscoverySection instrumentId={selectedInstrument} />
 
         {/* イベント管理セクション */}
         <EventManagementSection

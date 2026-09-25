@@ -5,6 +5,7 @@ import Constants from 'expo-constants'; // Expo設定から値を取得
 import logger from './logger';
 import { ErrorHandler } from './errorHandler';
 import { createSupabaseAuthStorage } from './supabaseAuthStorage';
+import { requireHttpsApiBaseUrl } from './secureTransport';
 
 // ローカルSupabase設定（開発用フォールバック）
 // プラットフォームに応じたデフォルト: iOS/Web → 127.0.0.1, Android エミュ → 10.0.2.2
@@ -71,7 +72,7 @@ const useLocalOnWeb = process.env.EXPO_PUBLIC_USE_LOCAL_SUPABASE_WEB === 'true';
 // WebはPC上で動作するためローカル優先、ネイティブはクラウド優先
 // 開発時は EXPO_PUBLIC_USE_LOCAL_SUPABASE_WEB=true でローカルSupabaseへ切替可能
 // 本番環境では環境変数が必須、開発環境ではローカルフォールバック可
-const finalUrl = isWeb
+const finalUrlRaw = isWeb
   ? (isDev && useLocalOnWeb
       ? localUrl
       : (supabaseUrl || (isDev ? localUrl : (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_URL環境変数')); })())))
@@ -81,6 +82,9 @@ const finalKey = isWeb
       ? localKey
       : (supabaseAnonKey || (isDev ? localKey : (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数')); })())))
   : (isDev ? (useLocalOnNative ? localKey : (supabaseAnonKey || localKey)) : (supabaseAnonKey || (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数')); })()));
+
+// 本番リリースでは API ベースを HTTPS に強制（転送時暗号化）
+const finalUrl = requireHttpsApiBaseUrl(finalUrlRaw, 'Supabase');
 
 // 開発環境でのみ接続情報をログ出力（本番では機密情報を隠す）
 if (isDev) {
@@ -154,6 +158,17 @@ const getSupabaseClient = () => {
     
     // カスタムfetch関数：ネットワークエラーを適切にハンドリング
     const customFetch = async (url: string, options?: RequestInit): Promise<Response> => {
+      // すべての Supabase API / Storage 転送を HTTPS に強制
+      requireHttpsApiBaseUrl(
+        (() => {
+          try {
+            return new URL(url).origin;
+          } catch {
+            return url;
+          }
+        })(),
+        'Supabase.fetch'
+      );
       try {
         // 429エラー（レート制限）のリトライ処理
         const isAuthRefreshRequest = url.includes('/auth/v1/token') && url.includes('grant_type=refresh_token');

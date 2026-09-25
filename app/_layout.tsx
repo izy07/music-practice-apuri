@@ -2,27 +2,23 @@
 // Expo Routerのサーバーサイドレンダリングを無効化（開発環境でのエラーを回避）
 export const unstable_serverRendering = false;
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { View, LogBox, AppState, Alert, Platform } from 'react-native';
 import { Stack } from 'expo-router'; // 画面遷移のスタックナビゲーター
-import { useRouter, useSegments, useRootNavigationState, useGlobalSearchParams } from 'expo-router'; // ルーティング関連のフック
+import { useRouter, useRootNavigationState, useGlobalSearchParams } from 'expo-router';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady'; // フレームワーク準備状態の管理
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced'; // 認証フック（統一版）
 import { LanguageProvider } from '@/components/LanguageContext'; // 多言語対応の管理
 import { InstrumentThemeProvider } from '@/components/InstrumentThemeContext'; // 楽器別テーマの管理
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext'; // サブスクリプション状態の管理
-import LoadingSkeleton from '@/components/LoadingSkeleton'; // ローディング表示コンポーネント
 import { supabase } from '@/lib/supabase'; // Supabaseクライアント
-import { RoutePath } from '@/types/common'; // ルートパス型
-import { TIMEOUT } from '@/lib/constants'; // タイムアウト定数
 import logger from '@/lib/logger'; // ロガー
 import { ErrorHandler } from '@/lib/errorHandler'; // エラーハンドラー
-import { getBasePath, navigateWithBasePath, redirectToLogin } from '@/lib/navigationUtils'; // ベースパス取得関数とナビゲーション関数
-import { checkDatabaseSchema } from '@/lib/databaseSchemaChecker'; // データベーススキーマチェック
+import { getBasePath } from '@/lib/navigationUtils';
+import { useAppRouteGuard } from '@/hooks/useAppRouteGuard';
 import { initializeGoalRepository } from '@/repositories/goalRepository'; // 目標リポジトリの初期化
 import audioResourceManager from '@/lib/audioResourceManager'; // オーディオリソース管理
 import { isOnline } from '@/lib/offlineStorage'; // ネットワーク状態確認
-import Constants from 'expo-constants'; // 設定値取得用
 import { GlobalErrorBoundary } from '@/components/GlobalErrorBoundary'; // グローバルエラーバウンダリー
 import FeatureUsageTracker from '@/components/FeatureUsageTracker';
 
@@ -97,18 +93,34 @@ if (Platform.OS === 'web' && typeof window !== 'undefined') {
     };
   }
 
-  // Webでは React Native の Alert.alert が動作しないため、window.alert に差し替える
+  // Webでは React Native の Alert.alert が動作しないため、confirm/alert に差し替える
   try {
     const originalAlert = Alert.alert.bind(Alert);
-    (Alert as any).alert = (title: string, message?: string, buttons?: Array<{ text: string; onPress?: () => void; style?: 'cancel' | 'default' | 'destructive' }>) => {
+    (Alert as any).alert = (
+      title: string,
+      message?: string,
+      buttons?: Array<{ text: string; onPress?: () => void; style?: 'cancel' | 'default' | 'destructive' }>
+    ) => {
       const text = [title, message].filter(Boolean).join('\n\n');
-      if (typeof window !== 'undefined' && window.alert) {
-        window.alert(text);
-        const defaultBtn = buttons?.find((b: any) => b.style !== 'cancel' && b.style !== 'destructive');
-        if (defaultBtn?.onPress) setTimeout(defaultBtn.onPress, 0);
-      } else {
-        originalAlert(title, message, buttons as any);
+      if (typeof window !== 'undefined') {
+        if (buttons && buttons.length > 1) {
+          const confirmed = window.confirm(text);
+          if (confirmed) {
+            const actionBtn =
+              buttons.find((b) => b.style === 'destructive') ??
+              buttons.find((b) => b.style !== 'cancel') ??
+              buttons[buttons.length - 1];
+            actionBtn?.onPress?.();
+          } else {
+            buttons.find((b) => b.style === 'cancel')?.onPress?.();
+          }
+        } else {
+          window.alert(text);
+          buttons?.[0]?.onPress?.();
+        }
+        return;
       }
+      originalAlert(title, message, buttons as any);
     };
   } catch (_e) {
     // 差し替えに失敗した場合はそのまま
@@ -122,7 +134,6 @@ function RootLayoutContent() {
   
   // ルーティング関連のフック
   const router = useRouter(); // 画面遷移を実行するためのルーター
-  const segments = useSegments() as readonly string[]; // 現在のURLパスを配列で取得
   const globalParams = useGlobalSearchParams<{ from?: string }>();
   const rootNavigationState = useRootNavigationState();
   const isRouterReady = !!rootNavigationState?.key;
@@ -134,20 +145,18 @@ function RootLayoutContent() {
     isInitialized,
     hasInstrumentSelected,
     getOnboardingRoute,
-    canAccessMainApp,
-    signOut,
-    user
   } = useAuthAdvanced();
 
-  // オンボーディング pending が長引いた場合のフォールバック（無限ローディング防止）
-  const [onboardingPendingTimedOut, setOnboardingPendingTimedOut] = useState(false);
-
-  // segmentsをrefで保持（Web環境での強制遷移を防ぐため）
-  const segmentsRef = useRef(segments);
-  // segmentsが変更されたらrefを更新（重複を削除）
-  React.useEffect(() => {
-    segmentsRef.current = segments;
-  }, [segments]);
+  useAppRouteGuard({
+    isReady,
+    isRouterReady,
+    isLoading,
+    isInitialized,
+    isAuthenticated,
+    hasInstrumentSelected,
+    getOnboardingRoute,
+    tutorialFromSettings: globalParams.from === 'settings',
+  });
 
   // アプリのライフサイクル管理：バックグラウンド移行時にオーディオリソースを解放
   React.useEffect(() => {
@@ -493,316 +502,10 @@ function RootLayoutContent() {
     }
   }, [router, isReady, isRouterReady]);
 
-  /**
-   * 【ナビゲーション関数】安全な画面遷移を実行
-   * - Expo Routerの「navigate before mounting」エラーを回避
-   * - 遷移失敗時のフォールバック処理を含む
-   * - チュートリアル画面への遷移時は特別なフォールバック処理
-   */
-  // ナビゲーション関数（シンプル化）
-  const navigateWithDelay = (path: RoutePath, delay: number = 0): void => {
-    // フレームワークが準備完了するまで待機
-    if (!isReady || !isRouterReady) {
-      logger.debug('フレームワーク準備中 - ナビゲーションを待機中', { path, isReady });
-      // 準備完了後に再試行
-      setTimeout(() => navigateWithDelay(path, 0), 100);
-      return;
-    }
-    
-    setTimeout(() => {
-      try {
-        logger.debug('ナビゲーション実行:', path);
-        router.replace(path as any);
-        logger.debug('ナビゲーション完了:', path);
-      } catch (error) {
-        logger.error('ナビゲーションエラー:', error);
-        ErrorHandler.handle(error, 'ナビゲーション', false);
-      }
-    }, delay);
-  };
-
-  // checkUserProgressAndNavigate関数は削除（シンプル化のため不要）
-  // 認証チェックはuseEffect内で直接実行される
-
-  /**
-   * 【メイン】新しい認証フローに基づく画面遷移ロジック
-   * 
-   * 要件:
-   * - 未認証ユーザー → 新規登録画面
-   * - 認証済み + 楽器選択済み → メイン画面
-   * - 認証済み + 楽器未選択 → チュートリアル画面
-   */
-  useEffect(() => {
-    // Expo RouterのRoot Navigationが準備できるまで待機（navigate before mounting を回避）
-    if (!isRouterReady) {
-      return;
-    }
-
-    // 現在のセグメントを取得（Web環境ではrefから取得して強制遷移を防ぐ）
-    const currentSegments = Platform.OS === 'web' ? segmentsRef.current : segments;
-    
-    // フレームワークが準備完了するまで待機（Root Layoutのマウントを待つ）
-    // ただし、Web環境ではURLから画面を判断して即座に表示（Optimistic UI）
-    if (!isReady) {
-      // Web環境: 有効な画面にいる場合は、isReadyを待たずに画面を維持
-      if (Platform.OS === 'web') {
-        const firstSegment = currentSegments[0];
-        const isInTabsGroup = firstSegment === '(tabs)';
-        const isInAuthGroup = firstSegment === 'auth';
-        
-        // 有効なアプリ画面にいる場合は、画面を維持（デフォルト画面を表示しない）
-        if (isInTabsGroup || isInAuthGroup) {
-          logger.debug('フレームワーク準備中・有効な画面 - 画面を維持', { isReady, currentSegments });
-          return;
-        }
-      }
-      
-      logger.debug('フレームワーク準備中 - 画面遷移を待機中', { isReady });
-      return;
-    }
-    
-    /**
-     * 【統一された認証保護ロジック】
-     * - 未認証 → ログイン画面
-     * - 認証済み + 楽器未選択 → チュートリアル or 楽器選択画面
-     * - 認証済み + 楽器選択済み → メイン画面
-     */
-    const firstSegment = currentSegments[0];
-    const isInAuthGroup = firstSegment === 'auth';
-    const isInTabsGroup = firstSegment === '(tabs)';
-    const isInOrgGroup = firstSegment === 'organization-dashboard' || firstSegment === 'organization-settings';
-    const isNotFoundScreen = firstSegment === '+not-found';
-    const currentTab = isInTabsGroup && currentSegments.length > 1 ? currentSegments[1] : null;
-    const isAtRoot = currentSegments.length === 0;
-    
-    // 認証画面（ログイン/新規登録）にいる場合は完全にスキップ
-    // 各画面のuseEffectで画面遷移を処理するため、ここでは何もしない
-    if (isInAuthGroup) {
-      const authChild = segments.length > 1 ? segments[1] : undefined;
-      if (authChild === 'login' || authChild === 'signup') {
-        logger.debug('認証画面（ログイン/新規登録）にいるため、処理をスキップ', { authChild });
-        return; // 完全にスキップ
-      }
-    }
-    
-    // 利用規約・プライバシーポリシー画面は許可（認証チェックをスキップ）
-    if (firstSegment === 'terms-of-service' || firstSegment === 'privacy-policy') {
-      return;
-    }
-    
-    // Web環境: 認証状態の初期化中でも、URLから画面を判断して表示（Optimistic UI）
-    if (Platform.OS === 'web' && (isLoading || !isInitialized)) {
-      // 認証画面にいる場合でも、認証済みの場合は画面遷移を実行
-      if (isInAuthGroup && isAuthenticated) {
-        logger.debug('認証初期化中・認証画面・認証済み - 画面遷移を実行', { isLoading, isInitialized, isAuthenticated });
-        // 認証済みの場合は、初期化完了を待たずに画面遷移を実行（チュートリアル画面など）
-        // 下記の認証済みユーザーの処理に進む
-      } else if (isInAuthGroup) {
-        logger.debug('認証初期化中・認証画面 - 画面遷移を待機中', { isLoading, isInitialized });
-        return;
-      }
-      
-      // 有効なアプリ画面（タブグループ、組織管理画面など）にいる場合は、認証確認を待たずに画面を維持
-      // これにより、リロード時にデフォルト画面やログイン画面が表示されない
-      if (isInTabsGroup || isInOrgGroup) {
-        logger.debug('認証初期化中・有効な画面 - 画面を維持（Optimistic UI）', { currentSegments, isLoading, isInitialized });
-        return; // 画面遷移をブロックしない（現在の画面を維持）
-      }
-      
-      // 利用規約・プライバシーポリシー画面も維持
-      if (firstSegment === 'terms-of-service' || firstSegment === 'privacy-policy') {
-        return;
-      }
-      
-      // ルートパスのみログイン画面にリダイレクト（初回アクセス時）
-      if (isAtRoot) {
-        redirectToLogin(router, '認証初期化中・ルートパス');
-        return;
-      }
-      
-      // その他の画面（存在する画面）も維持
-      logger.debug('認証初期化中・その他の画面 - 画面を維持', { currentSegments, isLoading, isInitialized });
-      return;
-    }
-    
-    // ネイティブ環境: 初期化中は待機
-    if (isLoading || !isInitialized) {
-      logger.debug('認証初期化中 - 画面遷移を待機中', { isLoading, isInitialized });
-      return;
-    }
-
-    logger.debug('画面遷移チェック', {
-      isAuthenticated,
-      isInitialized,
-      isLoading,
-      currentSegments,
-      hasInstrumentSelected: hasInstrumentSelected(),
-      onboardingRoute: getOnboardingRoute(),
-    });
-
-    // Web環境: 認証確認完了後の処理
-    // バックグラウンドで認証確認が完了した後、未認証の場合はログイン画面にリダイレクト
-    if (Platform.OS === 'web') {
-      // 認証済みで適切な画面にいる場合は、リロード時も現在の画面を維持
-      if (isAuthenticated && (isInTabsGroup || isInOrgGroup) && hasInstrumentSelected()) {
-        logger.debug('認証済み・楽器選択済み - 現在の画面を維持', { segments: currentSegments });
-        return;
-      }
-      
-      // 認証画面（ログイン/新規登録）は既にスキップされているため、ここでは処理しない
-      
-      // 未認証でアプリ画面にいる場合は、ログイン画面にリダイレクト
-      // ただし、認証確認が完了した後（isInitialized && !isLoading）のみ
-      if (!isAuthenticated && (isInTabsGroup || isInOrgGroup) && isInitialized && !isLoading) {
-        redirectToLogin(router, '未認証・アプリ画面');
-        return;
-      }
-    }
-    
-    // 未認証ユーザー → ログイン画面にリダイレクト
-    // 認証画面（ログイン/新規登録）は既にスキップされているため、ここでは処理しない
-    if (!isAuthenticated) {
-      // ルートパス（/）またはその他の画面にアクセスした場合は、ログイン画面にリダイレクト
-      redirectToLogin(router, '未認証ユーザー');
-      return;
-    }
-
-    // 認証済みユーザー
-    // 認証画面（ログイン/新規登録）は既にスキップされているため、ここでは処理しない
-    // その他の認証画面（callback、reset-passwordなど）は後続処理で対応
-    
-    // 楽器未選択の場合の処理
-    const ONBOARDING_TABS = new Set(['tutorial', 'instrument-selection']);
-    const instrumentSelected = hasInstrumentSelected();
-    if (!instrumentSelected) {
-      const onboardingTarget = getOnboardingRoute();
-
-      // プロフィール／ローカルキャッシュ未確定の間はチュートリアルへ飛ばさない（再ログイン誤表示の根因）
-      if (onboardingTarget === 'pending') {
-        logger.debug('オンボーディング状態未確定のため遷移待機', { currentTab });
-        return;
-      }
-
-      // オンボーディング画面はそのまま許可（誤ったステップだけ補正）
-      if (currentTab && ONBOARDING_TABS.has(currentTab)) {
-        if (
-          (currentTab === 'tutorial' && onboardingTarget === '/(tabs)/instrument-selection') ||
-          (currentTab === 'instrument-selection' && onboardingTarget === '/(tabs)/tutorial')
-        ) {
-          logger.debug('オンボーディング画面を正しいステップへ補正', {
-            currentTab,
-            onboardingTarget,
-          });
-          router.replace(onboardingTarget);
-        }
-        return;
-      }
-      // replace 遷移中は segments が ['(tabs)'] のみになることがある → リダイレクトしない
-      if (isInTabsGroup && currentSegments.length <= 1) {
-        return;
-      }
-      if (isInitialized && !isLoading) {
-        // index は楽器必須なので、未選択時は tutorial / instrument-selection のみ
-        const safeTarget =
-          onboardingTarget === '/(tabs)'
-            ? '/(tabs)/instrument-selection'
-            : onboardingTarget;
-        logger.debug('楽器未選択のため、オンボーディング画面にリダイレクト', {
-          currentTab,
-          onboardingTarget: safeTarget,
-        });
-        router.replace(safeTarget);
-        return;
-      }
-      return;
-    }
-
-    // 認証済み + 楽器選択済み
-    // 設定から見返す場合（from=settings）はチュートリアル滞在を許可
-    if (currentTab === 'tutorial' && instrumentSelected) {
-      if (globalParams.from === 'settings') {
-        return;
-      }
-      logger.debug('楽器選択済みのため、チュートリアル画面からカレンダー画面にリダイレクト');
-      router.replace('/(tabs)');
-      return;
-    }
-    
-    // Web環境: 既に適切な画面にいる場合は維持
-    if (Platform.OS === 'web' && (isInTabsGroup || isInOrgGroup)) {
-      return;
-    }
-    
-    // +not-found を `/` に戻すと segments が空になり Stack が不安定になる。
-    // 認証状態に応じた画面へ直接 replace（Redirect と二重に走らせない）。
-    // +not-found の復帰は +not-found.tsx に任せる（二重 replace でループするため）
-    if (isNotFoundScreen) {
-      return;
-    }
-
-    if (isAtRoot) {
-      const target = isAuthenticated ? getOnboardingRoute() : '/auth/login';
-      if (target === 'pending') {
-        return;
-      }
-      logger.debug('ルートから本来の画面へ遷移します', { target });
-      router.replace(target as RoutePath);
-      return;
-    }
-    
-    // その他の認証画面（callback、reset-passwordなど）の処理
-    if (isInAuthGroup) {
-      if (!instrumentSelected) {
-        const route = getOnboardingRoute();
-        if (route === 'pending') {
-          return;
-        }
-        router.replace(
-          route === '/(tabs)/instrument-selection' || route === '/(tabs)'
-            ? '/(tabs)/instrument-selection'
-            : '/(tabs)/tutorial'
-        );
-      } else {
-        router.replace('/(tabs)');
-      }
-      return;
-    }
-  }, [isReady, isRouterReady, isAuthenticated, isLoading, isInitialized, hasInstrumentSelected, getOnboardingRoute, user?.tutorial_completed, user?.selected_instrument_id, router, segments, globalParams.from]);
-
-  // checkUserProgressAndNavigate関数は削除（シンプル化のため不要）
-
-  // 新規登録画面用のuseEffectは削除（シンプル化のため不要）
-  // 認証状態が更新されると、メインのuseEffectが自動的に実行される
-
-  const onboardingRoute = isAuthenticated ? getOnboardingRoute() : null;
-  const isOnboardingPending = onboardingRoute === 'pending';
-
-  useEffect(() => {
-    if (!isOnboardingPending) {
-      setOnboardingPendingTimedOut(false);
-      return;
-    }
-    const timer = setTimeout(() => {
-      logger.warn('オンボーディング状態が長時間未確定のためフォールバック遷移します');
-      setOnboardingPendingTimedOut(true);
-    }, TIMEOUT.INITIALIZATION_MS + 4000);
-    return () => clearTimeout(timer);
-  }, [isOnboardingPending]);
-
-  useEffect(() => {
-    if (!isInitialized || !isAuthenticated || !onboardingPendingTimedOut) return;
-    if (getOnboardingRoute() !== 'pending') return;
-    router.replace('/(tabs)/tutorial');
-  }, [isInitialized, isAuthenticated, onboardingPendingTimedOut, getOnboardingRoute, router]);
-
-  // 起動中も Stack は描画したまま、上にローディングを重ねる。
-  // Stack を外すと子ルートが消え、最初の URL が +not-found に固定される。
+  // 起動 UI は app/index.tsx（BootScreen）のみ。
+  // 全画面 overlay で isRouterReady/isInitialized を待つと、遷移取りこぼしや
+  // 二重待ちで白い画面に固定される（クローズドテストでの白画面の根因）。
   const defaultBackgroundColor = '#FFFFFF';
-  const showBootLoading =
-    !isReady ||
-    !isRouterReady ||
-    !isInitialized ||
-    (isOnboardingPending && !onboardingPendingTimedOut);
 
   return (
     <View style={{ flex: 1, backgroundColor: defaultBackgroundColor }}>
@@ -813,6 +516,9 @@ function RootLayoutContent() {
         contentStyle: { backgroundColor: defaultBackgroundColor }, // デフォルト背景色を設定（黒い画面を防ぐ）
       }}
     >
+      {/* 起動エントリ（ルート `/` — 白画面防止。Stack は常に描画したまま） */}
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+
       {/* 認証関連の画面 - app/auth/_layout.tsx で子ルートを管理 */}
       <Stack.Screen name="auth" options={{ headerShown: false }} />
       
@@ -833,21 +539,6 @@ function RootLayoutContent() {
       {/* エラー画面 */}
       <Stack.Screen name="+not-found" options={{ headerShown: false }} />
     </Stack>
-    {showBootLoading ? (
-      <View
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 100,
-          backgroundColor: defaultBackgroundColor,
-        }}
-      >
-        <LoadingSkeleton fullScreen />
-      </View>
-    ) : null}
     </View>
   );
 }

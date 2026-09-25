@@ -949,12 +949,6 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
   },
-  tunerDiagText: {
-    marginTop: 10,
-    fontSize: 10,
-    lineHeight: 14,
-    textAlign: 'center',
-  },
   noteNameChartPanel: {
     marginTop: 16,
     marginHorizontal: 16,

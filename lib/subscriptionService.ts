@@ -235,32 +235,50 @@ export const purchaseSubscription = async (
  */
 export const switchToFreePlan = async (userId: string): Promise<UserSubscription> => {
   const now = new Date();
-  const { data, error } = await supabase
+  const payload = {
+    plan: 'free' as SubscriptionPlan,
+    is_active: false,
+    current_period_end: null,
+    canceled_at: now.toISOString(),
+  };
+
+  const { data: updated, error: updateError } = await supabase
     .from('user_subscriptions')
-    .upsert(
-      {
-        user_id: userId,
-        plan: 'free',
-        is_active: false,
-        current_period_end: null,
-        canceled_at: now.toISOString(),
-      },
-      { onConflict: 'user_id' }
-    )
+    .update(payload)
+    .eq('user_id', userId)
+    .select('*')
+    .maybeSingle();
+
+  if (updateError) {
+    logger.error('無料プランへの切り替えに失敗しました:', updateError);
+    throw updateError;
+  }
+
+  if (updated) {
+    logger.debug('無料プランへ切り替えました（update）:', { userId });
+    return updated as UserSubscription;
+  }
+
+  const { data: inserted, error: insertError } = await supabase
+    .from('user_subscriptions')
+    .insert({
+      user_id: userId,
+      ...payload,
+    })
     .select('*')
     .single();
 
-  if (error) {
-    logger.error('無料プランへの切り替えに失敗しました:', error);
-    throw error;
+  if (insertError) {
+    logger.error('無料プランへの切り替え（insert）に失敗しました:', insertError);
+    throw insertError;
   }
 
-  if (!data) {
+  if (!inserted) {
     throw new Error('無料プランへの切り替えが完了しましたが、サブスクリプション情報が取得できませんでした');
   }
 
-  logger.debug('無料プランへ切り替えました:', { userId });
-  return data as UserSubscription;
+  logger.debug('無料プランへ切り替えました（insert）:', { userId });
+  return inserted as UserSubscription;
 };
 
 /** @deprecated switchToFreePlan を使用してください */

@@ -26,7 +26,7 @@ import { useRouter, useSegments, useFocusEffect } from 'expo-router';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { supabase } from '@/lib/supabase';
 import logger from '@/lib/logger';
-import { getBasePath, navigateToAppropriateScreen } from '@/lib/navigationUtils';
+import { getBasePath } from '@/lib/navigationUtils';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { signIn as signInService } from '@/lib/authService';
 import { getAuthErrorInfo, AuthErrorType } from '@/lib/authHelpers';

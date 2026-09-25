@@ -10,6 +10,7 @@
 
 import { supabase } from './supabase';
 import logger from './logger';
+import { assertEncryptedInTransit } from './secureTransport';
 
 export interface SignUpResult {
   success: boolean;
@@ -173,6 +174,7 @@ export async function signUpNew(
       // GoTrue REST は top-level の `data`（user_metadata）。supabase-js の options.data ではない。
       const nickname = (displayName?.trim() || normalizedEmail.split('@')[0]).trim();
       const signupUrl = `${supabaseUrl}/auth/v1/signup`;
+      assertEncryptedInTransit(signupUrl, 'signUp');
       const requestBody = {
         email: normalizedEmail,
         password: password,
