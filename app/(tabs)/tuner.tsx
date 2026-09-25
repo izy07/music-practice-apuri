@@ -24,6 +24,20 @@ import audioResourceManager from '@/lib/audioResourceManager';
 import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getNoteFromFrequency, smoothValue, getTuningColor, combineAlgorithms, TUNER_ANALYSIS, TUNER_DISPLAY, createFrequencyStabilizerState, stabilizeDetectedFrequency, applyCentsDeadZone, type FrequencyStabilizerState } from '@/lib/tunerAudioProcessor';
+import {
+  TUNER_PRO_ANALYSIS,
+  TUNER_PRO_DISPLAY,
+  combineAlgorithmsPro,
+  createProFrequencyStabilizerState,
+  stabilizeProFrequency,
+  applyProCentsDeadZone,
+  estimatePhaseAtFrequency,
+  createPhaseStrobeState,
+  updatePhaseStrobe,
+  type ProFrequencyStabilizerState,
+  type PhaseStrobeState,
+} from '@/lib/tunerProMode';
+import { StrobeDisplay } from '@/components/tuner/StrobeDisplay';
 import { emitRequestReleaseMic, subscribeRequestReleaseMic } from '@/lib/appEvents';
 import { getUserSettings } from '@/repositories/userSettingsRepository';
 import { getCurrentUser } from '@/lib/authService';
@@ -417,19 +431,34 @@ export default function TunerScreen() {
   const nativeLatestFreqRef = useRef<number>(0);
   const audioProcessingIntervalRef = useRef<number | null>(null);
   const stabilizerStateRef = useRef<FrequencyStabilizerState>(createFrequencyStabilizerState());
+  const proStabilizerStateRef = useRef<ProFrequencyStabilizerState>(createProFrequencyStabilizerState());
+  const latestAudioBufferRef = useRef<Float32Array | null>(null);
+  const strobeStateRef = useRef<PhaseStrobeState>(createPhaseStrobeState(440));
   const isListeningRef = useRef(false);
+  const proModeRef = useRef(false);
   const stopListeningRef = useRef<() => void>(() => {});
   
   // 音名表示モード（CDEかドレミか）- 開放弦の音を聞く機能で使用
   const [noteDisplayMode, setNoteDisplayMode] = useState<'en' | 'ja'>('en');
   const NOTE_DISPLAY_MODE_KEY = '@tuner_note_display_mode';
+  const PRO_MODE_KEY = '@tuner_pro_mode_enabled';
   
+  // プロモード（ストロボ + 高精度解析）
+  const [proMode, setProMode] = useState(false);
+  const [strobeOffset, setStrobeOffset] = useState(0);
+  const [strobeInTune, setStrobeInTune] = useState(false);
+  const [longTermFrequency, setLongTermFrequency] = useState(0);
+
   // A4周波数の設定（デフォルト442Hz）
   const [a4Frequency, setA4Frequency] = useState<number>(DEFAULT_A4_FREQUENCY);
   const a4FrequencyRef = useRef<number>(DEFAULT_A4_FREQUENCY);
   useEffect(() => {
     a4FrequencyRef.current = a4Frequency;
   }, [a4Frequency]);
+
+  useEffect(() => {
+    proModeRef.current = proMode;
+  }, [proMode]);
 
   // プロ仕様設定
   // データベースの楽器IDとチューナー楽器キーのマッピング（useMemoでメモ化）
@@ -530,16 +559,21 @@ export default function TunerScreen() {
           setNoteDisplayMode(savedMode);
         }
 
+        const savedProMode = await AsyncStorage.getItem(PRO_MODE_KEY);
+        if (savedProMode === 'true') {
+          setProMode(true);
+        }
+
         // A4周波数を設定から読み込み
         const { user, error: userError } = await getCurrentUser();
         if (!userError && user) {
           const settingsResult = await getUserSettings(user.id);
           if (!settingsResult.error && settingsResult.data?.tuner_settings) {
             const settings = settingsResult.data.tuner_settings;
-            let a4Freq = Math.round(settings.a4Frequency || settings.reference_pitch || DEFAULT_A4_FREQUENCY);
+            let a4Freq = Number(settings.a4Frequency || settings.reference_pitch || DEFAULT_A4_FREQUENCY);
             // 従来の440Hz設定を442Hzにマイグレーション（基準を442に統一）
-            if (a4Freq === 440) a4Freq = DEFAULT_A4_FREQUENCY;
-            setA4Frequency(a4Freq);
+            if (Math.round(a4Freq) === 440) a4Freq = DEFAULT_A4_FREQUENCY;
+            setA4Frequency(Math.round(a4Freq * 10) / 10);
             logger.debug('A4周波数を設定から読み込みました', { a4Freq });
           }
         }
@@ -570,10 +604,24 @@ export default function TunerScreen() {
     }
   }, []);
 
+  const saveProMode = useCallback(async (enabled: boolean) => {
+    try {
+      await AsyncStorage.setItem(PRO_MODE_KEY, enabled ? 'true' : 'false');
+      setProMode(enabled);
+      proStabilizerStateRef.current = createProFrequencyStabilizerState();
+      strobeStateRef.current = createPhaseStrobeState(a4FrequencyRef.current);
+      if (isListeningRef.current) {
+        stopListeningRef.current();
+      }
+    } catch (error) {
+      ErrorHandler.handle(error, 'プロモード設定の保存', false);
+    }
+  }, []);
+
   // A4周波数を保存する（useCallbackでメモ化）
   const saveA4Frequency = useCallback(async (frequency: number) => {
     try {
-      const freq = Math.round(frequency);
+      const freq = Math.round(frequency * 10) / 10;
       const { user, error: userError } = await getCurrentUser();
       if (!userError && user) {
         await saveTunerSettings(user.id, {
@@ -593,45 +641,101 @@ export default function TunerScreen() {
     try {
       a4FrequencyRef.current = a4Frequency;
       stabilizerStateRef.current = createFrequencyStabilizerState();
+      proStabilizerStateRef.current = createProFrequencyStabilizerState();
+      strobeStateRef.current = createPhaseStrobeState(a4FrequencyRef.current);
+      setStrobeOffset(0);
+      setStrobeInTune(false);
+      setLongTermFrequency(0);
+
+      const usePro = proModeRef.current;
+      const detectPitch = usePro ? combineAlgorithmsPro : combineAlgorithms;
+      const uiInterval = usePro ? TUNER_PRO_DISPLAY.UI_INTERVAL_MS : TUNER_DISPLAY.UI_INTERVAL_MS;
 
       // 録音など他のマイク利用を解放してから開始（ネイティブ衝突の根因対策）
       emitRequestReleaseMic({ requester: 'tuner' });
 
       const processAudio = () => {
         let detectedFrequency = -1;
+        let sampleRate = TUNER_ANALYSIS.SAMPLE_RATE;
         if (Platform.OS === 'web') {
           if (!analyserNodeRef.current || !audioContextRef.current) return;
           const bufferLength = analyserNodeRef.current.fftSize;
           const dataArray = new Float32Array(bufferLength);
           analyserNodeRef.current.getFloatTimeDomainData(dataArray);
-          detectedFrequency = combineAlgorithms(dataArray, audioContextRef.current.sampleRate);
+          sampleRate = audioContextRef.current.sampleRate;
+          latestAudioBufferRef.current = dataArray;
+          detectedFrequency = detectPitch(dataArray, sampleRate);
         } else {
           detectedFrequency = nativeLatestFreqRef.current;
+          sampleRate = usePro
+            ? TUNER_PRO_ANALYSIS.SAMPLE_RATE_PREFERRED
+            : TUNER_ANALYSIS.SAMPLE_RATE;
         }
 
         if (detectedFrequency > 0) {
-          const result = stabilizeDetectedFrequency(
-            stabilizerStateRef.current,
-            detectedFrequency
-          );
-          if (!result.accepted) return;
-          stabilizerStateRef.current = result.state;
+          let outputFrequency = detectedFrequency;
+          let rawCents = 0;
 
-          const noteInfo = getNoteFromFrequency(result.frequency, a4FrequencyRef.current);
-          const displayCents = applyCentsDeadZone(noteInfo.cents);
+          if (usePro) {
+            const proResult = stabilizeProFrequency(
+              proStabilizerStateRef.current,
+              detectedFrequency
+            );
+            if (!proResult.accepted) return;
+            proStabilizerStateRef.current = proResult.state;
+            outputFrequency = proResult.frequency;
+            setLongTermFrequency(proResult.longTermMedian);
 
-          setCurrentFrequency(result.frequency);
+            const noteForStrobe = getNoteFromFrequency(outputFrequency, a4FrequencyRef.current);
+            rawCents = noteForStrobe.cents;
+            const targetHz = getFrequency(
+              noteForStrobe.note,
+              noteForStrobe.octave,
+              a4FrequencyRef.current
+            );
+            const buffer = latestAudioBufferRef.current;
+            const measuredPhase = buffer
+              ? estimatePhaseAtFrequency(buffer, sampleRate, outputFrequency)
+              : 0;
+            const strobeUpdate = updatePhaseStrobe(
+              strobeStateRef.current,
+              outputFrequency,
+              measuredPhase,
+              targetHz,
+              Date.now(),
+              rawCents
+            );
+            strobeStateRef.current = strobeUpdate.state;
+            setStrobeOffset(strobeUpdate.state.scrollOffset);
+            setStrobeInTune(strobeUpdate.inTune);
+          } else {
+            const stdResult = stabilizeDetectedFrequency(
+              stabilizerStateRef.current,
+              detectedFrequency
+            );
+            if (!stdResult.accepted) return;
+            stabilizerStateRef.current = stdResult.state;
+            outputFrequency = stdResult.frequency;
+          }
+
+          const noteInfo = getNoteFromFrequency(outputFrequency, a4FrequencyRef.current);
+          if (!usePro) rawCents = noteInfo.cents;
+          const displayCents = usePro
+            ? applyProCentsDeadZone(rawCents)
+            : applyCentsDeadZone(noteInfo.cents);
+
+          setCurrentFrequency(outputFrequency);
           setCurrentNote(noteInfo.note);
           setCurrentNoteJa(noteInfo.noteJa);
           setCurrentOctave(noteInfo.octave);
           setCurrentCents(displayCents);
 
-          const { color } = getTuningColor(Math.abs(displayCents));
+          const { color } = getTuningColor(Math.abs(rawCents));
           setIndicatorColor(color);
 
           Animated.timing(tuningBarAnimation, {
-            toValue: displayCents,
-            duration: 160,
+            toValue: Math.max(-50, Math.min(50, displayCents)),
+            duration: usePro ? 80 : 160,
             easing: Easing.out(Easing.cubic),
             useNativeDriver: false,
           }).start();
@@ -676,14 +780,19 @@ export default function TunerScreen() {
         const engine = new NativeTunerEngine();
         nativeTunerEngineRef.current = engine;
         nativeLatestFreqRef.current = 0;
-        await engine.start((frequency) => {
-          nativeLatestFreqRef.current = frequency;
-        });
+        latestAudioBufferRef.current = null;
+        await engine.start(
+          (frequency, buffer) => {
+            nativeLatestFreqRef.current = frequency;
+            if (buffer) latestAudioBufferRef.current = buffer;
+          },
+          { proMode: usePro }
+        );
         setIsListening(true);
         isListeningRef.current = true;
         audioProcessingIntervalRef.current = setInterval(
           processAudio,
-          TUNER_DISPLAY.UI_INTERVAL_MS
+          uiInterval
         ) as unknown as number;
         void trackFeatureAction(
           user?.id,
@@ -709,7 +818,9 @@ export default function TunerScreen() {
             echoCancellation: false, // チューナーではエコーキャンセルを無効化（精度向上のため）
             noiseSuppression: false,  // ノイズサプレッションも無効化
             autoGainControl: false,   // 自動ゲインコントロールも無効化
-            sampleRate: TUNER_ANALYSIS.SAMPLE_RATE,
+            sampleRate: usePro
+              ? TUNER_PRO_ANALYSIS.SAMPLE_RATE_PREFERRED
+              : TUNER_ANALYSIS.SAMPLE_RATE,
           }
         });
         microphoneStreamRef.current = stream;
@@ -749,7 +860,9 @@ export default function TunerScreen() {
       const source = audioCtx.createMediaStreamSource(stream);
       mediaStreamSourceRef.current = source;
       const analyser = audioCtx.createAnalyser();
-      analyser.fftSize = TUNER_ANALYSIS.WINDOW_SAMPLES; // Native リング窓と同一（低音精度の根因）
+      analyser.fftSize = usePro
+        ? TUNER_PRO_ANALYSIS.WINDOW_SAMPLES
+        : TUNER_ANALYSIS.WINDOW_SAMPLES;
       analyser.smoothingTimeConstant = 0; // 時間領域ピッチ検出では平滑化不要（最新サンプルを使う）
       source.connect(analyser);
       analyserNodeRef.current = analyser;
@@ -758,7 +871,7 @@ export default function TunerScreen() {
       isListeningRef.current = true;
       audioProcessingIntervalRef.current = window.setInterval(
         processAudio,
-        TUNER_DISPLAY.UI_INTERVAL_MS
+        uiInterval
       );
       void trackFeatureAction(
         user?.id,
@@ -835,7 +948,12 @@ export default function TunerScreen() {
     setCurrentOctave(0);
     setCurrentCents(0);
     setIndicatorColor('#9E9E9E');
+    setStrobeOffset(0);
+    setStrobeInTune(false);
+    setLongTermFrequency(0);
     stabilizerStateRef.current = createFrequencyStabilizerState();
+    proStabilizerStateRef.current = createProFrequencyStabilizerState();
+    latestAudioBufferRef.current = null;
     analyserNodeRef.current = null;
 
     logger.debug('チューナー機能を停止しました');
@@ -1216,6 +1334,37 @@ export default function TunerScreen() {
         <View style={[styles.mainDisplay, { backgroundColor: currentTheme.background }]}> 
           {mode === 'tuner' ? (
             <>
+              {/* 標準 / プロモード切替 */}
+              <View style={[styles.proModeToggle, { backgroundColor: currentTheme.surface, borderColor: currentTheme.secondary }]}>
+                <TouchableOpacity
+                  style={[
+                    styles.proModeButton,
+                    !proMode && { backgroundColor: currentTheme.primary },
+                  ]}
+                  onPress={() => void saveProMode(false)}
+                >
+                  <Text style={[styles.proModeButtonText, { color: !proMode ? currentTheme.surface : currentTheme.text }]}>
+                    標準
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.proModeButton,
+                    proMode && { backgroundColor: currentTheme.primary },
+                  ]}
+                  onPress={() => void saveProMode(true)}
+                >
+                  <Text style={[styles.proModeButtonText, { color: proMode ? currentTheme.surface : currentTheme.text }]}>
+                    プロ（ストロボ）
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {proMode && (
+                <Text style={[styles.proModeDescription, { color: currentTheme.textSecondary }]}>
+                  長窓解析・HPS・位相ストロボ。静かな環境で長く伸ばして合わせてください。
+                </Text>
+              )}
+
               {/* シンプルなチューナー */}
               <View style={[styles.simpleTunerContainer, { backgroundColor: currentTheme.surface }]}>
                 {/* 音名表示 */}
@@ -1250,8 +1399,13 @@ export default function TunerScreen() {
 
                 {/* 周波数表示 */}
                 <Text style={[styles.simpleFrequency, { color: currentTheme.textSecondary }]}>
-                  {currentFrequency > 0 ? currentFrequency.toFixed(2) : '--'} Hz
+                  {currentFrequency > 0 ? currentFrequency.toFixed(proMode ? 3 : 2) : '--'} Hz
                 </Text>
+                {proMode && longTermFrequency > 0 && (
+                  <Text style={[styles.proAverageFrequency, { color: currentTheme.textSecondary }]}>
+                    平均 {longTermFrequency.toFixed(3)} Hz
+                  </Text>
+                )}
 
                 {/* シンプルなチューニングバー */}
                 <View style={styles.simpleTuningBarContainer}>
@@ -1308,7 +1462,7 @@ export default function TunerScreen() {
                                  Math.abs(currentCents) <= 10 ? '#FF9800' : '#F44336'
                         }
                       ]}>
-                        {currentCents > 0 ? '+' : ''}{currentCents.toFixed(1)} セント
+                        {currentCents > 0 ? '+' : ''}{currentCents.toFixed(proMode ? 2 : 1)} セント
                       </Text>
                     ) : (
                       <Text style={[styles.simpleCents, { color: 'transparent' }]}>
@@ -1317,6 +1471,19 @@ export default function TunerScreen() {
                     )}
                   </View>
                 </View>
+
+                {proMode && (
+                  <StrobeDisplay
+                    scrollOffset={strobeOffset}
+                    inTune={strobeInTune}
+                    cents={currentCents}
+                    isActive={isListening && currentFrequency > 0}
+                    primaryColor={currentTheme.primary}
+                    textColor={currentTheme.text}
+                    textSecondary={currentTheme.textSecondary}
+                    surfaceColor={currentTheme.background}
+                  />
+                )}
 
                 {/* マイク開始/停止ボタン（固定） */}
                 <TouchableOpacity
@@ -1620,13 +1787,17 @@ export default function TunerScreen() {
               チューニングの基準周波数
             </Text>
             <Text style={[styles.settingDescription, { color: currentTheme.textSecondary }]}>
-              チューニングの基準となるA4の周波数を設定します（標準は442Hz）
+              {proMode
+                ? 'プロモード: 0.1Hz刻み（オーケストラ向け）。標準は442.0Hz'
+                : 'チューニングの基準となるA4の周波数を設定します（標準は442Hz）'}
             </Text>
             <View style={styles.frequencyAdjuster}>
               <TouchableOpacity
                 style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
                 onPress={() => {
-                  const newFreq = Math.max(432, Math.round(a4Frequency) - 1);
+                  const step = proMode ? TUNER_PRO_DISPLAY.A4_STEP : 1;
+                  const min = proMode ? TUNER_PRO_DISPLAY.A4_MIN : 432;
+                  const newFreq = Math.max(min, Math.round((a4Frequency - step) * 10) / 10);
                   setA4Frequency(newFreq);
                   saveA4Frequency(newFreq);
                 }}
@@ -1634,12 +1805,16 @@ export default function TunerScreen() {
                 <Text style={[styles.frequencyButtonText, { color: currentTheme.text }]}>-</Text>
               </TouchableOpacity>
               <View style={[styles.frequencyDisplay, { backgroundColor: currentTheme.background, borderColor: currentTheme.secondary }]}>
-                <Text style={[styles.frequencyValue, { color: currentTheme.primary, marginBottom: 0 }]}>{Math.round(a4Frequency)} Hz</Text>
+                <Text style={[styles.frequencyValue, { color: currentTheme.primary, marginBottom: 0 }]}>
+                  {proMode ? a4Frequency.toFixed(1) : Math.round(a4Frequency)} Hz
+                </Text>
               </View>
               <TouchableOpacity
                 style={[styles.frequencyButton, { backgroundColor: currentTheme.secondary }]}
                 onPress={() => {
-                  const newFreq = Math.min(450, Math.round(a4Frequency) + 1);
+                  const step = proMode ? TUNER_PRO_DISPLAY.A4_STEP : 1;
+                  const max = proMode ? TUNER_PRO_DISPLAY.A4_MAX : 450;
+                  const newFreq = Math.min(max, Math.round((a4Frequency + step) * 10) / 10);
                   setA4Frequency(newFreq);
                   saveA4Frequency(newFreq);
                 }}

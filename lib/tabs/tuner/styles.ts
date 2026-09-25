@@ -949,4 +949,36 @@ export const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 1,
   },
+  proModeToggle: {
+    flexDirection: 'row',
+    width: '100%',
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 4,
+    marginBottom: 8,
+    gap: 4,
+  },
+  proModeButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  proModeButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  proModeDescription: {
+    fontSize: 11,
+    lineHeight: 16,
+    marginBottom: 8,
+    paddingHorizontal: 4,
+    textAlign: 'center',
+  },
+  proAverageFrequency: {
+    fontSize: 12,
+    fontFamily: 'monospace',
+    marginBottom: 4,
+  },
 });

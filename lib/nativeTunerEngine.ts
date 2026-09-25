@@ -2,13 +2,21 @@
  * ネイティブ（iOS/Android）向けチューナーエンジン
  *
  * PCM を短いホップで受け取り、Web と同じ長さの解析窓（リングバッファ）で
- * combineAlgorithms を回す。短い単発バッファのまま検出していたのが低音精度の根因。
+ * combineAlgorithms / combineAlgorithmsPro を回す。
  */
 import { Platform } from 'react-native';
 import { combineAlgorithms, TUNER_ANALYSIS } from '@/lib/tunerAudioProcessor';
+import { combineAlgorithmsPro, TUNER_PRO_ANALYSIS } from '@/lib/tunerProMode';
 import logger from '@/lib/logger';
 
-export type NativeTunerFrequencyCallback = (frequency: number) => void;
+export type NativeTunerFrequencyCallback = (frequency: number, buffer?: Float32Array) => void;
+
+export type NativeTunerOptions = {
+  proMode?: boolean;
+  sampleRate?: number;
+  windowSamples?: number;
+  hopSamples?: number;
+};
 
 type NativeAudioApiModule = {
   AudioRecorder: new () => {
@@ -50,13 +58,36 @@ export const isNativeTunerSupported = (): boolean => loadNativeAudioApi() !== nu
 export class NativeTunerEngine {
   private recorder: InstanceType<NativeAudioApiModule['AudioRecorder']> | null = null;
   private sampleRate = TUNER_ANALYSIS.SAMPLE_RATE;
+  private windowSamples = TUNER_ANALYSIS.WINDOW_SAMPLES;
+  private hopSamples = TUNER_ANALYSIS.HOP_SAMPLES;
+  private proMode = false;
   private running = false;
   private ring = new Float32Array(TUNER_ANALYSIS.WINDOW_SAMPLES);
   private writePos = 0;
   private filled = 0;
   private analysisWindow = new Float32Array(TUNER_ANALYSIS.WINDOW_SAMPLES);
 
-  async start(onFrequency: NativeTunerFrequencyCallback): Promise<void> {
+  configure(options: NativeTunerOptions): void {
+    const pro = options.proMode === true;
+    this.proMode = pro;
+    this.sampleRate =
+      options.sampleRate ??
+      (pro ? TUNER_PRO_ANALYSIS.SAMPLE_RATE_PREFERRED : TUNER_ANALYSIS.SAMPLE_RATE);
+    this.windowSamples =
+      options.windowSamples ??
+      (pro ? TUNER_PRO_ANALYSIS.WINDOW_SAMPLES : TUNER_ANALYSIS.WINDOW_SAMPLES);
+    this.hopSamples =
+      options.hopSamples ??
+      (pro ? TUNER_PRO_ANALYSIS.HOP_SAMPLES : TUNER_ANALYSIS.HOP_SAMPLES);
+    this.resetRing();
+  }
+
+  async start(
+    onFrequency: NativeTunerFrequencyCallback,
+    options?: NativeTunerOptions
+  ): Promise<void> {
+    if (options) this.configure(options);
+
     if (Platform.OS === 'web') {
       throw new Error('NativeTunerEngine は Web では使用できません');
     }
@@ -82,11 +113,11 @@ export class NativeTunerEngine {
     await this.stop();
     this.resetRing();
 
+    const detect = this.proMode ? combineAlgorithmsPro : combineAlgorithms;
     const recorder = new api.AudioRecorder();
-    const hopSamples = TUNER_ANALYSIS.HOP_SAMPLES;
 
     recorder.onAudioReady(
-      { sampleRate: this.sampleRate, bufferLength: hopSamples, channelCount: 1 },
+      { sampleRate: this.sampleRate, bufferLength: this.hopSamples, channelCount: 1 },
       ({ buffer }) => {
         if (!this.running) return;
         const samples =
@@ -94,9 +125,9 @@ export class NativeTunerEngine {
         this.appendSamples(samples);
         const window = this.copyAnalysisWindow();
         if (!window) return;
-        const frequency = combineAlgorithms(window, this.sampleRate);
+        const frequency = detect(window, this.sampleRate);
         if (frequency > 0) {
-          onFrequency(frequency);
+          onFrequency(frequency, window);
         }
       }
     );
@@ -105,8 +136,9 @@ export class NativeTunerEngine {
     this.recorder = recorder;
     this.running = true;
     logger.debug('NativeTunerEngine started', {
-      windowSamples: TUNER_ANALYSIS.WINDOW_SAMPLES,
-      hopSamples,
+      proMode: this.proMode,
+      windowSamples: this.windowSamples,
+      hopSamples: this.hopSamples,
       sampleRate: this.sampleRate,
     });
   }
@@ -129,6 +161,8 @@ export class NativeTunerEngine {
   }
 
   private resetRing(): void {
+    this.ring = new Float32Array(this.windowSamples);
+    this.analysisWindow = new Float32Array(this.windowSamples);
     this.ring.fill(0);
     this.writePos = 0;
     this.filled = 0;
@@ -143,12 +177,11 @@ export class NativeTunerEngine {
     }
   }
 
-  /** リング内の最古〜最新を連続配列に展開。窓が埋まるまで null */
   private copyAnalysisWindow(): Float32Array | null {
     const n = this.ring.length;
     if (this.filled < n) return null;
     const out = this.analysisWindow;
-    const start = this.writePos; // 次に書く位置 = 最古
+    const start = this.writePos;
     const firstLen = n - start;
     out.set(this.ring.subarray(start), 0);
     if (start > 0) {
