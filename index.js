@@ -4,6 +4,8 @@
  * Play 実機テストでは DevTools が使えないため、
  * JS 起動前/起動直後のクラッシュ内容を Alert で見えるようにする。
  */
+require('react-native-gesture-handler');
+
 const { Platform, Alert } = require('react-native');
 
 function showBootAlert(title, message) {

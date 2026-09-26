@@ -44,6 +44,11 @@ const easBuildProfile = process.env.EAS_BUILD_PROFILE ?? '';
 const isTest = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
 // Play / App Store 配布ビルドに dev-client を含めると白画面になることがある
 const includeDevClient = isExpoStart || easBuildProfile === 'development';
+// 起動時 OTA チェックで白スプラッシュに張り付く事例があるため、ストア系は組み込みバンドルのみ
+const enableExpoUpdates = includeDevClient;
+// 白画面切り分け: internal-testing では AdMob ネイティブ初期化を外す（JS 側は no-op）
+const includeAdMobNative =
+  easBuildProfile === 'production' || process.env.EXPO_PUBLIC_ENABLE_ADMOB === 'true';
 
 // EXPO_PUBLIC_* はビルド時にバンドルへ焼き込まれる。未設定のまま export すると実行時クラッシュの原因になる。
 const mustHaveSupabaseEnv =
@@ -94,7 +99,7 @@ const config: ExpoConfig = {
   android: {
     adaptiveIcon: {
       foregroundImage: './assets/images/icon.png', // PNG形式を使用（jimp-compactがWebPをサポートしていないため）
-      backgroundColor: '#FFFFFF', // 白背景
+      backgroundColor: '#1565C0',
     },
     package: 'com.musicpractice.app',
     label: '楽器練習アプリ', // 日本語のアプリ名（ホーム画面に表示される名前）
@@ -129,6 +134,15 @@ const config: ExpoConfig = {
     'expo-router', 
     'expo-font',
     ...(includeDevClient ? (['expo-dev-client'] as const) : []),
+    [
+      'expo-splash-screen',
+      {
+        backgroundColor: '#1565C0',
+        image: './assets/images/icon.png',
+        imageWidth: 120,
+        resizeMode: 'contain',
+      },
+    ],
     'expo-asset',
     'expo-audio',
     'react-native-audio-api',
@@ -138,21 +152,22 @@ const config: ExpoConfig = {
     // expo-file-system 等のレガシー外部ストレージ宣言を最終マニフェストから除去
     './plugins/withStripLegacyStoragePermissions',
     './plugins/withRemoveNotificationsBootReceiver',
-    // AdMob (Google Mobile Ads) - Android/iOS App ID はネイティブに必須
-    [
-      'react-native-google-mobile-ads',
-      {
-        androidAppId: 'ca-app-pub-4701955364298598~7135719486',
-        // iOS 本番 App ID は EAS Secret / .env の EXPO_PUBLIC_ADMOB_IOS_APP_ID で注入する
-        // 未設定時は Google テスト ID（ストア提出前に必ず本番 ID を入れること）
-        iosAppId:
-          process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID ||
-          'ca-app-pub-3940256099942544~1458002511',
-        delayAppMeasurementInit: true,
-        optimizeInitialization: true,
-        optimizeAdLoading: true,
-      },
-    ],
+    ...(includeAdMobNative
+      ? ([
+          [
+            'react-native-google-mobile-ads',
+            {
+              androidAppId: 'ca-app-pub-4701955364298598~7135719486',
+              iosAppId:
+                process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID ||
+                'ca-app-pub-3940256099942544~1458002511',
+              delayAppMeasurementInit: true,
+              optimizeInitialization: true,
+              optimizeAdLoading: true,
+            },
+          ],
+        ] as const)
+      : []),
     [
       'expo-notifications',
       {
@@ -168,6 +183,9 @@ const config: ExpoConfig = {
   },
   updates: {
     url: 'https://u.expo.dev/fe3ac800-458f-47ac-a51f-264b5a49c45f',
+    enabled: enableExpoUpdates,
+    checkAutomatically: enableExpoUpdates ? 'ON_LOAD' : 'NEVER',
+    fallbackToCacheTimeout: 0,
   },
   runtimeVersion: {
     policy: 'appVersion',

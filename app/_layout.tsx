@@ -4,7 +4,6 @@ export const unstable_serverRendering = false;
 
 import React, { useEffect } from 'react';
 import { View, LogBox, AppState, Alert, Platform } from 'react-native';
-import * as SplashScreen from 'expo-splash-screen';
 import { Stack } from 'expo-router'; // 画面遷移のスタックナビゲーター
 import { useRouter, useRootNavigationState, useGlobalSearchParams } from 'expo-router';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady'; // フレームワーク準備状態の管理
@@ -24,10 +23,7 @@ import audioResourceManager from '@/lib/audioResourceManager'; // オーディ�
 import { isOnline } from '@/lib/offlineStorage'; // ネットワーク状態確認
 import { GlobalErrorBoundary } from '@/components/GlobalErrorBoundary'; // グローバルエラーバウンダリー
 import FeatureUsageTracker from '@/components/FeatureUsageTracker';
-
-if (Platform.OS !== 'web') {
-  SplashScreen.preventAutoHideAsync().catch(() => {});
-}
+import { hideNativeSplash, startSplashHideWatchdog } from '@/lib/splashControl';
 
 // Web環境ではexpo-status-barをインポートしない
 type StatusBarComponent = React.ComponentType<{ style: 'dark' | 'light' | 'auto' }>;
@@ -511,13 +507,13 @@ function RootLayoutContent() {
 
   useEffect(() => {
     setStartupPhase('layout-mount');
+    hideNativeSplash('layout-content-mount');
+    startSplashHideWatchdog(1500);
   }, []);
 
   useEffect(() => {
     if (Platform.OS === 'web') return;
-    if (isRouterReady && isInitialized) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
+    hideNativeSplash('layout-ready');
   }, [isRouterReady, isInitialized]);
 
   // 起動 UI は app/index.tsx（BootScreen）のみ。
@@ -565,8 +561,13 @@ export default function RootLayout() {
   const supabaseError = getSupabaseInitError();
 
   useEffect(() => {
-    if (Platform.OS !== 'web' && supabaseError) {
-      SplashScreen.hideAsync().catch(() => {});
+    hideNativeSplash('root-layout-mount');
+    startSplashHideWatchdog(1500);
+  }, []);
+
+  useEffect(() => {
+    if (supabaseError) {
+      hideNativeSplash('supabase-config-error');
     }
   }, [supabaseError]);
 
