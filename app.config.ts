@@ -86,6 +86,7 @@ const config: ExpoConfig = {
     versionCode: 1, // Google Play Consoleで必要なビルド番号（初回リリース）
     versionName: '1.0.0', // ユーザーに表示されるバージョン番号
     // 必要な権限のみ明示。録音はアプリ内ストレージへ保存するため外部ストレージ権限は不要
+    // カメラ権限は含めない → expo-cameraが使用時のみ動的に要求（オプション機能）
     permissions: ['RECORD_AUDIO', 'MODIFY_AUDIO_SETTINGS'],
     // 旧 API: 依存ライブラリの誤宣言を最終マニフェストから除外（アプリは scoped storage のみ使用）
     blockedPermissions: [
@@ -94,6 +95,10 @@ const config: ExpoConfig = {
       'android.permission.READ_MEDIA_IMAGES',
       'android.permission.READ_MEDIA_VIDEO',
       'android.permission.READ_MEDIA_AUDIO',
+      // 本番ビルドでは開発用権限も除外（React Native開発者メニュー用）
+      ...(isEasBuild || process.env.NODE_ENV === 'production' ? [
+        'android.permission.SYSTEM_ALERT_WINDOW',
+      ] : []),
     ],
   },
   web: {
