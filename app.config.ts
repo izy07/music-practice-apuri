@@ -99,6 +99,9 @@ const config: ExpoConfig = {
       ...(isEasBuild || process.env.NODE_ENV === 'production' ? [
         'android.permission.SYSTEM_ALERT_WINDOW',
       ] : []),
+      // 実装されていない機能の権限を除外
+      'android.permission.VIBRATE', // バイブレーション制御コードが未実装
+      'android.permission.RECEIVE_BOOT_COMPLETED', // 起動時実行コードが未実装
     ],
   },
   web: {
