@@ -6,6 +6,7 @@ import { useInstrumentTheme } from '../../components/InstrumentThemeContext';
 import { useSegments } from 'expo-router';
 import { useAuthAdvanced } from '../../hooks/useAuthAdvanced';
 import { View, ActivityIndicator, TouchableOpacity, Text, Platform } from 'react-native';
+import DailyDiscoveryHost from '@/components/home/DailyDiscoveryHost';
 
 // タブのアイコンとタイトルを定義
 // カレンダー（index）を真ん中の3番目に配置
@@ -100,6 +101,8 @@ export default function TabLayout() {
   }
 
   return (
+    <>
+    <DailyDiscoveryHost />
     <Tabs
       screenOptions={({ route }) => {
         const isVisible = VISIBLE_TAB_NAMES.includes(route.name as any);
@@ -341,5 +344,6 @@ export default function TabLayout() {
         );
       })}
     </Tabs>
+    </>
   );
 }

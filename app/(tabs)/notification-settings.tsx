@@ -10,7 +10,11 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Bell, Clock, Settings, BarChart3 } from 'lucide-react-native';
+import { Bell, Clock, Settings, BarChart3, Sparkles } from 'lucide-react-native';
+import {
+  isDailyDiscoveryEnabled,
+  setDailyDiscoveryEnabled,
+} from '@/lib/dailyDiscoveryStorage';
 import { useRouter } from 'expo-router';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { supabase } from '@/lib/supabase';
@@ -19,6 +23,8 @@ import { safeGoBack } from '@/lib/navigationUtils';
 interface NotificationSettings {
   practice_reminders: boolean;
   weekly_summary: boolean;
+  /** 起動時の「本日の曲・過去の自分」紹介 */
+  daily_discovery: boolean;
 }
 
 export default function NotificationSettingsScreen() {
@@ -27,6 +33,7 @@ export default function NotificationSettingsScreen() {
   const [settings, setSettings] = useState<NotificationSettings>({
     practice_reminders: true,
     weekly_summary: false,
+    daily_discovery: true,
   });
 
   useEffect(() => {
@@ -58,10 +65,18 @@ export default function NotificationSettingsScreen() {
           // notification_settingsカラムが存在する場合のみ設定を更新
           if (data && 'notification_settings' in data && data.notification_settings) {
             const loadedSettings = data.notification_settings as Partial<NotificationSettings>;
+            const dailyDiscovery =
+              loadedSettings.daily_discovery ??
+              (await isDailyDiscoveryEnabled(user.id));
             setSettings({
               practice_reminders: loadedSettings.practice_reminders ?? true,
               weekly_summary: loadedSettings.weekly_summary ?? false,
+              daily_discovery: dailyDiscovery,
             });
+            await setDailyDiscoveryEnabled(user.id, dailyDiscovery);
+          } else {
+            const dailyDiscovery = await isDailyDiscoveryEnabled(user.id);
+            setSettings((prev) => ({ ...prev, daily_discovery: dailyDiscovery }));
           }
         } catch (queryError) {
           // すべてのエラーを無視（カラムが存在しない場合などは正常な動作）
@@ -89,6 +104,9 @@ export default function NotificationSettingsScreen() {
         }
 
         setSettings(newSettings);
+        if (user?.id && 'daily_discovery' in newSettings) {
+          await setDailyDiscoveryEnabled(user.id, newSettings.daily_discovery);
+        }
       }
     } catch (error) {
       Alert.alert('エラー', '通知設定の保存に失敗しました');
@@ -190,6 +208,27 @@ export default function NotificationSettingsScreen() {
               thumbColor="#FFFFFF"
             />
           </View>
+
+          <View style={styles.settingItem}>
+            <View style={styles.settingInfo}>
+              <Sparkles size={18} color={currentTheme.textSecondary} />
+              <Text style={[styles.settingLabel, { color: currentTheme.text }]}>
+                本日の曲・過去の自分
+              </Text>
+            </View>
+            <Switch
+              value={settings.daily_discovery}
+              onValueChange={() => toggleSetting('daily_discovery')}
+              trackColor={{ false: currentTheme.secondary, true: currentTheme.primary }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+        </View>
+
+        <View style={[styles.section, { backgroundColor: currentTheme.surface }]}>
+          <Text style={[styles.sectionDescription, { color: currentTheme.textSecondary }]}>
+            「本日の曲」は1日1回、起動時に表示します。「過去の自分（録音比較）」は約8回に1回だけ載ります。OFFにすると表示されません。
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
