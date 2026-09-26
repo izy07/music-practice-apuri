@@ -49,16 +49,6 @@ const missingSupabaseEnvMessage = (name: string) =>
   `${name}が設定されていません。本番 Web ビルド時に環境変数が注入されていない可能性があります。` +
   ' .env または CI/EAS Secrets を設定し、npm run build:web で再ビルドしてください。';
 
-// 本番環境ではクラウド Supabase 設定が必須
-if (process.env.NODE_ENV === 'production') {
-  if (!supabaseUrl) {
-    throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_URL環境変数'));
-  }
-  if (!supabaseAnonKey) {
-    throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数'));
-  }
-}
-
 // 実行環境でURLを選択
 const isDev = process.env.NODE_ENV !== 'production';
 // Web環境の検出を強化（GitHub Pages経由でも確実に検出）
@@ -69,38 +59,77 @@ const isWeb = Platform.OS === 'web' || (typeof window !== 'undefined' && typeof 
 const useLocalOnNative = process.env.EXPO_PUBLIC_USE_LOCAL_SUPABASE === 'true';
 const useLocalOnWeb = process.env.EXPO_PUBLIC_USE_LOCAL_SUPABASE_WEB === 'true';
 
-// WebはPC上で動作するためローカル優先、ネイティブはクラウド優先
-// 開発時は EXPO_PUBLIC_USE_LOCAL_SUPABASE_WEB=true でローカルSupabaseへ切替可能
-// 本番環境では環境変数が必須、開発環境ではローカルフォールバック可
-const finalUrlRaw = isWeb
-  ? (isDev && useLocalOnWeb
-      ? localUrl
-      : (supabaseUrl || (isDev ? localUrl : (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_URL環境変数')); })())))
-  : (isDev ? (useLocalOnNative ? localUrl : (supabaseUrl || localUrl)) : (supabaseUrl || (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_URL環境変数')); })()));
-const finalKey = isWeb
-  ? (isDev && useLocalOnWeb
-      ? localKey
-      : (supabaseAnonKey || (isDev ? localKey : (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数')); })())))
-  : (isDev ? (useLocalOnNative ? localKey : (supabaseAnonKey || localKey)) : (supabaseAnonKey || (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数')); })()));
+type ResolvedSupabaseConfig = {
+  url: string;
+  key: string;
+};
 
-// 本番リリースでは API ベースを HTTPS に強制（転送時暗号化）
-const finalUrl = requireHttpsApiBaseUrl(finalUrlRaw, 'Supabase');
+let resolvedSupabaseConfig: ResolvedSupabaseConfig | null = null;
+let supabaseInitError: Error | null = null;
 
-// 開発環境でのみ接続情報をログ出力（本番では機密情報を隠す）
-if (isDev) {
-  logger.debug('Supabase connecting to:', finalUrl); // 接続先URL
-  logger.debug('Platform:', Platform.OS); // プラットフォーム情報
-  logger.debug('Local host resolved to:', resolvedLocalHost); // 解決されたローカルホスト
-  logger.debug('Using anon key:', finalKey.substring(0, 6) + '...'); // 匿名キー（一部のみ表示）
+function resolveSupabaseConfig(): ResolvedSupabaseConfig | null {
+  if (resolvedSupabaseConfig) {
+    return resolvedSupabaseConfig;
+  }
+  if (supabaseInitError) {
+    return null;
+  }
+
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      if (!supabaseUrl) {
+        throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_URL環境変数'));
+      }
+      if (!supabaseAnonKey) {
+        throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数'));
+      }
+    }
+
+    // WebはPC上で動作するためローカル優先、ネイティブはクラウド優先
+    const finalUrlRaw = isWeb
+      ? (isDev && useLocalOnWeb
+          ? localUrl
+          : (supabaseUrl || (isDev ? localUrl : (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_URL環境変数')); })())))
+      : (isDev ? (useLocalOnNative ? localUrl : (supabaseUrl || localUrl)) : (supabaseUrl || (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_URL環境変数')); })()));
+    const finalKey = isWeb
+      ? (isDev && useLocalOnWeb
+          ? localKey
+          : (supabaseAnonKey || (isDev ? localKey : (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数')); })())))
+      : (isDev ? (useLocalOnNative ? localKey : (supabaseAnonKey || localKey)) : (supabaseAnonKey || (() => { throw new Error(missingSupabaseEnvMessage('EXPO_PUBLIC_SUPABASE_ANON_KEY環境変数')); })()));
+
+    const finalUrl = requireHttpsApiBaseUrl(finalUrlRaw, 'Supabase');
+    resolvedSupabaseConfig = { url: finalUrl, key: finalKey };
+    return resolvedSupabaseConfig;
+  } catch (error) {
+    supabaseInitError = error instanceof Error ? error : new Error(String(error));
+    return null;
+  }
+}
+
+/** モジュール import 時ではなく初回利用時に解決。失敗内容を UI に出すため */
+export function getSupabaseInitError(): Error | null {
+  resolveSupabaseConfig();
+  return supabaseInitError;
+}
+
+function logSupabaseConfigIfDev(): void {
+  if (!isDev) return;
+  const config = resolveSupabaseConfig();
+  if (!config) return;
+  logger.debug('Supabase connecting to:', config.url);
+  logger.debug('Platform:', Platform.OS);
+  logger.debug('Local host resolved to:', resolvedLocalHost);
+  logger.debug('Using anon key:', config.key.substring(0, 6) + '...');
 }
 
 // 接続テスト用の関数
 export const testSupabaseConnection = async () => {
   try {
-    if (process.env.NODE_ENV !== 'production') {
+    const config = resolveSupabaseConfig();
+    if (process.env.NODE_ENV !== 'production' && config) {
       logger.debug('Supabaseクライアント接続テスト開始...');
-      logger.debug('接続先URL:', finalUrl);
-      logger.debug('使用するキー:', finalKey.substring(0, 6) + '...');
+      logger.debug('接続先URL:', config.url);
+      logger.debug('使用するキー:', config.key.substring(0, 6) + '...');
     }
     
     // 接続テストのタイムアウト処理
@@ -152,6 +181,12 @@ const getSupabaseClient = () => {
   }
   
   if (!supabaseInstance) {
+    logSupabaseConfigIfDev();
+    const config = resolveSupabaseConfig();
+    if (!config) {
+      throw supabaseInitError ?? new Error('Supabase の初期化に失敗しました');
+    }
+
     logger.debug('新しいSupabaseクライアントインスタンスを作成中...');
     
     const authStorage = createSupabaseAuthStorage();
@@ -370,7 +405,7 @@ const getSupabaseClient = () => {
       }
     };
 
-    supabaseInstance = createClient(finalUrl, finalKey, {
+    supabaseInstance = createClient(config.url, config.key, {
       auth: {
         autoRefreshToken: true,
         persistSession: true,
@@ -415,13 +450,25 @@ const getSupabaseClient = () => {
   return supabaseInstance;
 };
 
-export const supabase = getSupabaseClient();
+type SupabaseClientType = ReturnType<typeof createClient>;
+
+export const supabase = new Proxy({} as SupabaseClientType, {
+  get(_target, prop, receiver) {
+    const client = getSupabaseClient();
+    const value = Reflect.get(client as object, prop, receiver);
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+});
 
 // Supabase設定を取得する関数
 export const getSupabaseConfig = () => {
+  const config = resolveSupabaseConfig();
+  if (!config) {
+    throw supabaseInitError ?? new Error('Supabase の設定を取得できません');
+  }
   return {
-    url: finalUrl,
-    key: finalKey,
+    url: config.url,
+    key: config.key,
   };
 };
 

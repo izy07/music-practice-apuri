@@ -1,8 +1,10 @@
 /**
  * 冷起動・初期化待ちの共通 UI
+ * 白一色に見えないよう背景色を付け、ビルド情報を表示する
  */
 import React from 'react';
 import { ActivityIndicator, Image, StyleSheet, Text, View } from 'react-native';
+import { getBuildStamp, getStartupPhase } from '@/lib/startupDiagnostics';
 
 type BootScreenProps = {
   message?: string;
@@ -15,6 +17,8 @@ export function BootScreen({ message }: BootScreenProps) {
       <Text style={styles.title}>楽器練習アプリ</Text>
       <ActivityIndicator size="large" color="#1976D2" style={styles.loader} />
       {message ? <Text style={styles.message}>{message}</Text> : null}
+      <Text style={styles.phase}>起動中 ({getStartupPhase()})</Text>
+      <Text style={styles.stamp}>{getBuildStamp()}</Text>
     </View>
   );
 }
@@ -24,7 +28,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#E3F2FD',
     paddingHorizontal: 24,
   },
   icon: {
@@ -35,7 +39,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#212121',
+    color: '#0D47A1',
     marginBottom: 24,
   },
   loader: {
@@ -43,7 +47,19 @@ const styles = StyleSheet.create({
   },
   message: {
     fontSize: 13,
-    color: '#757575',
+    color: '#1565C0',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  phase: {
+    fontSize: 11,
+    color: '#546E7A',
+    marginTop: 4,
+  },
+  stamp: {
+    fontSize: 10,
+    color: '#78909C',
+    marginTop: 8,
     textAlign: 'center',
   },
 });

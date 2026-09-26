@@ -10,6 +10,7 @@ import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { resolveAppEntryHref } from '@/lib/navigation/appRoutePolicy';
 import { BootScreen } from '@/components/app/BootScreen';
 import logger from '@/lib/logger';
+import { setStartupPhase } from '@/lib/startupDiagnostics';
 
 export default function RootIndex() {
   const router = useRouter();
@@ -17,6 +18,10 @@ export default function RootIndex() {
   const isNavReady = !!rootNavigationState?.key;
   const { isAuthenticated, isInitialized, getOnboardingRoute } = useAuthAdvanced();
   const hasNavigatedRef = useRef(false);
+
+  useEffect(() => {
+    setStartupPhase('auth-init');
+  }, []);
 
   useEffect(() => {
     if (!isInitialized || !isNavReady || hasNavigatedRef.current) return;
@@ -27,10 +32,12 @@ export default function RootIndex() {
     });
 
     hasNavigatedRef.current = true;
+    setStartupPhase('nav-ready');
     logger.debug('[RootIndex] 冷起動遷移', { href });
 
     try {
       router.replace(href);
+      setStartupPhase('routed');
     } catch (error) {
       hasNavigatedRef.current = false;
       logger.error('[RootIndex] 冷起動遷移に失敗（再試行します）:', error);

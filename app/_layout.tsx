@@ -4,6 +4,7 @@ export const unstable_serverRendering = false;
 
 import React, { useEffect } from 'react';
 import { View, LogBox, AppState, Alert, Platform } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import { Stack } from 'expo-router'; // 画面遷移のスタックナビゲーター
 import { useRouter, useRootNavigationState, useGlobalSearchParams } from 'expo-router';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady'; // フレームワーク準備状態の管理
@@ -11,8 +12,10 @@ import { useAuthAdvanced } from '@/hooks/useAuthAdvanced'; // 認証フック（
 import { LanguageProvider } from '@/components/LanguageContext'; // 多言語対応の管理
 import { InstrumentThemeProvider } from '@/components/InstrumentThemeContext'; // 楽器別テーマの管理
 import { SubscriptionProvider } from '@/contexts/SubscriptionContext'; // サブスクリプション状態の管理
-import { supabase } from '@/lib/supabase'; // Supabaseクライアント
+import { getSupabaseInitError } from '@/lib/supabase';
 import logger from '@/lib/logger'; // ロガー
+import { setStartupPhase } from '@/lib/startupDiagnostics';
+import { StartupFailureScreen } from '@/components/app/StartupFailureScreen';
 import { ErrorHandler } from '@/lib/errorHandler'; // エラーハンドラー
 import { getBasePath } from '@/lib/navigationUtils';
 import { useAppRouteGuard } from '@/hooks/useAppRouteGuard';
@@ -21,6 +24,10 @@ import audioResourceManager from '@/lib/audioResourceManager'; // オーディ�
 import { isOnline } from '@/lib/offlineStorage'; // ネットワーク状態確認
 import { GlobalErrorBoundary } from '@/components/GlobalErrorBoundary'; // グローバルエラーバウンダリー
 import FeatureUsageTracker from '@/components/FeatureUsageTracker';
+
+if (Platform.OS !== 'web') {
+  SplashScreen.preventAutoHideAsync().catch(() => {});
+}
 
 // Web環境ではexpo-status-barをインポートしない
 type StatusBarComponent = React.ComponentType<{ style: 'dark' | 'light' | 'auto' }>;
@@ -502,10 +509,19 @@ function RootLayoutContent() {
     }
   }, [router, isReady, isRouterReady]);
 
+  useEffect(() => {
+    setStartupPhase('layout-mount');
+  }, []);
+
+  useEffect(() => {
+    if (Platform.OS === 'web') return;
+    if (isRouterReady && isInitialized) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [isRouterReady, isInitialized]);
+
   // 起動 UI は app/index.tsx（BootScreen）のみ。
-  // 全画面 overlay で isRouterReady/isInitialized を待つと、遷移取りこぼしや
-  // 二重待ちで白い画面に固定される（クローズドテストでの白画面の根因）。
-  const defaultBackgroundColor = '#FFFFFF';
+  const defaultBackgroundColor = '#E3F2FD';
 
   return (
     <View style={{ flex: 1, backgroundColor: defaultBackgroundColor }}>
@@ -546,7 +562,23 @@ function RootLayoutContent() {
 // アプリのルートレイアウト - 全体的なプロバイダーとコンテキストを設定
 export default function RootLayout() {
   const router = useRouter();
-  
+  const supabaseError = getSupabaseInitError();
+
+  useEffect(() => {
+    if (Platform.OS !== 'web' && supabaseError) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [supabaseError]);
+
+  if (supabaseError) {
+    return (
+      <StartupFailureScreen
+        message="データベース接続の設定に問題があります。"
+        detail={supabaseError.message}
+      />
+    );
+  }
+
   return (
     // グローバルエラーバウンダリー（アプリ全体のエラーをキャッチ）
     <GlobalErrorBoundary router={router}>

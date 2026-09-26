@@ -40,7 +40,10 @@ const argv = process.argv;
 const isExpoStart = argv.some((arg) => arg === 'start' || arg.endsWith('/start'));
 const isExpoExport = argv.some((arg) => arg === 'export' || arg.endsWith('/export'));
 const isEasBuild = process.env.EAS_BUILD === 'true';
+const easBuildProfile = process.env.EAS_BUILD_PROFILE ?? '';
 const isTest = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
+// Play / App Store 配布ビルドに dev-client を含めると白画面になることがある
+const includeDevClient = isExpoStart || easBuildProfile === 'development';
 
 // EXPO_PUBLIC_* はビルド時にバンドルへ焼き込まれる。未設定のまま export すると実行時クラッシュの原因になる。
 const mustHaveSupabaseEnv =
@@ -124,8 +127,8 @@ const config: ExpoConfig = {
   },
   plugins: [
     'expo-router', 
-    'expo-font', 
-    'expo-dev-client',
+    'expo-font',
+    ...(includeDevClient ? (['expo-dev-client'] as const) : []),
     'expo-asset',
     'expo-audio',
     'react-native-audio-api',
