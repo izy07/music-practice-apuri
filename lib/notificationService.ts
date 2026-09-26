@@ -22,7 +22,7 @@ export interface NotificationSettings {
   weekly_summary: boolean;
   achievement_notifications: boolean;
   sound_notifications: boolean;
-  vibration_notifications: boolean;
+  // vibration_notifications: boolean; // 削除: 実装されていないため
   quiet_hours_enabled: boolean;
   quiet_hours_start: string;
   quiet_hours_end: string;
@@ -151,7 +151,7 @@ export class NotificationService {
       weekly_summary: false,
       achievement_notifications: false, // 目標・達成通知はデフォルトで無効
       sound_notifications: true,
-      vibration_notifications: true,
+      // vibration_notifications: true, // 削除: 実装されていないため
       quiet_hours_enabled: false,
       quiet_hours_start: '22:00',
       quiet_hours_end: '08:00',
@@ -233,7 +233,7 @@ export class NotificationService {
             badge: iconPath,
             tag: 'music-practice',
             requireInteraction: false,
-            silent: !this.settings?.sound_notifications,
+            // silent: !this.settings?.sound_notifications, // 削除: Web通知は音声のみ制御
             ...options,
           });
 
