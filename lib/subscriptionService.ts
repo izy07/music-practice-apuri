@@ -106,50 +106,59 @@ export const getSubscription = async (userId: string, forceRefresh: boolean = fa
  * エラー時は適切にエラーをスローし、呼び出し側で処理できるようにする
  */
 export const ensureSubscription = async (userId: string, forceRefresh: boolean = false): Promise<UserSubscription> => {
-  try {
-    const sub = await getSubscription(userId, forceRefresh);
-    
-    // 既存レコードがある場合はそのまま返す
-    if (sub) {
-      return sub;
+  // タイムアウト付きでPromiseを実行
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('サブスクリプション情報の取得がタイムアウトしました')), 8000);
+  });
+  
+  const mainPromise = (async () => {
+    try {
+      const sub = await getSubscription(userId, forceRefresh);
+      
+      // 既存レコードがある場合はそのまま返す
+      if (sub) {
+        return sub;
+      }
+      
+      // 新規ユーザーの場合、サブスクリプションレコードを作成
+      const { data, error } = await supabase
+        .from('user_subscriptions')
+        .upsert({
+          user_id: userId,
+          plan: 'free',
+          is_active: false,
+        }, { onConflict: 'user_id' })
+        .select('*')
+        .single();
+      
+      if (error) {
+        logger.error('サブスクリプションレコードの作成に失敗しました:', {
+          error,
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
+        throw new Error(`サブスクリプションレコードの作成に失敗しました: ${error.message || '不明なエラー'}`);
+      }
+      
+      if (!data) {
+        throw new Error('サブスクリプションレコードの作成が完了しましたが、サブスクリプション情報が取得できませんでした');
+      }
+      
+      return data as UserSubscription;
+    } catch (error) {
+      // 既にErrorオブジェクトの場合はそのまま再スロー
+      if (error instanceof Error) {
+        throw error;
+      }
+      // それ以外の場合はErrorオブジェクトに変換
+      logger.error('ensureSubscription中に予期しないエラーが発生しました:', error);
+      throw new Error(`サブスクリプション情報の確保中に予期しないエラーが発生しました: ${String(error)}`);
     }
-    
-    // 新規ユーザーの場合、サブスクリプションレコードを作成
-    const { data, error } = await supabase
-      .from('user_subscriptions')
-      .upsert({
-        user_id: userId,
-        plan: 'free',
-        is_active: false,
-      }, { onConflict: 'user_id' })
-      .select('*')
-      .single();
-    
-    if (error) {
-      logger.error('サブスクリプションレコードの作成に失敗しました:', {
-        error,
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint
-      });
-      throw new Error(`サブスクリプションレコードの作成に失敗しました: ${error.message || '不明なエラー'}`);
-    }
-    
-    if (!data) {
-      throw new Error('サブスクリプションレコードの作成が完了しましたが、サブスクリプション情報が取得できませんでした');
-    }
-    
-    return data as UserSubscription;
-  } catch (error) {
-    // 既にErrorオブジェクトの場合はそのまま再スロー
-    if (error instanceof Error) {
-      throw error;
-    }
-    // それ以外の場合はErrorオブジェクトに変換
-    logger.error('ensureSubscription中に予期しないエラーが発生しました:', error);
-    throw new Error(`サブスクリプション情報の確保中に予期しないエラーが発生しました: ${String(error)}`);
-  }
+  })();
+  
+  return Promise.race([mainPromise, timeoutPromise]);
 };
 
 /**
