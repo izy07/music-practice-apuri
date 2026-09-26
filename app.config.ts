@@ -99,9 +99,7 @@ const config: ExpoConfig = {
       ...(isEasBuild || process.env.NODE_ENV === 'production' ? [
         'android.permission.SYSTEM_ALERT_WINDOW',
       ] : []),
-      // 実装されていない機能の権限を除外
-      'android.permission.VIBRATE', // バイブレーション制御コードが未実装
-      'android.permission.RECEIVE_BOOT_COMPLETED', // 起動時実行コードが未実装
+      // 注: VIBRATE と RECEIVE_BOOT_COMPLETED は withStripNotificationPermissions プラグインで除去
     ],
   },
   web: {
@@ -127,6 +125,8 @@ const config: ExpoConfig = {
     './plugins/withAdiRegistration',
     // expo-file-system 等のレガシー外部ストレージ宣言を最終マニフェストから除去
     './plugins/withStripLegacyStoragePermissions',
+    // expo-notifications が追加する不要な権限（VIBRATE, RECEIVE_BOOT_COMPLETED）を除去
+    './plugins/withStripNotificationPermissions',
     // AdMob (Google Mobile Ads) - Android/iOS App ID はネイティブに必須
     [
       'react-native-google-mobile-ads',
