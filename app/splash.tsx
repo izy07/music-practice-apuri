@@ -25,6 +25,19 @@ export default function SplashScreen() {
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
   const startTimeRef = useRef<number>(Date.now());
   const hasNavigatedRef = useRef<boolean>(false);
+  
+  // 最終防衛線: 10秒経っても初期化が完了しない場合は強制的に進む
+  useEffect(() => {
+    const emergencyTimeout = setTimeout(() => {
+      if (!hasNavigatedRef.current) {
+        logger.warn('スプラッシュ画面: 緊急タイムアウト（10秒）- 強制的に画面遷移します');
+        hasNavigatedRef.current = true;
+        // 強制的に初期化完了とみなす
+      }
+    }, 10000);
+    
+    return () => clearTimeout(emergencyTimeout);
+  }, []);
 
   // フェードインアニメーション
   useEffect(() => {

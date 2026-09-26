@@ -352,73 +352,36 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         return;
       }
       
-      // Supabaseから現在のセッションを取得（優先）
-      // ネットワークエラー時のリトライロジックを追加
+      // タイムアウト付きでSupabaseセッション取得
+      const sessionPromise = supabase.auth.getSession();
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('セッション取得がタイムアウトしました')), 8000);
+      });
+      
       let sessionData: any = null;
       let sessionError: any = null;
-      const maxRetries = 3;
-      let retryCount = 0;
       
-      while (retryCount < maxRetries) {
-        try {
-          const result = await supabase.auth.getSession();
-          sessionData = result.data;
-          sessionError = result.error;
-          
-          // ネットワークエラーでない場合、または成功した場合はループを抜ける
-          const isNetworkError = sessionError && (
-            sessionError.message?.includes('Failed to fetch') || 
-            sessionError.message?.includes('NetworkError') ||
-            sessionError.message?.includes('ERR_INTERNET_DISCONNECTED') ||
-            sessionError.message?.includes('internet disconnected') ||
-            sessionError.message === 'NETWORK_ERROR'
-          );
-          
-          if (!sessionError || !isNetworkError) {
-            break;
-          }
-          
-          // ネットワークエラーの場合、リトライ
-          if (isNetworkError) {
-            retryCount++;
-            if (retryCount < maxRetries) {
-              // 開発環境でのみログを出力
-              if (__DEV__) {
-                logger.debug(`[useAuthAdvanced] ネットワークエラー - リトライ ${retryCount}/${maxRetries}`);
-              }
-              // 指数バックオフで待機（1秒、2秒、3秒）
-              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-              continue;
-            }
-            // リトライ上限に達した場合は、ループを抜ける（エラーとして扱わない）
-            break;
-          }
-        } catch (error) {
-          // 予期しないエラーの場合
-          const isNetworkError = error instanceof Error && (
-            error.message.includes('Failed to fetch') || 
-            error.message.includes('NetworkError') ||
-            error.message.includes('ERR_INTERNET_DISCONNECTED') ||
-            error.message.includes('internet disconnected') ||
-            error.message === 'NETWORK_ERROR'
-          );
-          
-          if (isNetworkError) {
-            retryCount++;
-            if (retryCount < maxRetries) {
-              // 開発環境でのみログを出力
-              if (__DEV__) {
-                logger.debug(`[useAuthAdvanced] ネットワークエラー（例外） - リトライ ${retryCount}/${maxRetries}`);
-              }
-              await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-              continue;
-            }
-            // リトライ上限に達した場合は、ネットワークエラーとして処理（エラーを投げない）
-            // オフライン時は正常な動作として扱う
-            break;
-          }
-          // ネットワークエラーでない場合はそのままエラーを投げる
-          throw error;
+      try {
+        const result = await Promise.race([sessionPromise, timeoutPromise]);
+        sessionData = (result as any).data;
+        sessionError = (result as any).error;
+      } catch (error) {
+        // タイムアウトまたはネットワークエラー
+        logger.warn('[useAuthAdvanced] セッション取得エラー（フォールバック）:', error);
+        
+        // 永続化セッションから復元を試みる
+        const persistedSession = readPersistedAuthSession();
+        if (persistedSession?.user) {
+          sessionData = { session: persistedSession };
+          sessionError = null;
+        } else {
+          updateAuthState({
+            isAuthenticated: false,
+            isLoading: false,
+            isInitialized: true,
+            error: null,
+          });
+          return;
         }
       }
       
@@ -428,14 +391,12 @@ export const useAuthAdvanced = (): AuthHookReturn => {
         // ネットワークエラー時はローカルに保存されたセッションを優先してログイン状態を維持
         if (isNetworkError) {
           if (__DEV__) {
-            logger.debug('[useAuthAdvanced] ネットワークエラー - 永続化セッションから復元を試行', {
-              retryCount,
-            });
+            logger.debug('[useAuthAdvanced] ネットワークエラー - 永続化セッションから復元を試行');
           }
 
           const persistedSession = sessionData?.session?.user
             ? sessionData.session
-            : await readPersistedAuthSessionAsync();
+            : readPersistedAuthSession();
 
           if (persistedSession?.user) {
             sessionData = { session: persistedSession };
@@ -458,7 +419,6 @@ export const useAuthAdvanced = (): AuthHookReturn => {
           logger.error(`[useAuthAdvanced] セッション取得エラー`, {
             isNetworkError,
             error: sessionError.message,
-            retryCount,
           });
           
           updateAuthState({
@@ -612,6 +572,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
 
   // 初期化処理（ネイティブ/Web 共通でフォールバック — window 限定だと AAB で白画面が残る）
   useEffect(() => {
+    // 初回のみ実行（依存配列を空にしてタイムアウトのリセットを防ぐ）
     const timeoutId = setTimeout(() => {
       if (globalAuthState.isLoading || !globalAuthState.isInitialized) {
         if (__DEV__) {
@@ -625,12 +586,24 @@ export const useAuthAdvanced = (): AuthHookReturn => {
       }
     }, TIMEOUT.INITIALIZATION_MS);
 
-    initializeAuth();
+    // エラーハンドリングを追加
+    initializeAuth().catch((error) => {
+      logger.error('[useAuthAdvanced] 認証初期化中に予期しないエラーが発生しました:', error);
+      // エラーが発生しても初期化完了とみなす
+      updateAuthState({
+        isAuthenticated: false,
+        isLoading: false,
+        isInitialized: true,
+        error: error instanceof Error ? error.message : '認証初期化に失敗しました',
+      });
+    });
 
     return () => {
       clearTimeout(timeoutId);
     };
-  }, [initializeAuth]);
+    // 依存配列を空にして、初回のみ実行されるようにする
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // サイレントリフレッシュ（失効前に更新）
   useEffect(() => {
