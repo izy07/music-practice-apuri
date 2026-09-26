@@ -24,6 +24,7 @@ import { isOnline } from '@/lib/offlineStorage'; // ネットワーク状態確�
 import { GlobalErrorBoundary } from '@/components/GlobalErrorBoundary'; // グローバルエラーバウンダリー
 import FeatureUsageTracker from '@/components/FeatureUsageTracker';
 import { hideNativeSplash, startSplashHideWatchdog } from '@/lib/splashControl';
+import { RootAppShell } from '@/components/app/RootAppShell';
 
 // Web環境ではexpo-status-barをインポートしない
 type StatusBarComponent = React.ComponentType<{ style: 'dark' | 'light' | 'auto' }>;
@@ -573,29 +574,27 @@ export default function RootLayout() {
 
   if (supabaseError) {
     return (
-      <StartupFailureScreen
-        message="データベース接続の設定に問題があります。"
-        detail={supabaseError.message}
-      />
+      <RootAppShell>
+        <StartupFailureScreen
+          message="データベース接続の設定に問題があります。"
+          detail={supabaseError.message}
+        />
+      </RootAppShell>
     );
   }
 
   return (
-    // グローバルエラーバウンダリー（アプリ全体のエラーをキャッチ）
-    <GlobalErrorBoundary router={router}>
-      {/* 多言語対応を管理するプロバイダー */}
-      <LanguageProvider>
-        {/* 楽器別テーマを管理するプロバイダー */}
-        <InstrumentThemeProvider>
-          {/* サブスクリプション状態を管理するプロバイダー */}
-          <SubscriptionProvider>
-            {/* メインコンテンツ */}
-            <RootLayoutContent />
-            {/* ステータスバーの設定（ダークテーマ） */}
-            {StatusBar && <StatusBar style="dark" />}
-          </SubscriptionProvider>
-        </InstrumentThemeProvider>
-      </LanguageProvider>
-    </GlobalErrorBoundary>
+    <RootAppShell>
+      <GlobalErrorBoundary router={router}>
+        <LanguageProvider>
+          <InstrumentThemeProvider>
+            <SubscriptionProvider>
+              <RootLayoutContent />
+              {StatusBar && <StatusBar style="dark" />}
+            </SubscriptionProvider>
+          </InstrumentThemeProvider>
+        </LanguageProvider>
+      </GlobalErrorBoundary>
+    </RootAppShell>
   );
 }

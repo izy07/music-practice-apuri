@@ -8,6 +8,16 @@ require('react-native-gesture-handler');
 
 const { Platform, Alert } = require('react-native');
 
+if (Platform.OS !== 'web') {
+  setTimeout(() => {
+    try {
+      require('expo-splash-screen').hideAsync();
+    } catch {
+      // スプラッシュ未リンク時は無視
+    }
+  }, 300);
+}
+
 function showBootAlert(title, message) {
   if (Platform.OS === 'web') {
     // eslint-disable-next-line no-console

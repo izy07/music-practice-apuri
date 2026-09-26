@@ -93,10 +93,10 @@ config.transformer.getTransformOptions = async (entryPoints, options, getDepende
     ? await originalGetTransformOptions(entryPoints, options, getDependenciesOf)
     : {};
   
-  // Web環境またはentry.bundleの場合はHermesを無効化
-  const isWebPlatform = (options && options.platform === 'web') || 
-    (entryPoints && entryPoints.some((ep) => ep.includes('expo-router/entry')));
-  
+  // Web のみ JSC。expo-router/entry は Android/iOS でも通るため、
+  // entry 名で Hermes を無効化すると Play 実機で JS が起動せず真っ白になる。
+  const isWebPlatform = options?.platform === 'web';
+
   if (isWebPlatform) {
     return {
       ...originalOptions,
