@@ -114,16 +114,40 @@ export const useSubscriptionState = () => {
 
   useEffect(() => {
     let mounted = true;
+    let timeoutId: ReturnType<typeof setTimeout>;
+    
     (async () => {
       try {
         setLoading(true);
+        
+        // タイムアウトを設定（5秒）
+        timeoutId = setTimeout(() => {
+          if (mounted) {
+            logger.warn('サブスクリプション読み込みがタイムアウトしました。フォールバックします。');
+            setLoading(false);
+            setSubscription(null);
+            setEntitlement(getFallbackEntitlement());
+          }
+        }, 5000);
+        
         await loadSubscription();
+        
+        // 成功した場合はタイムアウトをクリア
+        clearTimeout(timeoutId);
+      } catch (error) {
+        logger.error('サブスクリプション読み込み中にエラーが発生しました:', error);
+        // エラーが発生してもloadingをfalseにして起動を継続
       } finally {
-        if (mounted) setLoading(false);
+        if (mounted) {
+          clearTimeout(timeoutId);
+          setLoading(false);
+        }
       }
     })();
+    
     return () => {
       mounted = false;
+      clearTimeout(timeoutId);
     };
   }, [loadSubscription]);
 
