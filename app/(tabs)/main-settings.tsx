@@ -6,5 +6,5 @@ import { Redirect } from 'expo-router';
  * Redirect で即座に instrument-selection へ転送する。
  */
 export default function MainSettingsScreen() {
-  return <Redirect href="/(tabs)/instrument-selection" />;
+  return <Redirect href="/(tabs)/instrument-selection?from=change" />;
 }

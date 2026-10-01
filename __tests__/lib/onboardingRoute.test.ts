@@ -1,4 +1,5 @@
 import {
+  isOnboardingProfilePending,
   needsOnboardingTutorial,
   resolveOnboardingTarget,
 } from '@/lib/onboardingRoute';
@@ -22,12 +23,28 @@ describe('resolveOnboardingTarget', () => {
     ).toBe('/(tabs)/tutorial');
   });
 
-  it('未取得・楽器なしはチュートリアル（pending で止めない）', () => {
-    expect(resolveOnboardingTarget({}, false)).toBe('/(tabs)/tutorial');
+  it('未取得・楽器なしは楽器選択（既存ログイン想定）', () => {
+    expect(resolveOnboardingTarget({}, false)).toBe('/(tabs)/instrument-selection');
   });
 
   it('未取得でも hasInstrument ならメイン', () => {
     expect(resolveOnboardingTarget({}, true)).toBe('/(tabs)');
+  });
+});
+
+describe('isOnboardingProfilePending', () => {
+  it('楽器ありは待たない', () => {
+    expect(isOnboardingProfilePending({}, true)).toBe(false);
+  });
+
+  it('tutorial_completed 未取得は待つ', () => {
+    expect(isOnboardingProfilePending({}, false)).toBe(true);
+  });
+
+  it('DB 反映済み（未完了）は待たない', () => {
+    expect(
+      isOnboardingProfilePending({ tutorial_completed: false, selected_instrument_id: null }, false)
+    ).toBe(false);
   });
 });
 

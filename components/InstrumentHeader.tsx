@@ -336,7 +336,7 @@ export default function InstrumentHeader() {
 
   const handleInstrumentPress = () => {
     // 楽器選択画面に遷移
-    router.push('/(tabs)/instrument-selection');
+    router.push('/(tabs)/instrument-selection?from=change');
   };
 
   const openAppealModal = () => {

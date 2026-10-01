@@ -160,6 +160,7 @@ function RootLayoutContent() {
     hasInstrumentSelected,
     getOnboardingRoute,
     tutorialFromSettings: globalParams.from === 'settings',
+    instrumentFromChange: globalParams.from === 'change',
   });
 
   // アプリのライフサイクル管理：バックグラウンド移行時にオーディオリソースを解放
@@ -539,9 +540,6 @@ function RootLayoutContent() {
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       
       {/* その他の画面 */}
-      <Stack.Screen name="attendance" options={{ headerShown: false }} />
-      <Stack.Screen name="tasks" options={{ headerShown: false }} />
-      <Stack.Screen name="calendar" options={{ headerShown: false }} />
       <Stack.Screen name="add-goal" options={{ headerShown: false }} />
       <Stack.Screen name="representative-songs" options={{ headerShown: false }} />
       

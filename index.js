@@ -8,15 +8,7 @@ require('react-native-gesture-handler');
 
 const { Platform, Alert } = require('react-native');
 
-if (Platform.OS !== 'web') {
-  setTimeout(() => {
-    try {
-      require('expo-splash-screen').hideAsync();
-    } catch {
-      // スプラッシュ未リンク時は無視
-    }
-  }, 300);
-}
+// スプラッシュは app/_layout + lib/splashControl で制御（起動前 hide はネイティブ競合の原因になりうる）
 
 function showBootAlert(title, message) {
   if (Platform.OS === 'web') {

@@ -17,9 +17,7 @@ import { ErrorHandler } from '@/lib/errorHandler';
 interface AuthFormProps {
   mode: 'login' | 'signup';
   onSubmit: (data: AuthFormData) => Promise<boolean | void>;
-  onGoogleAuth: () => Promise<boolean | void>;
   loading?: boolean;
-  googleLoading?: boolean;
 }
 
 interface AuthFormData {
@@ -134,43 +132,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginRight: 8,
   },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 24,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E0E0E0',
-  },
-  dividerText: {
-    color: '#666',
-    fontSize: 14,
-    marginHorizontal: 16,
-  },
-  googleButton: {
-    backgroundColor: '#FFF',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderWidth: 2,
-    borderColor: '#E0E0E0',
-    alignItems: 'center',
-    
-    
-    
-    elevation: 2,
-  },
-  googleButtonDisabled: {
-    backgroundColor: '#F5F5F5',
-    borderColor: '#CCC',
-  },
-  googleButtonText: {
-    color: '#333',
-    fontSize: 16,
-    fontWeight: '500',
-  },
 });
 
 type InputFieldProps = {
@@ -257,9 +218,7 @@ const InputField = memo(({
 export const AuthForm: React.FC<AuthFormProps> = ({
   mode,
   onSubmit,
-  onGoogleAuth,
   loading = false,
-  googleLoading = false,
 }) => {
   logger.debug('AuthForm component initialized, mode:', mode);
   const [formData, setFormData] = useState<AuthFormData>({
@@ -416,22 +375,6 @@ export const AuthForm: React.FC<AuthFormProps> = ({
               {loading ? '処理中...' : mode === 'login' ? 'ログイン' : '会員登録'}
             </Text>
             <Text style={styles.submitButtonIcon}>→</Text>
-          </TouchableOpacity>
-
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>または</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <TouchableOpacity
-            style={[styles.googleButton, googleLoading && styles.googleButtonDisabled]}
-            onPress={onGoogleAuth}
-            disabled={googleLoading}
-          >
-            <Text style={styles.googleButtonText}>
-              {googleLoading ? '処理中...' : 'Googleで続行'}
-            </Text>
           </TouchableOpacity>
         </View>
       </Animated.View>

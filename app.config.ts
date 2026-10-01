@@ -46,9 +46,15 @@ const isTest = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !==
 const includeDevClient = isExpoStart || easBuildProfile === 'development';
 // 起動時 OTA チェックで白スプラッシュに張り付く事例があるため、ストア系は組み込みバンドルのみ
 const enableExpoUpdates = includeDevClient;
-// 白画面切り分け: internal-testing では AdMob ネイティブ初期化を外す（JS 側は no-op）
-const includeAdMobNative =
-  easBuildProfile === 'production' || process.env.EXPO_PUBLIC_ENABLE_ADMOB === 'true';
+// スプラッシュ直後のネイティブクラッシュ切り分け: audio-api は明示 opt-in のみネイティブ同梱
+const includeNativeAudioApi =
+  process.env.EXPO_PUBLIC_ENABLE_NATIVE_AUDIO_API === 'true' ||
+  easBuildProfile === 'development';
+
+const autolinkingExclude: string[] = [];
+if (!includeNativeAudioApi) {
+  autolinkingExclude.push('react-native-audio-api');
+}
 
 // EXPO_PUBLIC_* はビルド時にバンドルへ焼き込まれる。未設定のまま export すると実行時クラッシュの原因になる。
 const mustHaveSupabaseEnv =
@@ -145,29 +151,13 @@ const config: ExpoConfig = {
     ],
     'expo-asset',
     'expo-audio',
-    'react-native-audio-api',
+    ...(includeNativeAudioApi ? (['react-native-audio-api'] as const) : []),
     'expo-web-browser',
     // Google Play パッケージ所有権確認用（adi-registration.properties を native assets へ）
     './plugins/withAdiRegistration',
     // expo-file-system 等のレガシー外部ストレージ宣言を最終マニフェストから除去
     './plugins/withStripLegacyStoragePermissions',
     './plugins/withRemoveNotificationsBootReceiver',
-    ...(includeAdMobNative
-      ? ([
-          [
-            'react-native-google-mobile-ads',
-            {
-              androidAppId: 'ca-app-pub-4701955364298598~7135719486',
-              iosAppId:
-                process.env.EXPO_PUBLIC_ADMOB_IOS_APP_ID ||
-                'ca-app-pub-3940256099942544~1458002511',
-              delayAppMeasurementInit: true,
-              optimizeInitialization: true,
-              optimizeAdLoading: true,
-            },
-          ],
-        ] as const)
-      : []),
     [
       'expo-notifications',
       {
@@ -178,6 +168,7 @@ const config: ExpoConfig = {
       },
     ],
   ],
+  autolinking: autolinkingExclude.length > 0 ? { exclude: autolinkingExclude } : undefined,
   experiments: {
     typedRoutes: true,
   },
@@ -200,6 +191,11 @@ const config: ExpoConfig = {
     // Play / App Store の Data safety・審査用。公開ページの URL を必ず設定する
     // 現状 GitHub Pages（private リポ）は 404。docs/public/privacy-policy.html を公開ホストへ上げて URL を入れる
     privacyPolicyUrl: process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL || '',
+    /** Play テスト向け: 同梱ネイティブモジュール（BootScreen の build 行と合わせて確認） */
+    nativeModules: {
+      audioApi: includeNativeAudioApi,
+      easBuildProfile: easBuildProfile || 'local',
+    },
     // Web環境用のリダイレクトURI
     // GitHub Pagesデプロイ時は自動的にGitHub PagesのURLを使用
     webRedirectUrl: process.env.EXPO_PUBLIC_WEB_REDIRECT_URL || 

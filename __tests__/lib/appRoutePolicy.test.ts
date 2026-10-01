@@ -62,6 +62,35 @@ describe('evaluateRouteGuard', () => {
     ).toEqual({ type: 'redirect', href: '/(tabs)/tutorial', reason: 'onboarding-required' });
   });
 
+  it('楽器選択済みでオンボーディング楽器画面にいたらカレンダーへ', () => {
+    expect(
+      evaluateRouteGuard({
+        ...ready,
+        isAuthenticated: true,
+        hasInstrumentSelected: true,
+        onboardingRoute: '/(tabs)',
+        segments: ['(tabs)', 'instrument-selection'],
+      })
+    ).toEqual({
+      type: 'redirect',
+      href: '/(tabs)',
+      reason: 'instrument-already-selected',
+    });
+  });
+
+  it('from=change の楽器変更は許可', () => {
+    expect(
+      evaluateRouteGuard({
+        ...ready,
+        isAuthenticated: true,
+        hasInstrumentSelected: true,
+        onboardingRoute: '/(tabs)',
+        segments: ['(tabs)', 'instrument-selection'],
+        instrumentFromChange: true,
+      })
+    ).toMatchObject({ type: 'stay' });
+  });
+
   it('設定からチュートリアル見返しは許可', () => {
     expect(
       evaluateRouteGuard({

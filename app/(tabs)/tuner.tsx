@@ -21,7 +21,6 @@ import { ErrorHandler } from '@/lib/errorHandler';
 import Metronome from '@/components/metronome/Metronome';
 import { styles } from '@/lib/tabs/tuner/styles';
 import audioResourceManager from '@/lib/audioResourceManager';
-import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { getNoteFromFrequency, smoothValue, getTuningColor, combineAlgorithms, TUNER_ANALYSIS, TUNER_DISPLAY, createFrequencyStabilizerState, stabilizeDetectedFrequency, applyCentsDeadZone, type FrequencyStabilizerState } from '@/lib/tunerAudioProcessor';
 import { emitRequestReleaseMic, subscribeRequestReleaseMic } from '@/lib/appEvents';
@@ -1679,7 +1678,6 @@ export default function TunerScreen() {
       </ScrollView>
 
       {/* タブバー上に広告バナー（フリープランのみ） */}
-      <BottomBannerAd />
 
     </SafeAreaView>
   );

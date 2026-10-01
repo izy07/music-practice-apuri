@@ -73,7 +73,6 @@ SELECT
   CASE g.goal_type
     WHEN 'personal_short' THEN '個人短期'
     WHEN 'personal_long' THEN '個人長期'
-    WHEN 'group' THEN 'グループ'
     ELSE g.goal_type
   END AS 目標タイプ,
   g.progress_percentage AS 進捗率_パーセント,
@@ -108,7 +107,6 @@ SELECT
   e.title AS タイトル,
   e.date AS イベント日,
   e.description AS 説明,
-  e.practice_schedule_id AS 練習日程ID,
   e.created_at AS 作成日時,
   e.updated_at AS 更新日時
 FROM events e

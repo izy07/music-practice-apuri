@@ -5,16 +5,40 @@
  */
 const { AndroidConfig, createRunOncePlugin, withAndroidManifest } = require('expo/config-plugins');
 
-const BOOT_ACTIONS = new Set([
+/** expo-notifications NotificationsService の SETUP_ACTIONS（Android 15+ で FGS 絡みのクラッシュ要因） */
+const SETUP_BROADCAST_ACTIONS = new Set([
   'android.intent.action.BOOT_COMPLETED',
   'android.intent.action.REBOOT',
   'android.intent.action.QUICKBOOT_POWERON',
   'com.htc.intent.action.QUICKBOOT_POWERON',
+  'android.intent.action.MY_PACKAGE_REPLACED',
 ]);
 
 function withRemoveNotificationsBootReceiver(config) {
   return withAndroidManifest(config, (config) => {
-    const app = AndroidConfig.Manifest.getMainApplicationOrThrow(config.modResults);
+    const manifest = config.modResults;
+
+    // Play Console「BOOT_COMPLETED + 制限付き FGS」警告の permission も除去
+    if (!manifest['uses-permission']) {
+      manifest['uses-permission'] = [];
+    }
+    const permissions = manifest['uses-permission'];
+    const bootPerm = {
+      $: {
+        'android:name': 'android.permission.RECEIVE_BOOT_COMPLETED',
+        'tools:node': 'remove',
+      },
+    };
+    const hasBootPermRemove = permissions.some(
+      (p) =>
+        p.$?.['android:name'] === 'android.permission.RECEIVE_BOOT_COMPLETED' &&
+        p.$?.['tools:node'] === 'remove'
+    );
+    if (!hasBootPermRemove) {
+      permissions.push(bootPerm);
+    }
+
+    const app = AndroidConfig.Manifest.getMainApplicationOrThrow(manifest);
     const receivers = app.receiver ?? [];
 
     for (const receiver of receivers) {
@@ -28,11 +52,12 @@ function withRemoveNotificationsBootReceiver(config) {
         const actions = filter.action ?? [];
         filter.action = actions.filter((action) => {
           const actionName = action.$?.['android:name'];
-          return !BOOT_ACTIONS.has(actionName);
+          return !SETUP_BROADCAST_ACTIONS.has(actionName);
         });
       }
     }
 
+    config.modResults = manifest;
     return config;
   });
 }

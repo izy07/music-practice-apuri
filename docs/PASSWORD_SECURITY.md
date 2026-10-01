@@ -137,24 +137,7 @@ export async function hashPassword(password: string): Promise<string> {
 ```
 
 **用途:** 
-- 現在はSupabase認証では使用されていない
-- 将来的に組織パスワードなどで使用する可能性
-
-### 3. 組織パスワード（非推奨・統合済み）
-
-**注意:** このマイグレーションファイルは既に削除され、統合マイグレーションファイル（`20251219000000_initial_schema.sql`）に含まれています。
-
-```sql
--- ⚠️ 注意: SHA-256はパスワードハッシュ化には不適切
-UPDATE organizations 
-SET password_hash = ENCODE(DIGEST(password, 'sha256'), 'hex')
-WHERE password_hash IS NULL;
-```
-
-**問題点:**
-- SHA-256は高速すぎる（ブルートフォース攻撃に弱い）
-- ソルトがない（レインボーテーブル攻撃に弱い）
-- **推奨**: bcryptまたはArgon2に変更すべき
+- 現在はSupabase認証では使用されていない（将来のカスタム認証が必要になった場合の参考実装）
 
 ---
 

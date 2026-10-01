@@ -105,7 +105,6 @@ FROM (
     title,
     date AS event_date,
     description,
-    practice_schedule_id,
     created_at,
     updated_at
   FROM events

@@ -448,7 +448,7 @@ export const getRecordingsByDate = async (
 // 目標の保存・更新
 export const saveGoal = async (goal: {
   user_id: string;
-  goal_type: 'personal_short' | 'personal_long' | 'group';
+  goal_type: 'personal_short' | 'personal_long';
   title: string;
   description: string | null;
   target_date: string | null;

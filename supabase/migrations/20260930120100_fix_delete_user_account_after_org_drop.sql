@@ -1,5 +1,6 @@
--- アカウント削除: ログイン中ユーザー自身のデータと auth.users を削除する
--- SECURITY DEFINER だが auth.uid() のみ対象（他ユーザー削除不可）
+-- 団体テーブル削除後: delete_user_account と出欠用 RPC を整理
+
+DROP FUNCTION IF EXISTS public.can_register_attendance(date);
 
 CREATE OR REPLACE FUNCTION public.delete_user_account()
 RETURNS void
@@ -14,7 +15,6 @@ BEGIN
     RAISE EXCEPTION 'not authenticated';
   END IF;
 
-  -- 子データを先に削除（FK）
   DELETE FROM public.sub_goals WHERE goal_id IN (SELECT id FROM public.goals WHERE user_id = uid);
   DELETE FROM public.goals WHERE user_id = uid;
   DELETE FROM public.practice_sessions WHERE user_id = uid;
@@ -37,7 +37,6 @@ BEGIN
   DELETE FROM public.score_edits WHERE user_id = uid;
   DELETE FROM public.user_subscriptions WHERE user_id = uid;
 
-  -- 録音: Storage オブジェクトも削除
   DELETE FROM storage.objects
   WHERE bucket_id = 'recordings'
     AND (name LIKE uid::text || '/%');
@@ -45,7 +44,6 @@ BEGIN
   DELETE FROM public.recordings WHERE user_id = uid;
   DELETE FROM public.user_profiles WHERE user_id = uid;
 
-  -- Auth ユーザー削除（セッション無効化含む）
   DELETE FROM auth.users WHERE id = uid;
 END;
 $$;
@@ -53,6 +51,3 @@ $$;
 REVOKE ALL ON FUNCTION public.delete_user_account() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.delete_user_account() FROM anon;
 GRANT EXECUTE ON FUNCTION public.delete_user_account() TO authenticated;
-
-COMMENT ON FUNCTION public.delete_user_account() IS
-  'ログイン中ユーザー自身のアカウントと関連データを削除する。auth.uid() 以外は削除できない。';

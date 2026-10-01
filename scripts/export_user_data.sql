@@ -28,6 +28,7 @@ FROM (
     music_start_age,
     music_experience_years,
     total_practice_minutes,
+    instrument_specific_data,
     created_at,
     updated_at
   FROM user_profiles
@@ -91,7 +92,6 @@ FROM (
     title,
     date AS event_date,
     description,
-    practice_schedule_id,
     created_at,
     updated_at
   FROM events
@@ -196,26 +196,7 @@ FROM (
   ORDER BY start_date DESC
 ) t;
 
--- 10. 過去の所属団体（user_past_organizations）
-SELECT 
-  'user_past_organizations' AS table_name,
-  json_agg(row_to_json(t)) AS data
-FROM (
-  SELECT 
-    id,
-    user_id,
-    organization_name,
-    start_date,
-    end_date,
-    role,
-    created_at,
-    updated_at
-  FROM user_past_organizations
-  WHERE user_id = auth.uid()
-  ORDER BY start_date DESC
-) t;
-
--- 11. 受賞（user_awards）
+-- 10. 受賞（user_awards）
 SELECT 
   'user_awards' AS table_name,
   json_agg(row_to_json(t)) AS data

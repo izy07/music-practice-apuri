@@ -132,21 +132,6 @@ export interface InstrumentTheme {
   textSecondary: string;
 }
 
-// 練習日程関連（団体機能）
-export interface PracticeSchedule {
-  id: string;
-  organization_id: string;
-  title: string;
-  description?: string;
-  practice_date: string;
-  start_time?: string;
-  end_time?: string;
-  location?: string;
-  practice_type: 'ensemble' | 'part_practice' | 'individual_practice' | 'rehearsal' | 'lesson' | 'event';
-  created_at: string;
-  updated_at?: string;
-}
-
 // サブスクリプション関連
 export interface UserSubscription {
   id: string;
@@ -229,29 +214,6 @@ export interface Feedback {
   contact_email?: string;
   diagnostics?: string;
   created_at: string;
-}
-
-// 部屋（団体）関連
-export interface Room {
-  id: string;
-  room_id: string;
-  parent_room_id?: string;
-  name: string;
-  description?: string;
-  password_hash: string;
-  icon_name: string;
-  color_theme: string;
-  created_at: string;
-  updated_at?: string;
-}
-
-export interface RoomMember {
-  id: string;
-  room_id: string;
-  user_id: string;
-  nickname: string;
-  role: 'admin' | 'member';
-  joined_at: string;
 }
 
 // 音楽辞書関連

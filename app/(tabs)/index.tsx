@@ -9,7 +9,6 @@ import PracticeRecordModal from '@/components/PracticeRecordModal';
 import EventModal from '@/components/EventModal';
 import CalendarDayCell from '@/components/calendar/CalendarDayCell';
 import EventManagementSection from '@/components/calendar/EventManagementSection';
-import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { useCalendarData } from '@/hooks/tabs/useCalendarData';
 import { supabase } from '@/lib/supabase';
@@ -28,6 +27,10 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 import { subscribeCalendarGoalUpdated } from '@/lib/appEvents';
 import { deleteEvent } from '@/repositories/eventRepository';
+import {
+  fetchMonthlyPracticeTotalMinutes,
+  resolveCalendarInsight,
+} from '@/lib/calendarInsight';
 
 // テーマの型定義
 interface InstrumentTheme {
@@ -206,6 +209,69 @@ export default function CalendarScreen() {
     loadShortTermGoal,
     loadAllEvents,
   } = useCalendarData(currentDate);
+
+  const [previousMonthTotalMinutes, setPreviousMonthTotalMinutes] = useState<
+    number | undefined
+  >(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadPreviousMonth = async () => {
+      if (!user?.id || !isAuthenticated) {
+        setPreviousMonthTotalMinutes(undefined);
+        return;
+      }
+      const instrumentId = getEffectiveInstrumentId(
+        selectedInstrument,
+        user.selected_instrument_id
+      );
+      const prev = new Date(
+        currentDate.getFullYear(),
+        currentDate.getMonth() - 1,
+        1
+      );
+      const total = await fetchMonthlyPracticeTotalMinutes(
+        user.id,
+        instrumentId,
+        prev.getFullYear(),
+        prev.getMonth()
+      );
+      if (!cancelled) {
+        setPreviousMonthTotalMinutes(total ?? undefined);
+      }
+    };
+    loadPreviousMonth();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    user?.id,
+    user?.selected_instrument_id,
+    selectedInstrument,
+    isAuthenticated,
+    currentDate.getFullYear(),
+    currentDate.getMonth(),
+    practiceRecordRefreshKey,
+  ]);
+
+  const calendarInsight = useMemo(() => {
+    if (!user?.id) return null;
+    return resolveCalendarInsight({
+      practiceData,
+      monthlyTotalMinutes: monthlyTotal,
+      viewYear: currentDate.getFullYear(),
+      viewMonth: currentDate.getMonth(),
+      today: new Date(),
+      userId: user.id,
+      previousMonthTotalMinutes,
+    });
+  }, [
+    user?.id,
+    practiceData,
+    monthlyTotal,
+    currentDate,
+    previousMonthTotalMinutes,
+  ]);
 
   // 認証チェック
   useEffect(() => {
@@ -1247,8 +1313,39 @@ export default function CalendarScreen() {
           {/* Monthly Summary - Simplified */}
           <View style={[styles.summaryContainer, { backgroundColor: currentTheme.surface }]}>
             <Text style={[styles.summaryText, { color: currentTheme.text }]}>
-              今月の合計練習時間: <Text style={[styles.highlightText, { color: currentTheme.primary }]}>{formatMinutesToHours(monthlyTotal)}</Text>
+              今月の合計練習時間:{' '}
+              <Text style={[styles.highlightText, { color: currentTheme.primary }]}>
+                {formatMinutesToHours(monthlyTotal)}
+              </Text>
             </Text>
+            {calendarInsight ? (
+              <TouchableOpacity
+                style={styles.summaryInsightRow}
+                onPress={() => router.push('/(tabs)/statistics')}
+                accessibilityRole="button"
+                accessibilityLabel={`今日のヒント: ${calendarInsight.text}。統計画面を開く`}
+              >
+                <Text
+                  style={[styles.summaryInsightText, { color: currentTheme.textSecondary }]}
+                  numberOfLines={2}
+                >
+                  今日のヒント: {calendarInsight.text}
+                </Text>
+              </TouchableOpacity>
+            ) : monthlyTotal === 0 ? (
+              <TouchableOpacity
+                style={styles.summaryInsightRow}
+                onPress={() => router.push('/(tabs)/statistics')}
+                accessibilityRole="button"
+                accessibilityLabel="統計画面で練習の傾向を見る"
+              >
+                <Text
+                  style={[styles.summaryInsightText, { color: currentTheme.textSecondary }]}
+                >
+                  記録を続けると、ここに今日のヒントが表示されます
+                </Text>
+              </TouchableOpacity>
+            ) : null}
           </View>
 
                   {/* Success Message */}
@@ -1455,7 +1552,6 @@ export default function CalendarScreen() {
       />
 
       {/* タブバー上に広告バナー（フリープランのみ） */}
-      <BottomBannerAd />
 
     </SafeAreaView>
   );
@@ -1686,6 +1782,14 @@ const styles = StyleSheet.create({
     textAlign: 'left', // 左寄せに変更
     color: '#666666',
     fontWeight: '500', // 少し太くして読みやすく
+  },
+  summaryInsightRow: {
+    marginTop: getScaledSpacing(6),
+  },
+  summaryInsightText: {
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '400',
   },
   summaryTitle: {
     fontSize: 16,

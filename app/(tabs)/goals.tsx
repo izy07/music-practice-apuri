@@ -27,7 +27,6 @@ import { useSubscription } from '@/hooks/useSubscription';
 import { checkGoalLimit, canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 import { isErrorWithCode, getErrorMessage } from '@/lib/errorHandlingHelpers';
 import { Goal, SubGoal, GoalFromDB, UserProfile, Event, NewGoalData } from '@/lib/tabs/goals/types';
-import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 import { shouldUsePersistentCache } from '@/lib/cache/cachePolicy';
 import { trackFeatureAction } from '@/lib/featureUsageService';
 import { FEATURE_IDS } from '@/lib/featureUsageEvents';
@@ -344,7 +343,7 @@ export default function GoalsScreen() {
           description?: string;
           target_date?: string;
           progress_percentage?: number;
-          goal_type: 'personal_short' | 'personal_long' | 'group';
+          goal_type: 'personal_short' | 'personal_long';
           is_active?: boolean;
           is_completed?: boolean;
           show_on_calendar?: boolean;
@@ -625,7 +624,7 @@ export default function GoalsScreen() {
         title: string;
         description?: string;
         target_date?: string;
-        goal_type: 'personal_short' | 'personal_long' | 'group';
+        goal_type: 'personal_short' | 'personal_long';
         instrument_id?: string | null;
         is_synced: boolean;
         [key: string]: any;
@@ -637,7 +636,7 @@ export default function GoalsScreen() {
         title: string;
         description?: string;
         target_date?: string;
-        goal_type: 'personal_short' | 'personal_long' | 'group';
+        goal_type: 'personal_short' | 'personal_long';
         instrument_id?: string | null;
         is_synced: boolean;
       }
@@ -673,14 +672,6 @@ export default function GoalsScreen() {
               goalId: offlineGoal.id,
               currentCount: limitCheck.currentCount,
               limit: limitCheck.limit
-            });
-            continue;
-          }
-          
-          // 'group'タイプの目標はcreateGoalでサポートされていないためスキップ
-          if (offlineGoal.goal_type === 'group') {
-            logger.warn('オフライン目標の同期をスキップ: groupタイプはサポートされていません', {
-              goalId: offlineGoal.id,
             });
             continue;
           }
@@ -2347,7 +2338,6 @@ export default function GoalsScreen() {
       />
 
       {/* タブバー上に広告バナー（フリープランのみ） */}
-      <BottomBannerAd />
 
     </SafeAreaView>
   );

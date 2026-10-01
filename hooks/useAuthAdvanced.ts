@@ -84,6 +84,21 @@ function buildSessionAuthUser(
 }
 
 function profileRowToAuthUser(user: SessionLikeUser, profile: Record<string, unknown>): AuthUser {
+  const selectedInstrumentId =
+    (typeof profile.selected_instrument_id === 'string'
+      ? profile.selected_instrument_id
+      : null) ?? null;
+
+  let tutorialCompleted: boolean | undefined;
+  if (typeof profile.tutorial_completed === 'boolean') {
+    tutorialCompleted = profile.tutorial_completed;
+  } else if (selectedInstrumentId) {
+    // 既存ユーザー: DB が null でも楽器があればオンボーディング済み
+    tutorialCompleted = true;
+  } else {
+    tutorialCompleted = undefined;
+  }
+
   return buildSessionAuthUser(user, {
     name:
       (typeof profile.display_name === 'string' && profile.display_name) ||
@@ -92,18 +107,12 @@ function profileRowToAuthUser(user: SessionLikeUser, profile: Record<string, unk
       (typeof profile.profile_image_url === 'string' && profile.profile_image_url) ||
       (typeof profile.avatar_url === 'string' && profile.avatar_url) ||
       undefined,
-    selected_instrument_id:
-      (typeof profile.selected_instrument_id === 'string'
-        ? profile.selected_instrument_id
-        : null) ?? null,
+    selected_instrument_id: selectedInstrumentId,
     custom_instrument_name:
       (typeof profile.custom_instrument_name === 'string'
         ? profile.custom_instrument_name
         : null) ?? null,
-    tutorial_completed:
-      typeof profile.tutorial_completed === 'boolean'
-        ? profile.tutorial_completed
-        : false,
+    tutorial_completed: tutorialCompleted,
     onboarding_completed:
       typeof profile.onboarding_completed === 'boolean'
         ? profile.onboarding_completed
@@ -195,7 +204,6 @@ export interface AuthHookReturn extends AuthState {
   // 認証アクション
   signIn: (formData: AuthFormData) => Promise<boolean>;
   signUp: (formData: AuthFormData) => Promise<boolean>;
-  signInWithGoogle: () => Promise<boolean>; // 一時的に無効化
   signOut: () => Promise<void>;
   clearSession: () => Promise<void>;
   resetPassword: (email: string) => Promise<boolean>;
@@ -1041,7 +1049,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
                 // プロフィール取得に失敗した場合は基本情報のみで処理
                 const authUser = buildSessionAuthUser(user, {
                   selected_instrument_id: fallbackInstrumentId,
-                  tutorial_completed: false,
+                  tutorial_completed: fallbackInstrumentId ? true : undefined,
                 });
                 
                 updateAuthState({
@@ -1089,7 +1097,7 @@ export const useAuthAdvanced = (): AuthHookReturn => {
             // プロフィール作成に失敗した場合は基本情報のみで処理
             const authUser = buildSessionAuthUser(user, {
               selected_instrument_id: fallbackInstrumentId,
-              tutorial_completed: false,
+              tutorial_completed: fallbackInstrumentId ? true : undefined,
             });
             
             updateAuthState({
@@ -1859,14 +1867,6 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     }
   }, [handleAuthenticatedUser, clearInstrumentThemeLocal]);
 
-  // Googleログイン処理（一時的に削除 - 後で再実装予定）
-  // TODO: Google OAuth認証を再実装する際は、この関数を復元してください
-  const signInWithGoogle = useCallback(async (): Promise<boolean> => {
-    logger.warn('Googleログイン機能は一時的に無効化されています');
-    Alert.alert('機能無効', 'Googleログイン機能は一時的に無効化されています。メール/パスワード認証をご利用ください。');
-    return false;
-  }, []);
-
   // 新規登録フラグを設定
   const setNewSignupFlag = useCallback(async (): Promise<void> => {
     if (Platform.OS === 'web' && typeof window !== 'undefined' && window.localStorage) {
@@ -2189,7 +2189,15 @@ export const useAuthAdvanced = (): AuthHookReturn => {
   }, [authState.isAuthenticated, authState.user, hasInstrumentSelected]);
 
   const getOnboardingRoute = useCallback((): OnboardingRoute => {
-    return resolveOnboardingTarget(authState.user, hasInstrumentSelected());
+    const hasInstrument = hasInstrumentSelected();
+    if (
+      newSignupFlagState &&
+      !hasInstrument &&
+      !authState.user?.selected_instrument_id
+    ) {
+      return '/(tabs)/tutorial';
+    }
+    return resolveOnboardingTarget(authState.user, hasInstrument);
   }, [authState.user, hasInstrumentSelected]);
 
   const patchAuthUser = useCallback((patch: Partial<AuthUser>) => {
@@ -2219,7 +2227,6 @@ export const useAuthAdvanced = (): AuthHookReturn => {
     ...authState,
     signIn,
     signUp,
-    signInWithGoogle,
     signOut,
     clearSession,
     resetPassword,

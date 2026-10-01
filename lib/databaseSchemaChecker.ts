@@ -98,84 +98,6 @@ END $$;
 }
 
 /**
- * attendance_recordsテーブルが存在するかチェック
- * 存在しない場合は、自動的に作成を試みる
- * @returns true: テーブルが存在する, false: テーブルが存在しない（作成も失敗）
- */
-export async function checkAttendanceRecordsTableExists(): Promise<boolean> {
-  try {
-    // テーブルの存在を確認するため、空のクエリを実行
-    const { error } = await supabase
-      .from('attendance_records')
-      .select('id')
-      .limit(0);
-
-    if (error) {
-      // テーブルが存在しない場合（404エラー）
-      if (error.code === 'PGRST205' || error.code === '42P01' || error.message?.includes('does not exist')) {
-        logger.warn('attendance_recordsテーブルが存在しません。自動的に作成を試みます...');
-        
-        // RPC関数を呼び出してテーブルを作成
-        try {
-          const { data: rpcResult, error: rpcError } = await supabase.rpc('ensure_attendance_records_table');
-          
-          if (rpcError) {
-            logger.error('attendance_recordsテーブルの自動作成に失敗しました:', rpcError);
-            return false;
-          }
-          
-          if (rpcResult && (rpcResult as any).success) {
-            const created = (rpcResult as any).created;
-            if (created) {
-              logger.info('attendance_recordsテーブルを自動作成しました');
-            } else {
-              logger.info('attendance_recordsテーブルは既に存在します');
-            }
-            
-            // 作成後、再度存在確認
-            const { error: verifyError } = await supabase
-              .from('attendance_records')
-              .select('id')
-              .limit(0);
-            
-            if (verifyError) {
-              logger.warn('テーブル作成後の確認でエラーが発生しました:', verifyError);
-              return false;
-            }
-            
-            return true;
-          } else {
-            logger.error('attendance_recordsテーブルの自動作成に失敗しました（結果が不正）');
-            return false;
-          }
-        } catch (rpcException: any) {
-          // RPC関数が存在しない場合（マイグレーション未実行）は、手動実行を促す
-          if (rpcException.message?.includes('function') && rpcException.message?.includes('does not exist')) {
-            logger.warn('ensure_attendance_records_table関数が存在しません。');
-            logger.warn('解決方法: Supabaseダッシュボードで以下のマイグレーションを実行してください:');
-            logger.warn('  統合マイグレーションファイル: 20251219000000_initial_schema.sql');
-            logger.warn('  （すべてのテーブルが含まれています）');
-            logger.warn('  または、ローカル環境で: supabase db reset');
-            return false;
-          }
-          logger.error('attendance_recordsテーブルの自動作成中にエラーが発生しました:', rpcException);
-          return false;
-        }
-      }
-      // その他のエラーはテーブルが存在すると仮定
-      return true;
-    }
-
-    // エラーがなければテーブルは存在する
-    return true;
-  } catch (error: any) {
-    logger.warn('attendance_recordsテーブルの存在チェック中にエラーが発生しました:', error);
-    // エラーが発生した場合は、テーブルが存在しないと仮定
-    return false;
-  }
-}
-
-/**
  * データベーススキーマの整合性をチェック
  * 
  * 注意: 初期スキーマ（20251219000000_initial_schema.sql）に含まれているテーブル/カラムは
@@ -183,7 +105,6 @@ export async function checkAttendanceRecordsTableExists(): Promise<boolean> {
  * 
  * 初期スキーマに含まれているもの：
  * - notification_settings: 初期スキーマに含まれている
- * - attendance_records: 初期スキーマに含まれている
  * - instrument_id: 各テーブルに初期スキーマで定義されている
  * - show_on_calendar: goalsテーブルに初期スキーマで定義されている
  * - tutorial_completed: user_profilesテーブルに初期スキーマで定義されている

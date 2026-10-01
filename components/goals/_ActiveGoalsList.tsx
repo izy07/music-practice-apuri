@@ -25,11 +25,9 @@ export const ActiveGoalsList: React.FC<ActiveGoalsListProps> = ({
   onDeleteGoal,
   onSetGoalShowOnCalendar,
 }) => {
-  const personalGoals = goals.filter(goal => goal.goal_type !== 'group');
-
   return (
     <View style={styles.goalsList}>
-      {personalGoals.map((goal) => (
+      {goals.map((goal) => (
         <GoalCard
           key={goal.id}
           goal={goal}

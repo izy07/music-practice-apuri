@@ -78,12 +78,11 @@ describe('config', () => {
   });
 
   it('個別エクスポートが利用可能', () => {
-    const { supabase, openai, whisper, google, eas, env } = require('@/lib/config');
+    const { supabase, openai, whisper, eas, env } = require('@/lib/config');
     
     expect(supabase).toBeDefined();
     expect(openai).toBeDefined();
     expect(whisper).toBeDefined();
-    expect(google).toBeDefined();
     expect(eas).toBeDefined();
     expect(env).toBeDefined();
   });

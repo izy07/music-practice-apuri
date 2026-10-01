@@ -30,6 +30,7 @@ import { getBasePath } from '@/lib/navigationUtils';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { signIn as signInService } from '@/lib/authService';
 import { getAuthErrorInfo, AuthErrorType } from '@/lib/authHelpers';
+import { isOnboardingProfilePending } from '@/lib/onboardingRoute';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -59,14 +60,13 @@ export default function LoginScreen() {
   const segments = useSegments();
   const {
     signIn,
-    signInWithGoogle,
     isLoading,
     error,
     clearError,
     isAuthenticated,
     user,
     hasInstrumentSelected,
-    canAccessMainApp,
+    getOnboardingRoute,
   } = useAuthAdvanced();
   
   // フォーム状態
@@ -116,23 +116,20 @@ export default function LoginScreen() {
         }
       }
 
-      // 楽器未選択:
-      // - チュートリアル未完了 → チュートリアル
-      // - チュートリアル完了済み → 楽器選択（チラつき防止）
-      const hasInstrument = hasInstrumentSelected();
-      const canAccess = canAccessMainApp();
-      const tutorialDone = !!user?.tutorial_completed;
+      if (isOnboardingProfilePending(user, hasInstrumentSelected())) {
+        logger.debug('[ログイン画面] プロフィール反映待ち（楽器選択へはまだ遷移しない）', {
+          tutorialCompleted: user.tutorial_completed,
+          selectedInstrumentId: user.selected_instrument_id,
+        });
+        return;
+      }
 
-      const targetPath = hasInstrument || canAccess
-        ? '/(tabs)'
-        : tutorialDone
-          ? '/(tabs)/instrument-selection'
-          : '/(tabs)/tutorial';
+      const targetPath = getOnboardingRoute();
 
       logger.debug('[ログイン画面] 認証成功 → 画面遷移:', {
         targetPath,
-        hasInstrument,
-        tutorialDone,
+        hasInstrument: hasInstrumentSelected(),
+        tutorialCompleted: user?.tutorial_completed,
       });
       // ナビゲーションを次のフレームで実行して、Root Layoutが確実にマウントされるようにする
       requestAnimationFrame(() => {
@@ -140,7 +137,7 @@ export default function LoginScreen() {
           router.replace(targetPath as any);
         });
       });
-    }, [isAuthenticated, isLoading, user, router, isLoggingIn, segments, hasInstrumentSelected, canAccessMainApp])
+    }, [isAuthenticated, isLoading, user, router, isLoggingIn, segments, hasInstrumentSelected, getOnboardingRoute])
   );
 
   // アニメーション開始
@@ -543,28 +540,6 @@ export default function LoginScreen() {
                 <Text style={styles.loginButtonIcon}>→</Text>
               </TouchableOpacity>
 
-              {/* 分割線 */}
-              <View style={styles.divider}>
-                <View style={styles.dividerLine} />
-                <Text style={styles.dividerText}>または</Text>
-                <View style={styles.dividerLine} />
-              </View>
-
-              {/* Googleログインボタン（未実装・テスト中） */}
-              <TouchableOpacity
-                style={styles.googleButton}
-                onPress={() => {
-                  Alert.alert(
-                    'テスト中です',
-                    'Googleでログインは未実装です。現在は動きません。',
-                    [{ text: 'OK' }]
-                  );
-                }}
-              >
-                <Text style={styles.googleIcon}>🔍</Text>
-                <Text style={styles.googleButtonText}>Googleでログイン</Text>
-              </TouchableOpacity>
-
               {/* パスワード再設定リンク */}
               <TouchableOpacity onPress={handleResetPassword} disabled={isLoggingIn} style={{ alignSelf: 'center', marginTop: 8, marginBottom: 8 }}>
                 <Text style={{ color: colors.primary }}>パスワードをお忘れですか？</Text>
@@ -730,21 +705,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: 16,
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: '#E0E0E0',
-  },
-  dividerText: {
-    color: '#666',
-    fontSize: 14,
-    marginHorizontal: 16,
-  },
   devNotice: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -779,27 +739,5 @@ const styles = StyleSheet.create({
     color: '#8B4513',
     fontSize: 14,
     fontWeight: '600',
-  },
-  googleButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    marginTop: 8,
-    elevation: 2,
-  },
-  googleIcon: {
-    fontSize: 18,
-    marginRight: 8,
-  },
-  googleButtonText: {
-    color: '#333',
-    fontSize: 16,
-    fontWeight: '500',
   },
 });

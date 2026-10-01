@@ -27,54 +27,6 @@ function isObject(input: unknown): input is Record<string, unknown> {
 }
 
 /**
- * 組織型ガード
- */
-export function isOrganization(input: unknown): input is { id: string; name: string } {
-  return isObject(input) && isString(input.id) && isString(input.name);
-}
-
-/**
- * 組織配列型ガード
- */
-export function isOrganizationArray(input: unknown): input is Array<{ id: string; name: string }> {
-  return Array.isArray(input) && input.every(isOrganization);
-}
-
-/**
- * 練習スケジュール型ガード
- */
-export function isSchedule(input: unknown): input is { id: string; organization_id: string; title: string; practice_date: string } {
-  return (
-    isObject(input) &&
-    isString(input.id) &&
-    isString(input.organization_id) &&
-    isString(input.title) &&
-    isString(input.practice_date)
-  );
-}
-
-/**
- * 練習スケジュール配列型ガード
- */
-export function isScheduleArray(input: unknown): input is Array<{ id: string; organization_id: string; title: string; practice_date: string }> {
-  return Array.isArray(input) && input.every(isSchedule);
-}
-
-/**
- * タスク型ガード
- */
-export function isTask(input: unknown): input is { id: string; title: string; status: string } {
-  return isObject(input) && isString(input.id) && isString(input.title) && isString(input.status);
-}
-
-/**
- * タスク配列型ガード
- */
-export function isTaskArray(input: unknown): input is Array<{ id: string; title: string; status: string }> {
-  return Array.isArray(input) && input.every(isTask);
-}
-
-/**
  * アサーション関数（条件がfalseの場合にエラーをスロー）
  */
 export function assert<T>(cond: boolean, message: string): asserts cond {
@@ -84,24 +36,35 @@ export function assert<T>(cond: boolean, message: string): asserts cond {
 }
 
 /**
- * 数値型ガード
+ * 非nullアサーション
  */
-export function isNumber(input: unknown): input is number {
-  return typeof input === 'number' && !isNaN(input);
+export function assertDefined<T>(value: T | null | undefined, message: string): T {
+  if (value == null) {
+    throw new Error(message);
+  }
+  return value;
 }
 
 /**
- * 真偽値型ガード
+ * 文字列の非空チェック
  */
+export function isNonEmptyString(input: unknown): input is string {
+  return isString(input) && input.trim().length > 0;
+}
+
+export function assertNonEmptyString(input: unknown, message: string): string {
+  assert(isNonEmptyString(input), message);
+  return input;
+}
+
+export function isNumber(input: unknown): input is number {
+  return typeof input === 'number' && !Number.isNaN(input);
+}
+
 export function isBoolean(input: unknown): input is boolean {
   return typeof input === 'boolean';
 }
 
-/**
- * 配列型ガード
- */
 export function isArray(input: unknown): input is unknown[] {
   return Array.isArray(input);
 }
-
-

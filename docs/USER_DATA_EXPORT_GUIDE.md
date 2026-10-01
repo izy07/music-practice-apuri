@@ -13,7 +13,7 @@ RLS（Row Level Security）により、**自分のデータのみ**が取得で�
 - 表示名、アバターURL
 - 練習レベル
 - 選択中の楽器ID
-- 所属団体情報
+- 所属先（自由記述テキスト、`organization` / `current_organization`）
 - ニックネーム、自己紹介
 - 生年月日、年齢
 - 音楽開始年齢、経験年数
@@ -34,7 +34,7 @@ RLS（Row Level Security）により、**自分のデータのみ**が取得で�
 
 - タイトル、説明
 - 目標日付
-- 目標タイプ（個人短期/個人長期/グループ）
+- 目標タイプ（個人短期/個人長期）
 - 進捗率（0-100%）
 - 達成状況
 - カレンダー表示設定
@@ -45,7 +45,6 @@ RLS（Row Level Security）により、**自分のデータのみ**が取得で�
 
 - タイトル、説明
 - イベント日付
-- 練習日程との連携ID
 - 作成日時、更新日時
 
 ### 5. 録音データ（recordings）
@@ -87,7 +86,7 @@ RLS（Row Level Security）により、**自分のデータのみ**が取得で�
 ### 9. その他のデータ（オプション）
 
 - 休止期間（user_break_periods）
-- 過去の所属団体（user_past_organizations）
+- 過去の所属・経歴（`user_profiles.instrument_specific_data` 内）
 - 受賞（user_awards）
 - 演奏経験（user_performances）
 

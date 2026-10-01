@@ -18,7 +18,6 @@ export interface Event {
   description?: string | null;
   location?: string | null; // イベントの場所
   color?: string | null; // イベントの色（red, green, blue, orange, purple）
-  practice_schedule_id?: string | null; // 練習日程との連携用
   instrument_id?: string | null; // 楽器ID（楽器ごとにイベントを分けて管理）
   created_at?: string;
   updated_at?: string;
@@ -83,11 +82,6 @@ export const createEvent = async (
       payload.event_date = event.date;
     }
     
-    // practice_schedule_idが存在する場合のみ追加（カラムが存在しない場合のエラーを防ぐため）
-    if (event.practice_schedule_id) {
-      payload.practice_schedule_id = event.practice_schedule_id;
-    }
-    
     // instrument_idが存在する場合のみ追加（カラムが存在しない場合のエラーを防ぐため）
     if (event.instrument_id !== undefined) {
       payload.instrument_id = event.instrument_id;
@@ -101,7 +95,7 @@ export const createEvent = async (
     
     // カラムが存在しないエラーの場合、該当カラムを除外して再試行
     if (error && isColumnNotFoundError(error)) {
-      const optionalColumns = ['instrument_id', 'event_date', 'practice_schedule_id', 'location'];
+      const optionalColumns = ['instrument_id', 'event_date', 'location'];
       const handled = handleColumnError(error, payload, optionalColumns);
       
       if (handled) {
@@ -221,13 +215,6 @@ export const updateEvent = async (
     if (updates.description !== undefined) payload.description = updates.description;
     if (updates.location !== undefined) payload.location = updates.location;
     if (updates.color !== undefined) payload.color = updates.color;
-    if (updates.practice_schedule_id !== undefined) {
-      // practice_schedule_idがnullでない場合のみ追加
-      if (updates.practice_schedule_id !== null) {
-        payload.practice_schedule_id = updates.practice_schedule_id;
-      }
-    }
-    
     // instrument_idが存在する場合のみ追加（カラムが存在しない場合のエラーを防ぐため）
     if (updates.instrument_id !== undefined) {
       payload.instrument_id = updates.instrument_id;
@@ -242,7 +229,7 @@ export const updateEvent = async (
     
     // カラムが存在しないエラーの場合、該当カラムを除外して再試行
     if (error && isColumnNotFoundError(error)) {
-      const optionalColumns = ['instrument_id', 'event_date', 'practice_schedule_id', 'color', 'location'];
+      const optionalColumns = ['instrument_id', 'event_date', 'color', 'location'];
       const handled = handleColumnError(error, payload, optionalColumns);
       
       if (handled) {
@@ -372,7 +359,6 @@ export const getEventsByUserId = async (
     let selectColumns = 'id,user_id,title,date,description';
     if (hasColor) selectColumns += ',color';
     if (hasLocation) selectColumns += ',location';
-    selectColumns += ',practice_schedule_id';
     if (hasInstrumentId) selectColumns += ',instrument_id';
     selectColumns += ',is_completed,completed_at,created_at,updated_at';
     

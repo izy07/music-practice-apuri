@@ -600,7 +600,7 @@ export type Database = {
         Row: {
           id: string;
           user_id: string;
-          goal_type: 'personal_short' | 'personal_long' | 'group';
+          goal_type: 'personal_short' | 'personal_long';
           title: string;
           description: string | null;
           target_date: string | null;
@@ -612,7 +612,7 @@ export type Database = {
         Insert: {
           id?: string;
           user_id: string;
-          goal_type: 'personal_short' | 'personal_long' | 'group';
+          goal_type: 'personal_short' | 'personal_long';
           title: string;
           description?: string | null;
           target_date?: string | null;
@@ -624,7 +624,7 @@ export type Database = {
         Update: {
           id?: string;
           user_id?: string;
-          goal_type?: 'personal_short' | 'personal_long' | 'group';
+          goal_type?: 'personal_short' | 'personal_long';
           title?: string;
           description?: string | null;
           target_date?: string | null;

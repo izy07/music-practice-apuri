@@ -24,7 +24,6 @@ import { canSaveDataForInstrument } from '@/lib/subscriptionLimits';
 import Stopwatch from '@/components/timer/Stopwatch';
 import { styles } from '@/lib/tabs/timer/styles';
 import { setCurrentRoute } from '@/lib/navigationHistory';
-import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 import { trackFeatureAction } from '@/lib/featureUsageService';
 import { FEATURE_IDS } from '@/lib/featureUsageEvents';
 
@@ -2326,7 +2325,6 @@ export default function TimerScreen() {
       </Modal>
 
       {/* タブバー上に広告バナー（Webはダミー表示） */}
-      <BottomBannerAd />
     </SafeAreaView>
   );
 }

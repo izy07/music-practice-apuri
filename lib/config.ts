@@ -19,10 +19,6 @@ interface Config {
     apiUrl?: string;
     apiKey?: string;
   };
-  google: {
-    clientId?: string;
-    clientSecret?: string;
-  };
   eas: {
     projectId?: string;
   };
@@ -75,10 +71,6 @@ const createConfig = (): Config => {
     whisper: {
       apiUrl: getEnvVar('EXPO_PUBLIC_WHISPER_API_URL', false),
       apiKey: getEnvVar('EXPO_PUBLIC_WHISPER_API_KEY', false),
-    },
-    google: {
-      clientId: getEnvVar('GOOGLE_CLIENT_ID', false),
-      clientSecret: getEnvVar('GOOGLE_CLIENT_SECRET', false),
     },
     eas: {
       projectId: getEnvVar('EAS_PROJECT_ID', false),
@@ -143,5 +135,5 @@ if (config.env.isProduction) {
 export default config;
 
 // 個別エクスポート（後方互換性）
-export const { supabase, openai, whisper, google, eas, env } = config;
+export const { supabase, openai, whisper, eas, env } = config;
 

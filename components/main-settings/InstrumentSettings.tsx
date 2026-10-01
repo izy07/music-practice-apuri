@@ -50,7 +50,7 @@ export const InstrumentSettings: React.FC<InstrumentSettingsProps> = ({
           backgroundColor: currentTheme?.primary || '#4A5568',
           borderColor: currentTheme?.accent || '#2D3748'
         }]}
-        onPress={() => router.push('/(tabs)/instrument-selection')}
+        onPress={() => router.push('/(tabs)/instrument-selection?from=change')}
         activeOpacity={0.8}
       >
         <Text style={styles.changeInstrumentButtonText}>

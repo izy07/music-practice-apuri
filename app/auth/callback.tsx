@@ -1,4 +1,4 @@
-// Google認証コールバック画面 - 認証完了後の処理を行う
+// 認証コールバック（メール確認・パスワードリセット等のリダイレクト）
 import { useEffect } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -44,18 +44,8 @@ export default function AuthCallback() {
             }
           }
           
-          // Google OAuthエラー検出（一時的に無効化 - 後で再実装予定）
-          // TODO: Google OAuth認証を再実装する際は、この部分を復元してください
           const oauthError = params.get('error') || params.get('error_code');
-          
-          if (oauthError && oauthError.includes('google')) {
-            logger.warn('⚠️ Google OAuthエラー（機能は無効化されています）:', oauthError);
-            // Google OAuthは無効化されているため、ログイン画面にリダイレクト
-            redirectToLogin(router, 'Google OAuthエラー');
-            return;
-          }
-          
-          // その他のOAuthエラーは無視（Google以外の認証プロバイダー用）
+
           if (oauthError) {
             logger.error('❌ OAuthエラー:', oauthError, Object.fromEntries(params.entries()));
             

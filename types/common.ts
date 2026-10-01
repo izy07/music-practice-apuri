@@ -135,7 +135,6 @@ export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert
 export type RoutePath = 
   | `/(tabs)/${string}`
   | `/auth/${string}`
-  | `/organization-${string}`
   | `/terms-of-service`
   | `/privacy-policy`
   | string;

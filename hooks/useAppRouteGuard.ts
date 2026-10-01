@@ -19,6 +19,7 @@ type UseAppRouteGuardOptions = {
   hasInstrumentSelected: () => boolean;
   getOnboardingRoute: () => OnboardingRoute;
   tutorialFromSettings?: boolean;
+  instrumentFromChange?: boolean;
 };
 
 export function useAppRouteGuard(options: UseAppRouteGuardOptions): void {
@@ -43,6 +44,7 @@ export function useAppRouteGuard(options: UseAppRouteGuardOptions): void {
       onboardingRoute: options.getOnboardingRoute(),
       segments: currentSegments,
       tutorialFromSettings: options.tutorialFromSettings,
+      instrumentFromChange: options.instrumentFromChange,
     });
 
     if (decision.type === 'redirect') {
@@ -58,6 +60,7 @@ export function useAppRouteGuard(options: UseAppRouteGuardOptions): void {
     options.hasInstrumentSelected,
     options.getOnboardingRoute,
     options.tutorialFromSettings,
+    options.instrumentFromChange,
     router,
     segments,
   ]);

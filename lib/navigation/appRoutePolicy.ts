@@ -26,6 +26,8 @@ export type RouteGuardInput = {
   segments: readonly string[];
   /** 設定画面からチュートorial を見返す場合は true */
   tutorialFromSettings?: boolean;
+  /** 設定・ヘッダーから楽器を変更する場合は true（オンボーディング誤復帰を防ぐ） */
+  instrumentFromChange?: boolean;
 };
 
 export type RouteDecision =
@@ -91,7 +93,7 @@ export function evaluateRouteGuard(input: RouteGuardInput): RouteDecision {
       // 認証済みなら下の本処理へ
     } else if (route.isInAuthGroup) {
       return { type: 'stay', reason: 'web-auth-init' };
-    } else if (route.isInTabsGroup || route.isInOrgGroup) {
+    } else if (route.isInTabsGroup) {
       return { type: 'stay', reason: 'web-optimistic-tabs' };
     } else if (route.firstSegment && PUBLIC_LEGAL_SCREENS.has(route.firstSegment)) {
       return { type: 'stay', reason: 'web-legal-init' };
@@ -104,10 +106,27 @@ export function evaluateRouteGuard(input: RouteGuardInput): RouteDecision {
     return { type: 'stay', reason: 'auth-init' };
   }
 
+  if (input.isAuthenticated && input.hasInstrumentSelected) {
+    if (route.currentTab === 'tutorial' && !input.tutorialFromSettings) {
+      return { type: 'redirect', href: '/(tabs)', reason: 'tutorial-already-onboarded' };
+    }
+    if (
+      route.currentTab === 'instrument-selection' &&
+      input.onboardingRoute === '/(tabs)' &&
+      !input.instrumentFromChange
+    ) {
+      return {
+        type: 'redirect',
+        href: '/(tabs)',
+        reason: 'instrument-already-selected',
+      };
+    }
+  }
+
   if (
     input.platform === 'web' &&
     input.isAuthenticated &&
-    (route.isInTabsGroup || route.isInOrgGroup) &&
+    route.isInTabsGroup &&
     input.hasInstrumentSelected
   ) {
     return { type: 'stay', reason: 'web-reload-maintain' };
@@ -116,7 +135,7 @@ export function evaluateRouteGuard(input: RouteGuardInput): RouteDecision {
   if (
     input.platform === 'web' &&
     !input.isAuthenticated &&
-    (route.isInTabsGroup || route.isInOrgGroup)
+    route.isInTabsGroup
   ) {
     return { type: 'redirect', href: '/auth/login', reason: 'web-unauthenticated-app' };
   }
@@ -145,11 +164,7 @@ export function evaluateRouteGuard(input: RouteGuardInput): RouteDecision {
     return { type: 'redirect', href: target, reason: 'onboarding-required' };
   }
 
-  if (route.currentTab === 'tutorial' && !input.tutorialFromSettings) {
-    return { type: 'redirect', href: '/(tabs)', reason: 'tutorial-already-onboarded' };
-  }
-
-  if (input.platform === 'web' && (route.isInTabsGroup || route.isInOrgGroup)) {
+  if (input.platform === 'web' && route.isInTabsGroup) {
     return { type: 'stay', reason: 'web-authenticated-ok' };
   }
 

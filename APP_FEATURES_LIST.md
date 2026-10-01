@@ -1,8 +1,30 @@
 # アプリ機能一覧（コードベース準拠）
 
-> **調査日:** 2026-09-22  
-> **調査方法:** `app/` 配下の全ルート、`components/`、`repositories/`、`lib/` を横断参照。旧ドキュメント・コメントは参照せず、**到達可能な UI と実際の処理**のみ記載。  
-> **用途:** 機能削減の検討、機能利用ログ設計、クローズドテスト前の仕様確認。
+> **調査日:** 2026-09-30  
+> **調査方法:** `app/` 配下の全ルート、`components/`、`repositories/`、`lib/` を横断参照。**到達可能な UI と実際の処理**のみ記載。
+
+## 製品説明ドキュメント（この3つだけ）
+
+| ファイル | 誰向け | 役割 |
+|----------|--------|------|
+| [README.md](README.md) | 開発者 | セットアップ・環境変数・テスト。**製品の詳細は書かない。** |
+| [docs/PRODUCT_OVERVIEW.md](docs/PRODUCT_OVERVIEW.md) | ユーザー・ストア・サポート | 短い概要・キャッチの入口 |
+| **本ファイル** `APP_FEATURES_LIST.md` | 開発・QA・仕様確認 | **唯一の詳細仕様（ソース・オブ・トゥルース）** |
+
+機能の追加・削除・ストア文案の根拠は **本ファイルを更新** → 必要なら `PRODUCT_OVERVIEW` を短く追随。
+
+**アプリの位置づけ:** 個人練習専用。団体管理・共有目標・出欠は **実装なし**（`goals.goal_type` は短期/長期のみ）。
+
+### 目次
+
+1. [ナビゲーション構造](#1-ナビゲーション構造)（認証フロー含む）
+2. [実在機能（詳細）](#2-実在機能到達可能詳細)
+3. [到達不可・スタブ](#3-到達不可スタブオーファン)
+4. [準備中 UI](#4-ui-上準備中未実装と明示されているもの)
+5. [フリープラン制限](#6-フリープラン制限libsubscriptionlimitsts)
+6. [広告・課金](#7-広告課金)
+7. [DB テーブル](#9-db-テーブル--到達-ui-から実際に使用)
+8. [feature_id](#10-機能利用ログ設計用--feature_id-一覧実在のみ)
 
 ---
 
@@ -14,9 +36,6 @@
 | UI から到達可能な画面 | 約 30 |
 | 到達不可（オーファン/スタブ） | 約 10 |
 | UI 未実装（準備中・Alert のみ） | 3 |
-| DB スキーマのみ（UI なし） | 組織・出欠・タスク関連 |
-
-**組織機能・共有タブは存在しない。** 旧版ドキュメントの記載は誤り。
 
 ---
 
@@ -37,6 +56,7 @@
 - 未認証時: タブ非表示（ローディング）
 - タブバー非表示: `tutorial`, `instrument-selection` 表示中
 - フリープラン: 各タブ画面下部に `BottomBannerAd`（バナー広告）
+- **Daily Discovery:** `DailyDiscoveryHost` — 認証済み・オンボーディング外で 1 日 1 回モーダル（本日の曲 / 8 回に 1 回 過去録音比較）。通知設定 `daily_discovery` + AsyncStorage
 
 ### 1.2 InstrumentHeader（多数画面の上部）
 
@@ -158,7 +178,6 @@
 | 目標カレンダー | `GoalsCalendar` コンポーネント |
 | オフライン | オフライン保存・同期 |
 | フリー制限 | 楽器あたり目標 **4 個**まで（`FREE_PLAN_LIMITS.GOALS_COUNT_PER_INSTRUMENT`） |
-| グループ目標 | DB 型 `group` は残存するが **UI から新規作成不可**、オフライン同期時スキップ |
 
 ---
 
@@ -192,9 +211,9 @@
 | 機能 | 内容 |
 |------|------|
 | 基本情報 | ニックネーム、誕生日、音楽開始年齢 |
-| 所属 | 現所属団体（テキスト） |
+| 所属 | 現所属（部活・楽団名など、自由記述テキスト） |
 | 休止期間 | CRUD（`user_break_periods`） |
-| 過去所属 | CRUD（`user_past_organizations`）— **個人プロフィール用。組織機能ではない** |
+| 過去所属 | 楽器別経歴データ内（`user_profiles.instrument_specific_data`） |
 | 受賞歴 | CRUD（`user_awards`） |
 | 演奏歴 | CRUD（`user_performances`） |
 | 楽器別プロフィール | 購入日等（`user_instrument_profiles`） |
@@ -247,7 +266,7 @@
 | 画面 | 機能 |
 |------|------|
 | 外観設定 | カスタムテーマ色、楽器テーマリセット（`AppearanceSettings`） |
-| 通知設定 | 練習リマインダー / 週次サマリー Switch → `user_settings` |
+| 通知設定 | 練習リマインダー / 週次サマリー / **本日のおすすめ（Daily Discovery）** Switch → `user_settings.notification_settings` + `dailyDiscoveryStorage` |
 
 ---
 
@@ -373,7 +392,6 @@
 |------|------|
 | メール/パスワードログイン | ✅ |
 | メール/パスワード新規登録 | ✅ |
-| Google ログイン | ❌ UI あり、Alert「未実装です」 |
 | パスワード再設定（ログイン画面から） | ❌ Alert「未実装です」（`reset-password.tsx` は別ルートで存在） |
 
 ---
@@ -382,9 +400,6 @@
 
 | ファイル | 状態 | 理由 |
 |----------|------|------|
-| `app/calendar.tsx` | スタブ | 実カレンダーは `(tabs)/index` |
-| `app/attendance.tsx` | スタブ | 組織機能なし |
-| `app/tasks.tsx` | スタブ | 組織機能なし |
 | `app/splash.tsx` | 未統合 | `_layout` フローに未接続 |
 | `gakki-renshu/signup.tsx` | レガシー | 現行は `auth/signup` |
 | `gakki-renshu/forgot-password.tsx` | レガシー | リンクなし |
@@ -392,7 +407,6 @@
 | `(tabs)/feedback.tsx` | オーファン | 設定は `support` へ。feedback は Google Form 自動 open のみ |
 | `(tabs)/help-support.tsx` | オーファン | **router リンクなし** |
 | `(tabs)/legal-info.tsx` | オーファン | **router リンクなし**（privacy-settings が代替） |
-| `organization-dashboard` 等 | **ファイル不存在** | `_layout.tsx` に条件分岐の残骸のみ |
 
 ---
 
@@ -403,7 +417,7 @@
 | InstrumentHeader | AI 自動譜読み → Alert「準備中」 |
 | InstrumentHeader | 譜面自動スクロール → ラベル「(未実装)」 |
 | `note-training.tsx` | 「この機能は現在開発中です」 |
-| `auth/login.tsx` | Google ログイン / パスワード再設定 →「未実装です」 |
+| `auth/login.tsx` | パスワード再設定リンク → 一部「未実装です」 |
 | `index.tsx` | DB テーブル不存在時 →「練習記録機能は準備中です」 |
 
 ---
@@ -412,17 +426,13 @@
 
 | 旧記載 | 現状 |
 |--------|------|
-| **組織管理**（dashboard / settings / share タブ） | ルート・UI なし。DB テーブルのみ |
-| **出欠管理（attendance）** | スタブ画面のみ |
-| **タスク管理（tasks）** | スタブ画面のみ |
 | **Events 専用タブ** | カレンダー内イベント管理に統合 |
 | **音符ゲーム（note-training）** | 到達不可 + プレースホルダ |
 | **help-support / legal-info** | 実装あるが未リンク |
 | **feedback 専用ルート** | settings → `support` が実入口 |
-| **Google OAuth ログイン** | Alert のみ |
+| **Google OAuth ログイン** | **削除済み**（UI・`signInWithGoogle`・環境変数なし） |
 | **本番 In-App Purchase** | `mockPurchase` のみ |
 | **音声入力（STT）** | 削除済み |
-| **グループ目標** | DB 型残存、UI 非対応 |
 
 ---
 
@@ -483,17 +493,12 @@
 | `music_terms` | 用語辞典（カスタム） |
 | `user_instrument_profiles` | 基礎練レベル、プロフィール |
 | `user_subscriptions` | 料金プラン |
-| `user_past_organizations` | プロフィール「過去所属」（組織機能ではない） |
 | `user_break_periods` | 休止期間 |
 | `user_awards` | 受賞 |
 | `user_performances` | 演奏歴 |
 | `representative_songs` | 代表曲 |
 | `user_favorite_songs` | 代表曲お気に入り |
 | `user_push_tokens` | 通知 |
-
-### スキーマのみ（到達 UI なし）
-
-`organizations`, `user_group_memberships`, `practice_schedules`, `tasks`, `attendance_records`, `feedback`
 
 ---
 
@@ -524,17 +529,15 @@ my_library.song_add, recordings_library.play,
 pricing.purchase_attempt, instrument.change
 ```
 
-**ログ対象外:** `organization_*`, `tasks`, `attendance`, `note_training`（到達不可）, `help-support`, `legal-info`, `feedback`（オーファン）
+**ログ対象外:** `note_training`（到達不可）, `help-support`, `legal-info`, `feedback`（オーファン）
 
 ---
 
 ## 11. 調査上の注意（コードとドキュメントの乖離）
 
-- `APP_FEATURES_LIST.md`（旧版）は組織機能・share タブ等を記載していたが、**2026-09-22 時点のコードベースには存在しない**。
-- `_layout.tsx` の `isInOrgGroup` は削除候補のデッドコード。
 - `InstrumentHeader` の `handleInstrumentPress` → `instrument-selection` は定義のみ（楽器名タップは魅力モーダル）。
 - 設定の「チュートリアル」は `tutorial.tsx` ではなく **`app-guide.tsx`** へ遷移する。
 
 ---
 
-*このファイルはコード調査に基づくソース・オブ・トゥルースとする。機能追加・削除時は本ファイルを更新すること。*
+*機能追加・削除時: 本ファイルを更新 → [docs/PRODUCT_OVERVIEW.md](docs/PRODUCT_OVERVIEW.md) を必要に応じて短く追随。README はセットアップのみ。*

@@ -55,25 +55,6 @@ describe('目標管理の統合テスト', () => {
       expect(error).toBeNull();
     });
 
-    it('団体目標を保存できる', async () => {
-      const mockGoal = {
-        id: 'goal-id',
-        user_id: 'test-user',
-        title: 'コンクールで金賞',
-        goal_type: 'group',
-        progress_percentage: 0,
-        is_active: true,
-        is_completed: false,
-      };
-
-      (supabase.from as jest.Mock).mockReturnValue({
-        insert: jest.fn().mockResolvedValue({ data: mockGoal, error: null }),
-      });
-
-      const { error } = await supabase.from('goals').insert(mockGoal);
-
-      expect(error).toBeNull();
-    });
   });
 
   describe('目標の取得', () => {
@@ -93,7 +74,6 @@ describe('目標管理の統合テスト', () => {
       const allGoals = [
         { id: '1', title: '短期目標', goal_type: 'personal_short' },
         { id: '2', title: '長期目標', goal_type: 'personal_long' },
-        { id: '3', title: '団体目標', goal_type: 'group' },
       ];
 
       const shortGoals = allGoals.filter(g => g.goal_type === 'personal_short');
@@ -111,15 +91,6 @@ describe('目標管理の統合テスト', () => {
       expect(longGoals).toHaveLength(1);
     });
 
-    it('団体目標のみをフィルタリングできる', () => {
-      const allGoals = [
-        { id: '1', title: '短期目標', goal_type: 'personal_short' },
-        { id: '2', title: '団体目標', goal_type: 'group' },
-      ];
-
-      const groupGoals = allGoals.filter(g => g.goal_type === 'group');
-      expect(groupGoals).toHaveLength(1);
-    });
   });
 
   describe('目標の更新', () => {
@@ -173,15 +144,15 @@ describe('目標管理の統合テスト', () => {
 
   describe('目標タイプのバリデーション', () => {
     it('有効な目標タイプを受け入れる', () => {
-      const validTypes = ['personal_short', 'personal_long', 'group'];
+      const validTypes = ['personal_short', 'personal_long'];
       validTypes.forEach(type => {
-        expect(['personal_short', 'personal_long', 'group']).toContain(type);
+        expect(['personal_short', 'personal_long']).toContain(type);
       });
     });
 
     it('無効な目標タイプを検出する', () => {
       const invalidType = 'invalid_type';
-      expect(['personal_short', 'personal_long', 'group']).not.toContain(invalidType);
+      expect(['personal_short', 'personal_long']).not.toContain(invalidType);
     });
   });
 

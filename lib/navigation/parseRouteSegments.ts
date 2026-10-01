@@ -9,7 +9,6 @@ export type ParsedRoute = {
   authChild: string | undefined;
   isInAuthGroup: boolean;
   isInTabsGroup: boolean;
-  isInOrgGroup: boolean;
   isNotFoundScreen: boolean;
   /** ルート Stack 上で segments が空（app/index.tsx = `/`） */
   isBootEntry: boolean;
@@ -19,8 +18,6 @@ export function parseRouteSegments(segments: readonly string[]): ParsedRoute {
   const firstSegment = segments[0];
   const isInAuthGroup = firstSegment === 'auth';
   const isInTabsGroup = firstSegment === '(tabs)';
-  const isInOrgGroup =
-    firstSegment === 'organization-dashboard' || firstSegment === 'organization-settings';
   const isNotFoundScreen = firstSegment === '+not-found';
   const currentTab = isInTabsGroup && segments.length > 1 ? segments[1] : null;
   const authChild = isInAuthGroup && segments.length > 1 ? segments[1] : undefined;
@@ -32,7 +29,6 @@ export function parseRouteSegments(segments: readonly string[]): ParsedRoute {
     authChild,
     isInAuthGroup,
     isInTabsGroup,
-    isInOrgGroup,
     isNotFoundScreen,
     isBootEntry: segments.length === 0,
   };

@@ -13,8 +13,6 @@ export const getGoalTypeLabel = (type: string): string => {
       return '短期目標';
     case 'personal_long':
       return '長期目標';
-    case 'group':
-      return '団体目標';
     default:
       return '目標';
   }
@@ -29,8 +27,6 @@ export const getGoalTypeColor = (type: string): string => {
       return '#FF6B6B'; // 赤系
     case 'personal_long':
       return '#4ECDC4'; // 青緑系
-    case 'group':
-      return '#95E1D3'; // 緑系
     default:
       return '#95A5A6'; // グレー
   }

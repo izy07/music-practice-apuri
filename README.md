@@ -1,6 +1,17 @@
 # Music Practice App
 
-音楽練習を記録・管理するアプリケーション
+**個人向け**の楽器練習記録アプリ（React Native / Expo + Supabase）。
+
+## ドキュメント（製品説明は次の3ファイルのみ）
+
+| ファイル | 用途 |
+|----------|------|
+| **README.md**（本ファイル） |  clone 後のセットアップ・環境変数・テスト・CI |
+| **[docs/PRODUCT_OVERVIEW.md](docs/PRODUCT_OVERVIEW.md)** | ユーザー・ストア向けの短い概要 |
+| **[APP_FEATURES_LIST.md](APP_FEATURES_LIST.md)** | 画面・機能・DB の **詳細仕様（正本）** |
+
+機能を変えたら **APP_FEATURES_LIST → PRODUCT_OVERVIEW** の順で更新。  
+競合分析・本番評価など他 MD は参考用（製品の正本ではない）。
 
 ## 🚀 読み込み速度向上のためのヒント
 
@@ -43,9 +54,9 @@ npx supabase start
 npm start
 ```
 
-### Android SHA-1の取得（Google OAuth認証・クローズドテスト用）
+### Android SHA-1の取得（Play Console・クローズドテスト用）
 
-AndroidのクローズドテストやGoogle OAuth認証に必要なSHA-1フィンガープリントを取得する方法：
+Android ビルドの SHA-1 フィンガープリント取得（**Google ログインは未使用**。Play 署名確認等で必要な場合）：
 
 #### 方法1: スクリプトを使用（推奨）
 
@@ -97,20 +108,6 @@ keytool -keystore /path/to/keystore.jks \
   -alias your-key-alias
 ```
 
-#### SHA-1の登録先
-
-取得したSHA-1は以下の場所に登録してください：
-
-1. **Google Cloud Console（OAuth認証用）**
-   - https://console.cloud.google.com/
-   - APIとサービス → 認証情報 → OAuth 2.0 クライアントID
-   - Androidアプリタイプを選択 → SHA-1証明書フィンガープリントに追加
-
-2. **Firebase Console（Firebase認証用）**
-   - https://console.firebase.google.com/
-   - プロジェクト設定 → アプリ → Androidアプリ
-   - SHA証明書フィンガープリントに追加
-
 **注意**: Java JDKが必要です。macOSの場合：
 ```bash
 brew install openjdk
@@ -135,54 +132,11 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 # 指定すると 127.0.0.1 の代わりに LAN IP を使います
 EXPO_PUBLIC_SUPABASE_LAN_IP=192.168.1.10
 EXPO_PUBLIC_SUPABASE_PORT=54321
-
-# Google OAuth認証（本番環境用）
-GOOGLE_CLIENT_ID=your-google-client-id.apps.googleusercontent.com
-GOOGLE_CLIENT_SECRET=your-google-client-secret
 ```
 
 Expo は `EXPO_PUBLIC_` で始まる変数のみクライアントへ注入します。変更後は `npx expo start -c` でキャッシュクリア起動。
 
-### Google OAuth の設定方法
-
-1. **Google Cloud Console でプロジェクトを作成**
-   - https://console.cloud.google.com/ にアクセス
-   - 新しいプロジェクトを作成
-
-2. **OAuth 同意画面の設定**
-   - 「APIとサービス」→「OAuth同意画面」
-   - 外部ユーザー向けに設定
-   - アプリ名、サポートメール、開発者の連絡先を入力
-
-3. **認証情報の作成**
-   - 「APIとサービス」→「認証情報」
-   - 「認証情報を作成」→「OAuthクライアントID」
-   - アプリケーションの種類：「ウェブアプリケーション」
-   - 承認済みのリダイレクトURI：
-     - 開発環境: `http://localhost:8081/auth/callback`
-     - 本番環境: `https://your-app.com/auth/callback`
-     - Supabase: `https://<your-project-ref>.supabase.co/auth/v1/callback`
-
-4. **環境変数の設定**
-   - クライアントIDとクライアントシークレットをコピー
-   - `.env.local` に追加：
-     ```
-     GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
-     GOOGLE_CLIENT_SECRET=xxx
-     ```
-
-5. **Supabaseの再起動**
-   ```bash
-   npx supabase stop
-   npx supabase start
-   ```
-
-6. **本番環境での設定**
-   - Supabaseダッシュボード → Authentication → Providers → Google
-   - クライアントIDとシークレットを入力
-   - 有効化
-
-**注意**: ローカル開発環境では、Google OAuthの代わりにモック認証が使用されます。本番環境では実際のGoogle認証が動作します。
+**認証:** メール/パスワードのみ（Google ログインは提供しません）。Supabase Dashboard の Google プロバイダは無効のままにしてください。
 
 ## 環境変数（Whisper 音声認識）
 
@@ -200,14 +154,6 @@ EXPO_PUBLIC_OPENAI_API_KEY=sk-***
 EXPO_PUBLIC_WHISPER_API_URL=https://your-proxy.example.com/transcriptions
 EXPO_PUBLIC_WHISPER_API_KEY=xxxxx
 ```
-
-## 主な機能
-
-- 練習時間の記録
-- 楽器別のテーマ設定
-- 目標設定と進捗管理
-- 音声入力によるクイック記録
-- エラー制限機能による安定性向上
 
 ## テスト
 
@@ -328,15 +274,15 @@ git push origin v1.0.0
 
 ---
 
-## 📖 ドキュメント
+## 📖 その他（開発・運用）
 
-### 主要ドキュメント
+製品の機能説明は上記 **3 ファイル** のみ。以下は開発補助です。
 
-- [テストガイド](__tests__/README.md) - テストの実行方法
-- [リファクタリングガイド](REFACTORING_GUIDE.md) - コード改善の指針
-- [フックガイド](hooks/README.md) - カスタムフックの使い方
-- [CI/CDガイド](.github/workflows/README.md) - パイプラインの詳細
-- [シードデータ](supabase/SEED_DATA_README.md) - データベース初期化
+- [テストガイド](__tests__/README.md)
+- [フックガイド](hooks/README.md)
+- [CI/CD](.github/workflows/README.md)
+- [シードデータ](supabase/SEED_DATA_README.md)
+- [ユーザーデータエクスポート](docs/USER_DATA_EXPORT_GUIDE.md)
 
 ### API参照
 

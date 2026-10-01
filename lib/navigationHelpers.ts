@@ -13,7 +13,6 @@ import type { Router } from 'expo-router';
 export type SafeRoutePath = 
   | `/(tabs)/${string}`
   | `/auth/${string}`
-  | `/organization-${string}`
   | `/terms-of-service`
   | `/privacy-policy`
   | `/${string}`;

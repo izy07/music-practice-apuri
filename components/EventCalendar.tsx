@@ -38,7 +38,7 @@ export default function EventCalendar({
     return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
   }, []);
 
-  // カレンダーの日付を生成（組織の練習日程と同じロジック）
+  // カレンダーの日付を生成
   const days = useMemo(() => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();

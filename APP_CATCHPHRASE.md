@@ -1,5 +1,7 @@
 # アプリキャッチフレーズ
 
+> 製品説明の正本: [APP_FEATURES_LIST.md](./APP_FEATURES_LIST.md) / 概要 [docs/PRODUCT_OVERVIEW.md](./docs/PRODUCT_OVERVIEW.md)
+
 ## 🎯 最終決定版
 
 ```

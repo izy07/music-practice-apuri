@@ -19,9 +19,8 @@ import { useRouter } from 'expo-router';
 import { ErrorHandler } from '@/lib/errorHandler';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
-import { checkMonthlyRecordingLimit, checkDailyRecordingLimit, isCurrentMonth, canSaveDataForInstrument, getMaxRecordingDuration, recordRewardedAdRecording, isPremiumUser } from '@/lib/subscriptionLimits';
+import { checkMonthlyRecordingLimit, checkDailyRecordingLimit, isCurrentMonth, canSaveDataForInstrument, getMaxRecordingDuration, isPremiumUser } from '@/lib/subscriptionLimits';
 import { computeEntitlement, getSubscription } from '@/lib/subscriptionService';
-import { RewardedAdModal } from './ads/RewardedAdModal';
 import { getInstrumentId } from '@/lib/instrumentUtils';
 import logger from '@/lib/logger';
 import audioResourceManager from '@/lib/audioResourceManager';
@@ -100,8 +99,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
   const [recordingType, setRecordingType] = useState<'performance' | 'lesson'>('performance'); // 録音種類
   const [recordingLimitStatus, setRecordingLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
   const [dailyLimitStatus, setDailyLimitStatus] = useState<{ canRecord: boolean; currentCount: number; limit: number } | null>(null);
-  const [showRewardedAd, setShowRewardedAd] = useState(false);
-  
   // Web Audio API用の参照
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -358,36 +355,20 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
         setRecordingLimitStatus(limitCheck);
         
         if (!limitCheck.canRecord) {
-          // リワード広告による追加録音が可能な場合
-          if (limitCheck.canWatchAd) {
-            Alert.alert(
-              '基本録音上限に達しました',
-              `Freeプランでは各楽器ごとに月に3回まで録音できます。\n現在の録音数: ${limitCheck.currentCount}/${limitCheck.limit}\n\n広告を視聴すると、追加で録音できます（最大3回まで）。`,
-              [
-                { text: 'キャンセル', style: 'cancel' },
-                { text: '広告を視聴する', onPress: () => {
-                  setShowRewardedAd(true);
-                }},
-                { text: 'プレミアムを見る', onPress: () => {
+          Alert.alert(
+            '録音上限に達しました',
+            `Freeプランでは各楽器ごとに月に3回まで録音できます。\n現在の録音数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
+            [
+              { text: 'キャンセル', style: 'cancel' },
+              {
+                text: 'プレミアムを見る',
+                onPress: () => {
                   onClose();
                   router.push('/(tabs)/pricing-plans');
-                }}
-              ]
-            );
-          } else {
-            // 完全に上限に達している場合
-            Alert.alert(
-              '録音上限に達しました',
-              `Freeプランでは各楽器ごとに月に6回まで録音できます（基本3回 + 広告3回）。\n現在の録音数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
-              [
-                { text: 'キャンセル', style: 'cancel' },
-                { text: 'プレミアムを見る', onPress: () => {
-                  onClose();
-                  router.push('/(tabs)/pricing-plans');
-                }}
-              ]
-            );
-          }
+                },
+              },
+            ]
+          );
           return;
         }
       }
@@ -1129,42 +1110,29 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
       }
       
       if (!limitCheck.canRecord) {
-        if (limitCheck.canWatchAd) {
-          Alert.alert(
-            '基本録音上限に達しました',
-            `Freeプランでは各楽器ごとに月に3回まで録音できます。\n現在の録音数: ${limitCheck.currentCount}/${limitCheck.limit}\n\n広告を視聴すると、追加で録音できます（最大3回まで）。`,
-            [
-              { text: 'キャンセル', style: 'cancel' },
-              { text: '広告を視聴する', onPress: () => {
-                setShowRewardedAd(true);
-              }},
-              { text: 'プレミアムを見る', onPress: () => {
-                onClose();
-                router.push('/(tabs)/pricing-plans');
-              }}
-            ]
-          );
-        } else {
-          const normalizedResult = normalizeLimitResult(limitCheck, 'record_monthly');
-          const alertConfig = getDefaultAlertConfig('record_monthly');
-          
-          showFeatureLimitAlert({
-            result: {
-              ...normalizedResult,
-              title: '制限に達しました',
-              reason: normalizedResult.reason || `Freeプランでは各楽器ごとに月に6回まで録音できます（基本3回 + 広告3回）。\n現在の使用回数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
-            },
-            defaultTitle: '制限に達しました',
-            defaultMessage: normalizedResult.reason || `Freeプランでは各楽器ごとに月に6回まで録音できます（基本3回 + 広告3回）。\n現在の使用回数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
-            upgradeButtonText: alertConfig.upgradeButtonText,
-            router,
-            onCancel: () => {},
-            onUpgrade: () => {
-                onClose();
-                router.push('/(tabs)/pricing-plans');
-            },
-          });
-        }
+        const normalizedResult = normalizeLimitResult(limitCheck, 'record_monthly');
+        const alertConfig = getDefaultAlertConfig('record_monthly');
+
+        showFeatureLimitAlert({
+          result: {
+            ...normalizedResult,
+            title: '制限に達しました',
+            reason:
+              normalizedResult.reason ||
+              `Freeプランでは各楽器ごとに月に3回まで録音できます。\n現在の使用回数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
+          },
+          defaultTitle: '制限に達しました',
+          defaultMessage:
+            normalizedResult.reason ||
+            `Freeプランでは各楽器ごとに月に3回まで録音できます。\n現在の使用回数: ${limitCheck.currentCount}/${limitCheck.limit}\n\nプレミアムで無制限に録音できます。`,
+          upgradeButtonText: alertConfig.upgradeButtonText,
+          router,
+          onCancel: () => {},
+          onUpgrade: () => {
+            onClose();
+            router.push('/(tabs)/pricing-plans');
+          },
+        });
         return;
       }
 
@@ -1539,39 +1507,6 @@ export default function AudioRecorder({ visible, onSave, onClose, onRecordingSav
           </View>
         )}
       </ScrollView>
-
-      {/* リワード広告モーダル */}
-      <RewardedAdModal
-        visible={showRewardedAd}
-        onRewardEarned={async () => {
-          // 広告視聴完了時にリワード広告録音を記録
-          if (user?.id) {
-            const instrumentId = getInstrumentId(selectedInstrument);
-            if (instrumentId) {
-              const success = await recordRewardedAdRecording(user.id, instrumentId);
-              if (success) {
-                Alert.alert(
-                  '広告視聴完了',
-                  '追加の録音が可能になりました。録音を開始してください。',
-                  [{ text: '了解', onPress: () => setShowRewardedAd(false) }]
-                );
-              } else {
-                Alert.alert(
-                  'エラー',
-                  '広告視聴の記録に失敗しました。再度お試しください。',
-                  [{ text: '了解', onPress: () => setShowRewardedAd(false) }]
-                );
-              }
-            }
-          }
-        }}
-        onClose={() => setShowRewardedAd(false)}
-        onError={(error) => {
-          logger.error('リワード広告エラー:', error);
-          Alert.alert('エラー', '広告の読み込みに失敗しました。');
-          setShowRewardedAd(false);
-        }}
-      />
     </View>
   );
 }

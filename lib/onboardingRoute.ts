@@ -21,8 +21,8 @@ export type OnboardingUserSnapshot = {
 /**
  * 楽器あり → メイン。
  * チュートリアル完了済み・楽器なし → 楽器選択。
- * 明示的に未完了・楽器なし → チュートリアル。
- * tutorial_completed 未取得 → ローカル楽器があればメイン、なければチュートリアル（白画面にしない）。
+ * 明示的に未完了（新規登録直後など）・楽器なし → チュートリアル。
+ * tutorial_completed 未取得 → 既存ログイン想定で楽器選択（チュートリアルに戻さない）。
  */
 export function resolveOnboardingTarget(
   user: OnboardingUserSnapshot | null | undefined,
@@ -37,8 +37,21 @@ export function resolveOnboardingTarget(
   if (user?.tutorial_completed === false) {
     return '/(tabs)/tutorial';
   }
-  // 未取得: DB 到着前。ローカル楽器は hasInstrument で既に tabs へ。ここは初回扱い。
-  return '/(tabs)/tutorial';
+  return '/(tabs)/instrument-selection';
+}
+
+/**
+ * DB プロフィール反映前かどうか（セッションのみの段階）。
+ * 未取得のまま楽器選択へ飛ばすと既存ユーザーが誤誘導されるため、ログイン遷移前に待つ。
+ */
+export function isOnboardingProfilePending(
+  user: OnboardingUserSnapshot | null | undefined,
+  hasInstrument: boolean
+): boolean {
+  if (!user || hasInstrument || user.selected_instrument_id) {
+    return false;
+  }
+  return user.tutorial_completed === undefined || user.tutorial_completed === null;
 }
 
 export function needsOnboardingTutorial(

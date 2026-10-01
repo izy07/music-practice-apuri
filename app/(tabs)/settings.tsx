@@ -10,7 +10,6 @@ import { useAuthAdvanced } from '@/hooks/useAuthAdvanced';
 import { useInstrumentTheme } from '@/components/InstrumentThemeContext';
 import { setCurrentRoute } from '@/lib/navigationHistory';
 import { asSafeRoutePath } from '@/lib/navigationHelpers';
-import { BottomBannerAd } from '@/components/ads/BottomBannerAd';
 import { useSubscription } from '@/hooks/useSubscription';
 import { useScrollToTopOnFocus } from '@/hooks/useScrollToTopOnFocus';
 
@@ -128,7 +127,8 @@ export default function SettingsScreen() {
         subtitle: '楽器の選択',
         icon: Zap,
         color: '#FF6B35',
-        onPress: () => router.push(asSafeRoutePath('/(tabs)/instrument-selection')),
+        onPress: () =>
+          router.push(asSafeRoutePath('/(tabs)/instrument-selection?from=change')),
         requiresPremium: false,
       },
       {
@@ -266,7 +266,6 @@ export default function SettingsScreen() {
       </ScrollView>
 
       {/* タブバー上に広告バナー（フリープランのみ） */}
-      <BottomBannerAd />
 
     </SafeAreaView>
   );
