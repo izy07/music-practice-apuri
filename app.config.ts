@@ -172,15 +172,19 @@ const config: ExpoConfig = {
   experiments: {
     typedRoutes: true,
   },
-  updates: {
-    url: 'https://u.expo.dev/fe3ac800-458f-47ac-a51f-264b5a49c45f',
-    enabled: enableExpoUpdates,
-    checkAutomatically: enableExpoUpdates ? 'ON_LOAD' : 'NEVER',
-    fallbackToCacheTimeout: 0,
-  },
-  runtimeVersion: {
-    policy: 'appVersion',
-  },
+  ...(enableExpoUpdates
+    ? {
+        updates: {
+          url: 'https://u.expo.dev/fe3ac800-458f-47ac-a51f-264b5a49c45f',
+          enabled: true,
+          checkAutomatically: 'ON_LOAD' as const,
+          fallbackToCacheTimeout: 0,
+        },
+        runtimeVersion: { policy: 'appVersion' as const },
+      }
+    : {
+        updates: { enabled: false },
+      }),
   extra: {
     eas: {
       projectId: 'fe3ac800-458f-47ac-a51f-264b5a49c45f',
