@@ -46,16 +46,6 @@ const isTest = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !==
 const includeDevClient = isExpoStart || easBuildProfile === 'development';
 // 起動時 OTA チェックで白スプラッシュに張り付く事例があるため、ストア系は組み込みバンドルのみ
 const enableExpoUpdates = includeDevClient;
-// スプラッシュ直後のネイティブクラッシュ切り分け: audio-api は明示 opt-in のみネイティブ同梱
-const includeNativeAudioApi =
-  process.env.EXPO_PUBLIC_ENABLE_NATIVE_AUDIO_API === 'true' ||
-  easBuildProfile === 'development';
-
-const autolinkingExclude: string[] = [];
-if (!includeNativeAudioApi) {
-  autolinkingExclude.push('react-native-audio-api');
-}
-
 // EXPO_PUBLIC_* はビルド時にバンドルへ焼き込まれる。未設定のまま export すると実行時クラッシュの原因になる。
 const mustHaveSupabaseEnv =
   !isTest &&
@@ -151,7 +141,7 @@ const config: ExpoConfig = {
     ],
     'expo-asset',
     'expo-audio',
-    ...(includeNativeAudioApi ? (['react-native-audio-api'] as const) : []),
+    'react-native-audio-api',
     'expo-web-browser',
     // Google Play パッケージ所有権確認用（adi-registration.properties を native assets へ）
     './plugins/withAdiRegistration',
@@ -168,23 +158,19 @@ const config: ExpoConfig = {
       },
     ],
   ],
-  autolinking: autolinkingExclude.length > 0 ? { exclude: autolinkingExclude } : undefined,
   experiments: {
     typedRoutes: true,
   },
-  ...(enableExpoUpdates
-    ? {
-        updates: {
-          url: 'https://u.expo.dev/fe3ac800-458f-47ac-a51f-264b5a49c45f',
-          enabled: true,
-          checkAutomatically: 'ON_LOAD' as const,
-          fallbackToCacheTimeout: 0,
-        },
-        runtimeVersion: { policy: 'appVersion' as const },
-      }
-    : {
-        updates: { enabled: false },
-      }),
+  // v12 成功構成: runtimeVersion + updates URL を維持し OTA のみ無効（Gradle / expo-updates 整合）
+  updates: {
+    url: 'https://u.expo.dev/fe3ac800-458f-47ac-a51f-264b5a49c45f',
+    enabled: enableExpoUpdates,
+    checkAutomatically: enableExpoUpdates ? 'ON_LOAD' : 'NEVER',
+    fallbackToCacheTimeout: 0,
+  },
+  runtimeVersion: {
+    policy: 'appVersion',
+  },
   extra: {
     eas: {
       projectId: 'fe3ac800-458f-47ac-a51f-264b5a49c45f',
@@ -197,7 +183,6 @@ const config: ExpoConfig = {
     privacyPolicyUrl: process.env.EXPO_PUBLIC_PRIVACY_POLICY_URL || '',
     /** Play テスト向け: 同梱ネイティブモジュール（BootScreen の build 行と合わせて確認） */
     nativeModules: {
-      audioApi: includeNativeAudioApi,
       easBuildProfile: easBuildProfile || 'local',
     },
     // Web環境用のリダイレクトURI

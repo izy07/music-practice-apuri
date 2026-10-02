@@ -38,10 +38,8 @@ export function getBuildStamp(): string {
   const androidVc = Constants.expoConfig?.android?.versionCode;
   const profile = process.env.EAS_BUILD_PROFILE ?? 'local';
   const nativeModules = Constants.expoConfig?.extra?.nativeModules as
-    | { audioApi?: boolean; easBuildProfile?: string }
+    | { easBuildProfile?: string }
     | undefined;
-  const nativeTag =
-    nativeModules && `audio:${nativeModules.audioApi ? 'on' : 'off'}`;
 
   const parts = [
     `v${version}`,
@@ -52,7 +50,6 @@ export function getBuildStamp(): string {
     nativeModules?.easBuildProfile && nativeModules.easBuildProfile !== 'local'
       ? `prof:${nativeModules.easBuildProfile}`
       : null,
-    nativeTag,
   ].filter(Boolean);
   return parts.join(' · ');
 }
