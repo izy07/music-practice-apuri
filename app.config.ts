@@ -113,6 +113,8 @@ const config: ExpoConfig = {
       'android.permission.READ_MEDIA_IMAGES',
       'android.permission.READ_MEDIA_VIDEO',
       'android.permission.READ_MEDIA_AUDIO',
+      // Play Console: BOOT_COMPLETED + 制限付き FGS 警告（expo-notifications 由来の宣言を除去）
+      'android.permission.RECEIVE_BOOT_COMPLETED',
     ],
   },
   web: {
